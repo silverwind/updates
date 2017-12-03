@@ -6,8 +6,13 @@
 
 ## Example:
 ```sh
-$ npm install $(updates)
-$ yarn install $(updates)
+$ updates
+NAME      RANGE      NEWRANGE
+got       ^8.0.1     ^8.0.1
+semver    ^5.4.1     ^5.4.1
+eslint    ^4.12.1    ^4.12.1
+$ updates -u
+package.json updated!
 ```
 
 © [silverwind](https://github.com/silverwind), distributed under BSD licence
