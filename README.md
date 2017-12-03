@@ -13,6 +13,9 @@ semver    ^5.4.1     ^5.4.1
 eslint    ^4.12.1    ^4.12.1
 $ updates -u
 package.json updated!
+$ time updates
+All packages are up to date.
+updates  0.28s user 0.06s system 82% cpu 0.417 total
 ```
 
 © [silverwind](https://github.com/silverwind), distributed under BSD licence
