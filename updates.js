@@ -147,7 +147,7 @@ function updatePkg(results) {
 
 // naive regex replace
 function updateRange(range, version) {
-  return range.replace(/[0-9]+\.[0-9]+\.[0-9](-.+)?/, version);
+  return range.replace(/[0-9]+\.[0-9]+\.[0-9]+(-.+)?/, version);
 }
 
 function isValidSemverRange(range) {
