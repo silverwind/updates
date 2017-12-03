@@ -1,0 +1,40 @@
+{
+  "name": "updates",
+  "version": "0.0.0",
+  "description": "Fast npm dependency update checking tool",
+  "author": "silverwind",
+  "repository": "silverwind/updates",
+  "license": "BSD-2-Clause",
+  "main": "updates.js",
+  "preferGlobal": true,
+  "bin": {
+    "updates": "updates.js"
+  },
+  "engines": {
+    "node": ">=6"
+  },
+  "scripts": {
+    "test": "make test"
+  },
+  "keywords": [
+    "update",
+    "npm",
+    "yarn",
+    "packages",
+    "dependencies"
+  ],
+  "files": [
+    "updates.js"
+  ],
+  "devDependencies": {
+    "eslint": "^4.12.1"
+  },
+  "dependencies": {
+    "chalk": "^2.3.0",
+    "columnify": "^1.5.4",
+    "escape-string-regexp": "^1.0.5",
+    "got": "^8.0.1",
+    "meow": "^4.0.0",
+    "semver": "^5.4.1"
+  }
+}
