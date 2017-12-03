@@ -2,7 +2,7 @@ lint:
 	eslint --color --quiet *.js
 
 test:
-	node test.js
+	$(MAKE) lint
 
 publish:
 	git push -u --tags origin master
