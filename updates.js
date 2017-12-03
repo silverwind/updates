@@ -46,15 +46,16 @@ const deps = [];
 Promise.all(deps.map(dep => got(`${url}${dep.name}`))).then(function(responses) {
   return responses.map(function(response, i) {
     const dep = Object.keys(deps)[i];
-    const name = deps[dep].name;
-    const range = deps[dep].range;
     const newVersion = JSON.parse(response.body)["dist-tags"]["latest"];
-    const newRange = updateRange(range, newVersion);
-    return {name, range, newRange};
+    return {
+      package: deps[dep].name,
+      old: deps[dep].range,
+      new: updateRange(deps[dep].range, newVersion),
+    };
   });
 }).then(function(results) {
   results = results.filter(function(result) {
-    return result.range !== result.newRange;
+    return result.old !== result.new;
   });
 
   // print results
@@ -130,11 +131,11 @@ function highlightDiff(a, b, added) {
 
 function formatResults(results) {
   return columnify(results.map(r => Object.assign({}, r)).map(function(output) {
-    if (output.newRange !== output.range) {
+    if (output.new !== output.old) {
       return {
-        "package": output.name,
-        "old": highlightDiff(output.range, output.newRange, false),
-        "new": highlightDiff(output.newRange, output.range, true),
+        "package": output.package,
+        "old": highlightDiff(output.old, output.new, false),
+        "new": highlightDiff(output.new, output.old, true),
       };
     }
   }), {
@@ -145,8 +146,8 @@ function formatResults(results) {
 function updatePkg(results) {
   let newPkgStr = pkgStr;
   results.forEach(function(result) {
-    const re = new RegExp(`"${esc(result.name)}": +"${esc(result.range)}"`, "g");
-    newPkgStr = newPkgStr.replace(re, `"${result.name}": "${result.newRange}"`);
+    const re = new RegExp(`"${esc(result.package)}": +"${esc(result.old)}"`, "g");
+    newPkgStr = newPkgStr.replace(re, `"${result.package}": "${result.new}"`);
   });
   return newPkgStr;
 }

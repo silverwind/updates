@@ -35,14 +35,14 @@ package.json updated!
 $ updates -j
 [
   {
-    "name": "got",
-    "range": "^7.1.0",
-    "newRange": "^8.0.1"
+    "package": "got",
+    "old": "^7.1.0",
+    "new": "^8.0.1"
   },
   {
-    "name": "p-timeout",
-    "range": "^1.2.0",
-    "newRange": "^2.0.1"
+    "package": "p-timeout",
+    "old": "^1.2.0",
+    "new": "^2.0.1"
   }
 ]
 ```
