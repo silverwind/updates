@@ -15,9 +15,9 @@ $ yarn global add updates
 ```console
 $ updates
 NAME      OLD        NEW
-got       ^8.0.1     ^8.0.1
-semver    ^5.4.1     ^5.4.1
-eslint    ^4.12.1    ^4.12.1
+got       ^7.0.0     ^8.0.1
+semver    ^5.0.4     ^5.4.1
+eslint    ^4.11.1    ^4.12.1
 $ updates -u
 package.json updated!
 $ time updates

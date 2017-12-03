@@ -102,7 +102,7 @@ function formatResults(results) {
     if (output.newRange !== output.range) {
       return {
         name: output.name,
-        old: chalk.red(output.newRange),
+        old: chalk.red(output.range),
         "new": chalk.green(output.newRange),
       };
     }
