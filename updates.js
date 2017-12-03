@@ -79,8 +79,8 @@ function formatResults(results) {
     if (output.newRange !== output.range) {
       return {
         name: output.name,
-        range: chalk.red(output.newRange),
-        newRange: chalk.green(output.newRange),
+        old: chalk.red(output.newRange),
+        "new": chalk.green(output.newRange),
       };
     }
   }).filter(result => Boolean(result)), {

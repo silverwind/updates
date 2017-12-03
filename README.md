@@ -14,7 +14,7 @@ $ yarn global add updates
 ## Example:
 ```sh
 $ updates
-NAME      RANGE      NEWRANGE
+NAME      OLD        NEW
 got       ^8.0.1     ^8.0.1
 semver    ^5.4.1     ^5.4.1
 eslint    ^4.12.1    ^4.12.1
