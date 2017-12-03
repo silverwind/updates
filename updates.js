@@ -3,7 +3,7 @@
 
 const cli = require("meow")(`
   Options:
-    --upgrade, -u  Also upgrade package.json
+    --update, -u  Also update package.json
 
   Examples:
     $ updates
@@ -58,13 +58,13 @@ Promise.all(deps.map(dep => got(`${url}${dep.name}`))).then(function(responses) 
   if (!different) {
     console.info("All packages are up to date.");
     process.exit(0);
-  } else if (!cli.flags.u && !cli.flags.upgrade) {
+  } else if (!cli.flags.u && !cli.flags.update) {
     console.info(formatResults(results));
     process.exit(0);
   }
   return results;
 }).then(function(results) {
-  fs.writeFile("package.json", upgradePkg(results), "utf8", function(err) {
+  fs.writeFile("package.json", updatePkg(results), "utf8", function(err) {
     if (err) {
       console.error(err);
       process.exit(1);
@@ -89,7 +89,7 @@ function formatResults(results) {
   });
 }
 
-function upgradePkg(results) {
+function updatePkg(results) {
   let newPkgStr = pkgStr;
   results.forEach(function(result) {
     const re = new RegExp(`"${esc(result.name)}": +"${esc(result.range)}"`, "g");
