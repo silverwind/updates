@@ -7,8 +7,7 @@ const cli = require("meow")(`
 
   Examples:
     $ updates
-    $ npm install $(updates)
-    $ yarn add $(updates)
+    $ updates -u
 `);
 
 const fs = require("fs");
