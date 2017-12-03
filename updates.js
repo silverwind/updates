@@ -58,7 +58,7 @@ Promise.all(deps.map(dep => got(`${url}${dep.name}`))).then(function(responses) 
 
   if (!results.length) {
     print("All packages are up to date.");
-    process.exit(2);
+    process.exit(0);
   } else if (!cli.flags.u && !cli.flags.update) {
     if (cli.flags.j || cli.flags.json) {
       print(results);
