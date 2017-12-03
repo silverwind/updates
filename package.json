@@ -1,6 +1,6 @@
 {
   "name": "updates",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Fast npm dependency update checking tool",
   "author": "silverwind",
   "repository": "silverwind/updates",
