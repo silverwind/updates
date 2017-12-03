@@ -15,22 +15,22 @@ $ npm install -g updates
 ```
 
 ## Examples
+### Check for updates
 ```console
 $ updates
-PACKAGE    OLD        NEW
-got        ^7.0.0     ^8.0.1
-semver     ^5.0.4     ^5.4.1
-eslint     ^4.11.1    ^4.12.1
+PACKAGE         OLD       NEW
+got             ^7.1.0    ^8.0.1
+p-timeout       ^1.2.0    ^2.0.1
 ```
+### Update package.json
 ```console
 $ updates -u
+PACKAGE         OLD       NEW
+got             ^7.1.0    ^8.0.1
+p-timeout       ^1.2.0    ^2.0.1
 package.json updated!
 ```
-```console
-$ time updates
-All packages are up to date.
-updates  0.28s user 0.06s system 82% cpu 0.417 total
-```
+### JSON Output
 ```console
 $ updates -j
 [
