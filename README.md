@@ -12,7 +12,6 @@
 
 ```console
 $ npm install -g updates
-$ yarn global add updates
 ```
 
 ## Examples
