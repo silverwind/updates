@@ -4,6 +4,7 @@
 const cli = require("meow")(`
   Options:
     --update, -u  Also update package.json
+    --json, -j    Output JSON
 
   Examples:
     $ updates
@@ -11,6 +12,7 @@ const cli = require("meow")(`
 `);
 
 const fs = require("fs");
+const os = require("os");
 const got = require("got");
 const path = require("path");
 const semver = require("semver");
@@ -50,29 +52,50 @@ Promise.all(deps.map(dep => got(`${url}${dep.name}`))).then(function(responses) 
     return {name, range, newRange};
   });
 }).then(function(results) {
-  const different = results.some(function(result) {
+  results = results.filter(function(result) {
     return result.range !== result.newRange;
   });
 
-  if (!different) {
-    console.info("All packages are up to date.");
+  if (!results.length) {
+    print("All packages are up to date.");
     process.exit(0);
   } else if (!cli.flags.u && !cli.flags.update) {
-    console.info(formatResults(results));
+    if (cli.flags.j || cli.flags.json) {
+      print(results);
+    } else {
+      print(formatResults(results));
+    }
     process.exit(0);
   }
   return results;
 }).then(function(results) {
   fs.writeFile("package.json", updatePkg(results), "utf8", function(err) {
     if (err) {
-      console.error(err);
+      print(err);
       process.exit(1);
     } else {
-      console.info("package.json updated!");
+      print("package.json updated!");
       process.exit(0);
     }
   });
 });
+
+function print(obj) {
+  if (cli.flags.j || cli.flags.json) {
+    if (typeof obj === "string") {
+      obj = {message: obj};
+    } else if (obj instanceof Error) {
+      obj = {error: obj.message};
+    }
+    process.stdout.write(JSON.stringify(obj, null, 2) + os.EOL);
+  } else {
+    if (obj instanceof Error) {
+      process.stderr.write(obj + os.EOL);
+    } else {
+      process.stdout.write(obj + os.EOL);
+    }
+  }
+}
 
 function formatResults(results) {
   return columnify(results.map(r => Object.assign({}, r)).map(function(output) {
@@ -83,7 +106,7 @@ function formatResults(results) {
         "new": chalk.green(output.newRange),
       };
     }
-  }).filter(result => Boolean(result)), {
+  }), {
     columnSplitter: "    ",
   });
 }
