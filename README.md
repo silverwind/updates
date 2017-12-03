@@ -6,7 +6,7 @@
   <img src="https://i.imgur.com/jBjNoKO.png"/>
 </p>
 
-`updates` is a lightweight tool that checks for npm dependency updates and optionally updates `package.json`. It talks directly to the npm registry and is usually able to find all updates in under a second.
+`updates` checks for npm dependency updates and optionally updates `package.json`. It talks directly to the npm registry and is typically able to complete in under a second. It can also output JSON.
 
 ## Install
 
@@ -30,6 +30,21 @@ package.json updated!
 $ time updates
 All packages are up to date.
 updates  0.28s user 0.06s system 82% cpu 0.417 total
+```
+```console
+$ updates -j
+[
+  {
+    "name": "got",
+    "range": "^7.1.0",
+    "newRange": "^8.0.1"
+  },
+  {
+    "name": "p-timeout",
+    "range": "^1.2.0",
+    "newRange": "^2.0.1"
+  }
+]
 ```
 
 © [silverwind](https://github.com/silverwind), distributed under BSD licence
