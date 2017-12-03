@@ -27,14 +27,14 @@
     "updates.js"
   ],
   "devDependencies": {
-    "eslint": "^4.11.1"
+    "eslint": "^4.12.1"
   },
   "dependencies": {
     "chalk": "^2.3.0",
     "columnify": "^1.5.4",
     "escape-string-regexp": "^1.0.5",
-    "got": "^7.0.0",
+    "got": "^8.0.1",
     "meow": "^4.0.0",
-    "semver": "^5.0.4"
+    "semver": "^5.4.1"
   }
 }
