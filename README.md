@@ -4,6 +4,13 @@
 
 `updates` is a lightweight tool that checks for npm dependency updates and optionally automatically updates `package.json`. Unlike other similar tools, it has no dependency on any package manager but instead works directly with the npm registry.
 
+## Install:
+
+```sh
+$ npm install -g updates
+$ yarn global add updates
+```
+
 ## Example:
 ```sh
 $ updates
