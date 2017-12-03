@@ -6,7 +6,7 @@
   <img src="https://i.imgur.com/jBjNoKO.png"/>
 </p>
 
-`updates` checks for npm dependency updates and optionally updates `package.json`. It talks directly to the npm registry and is typically able to complete in under a second. It can also output JSON.
+`updates` checks for npm dependency updates and optionally updates `package.json`. It is typically able to complete in under a second. It can also output JSON.
 
 ## Install
 
