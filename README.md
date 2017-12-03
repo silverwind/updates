@@ -6,7 +6,7 @@
   <img src="https://i.imgur.com/jBjNoKO.png"/>
 </p>
 
-`updates` is a lightweight CLI tool that checks for npm dependency updates and optionally automatically updates `package.json`. Unlike other similar tools, it has no dependency on any package manager but instead works directly with the npm registry.
+`updates` is a lightweight tool that checks for npm dependency updates and optionally updates `package.json`. It talks directly to the npm registry and is usually able to find all updates in under a second.
 
 ## Install
 
@@ -15,15 +15,19 @@ $ npm install -g updates
 $ yarn global add updates
 ```
 
-## Example
+## Examples
 ```console
 $ updates
 NAME      OLD        NEW
 got       ^7.0.0     ^8.0.1
 semver    ^5.0.4     ^5.4.1
 eslint    ^4.11.1    ^4.12.1
+```
+```console
 $ updates -u
 package.json updated!
+```
+```console
 $ time updates
 All packages are up to date.
 updates  0.28s user 0.06s system 82% cpu 0.417 total

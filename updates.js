@@ -9,6 +9,7 @@ const cli = require("meow")(`
   Examples:
     $ updates
     $ updates -u
+    $ updates -j
 `);
 
 const fs = require("fs");
