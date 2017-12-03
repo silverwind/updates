@@ -2,6 +2,8 @@
 [![](https://img.shields.io/npm/v/updates.svg?style=flat)](https://www.npmjs.org/package/updates) [![](https://img.shields.io/npm/dm/updates.svg)](https://www.npmjs.org/package/updates) [![](https://api.travis-ci.org/silverwind/updates.svg?style=flat)](https://travis-ci.org/silverwind/updates)
 > Fast npm dependency updating tool
 
+![](https://i.imgur.com/v4aqfZ7.png)
+
 `updates` is a lightweight CLI tool that checks for npm dependency updates and optionally automatically updates `package.json`. Unlike other similar tools, it has no dependency on any package manager but instead works directly with the npm registry.
 
 ## Install
