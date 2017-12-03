@@ -113,8 +113,7 @@ function highlightDiff(a, b, added) {
           } else {
             return char;
           }
-
-        }).join("") + chalk[added ? "green" : "red"](aParts.slice(i + 1).join("."));;
+        }).join("") + chalk[added ? "green" : "red"](aParts.slice(i + 1).join("."));
       }
       break;
     } else res += aParts[i] + ".";
