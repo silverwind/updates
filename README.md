@@ -17,10 +17,10 @@ $ npm install -g updates
 ## Examples
 ```console
 $ updates
-NAME      OLD        NEW
-got       ^7.0.0     ^8.0.1
-semver    ^5.0.4     ^5.4.1
-eslint    ^4.11.1    ^4.12.1
+PACKAGE    OLD        NEW
+got        ^7.0.0     ^8.0.1
+semver     ^5.0.4     ^5.4.1
+eslint     ^4.11.1    ^4.12.1
 ```
 ```console
 $ updates -u
