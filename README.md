@@ -3,7 +3,7 @@
 > Fast npm dependency updating tool
 
 <p align="center">
-  <img src="https://i.imgur.com/edIypHg.png"/>
+  <img src="https://i.imgur.com/jBjNoKO.png"/>
 </p>
 
 `updates` is a lightweight CLI tool that checks for npm dependency updates and optionally automatically updates `package.json`. Unlike other similar tools, it has no dependency on any package manager but instead works directly with the npm registry.
