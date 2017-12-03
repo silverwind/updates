@@ -30,7 +30,7 @@
     "eslint": "^4.12.1"
   },
   "dependencies": {
-    "chalk": "^2.3.0",
+    "chalk": "2.3.0",
     "columnify": "^1.5.4",
     "escape-string-regexp": "^1.0.5",
     "got": "^8.0.1",

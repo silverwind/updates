@@ -97,13 +97,39 @@ function print(obj) {
   }
 }
 
+function highlightDiff(a, b, added) {
+  const aParts = a.split(/\./);
+  const bParts = b.split(/\./);
+  let res = "";
+
+  for (let i = 0; i < aParts.length; i++) {
+    if (aParts[i] !== bParts[i]) {
+      if (/^[0-9]+$/.test(aParts[i])) {
+        res += chalk[added ? "green" : "red"](aParts.slice(i).join("."));
+      } else {
+        res += aParts[i].split("").map(function(char) {
+          if (/^[0-9]+$/.test(char)) {
+            return chalk[added ? "green" : "red"](char + ".");
+          } else {
+            return char;
+          }
+
+        }).join("") + chalk[added ? "green" : "red"](aParts.slice(i + 1).join("."));;
+      }
+      break;
+    } else res += aParts[i] + ".";
+  }
+
+  return res;
+}
+
 function formatResults(results) {
   return columnify(results.map(r => Object.assign({}, r)).map(function(output) {
     if (output.newRange !== output.range) {
       return {
-        name: output.name,
-        old: chalk.red(output.range),
-        "new": chalk.green(output.newRange),
+        "package": output.name,
+        "old": highlightDiff(output.range, output.newRange, true),
+        "new": highlightDiff(output.newRange, output.range, false),
       };
     }
   }), {
