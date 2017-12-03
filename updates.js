@@ -127,8 +127,8 @@ function formatResults(results) {
     if (output.newRange !== output.range) {
       return {
         "package": output.name,
-        "old": highlightDiff(output.range, output.newRange, true),
-        "new": highlightDiff(output.newRange, output.range, false),
+        "old": highlightDiff(output.range, output.newRange, false),
+        "new": highlightDiff(output.newRange, output.range, true),
       };
     }
   }), {
