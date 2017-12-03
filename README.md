@@ -6,13 +6,13 @@
 
 ## Install
 
-```sh
+```console
 $ npm install -g updates
 $ yarn global add updates
 ```
 
 ## Example
-```sh
+```console
 $ updates
 NAME      OLD        NEW
 got       ^8.0.1     ^8.0.1
