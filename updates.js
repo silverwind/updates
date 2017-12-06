@@ -7,8 +7,8 @@ if (args.includes("-h") || args.includes("--help")) {
   process.stdout.write(`usage: updates [options]
 
   Options:
-    --update, -u   Also update package.json
-    --json, -j     Output JSON
+    --update, -u   Update package.json
+    --json, -j     Enable JSON output
     --color        Force-enable color output
     --no-color     Disable color output
     --version, -v  Print the version
