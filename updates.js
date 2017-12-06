@@ -7,24 +7,30 @@ if (args.includes("-h") || args.includes("--help")) {
   process.stdout.write(`usage: updates [options]
 
   Options:
-    --update, -u  Also update package.json
-    --json, -j    Output JSON
-    --color       Force-enable color output
-    --no-color    Disable color output
-    --help        Print this help
+    --update, -u   Also update package.json
+    --json, -j     Output JSON
+    --color        Force-enable color output
+    --no-color     Disable color output
+    --version, -v  Print the version
+    --help -h      Print this help
 
   Examples:
     $ updates
     $ updates -u
-    $ updates -j
-  \n`);
+    $ updates -j\n`);
+  process.exit(0);
+}
+
+const os = require("os");
+const path = require("path");
+
+if (args.includes("-v") || args.includes("--version")) {
+  process.stdout.write(require(path.join(__dirname, "package.json")).version + os.EOL);
   process.exit(0);
 }
 
 const fs = require("fs");
-const os = require("os");
 const got = require("got");
-const path = require("path");
 const semver = require("semver");
 const columnify = require("columnify");
 const chalk = require("chalk");
