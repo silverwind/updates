@@ -1,16 +1,25 @@
 #!/usr/bin/env node
 "use strict";
 
-const cli = require("meow")(`
+const args = process.argv.slice(2);
+
+if (args.includes("-h") || args.includes("--help")) {
+  process.stdout.write(`usage: updates [options]
+
   Options:
     --update, -u  Also update package.json
     --json, -j    Output JSON
+    --color       Force-enable color output
+    --no-color    Disable color output
+    --help        Print this help
 
   Examples:
     $ updates
     $ updates -u
     $ updates -j
-`);
+  \n`);
+  process.exit(0);
+}
 
 const fs = require("fs");
 const os = require("os");
@@ -21,18 +30,34 @@ const columnify = require("columnify");
 const chalk = require("chalk");
 const esc = require("escape-string-regexp");
 
-const pkgStr = fs.readFileSync(path.join(process.cwd(), "package.json"), "utf8");
-const pkg = JSON.parse(pkgStr);
 const url = "https://registry.npmjs.org/";
-const deps = [];
 
-[
+const dependencyTypes = [
   "dependencies",
   "devDependencies",
   "peerDependencies",
   "bundledDependencies",
   "optionalDependencies"
-].forEach(function(key) {
+];
+
+let pkg, pkgStr;
+
+try {
+  pkgStr = fs.readFileSync(path.join(process.cwd(), "package.json"), "utf8");
+} catch (err) {
+  log("Unable to open package.json.");
+  process.exit(1);
+}
+
+try {
+  pkg = JSON.parse(pkgStr);
+} catch (err) {
+  log("Error parsing package.json:" + err.message);
+  process.exit(1);
+}
+
+const deps = [];
+dependencyTypes.forEach(function(key) {
   if (pkg[key]) {
     Object.keys(pkg[key]).forEach(function(name) {
       const range = pkg[key][name];
@@ -58,37 +83,37 @@ Promise.all(deps.map(dep => got(`${url}${dep.name}`))).then(function(responses) 
     return result.old !== result.new;
   });
 
-  // print results
+  // log results
   if (!results.length) {
-    print("All packages are up to date.");
+    log("All packages are up to date.");
     process.exit(0);
   } else {
-    if (cli.flags.j || cli.flags.json) {
-      print(results);
+    if (args.includes("-j") || args.includes("--json")) {
+      log(results);
     } else {
-      print(formatResults(results));
+      log(formatResults(results));
     }
   }
 
   // exit if -u is not given
-  if (!cli.flags.u && !cli.flags.update) {
+  if (!args.includes("-u") && !args.includes("--update")) {
     process.exit(0);
   }
   return results;
 }).then(function(results) {
   fs.writeFile("package.json", updatePkg(results), "utf8", function(err) {
     if (err) {
-      print(err);
+      log(err);
       process.exit(1);
     } else {
-      print("package.json updated!");
+      log("package.json updated!");
       process.exit(0);
     }
   });
 });
 
-function print(obj) {
-  if (cli.flags.j || cli.flags.json) {
+function log(obj) {
+  if (args.includes("-j") || args.includes("--json")) {
     if (typeof obj === "string") {
       obj = {message: obj};
     } else if (obj instanceof Error) {

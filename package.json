@@ -34,7 +34,6 @@
     "columnify": "^1.5.4",
     "escape-string-regexp": "^1.0.5",
     "got": "^8.0.1",
-    "meow": "^4.0.0",
     "semver": "^5.4.1",
     "busboy": "^0.2.14"
   }
