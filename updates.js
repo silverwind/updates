@@ -83,12 +83,10 @@ Promise.all(deps.map(dep => got(`${url}${dep.name}`))).then(function(responses) 
       old: deps[dep].range,
       new: updateRange(deps[dep].range, newVersion),
     };
-  });
-}).then(function(results) {
-  results = results.filter(function(result) {
+  }).filter(function(result) {
     return result.old !== result.new;
   });
-
+}).then(function(results) {
   // log results
   if (!results.length) {
     log("All packages are up to date.");
