@@ -1,14 +1,21 @@
-#!/usr/bin/env node
+#!/usr/bin/env node --throw-deprecation --trace-deprecation --trace-warnings
 "use strict";
 
-const args = process.argv.slice(2);
+const args = require("minimist")(process.argv.slice(2), {
+  boolean: ["update", "u", "json", "j", "color", "no-color", "version", "v", "help", "h"]
+});
 
-if (args.includes("-h") || args.includes("--help")) {
+args.update = args.update || args.u;
+args.version = args.version || args.v;
+args.json = args.json || args.j;
+args.help = args.help || args.h;
+
+if (args.help) {
   process.stdout.write(`usage: updates [options]
 
   Options:
     --update, -u   Update package.json
-    --json, -j     Enable JSON output
+    --json, -j     Output a JSON object
     --color        Force-enable color output
     --no-color     Disable color output
     --version, -v  Print the version
@@ -24,7 +31,7 @@ if (args.includes("-h") || args.includes("--help")) {
 const os = require("os");
 const path = require("path");
 
-if (args.includes("-v") || args.includes("--version")) {
+if (args.version) {
   process.stdout.write(require(path.join(__dirname, "package.json")).version + os.EOL);
   process.exit(0);
 }
@@ -37,6 +44,7 @@ const chalk = require("chalk");
 const esc = require("escape-string-regexp");
 
 const url = "https://registry.npmjs.org/";
+const packageFile = path.join(process.cwd(), "package.json");
 
 const dependencyTypes = [
   "dependencies",
@@ -49,88 +57,87 @@ const dependencyTypes = [
 let pkg, pkgStr;
 
 try {
-  pkgStr = fs.readFileSync(path.join(process.cwd(), "package.json"), "utf8");
+  pkgStr = fs.readFileSync(packageFile, "utf8");
 } catch (err) {
-  log("Unable to open package.json.");
-  process.exit(1);
+  finish(new Error("Unable to open package.json."));
 }
 
 try {
   pkg = JSON.parse(pkgStr);
 } catch (err) {
-  log("Error parsing package.json:" + err.message);
-  process.exit(1);
+  finish(new Error("Error parsing package.json:" + err.message));
 }
 
-const deps = [];
+const deps = {};
+
 dependencyTypes.forEach(function(key) {
   if (pkg[key]) {
     Object.keys(pkg[key]).forEach(function(name) {
       const range = pkg[key][name];
       if (isValidSemverRange(range)) {
-        deps.push({name, range});
+        deps[name] = {range};
       }
     });
   }
 });
 
-Promise.all(deps.map(dep => got(`${url}${dep.name}`))).then(function(responses) {
-  return responses.map(function(response, i) {
-    const dep = Object.keys(deps)[i];
-    const newVersion = JSON.parse(response.body)["dist-tags"]["latest"];
-    return {
-      package: deps[dep].name,
-      old: deps[dep].range,
-      new: updateRange(deps[dep].range, newVersion),
-    };
-  }).filter(function(result) {
-    return result.old !== result.new;
-  });
-}).then(function(results) {
-  // log results
-  if (!results.length) {
-    log("All packages are up to date.");
-    process.exit(0);
-  } else {
-    if (args.includes("-j") || args.includes("--json")) {
-      log(results);
+Promise.all(Object.keys(deps).map(dep => got(url + dep))).then(function(responses) {
+  responses.forEach(function(res) {
+    const registryData = JSON.parse(res.body);
+    const dep = registryData.name;
+    const oldRange = deps[dep].range;
+    const newRange = updateRange(oldRange, registryData["dist-tags"].latest);
+    if (oldRange === newRange) {
+      delete deps[dep];
     } else {
-      log(formatResults(results));
+      deps[dep] = {old: deps[dep].range, new: newRange};
     }
+  });
+
+  // log results
+  if (!Object.keys(deps).length) {
+    finish("All packages are up to date.");
   }
 
   // exit if -u is not given
-  if (!args.includes("-u") && !args.includes("--update")) {
-    process.exit(0);
+  if (!args.update) {
+    finish(0);
   }
-  return results;
-}).then(function(results) {
-  fs.writeFile("package.json", updatePkg(results), "utf8", function(err) {
+
+  fs.writeFile(packageFile, updatePkg(), "utf8", function(err) {
     if (err) {
-      log(err);
-      process.exit(1);
+      finish(new Error("Error writing package.json:" + err.message));
     } else {
-      log("package.json updated!");
-      process.exit(0);
+      finish("package.json updated!");
     }
   });
 });
 
-function log(obj) {
-  if (args.includes("-j") || args.includes("--json")) {
-    if (typeof obj === "string") {
-      obj = {message: obj};
-    } else if (obj instanceof Error) {
-      obj = {error: obj.message};
-    }
-    process.stdout.write(JSON.stringify(obj, null, 2) + os.EOL);
+function finish(obj) {
+  const output = {};
+  if (typeof obj === "string") {
+    output.message = obj;
+  } else if (obj instanceof Error) {
+    output.error = obj.message;
+  }
+
+  if (args.json) {
+    output.results = deps;
+    logStr(JSON.stringify(output, null, 2));
   } else {
-    if (obj instanceof Error) {
-      process.stderr.write(obj + os.EOL);
-    } else {
-      process.stdout.write(obj + os.EOL);
+    if (Object.keys(deps).length) {
+      logStr(formatDeps(deps));
+    }
+    if (output.message || output.error) {
+      logStr(output.message || output.error);
     }
   }
+
+  process.exit(output.error ? 1 : 0);
+}
+
+function logStr(str) {
+  process.stdout.write(str + os.EOL);
 }
 
 function highlightDiff(a, b, added) {
@@ -158,25 +165,23 @@ function highlightDiff(a, b, added) {
   return res;
 }
 
-function formatResults(results) {
-  return columnify(results.map(r => Object.assign({}, r)).map(function(output) {
-    if (output.new !== output.old) {
-      return {
-        "package": output.package,
-        "old": highlightDiff(output.old, output.new, false),
-        "new": highlightDiff(output.new, output.old, true),
-      };
-    }
+function formatDeps() {
+  return columnify(Object.keys(deps).map(function(dep) {
+    return {
+      "package": dep,
+      "old": highlightDiff(deps[dep].old, deps[dep].new, false),
+      "new": highlightDiff(deps[dep].new, deps[dep].old, true),
+    };
   }), {
     columnSplitter: "    ",
   });
 }
 
-function updatePkg(results) {
+function updatePkg() {
   let newPkgStr = pkgStr;
-  results.forEach(function(result) {
-    const re = new RegExp(`"${esc(result.package)}": +"${esc(result.old)}"`, "g");
-    newPkgStr = newPkgStr.replace(re, `"${result.package}": "${result.new}"`);
+  Object.keys(deps).forEach(function(dep) {
+    const re = new RegExp(`"${esc(dep)}": +"${esc(deps[dep].old)}"`, "g");
+    newPkgStr = newPkgStr.replace(re, `"${dep}": "${deps[dep].new}"`);
   });
   return newPkgStr;
 }
