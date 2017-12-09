@@ -14,12 +14,12 @@ if (args.help) {
   process.stdout.write(`usage: updates [options]
 
   Options:
-    --update, -u   Update package.json
-    --json, -j     Output a JSON object
-    --color        Force-enable color output
-    --no-color     Disable color output
-    --version, -v  Print the version
-    --help -h      Print this help
+    --update, -u    Update package.json
+    --json, -j      Output a JSON object
+    --color, -c     Force-enable color output
+    --no-color, -n  Disable color output
+    --version, -v   Print the version
+    --help -h       Print this help
 
   Examples:
     $ updates
@@ -35,6 +35,9 @@ if (args.version) {
   process.stdout.write(require(path.join(__dirname, "package.json")).version + os.EOL);
   process.exit(0);
 }
+
+if (process.argv.includes("-n")) process.argv.push("--no-color");
+if (process.argv.includes("-c")) process.argv.push("--color");
 
 const fs = require("fs");
 const got = require("got");
