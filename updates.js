@@ -73,9 +73,9 @@ const deps = {};
 dependencyTypes.forEach(function(key) {
   if (pkg[key]) {
     Object.keys(pkg[key]).forEach(function(name) {
-      const range = pkg[key][name];
-      if (isValidSemverRange(range)) {
-        deps[name] = {range};
+      const old = pkg[key][name];
+      if (isValidSemverRange(old)) {
+        deps[name] = {old};
       }
     });
   }
@@ -85,12 +85,12 @@ Promise.all(Object.keys(deps).map(dep => got(url + dep))).then(function(response
   responses.forEach(function(res) {
     const registryData = JSON.parse(res.body);
     const dep = registryData.name;
-    const oldRange = deps[dep].range;
+    const oldRange = deps[dep].old;
     const newRange = updateRange(oldRange, registryData["dist-tags"].latest);
     if (oldRange === newRange) {
       delete deps[dep];
     } else {
-      deps[dep] = {old: deps[dep].range, new: newRange};
+      deps[dep].new = newRange;
     }
   });
 
