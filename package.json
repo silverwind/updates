@@ -27,7 +27,7 @@
     "updates.js"
   ],
   "devDependencies": {
-    "eslint": "^4.12.0"
+    "eslint": "^4.13.0"
   },
   "dependencies": {
     "chalk": "2.3.0",
