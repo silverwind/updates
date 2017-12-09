@@ -1,4 +1,4 @@
-#!/usr/bin/env node --throw-deprecation --trace-deprecation --trace-warnings
+#!/usr/bin/env node
 "use strict";
 
 const args = require("minimist")(process.argv.slice(2), {
