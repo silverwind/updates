@@ -171,7 +171,7 @@ function highlightDiff(a, b, added) {
 function formatDeps() {
   return columnify(Object.keys(deps).map(function(dep) {
     return {
-      "package": dep,
+      "name": dep,
       "old": highlightDiff(deps[dep].old, deps[dep].new, false),
       "new": highlightDiff(deps[dep].new, deps[dep].old, true),
     };

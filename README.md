@@ -18,7 +18,7 @@ $ npm install -g updates
 ### Check for updates
 ```console
 $ updates
-PACKAGE     OLD       NEW
+NAME        OLD       NEW
 chalk       1.3.0     2.3.0
 got         ^7.0.1    ^8.0.1
 minimist    ^1.0.0    ^1.2.0
@@ -26,7 +26,7 @@ minimist    ^1.0.0    ^1.2.0
 ### Update package.json
 ```console
 $ updates -u
-PACKAGE     OLD       NEW
+NAME        OLD       NEW
 chalk       1.3.0     2.3.0
 got         ^7.0.1    ^8.0.1
 minimist    ^1.0.0    ^1.2.0
