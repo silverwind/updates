@@ -11,7 +11,7 @@
 ## Install
 
 ```console
-$ npm install -g updates
+$ npm i -g updates
 ```
 
 ## Examples

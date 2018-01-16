@@ -27,15 +27,15 @@
     "updates.js"
   ],
   "devDependencies": {
-    "eslint": "^4.13.0"
+    "eslint": "^4.15.0"
   },
   "dependencies": {
-    "chalk": "2.2.0",
+    "chalk": "2.3.0",
     "columnify": "^1.5.4",
     "escape-string-regexp": "^1.0.5",
     "minimist": "^1.2.0",
     "request": "^2.83.0",
     "request-promise-native": "^1.0.5",
-    "semver": "^5.4.1"
+    "semver": "^5.5.0"
   }
 }
