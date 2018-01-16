@@ -40,7 +40,7 @@ if (process.argv.includes("-n")) process.argv.push("--no-color");
 if (process.argv.includes("-c")) process.argv.push("--color");
 
 const fs = require("fs");
-const got = require("got");
+const rp = require("request-promise-native");
 const semver = require("semver");
 const columnify = require("columnify");
 const chalk = require("chalk");
@@ -84,9 +84,9 @@ dependencyTypes.forEach(function(key) {
   }
 });
 
-Promise.all(Object.keys(deps).map(dep => got(url + dep))).then(function(responses) {
+Promise.all(Object.keys(deps).map(dep => rp(url + dep))).then(function(responses) {
   responses.forEach(function(res) {
-    const registryData = JSON.parse(res.body);
+    const registryData = JSON.parse(res);
     const dep = registryData.name;
     const oldRange = deps[dep].old;
     const newRange = updateRange(oldRange, registryData["dist-tags"].latest);
