@@ -89,8 +89,7 @@ Promise.all(Object.keys(deps).map(dep => rp(url + dep))).then(function(responses
     const registryData = JSON.parse(res);
     const dep = registryData.name;
     const oldRange = deps[dep].old;
-    const newVersion = semver.maxSatisfying(Object.keys(registryData["versions"]), "*");
-    const newRange = updateRange(oldRange, newVersion);
+    const newRange = updateRange(oldRange, registryData["dist-tags"].latest);
     if (oldRange === newRange) {
       delete deps[dep];
     } else {
