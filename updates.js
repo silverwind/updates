@@ -2,24 +2,30 @@
 "use strict";
 
 const args = require("minimist")(process.argv.slice(2), {
-  boolean: ["update", "u", "json", "j", "color", "no-color", "version", "v", "help", "h"]
+  boolean: [
+    "update", "u", "json", "j", "color", "no-color", "version", "v",
+    "help", "h", "prerelease", "p"
+  ],
+  alias: {
+    u: "update",
+    p: "prerelease",
+    j: "json",
+    v: "version",
+    h: "help"
+  }
 });
-
-args.update = args.update || args.u;
-args.version = args.version || args.v;
-args.json = args.json || args.j;
-args.help = args.help || args.h;
 
 if (args.help) {
   process.stdout.write(`usage: updates [options]
 
   Options:
-    --update, -u    Update package.json
-    --json, -j      Output a JSON object
-    --color, -c     Force-enable color output
-    --no-color, -n  Disable color output
-    --version, -v   Print the version
-    --help -h       Print this help
+    -u, --update      Update package.json
+    -p, --prerelease  Update to prerelease versions
+    -j, --json        Output a JSON object
+    -c, --color       Force-enable color output
+    -n, --no-color    Disable color output
+    -v, --version     Print the version
+    -h, --help        Print this help
 
   Examples:
     $ updates
@@ -89,8 +95,10 @@ Promise.all(Object.keys(deps).map(dep => rp(url + dep))).then(function(responses
     const registryData = JSON.parse(res);
     const dep = registryData.name;
     const oldRange = deps[dep].old;
-    const newRange = updateRange(oldRange, registryData["dist-tags"].latest);
-    if (oldRange === newRange) {
+    const highestVersion = findHighestVersion(Object.keys(registryData["versions"]));
+    const newRange = updateRange(oldRange, highestVersion);
+
+    if (!highestVersion || oldRange === newRange) {
       delete deps[dep];
     } else {
       deps[dep].new = newRange;
@@ -201,4 +209,17 @@ function isValidSemverRange(range) {
     valid = true;
   } catch (err) {}
   return valid;
+}
+
+// find the newest version, ignoring prerelease version unless they are requested
+function findHighestVersion(versions) {
+  let highest;
+  while (versions.length) {
+    const parsed = semver.parse(versions.pop());
+    if (!args.prerelease && parsed.prerelease.length) continue;
+    if (semver.gt(parsed.version, highest || "0.0.0")) {
+      highest = parsed.version;
+    }
+  }
+  return highest;
 }
