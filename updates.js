@@ -64,11 +64,12 @@ const dependencyTypes = [
 ];
 
 let pkg, pkgStr;
+const deps = {};
 
 try {
   pkgStr = fs.readFileSync(packageFile, "utf8");
 } catch (err) {
-  finish(new Error("Unable to open package.json."));
+  finish(new Error("Unable to open package.json"));
 }
 
 try {
@@ -76,8 +77,6 @@ try {
 } catch (err) {
   finish(new Error("Error parsing package.json:" + err.message));
 }
-
-const deps = {};
 
 dependencyTypes.forEach(function(key) {
   if (pkg[key]) {
