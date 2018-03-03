@@ -27,10 +27,16 @@ if (args.help) {
     -v, --version     Print the version
     -h, --help        Print this help
 
+  Exit Codes:
+    0                 Success
+    1                 Error
+    255               Dependencies are up to date
+
   Examples:
     $ updates
     $ updates -u
-    $ updates -j\n`);
+    $ updates -j
+`);
   process.exit(0);
 }
 
@@ -106,7 +112,7 @@ Promise.all(Object.keys(deps).map(dep => rp(url + dep))).then(function(responses
 
   // log results
   if (!Object.keys(deps).length) {
-    finish("All packages are up to date.");
+    finish("All packages are up to date.", {exitCode: 255});
   }
 
   // exit if -u is not given
@@ -123,7 +129,8 @@ Promise.all(Object.keys(deps).map(dep => rp(url + dep))).then(function(responses
   });
 });
 
-function finish(obj) {
+function finish(obj, opts) {
+  opts = opts || {};
   const output = {};
   if (typeof obj === "string") {
     output.message = obj;
@@ -143,7 +150,14 @@ function finish(obj) {
     }
   }
 
-  process.exit(output.error ? 1 : 0);
+  let exitCode;
+  if (opts.exitCode) {
+    exitCode = opts.exitCode;
+  } else {
+    opts.exitCode = output.error ? 1 : 0;
+  }
+
+  process.exit(exitCode);
 }
 
 function logStr(str) {

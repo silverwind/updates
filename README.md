@@ -6,7 +6,7 @@
   <img src="https://i.imgur.com/jBjNoKO.png"/>
 </p>
 
-`updates` checks for npm dependency updates and optionally updates `package.json`. It is typically able to complete in less than a second. It can also output JSON for easy integration.
+`updates` is a CLI tool which checks for dependency updates of the current project and optionally updates `package.json`. It is typically able to complete in less than a second. It can output JSON for interop with other tools.
 
 ## Install
 
