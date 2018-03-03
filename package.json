@@ -27,10 +27,10 @@
     "updates.js"
   ],
   "devDependencies": {
-    "eslint": "^4.15.0"
+    "eslint": "^4.18.2"
   },
   "dependencies": {
-    "chalk": "2.3.0",
+    "chalk": "2.3.2",
     "columnify": "^1.5.4",
     "escape-string-regexp": "^1.0.5",
     "minimist": "^1.2.0",
