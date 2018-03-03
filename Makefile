@@ -1,8 +1,7 @@
-lint:
-	eslint --color --quiet *.js
+BIN:=node_modules/.bin
 
 test:
-	$(MAKE) lint
+	$(BIN)/eslint --color --quiet *.js
 
 publish:
 	git push -u --tags origin master
@@ -26,4 +25,4 @@ patch: lint test npm-patch publish
 minor: lint test npm-minor publish
 major: lint test npm-major publish
 
-.PHONY: lint touch update patch minor major npm-patch npm-minor npm-major
+.PHONY: test publish patch minor major npm-patch npm-minor npm-major
