@@ -40,11 +40,10 @@ if (args.help) {
   process.exit(0);
 }
 
-const os = require("os");
 const path = require("path");
 
 if (args.version) {
-  process.stdout.write(require(path.join(__dirname, "package.json")).version + os.EOL);
+  console.info(require(path.join(__dirname, "package.json")).version);
   process.exit(0);
 }
 
@@ -140,13 +139,13 @@ function finish(obj, opts) {
 
   if (args.json) {
     output.results = deps;
-    logStr(JSON.stringify(output, null, 2));
+    console.info(JSON.stringify(output, null, 2));
   } else {
     if (Object.keys(deps).length) {
-      logStr(formatDeps(deps));
+      console.info(formatDeps(deps));
     }
     if (output.message || output.error) {
-      logStr(output.message || output.error);
+      console.info(output.message || output.error);
     }
   }
 
@@ -158,10 +157,6 @@ function finish(obj, opts) {
   }
 
   process.exit(exitCode);
-}
-
-function logStr(str) {
-  process.stdout.write(str + os.EOL);
 }
 
 function highlightDiff(a, b, added) {
