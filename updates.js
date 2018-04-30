@@ -92,15 +92,13 @@ let include, exclude;
 if (args.include) include = args.include.split(",");
 if (args.exclude) exclude = args.exclude.split(",");
 
-dependencyTypes.forEach(function(key) {
+dependencyTypes.forEach(key => {
   if (pkg[key]) {
-    Object.keys(pkg[key]).filter(function(name) {
-      if (!include) return true;
-      return include.includes(name);
-    }).filter(function(name) {
-      if (!exclude) return true;
-      return !exclude.includes(name);
-    }).forEach(function(name) {
+    const names = Object.keys(pkg[key])
+      .filter(name => !include ? true : include.includes(name))
+      .filter(name => !exclude ? true : !exclude.includes(name));
+
+    names.forEach(name => {
       const old = pkg[key][name];
       if (isValidSemverRange(old)) {
         deps[name] = {old};
@@ -113,18 +111,17 @@ if (!Object.keys(deps).length) {
   finish(new Error("No packages match the given include/exclude parameters"));
 }
 
-Promise.all(Object.keys(deps).map(dep => rp(url + dep))).then(function(responses) {
-  responses.forEach(function(res) {
-    const registryData = JSON.parse(res);
-    const dep = registryData.name;
-    const oldRange = deps[dep].old;
-    const highestVersion = findHighestVersion(Object.keys(registryData["versions"]));
+Promise.all(Object.keys(deps).map(dep => rp(url + dep))).then(responses => {
+  responses.forEach(res => {
+    const data = JSON.parse(res);
+    const oldRange = deps[data.name].old;
+    const highestVersion = findHighestVersion(Object.keys(data.versions));
     const newRange = updateRange(oldRange, highestVersion);
 
     if (!highestVersion || oldRange === newRange) {
-      delete deps[dep];
+      delete deps[data.name];
     } else {
-      deps[dep].new = newRange;
+      deps[data.name].new = newRange;
     }
   });
 
@@ -138,7 +135,7 @@ Promise.all(Object.keys(deps).map(dep => rp(url + dep))).then(function(responses
     finish(0);
   }
 
-  fs.writeFile(packageFile, updatePkg(), "utf8", function(err) {
+  fs.writeFile(packageFile, updatePkg(), "utf8", err => {
     if (err) {
       finish(new Error("Error writing package.json:" + err.message));
     } else {
@@ -181,7 +178,7 @@ function highlightDiff(a, b, added) {
       if (/^[0-9]+$/.test(aParts[i])) {
         res += chalk[added ? "green" : "red"](aParts.slice(i).join("."));
       } else {
-        res += aParts[i].split("").map(function(char) {
+        res += aParts[i].split("").map(char => {
           if (/^[0-9]+$/.test(char)) {
             return chalk[added ? "green" : "red"](char + ".");
           } else {
@@ -197,7 +194,7 @@ function highlightDiff(a, b, added) {
 }
 
 function formatDeps() {
-  return columnify(Object.keys(deps).map(function(dep) {
+  return columnify(Object.keys(deps).map(dep => {
     return {
       "name": dep,
       "old": highlightDiff(deps[dep].old, deps[dep].new, false),
@@ -210,7 +207,7 @@ function formatDeps() {
 
 function updatePkg() {
   let newPkgStr = pkgStr;
-  Object.keys(deps).forEach(function(dep) {
+  Object.keys(deps).forEach(dep => {
     const re = new RegExp(`"${esc(dep)}": +"${esc(deps[dep].old)}"`, "g");
     newPkgStr = newPkgStr.replace(re, `"${dep}": "${deps[dep].new}"`);
   });
