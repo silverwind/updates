@@ -22,7 +22,7 @@ if (args.help) {
 
   Options:
     -u, --update              Update package.json
-    -p, --prerelease          Update to prerelease versions
+    -p, --prerelease          Consider prerelease versions
     -j, --json                Output a JSON object
     -i, --include <name,...>  Only include given packages
     -e, --exclude <name,...>  Exclude given packages
