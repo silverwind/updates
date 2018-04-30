@@ -40,7 +40,7 @@ if (args.help) {
     $ updates
     $ updates -u
     $ updates -j
-    $ updates -o eslint,chalk
+    $ updates -i eslint,request -e semver
 `);
   process.exit(0);
 }
