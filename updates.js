@@ -9,33 +9,36 @@ const args = require("minimist")(process.argv.slice(2), {
   alias: {
     u: "update",
     p: "prerelease",
+    o: "only",
     j: "json",
     v: "version",
     h: "help"
-  }
+  },
 });
 
 if (args.help) {
   process.stdout.write(`usage: updates [options]
 
   Options:
-    -u, --update      Update package.json
-    -p, --prerelease  Update to prerelease versions
-    -j, --json        Output a JSON object
-    -c, --color       Force-enable color output
-    -n, --no-color    Disable color output
-    -v, --version     Print the version
-    -h, --help        Print this help
+    -u, --update           Update package.json
+    -p, --prerelease       Update to prerelease versions
+    -j, --json             Output a JSON object
+    -l, --only <name,...>  Only update given packages
+    -c, --color            Force-enable color output
+    -n, --no-color         Disable color output
+    -v, --version          Print the version
+    -h, --help             Print this help
 
   Exit Codes:
-    0                 Success
-    1                 Error
-    255               Dependencies are up to date
+    0                      Success
+    1                      Error
+    255                    Dependencies are up to date
 
   Examples:
     $ updates
     $ updates -u
     $ updates -j
+    $ updates -o eslint,chalk
 `);
   process.exit(0);
 }
@@ -83,9 +86,17 @@ try {
   finish(new Error("Error parsing package.json:" + err.message));
 }
 
+let only;
+if (args.only) {
+  only = args.only.split(",");
+}
+
 dependencyTypes.forEach(function(key) {
   if (pkg[key]) {
-    Object.keys(pkg[key]).forEach(function(name) {
+    Object.keys(pkg[key]).filter(function(name) {
+      if (!only) return true;
+      return only.includes(name);
+    }).forEach(function(name) {
       const old = pkg[key][name];
       if (isValidSemverRange(old)) {
         deps[name] = {old};
