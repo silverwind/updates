@@ -9,7 +9,7 @@ const args = require("minimist")(process.argv.slice(2), {
   alias: {
     u: "update",
     p: "prerelease",
-    o: "only",
+    i: "include",
     e: "exclude",
     j: "json",
     v: "version",
@@ -21,15 +21,15 @@ if (args.help) {
   process.stdout.write(`usage: updates [options]
 
   Options:
-    -u, --update             Update package.json
-    -p, --prerelease         Update to prerelease versions
-    -j, --json               Output a JSON object
-    -o, --only <name,...>    Only update given packages
-    -e, --exclude <name,...> Exclude given packages
-    -c, --color              Force-enable color output
-    -n, --no-color           Disable color output
-    -v, --version            Print the version
-    -h, --help               Print this help
+    -u, --update              Update package.json
+    -p, --prerelease          Update to prerelease versions
+    -j, --json                Output a JSON object
+    -i, --include <name,...>  Only include given packages
+    -e, --exclude <name,...>  Exclude given packages
+    -c, --color               Force-enable color output
+    -n, --no-color            Disable color output
+    -v, --version             Print the version
+    -h, --help                Print this help
 
   Exit Codes:
     0                        Success
@@ -88,19 +88,15 @@ try {
   finish(new Error("Error parsing package.json:" + err.message));
 }
 
-let only, exclude;
-if (args.only) {
-  only = args.only.split(",");
-}
-if (args.exclude) {
-  exclude = args.exclude.split(",");
-}
+let include, exclude;
+if (args.include) include = args.include.split(",");
+if (args.exclude) exclude = args.exclude.split(",");
 
 dependencyTypes.forEach(function(key) {
   if (pkg[key]) {
     Object.keys(pkg[key]).filter(function(name) {
-      if (!only) return true;
-      return only.includes(name);
+      if (!include) return true;
+      return include.includes(name);
     }).filter(function(name) {
       if (!exclude) return true;
       return !exclude.includes(name);
@@ -114,7 +110,7 @@ dependencyTypes.forEach(function(key) {
 });
 
 if (!Object.keys(deps).length) {
-  finish(new Error("No packages match the given filters"));
+  finish(new Error("No packages match the given include/exclude parameters"));
 }
 
 Promise.all(Object.keys(deps).map(dep => rp(url + dep))).then(function(responses) {
