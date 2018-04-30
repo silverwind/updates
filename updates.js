@@ -10,6 +10,7 @@ const args = require("minimist")(process.argv.slice(2), {
     u: "update",
     p: "prerelease",
     o: "only",
+    e: "exclude",
     j: "json",
     v: "version",
     h: "help"
@@ -20,19 +21,20 @@ if (args.help) {
   process.stdout.write(`usage: updates [options]
 
   Options:
-    -u, --update           Update package.json
-    -p, --prerelease       Update to prerelease versions
-    -j, --json             Output a JSON object
-    -o, --only <name,...>  Only update given packages
-    -c, --color            Force-enable color output
-    -n, --no-color         Disable color output
-    -v, --version          Print the version
-    -h, --help             Print this help
+    -u, --update             Update package.json
+    -p, --prerelease         Update to prerelease versions
+    -j, --json               Output a JSON object
+    -o, --only <name,...>    Only update given packages
+    -e, --exclude <name,...> Exclude given packages
+    -c, --color              Force-enable color output
+    -n, --no-color           Disable color output
+    -v, --version            Print the version
+    -h, --help               Print this help
 
   Exit Codes:
-    0                      Success
-    1                      Error
-    255                    Dependencies are up to date
+    0                        Success
+    1                        Error
+    255                      Dependencies are up to date
 
   Examples:
     $ updates
@@ -86,9 +88,12 @@ try {
   finish(new Error("Error parsing package.json:" + err.message));
 }
 
-let only;
+let only, exclude;
 if (args.only) {
   only = args.only.split(",");
+}
+if (args.exclude) {
+  exclude = args.exclude.split(",");
 }
 
 dependencyTypes.forEach(function(key) {
@@ -96,6 +101,9 @@ dependencyTypes.forEach(function(key) {
     Object.keys(pkg[key]).filter(function(name) {
       if (!only) return true;
       return only.includes(name);
+    }).filter(function(name) {
+      if (!exclude) return true;
+      return !exclude.includes(name);
     }).forEach(function(name) {
       const old = pkg[key][name];
       if (isValidSemverRange(old)) {
@@ -104,6 +112,10 @@ dependencyTypes.forEach(function(key) {
     });
   }
 });
+
+if (!Object.keys(deps).length) {
+  finish(new Error("No packages match the given filters"));
+}
 
 Promise.all(Object.keys(deps).map(dep => rp(url + dep))).then(function(responses) {
   responses.forEach(function(res) {
@@ -160,14 +172,7 @@ function finish(obj, opts) {
     }
   }
 
-  let exitCode;
-  if (opts.exitCode) {
-    exitCode = opts.exitCode;
-  } else {
-    opts.exitCode = output.error ? 1 : 0;
-  }
-
-  process.exit(exitCode);
+  process.exit(opts.exitCode || (output.error ? 1 : 0));
 }
 
 function highlightDiff(a, b, added) {
