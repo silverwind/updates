@@ -23,7 +23,7 @@ if (args.help) {
     -u, --update           Update package.json
     -p, --prerelease       Update to prerelease versions
     -j, --json             Output a JSON object
-    -l, --only <name,...>  Only update given packages
+    -o, --only <name,...>  Only update given packages
     -c, --color            Force-enable color output
     -n, --no-color         Disable color output
     -v, --version          Print the version
