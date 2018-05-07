@@ -25,4 +25,4 @@ patch: test npm-patch publish
 minor: test npm-minor publish
 major: test npm-major publish
 
-.PHONY: test publish patch minor major npm-patch npm-minor npm-major
+.PHONY: test publish update npm-patch npm-minor npm-major patch minor major
