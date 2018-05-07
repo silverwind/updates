@@ -6,7 +6,6 @@
   "repository": "silverwind/updates",
   "license": "BSD-2-Clause",
   "main": "updates.js",
-  "preferGlobal": true,
   "bin": "./updates.js",
   "engines": {
     "node": ">=6"
