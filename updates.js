@@ -3,17 +3,21 @@
 
 const args = require("minimist")(process.argv.slice(2), {
   boolean: [
-    "update", "u", "json", "j", "color", "no-color", "version", "v",
-    "help", "h", "prerelease", "p"
+    "color", "no-color",
+    "help", "h",
+    "json", "j",
+    "prerelease", "p",
+    "update", "u",
+    "version", "v",
   ],
   alias: {
-    u: "update",
-    p: "prerelease",
-    i: "include",
     e: "exclude",
+    h: "help",
+    i: "include",
     j: "json",
+    p: "prerelease",
+    u: "update",
     v: "version",
-    h: "help"
   },
 });
 
@@ -21,20 +25,15 @@ if (args.help) {
   process.stdout.write(`usage: updates [options]
 
   Options:
-    -u, --update              Update package.json
-    -p, --prerelease          Consider prerelease versions
-    -j, --json                Output a JSON object
-    -i, --include <name,...>  Only include given packages
-    -e, --exclude <name,...>  Exclude given packages
-    -c, --color               Force-enable color output
-    -n, --no-color            Disable color output
-    -v, --version             Print the version
-    -h, --help                Print this help
-
-  Exit Codes:
-    0                        Success
-    1                        Error
-    255                      Dependencies are up to date
+    -u, --update             Update package.json
+    -p, --prerelease         Consider prerelease versions
+    -j, --json               Output a JSON object
+    -i, --include <pkg,...>  Only include given packages
+    -e, --exclude <pkg,...>  Exclude given packages
+    -c, --color              Force-enable color output
+    -n, --no-color           Disable color output
+    -v, --version            Print the version
+    -h, --help               Print this help
 
   Examples:
     $ updates
@@ -79,13 +78,13 @@ const deps = {};
 try {
   pkgStr = fs.readFileSync(packageFile, "utf8");
 } catch (err) {
-  finish(new Error("Unable to open package.json"));
+  finish(new Error(`Unable to open package.json: ${err.message}`));
 }
 
 try {
   pkg = JSON.parse(pkgStr);
 } catch (err) {
-  finish(new Error("Error parsing package.json:" + err.message));
+  finish(new Error(`Error parsing package.json: ${err.message}`));
 }
 
 let include, exclude;
@@ -127,7 +126,7 @@ Promise.all(Object.keys(deps).map(dep => rp(url + dep))).then(responses => {
 
   // log results
   if (!Object.keys(deps).length) {
-    finish("All packages are up to date.", {exitCode: 255});
+    finish("All packages are up to date.");
   }
 
   // exit if -u is not given
@@ -137,7 +136,7 @@ Promise.all(Object.keys(deps).map(dep => rp(url + dep))).then(responses => {
 
   fs.writeFile(packageFile, updatePkg(), "utf8", err => {
     if (err) {
-      finish(new Error("Error writing package.json:" + err.message));
+      finish(new Error(`Error writing package.json: ${err.message}`));
     } else {
       finish("package.json updated!");
     }
@@ -201,7 +200,7 @@ function formatDeps() {
       "new": highlightDiff(deps[dep].new, deps[dep].old, true),
     };
   }), {
-    columnSplitter: "    ",
+    columnSplitter: " ".repeat(4),
   });
 }
 

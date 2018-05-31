@@ -6,7 +6,7 @@
   <img src="https://i.imgur.com/jBjNoKO.png"/>
 </p>
 
-`updates` is a CLI tool which checks for dependency updates of the current project and optionally updates `package.json`. It is typically able to complete in less than a second. It can output JSON for interop with other tools.
+`updates` is a CLI tool which checks for npm dependency updates of the current project and optionally updates `package.json`. It is typically able to complete in less than a second.
 
 ## Install
 
@@ -34,7 +34,7 @@ package.json updated!
 ```
 ### JSON Output
 
-The resulting JSON object always has the key `results` which lists available updates. Additionally, `message` and `error` properties can be present.
+`updates` can output JSON. The result is always an object with the key `results` and depending on operation, , `message` and `error` properties can also be present.
 
 ```console
 $ updates -j
