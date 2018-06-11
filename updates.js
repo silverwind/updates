@@ -38,8 +38,7 @@ if (args.help) {
   Examples:
     $ updates
     $ updates -u
-    $ updates -j
-    $ updates -i eslint,request -e semver
+    $ updates -u -e semver
 `);
   process.exit(0);
 }

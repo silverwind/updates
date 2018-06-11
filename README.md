@@ -34,7 +34,7 @@ package.json updated!
 ```
 ### JSON Output
 
-`updates` can output JSON. The result is always an object with the key `results` and depending on operation, , `message` and `error` properties can also be present.
+`updates` can output JSON. The result is always an object with the key `results` and depending on operation, `message` and `error` properties can also be present.
 
 ```console
 $ updates -j
