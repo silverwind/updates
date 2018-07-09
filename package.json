@@ -31,12 +31,14 @@
     "columnify": "^1.5.4",
     "escape-string-regexp": "^1.0.5",
     "minimist": "^1.2.0",
-    "request": "^2.87.0",
     "request-promise-native": "^1.0.5",
     "semver": "^5.5.0"
   },
   "devDependencies": {
     "eslint": "^4.19.1",
     "eslint-config-silverwind": "^1.0.43"
+  },
+  "peerDependencies": {
+    "request": "^2.87.0"
   }
 }
