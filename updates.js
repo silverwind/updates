@@ -6,6 +6,7 @@ const args = require("minimist")(process.argv.slice(2), {
     "color", "no-color",
     "help", "h",
     "json", "j",
+    "latest", "l",
     "prerelease", "p",
     "update", "u",
     "version", "v",
@@ -15,6 +16,7 @@ const args = require("minimist")(process.argv.slice(2), {
     h: "help",
     i: "include",
     j: "json",
+    l: "latest",
     p: "prerelease",
     u: "update",
     v: "version",
@@ -28,6 +30,7 @@ if (args.help) {
     -u, --update             Update package.json
     -p, --prerelease         Consider prerelease versions
     -j, --json               Output a JSON object
+    -l, --latest             Prefer latest over highest version
     -i, --include <pkg,...>  Only include given packages
     -e, --exclude <pkg,...>  Exclude given packages
     -c, --color              Force-enable color output
@@ -111,11 +114,17 @@ if (!Object.keys(deps).length) {
 
 Promise.all(Object.keys(deps).map(dep => fetch(url + dep).then(r => r.json()))).then(d => {
   d.forEach(data => {
-    const oldRange = deps[data.name].old;
-    const highestVersion = findHighestVersion(Object.keys(data.versions));
-    const newRange = updateRange(oldRange, highestVersion);
+    let newVersion;
+    if (args.latest) {
+      newVersion = data["dist-tags"].latest;
+    } else {
+      newVersion = findHighestVersion(Object.keys(data.versions));
+    }
 
-    if (!highestVersion || oldRange === newRange) {
+    const oldRange = deps[data.name].old;
+    const newRange = updateRange(oldRange, newVersion);
+
+    if (!newVersion || oldRange === newRange) {
       delete deps[data.name];
     } else {
       deps[data.name].new = newRange;
@@ -177,14 +186,16 @@ function highlightDiff(a, b, added) {
       } else {
         res += aParts[i].split("").map(char => {
           if (/^[0-9a-zA-Z-.]+$/.test(char)) {
-            return chalk[added ? "green" : "red"](char + ".");
+            return chalk[added ? "green" : "red"](char);
           } else {
             return char;
           }
-        }).join("") + chalk[added ? "green" : "red"](aParts.slice(i + 1).join("."));
+        }).join("") + chalk[added ? "green" : "red"]("." + aParts.slice(i + 1).join("."));
       }
       break;
-    } else res += aParts[i] + ".";
+    } else {
+      res += aParts[i] + ".";
+    }
   }
 
   return res;
