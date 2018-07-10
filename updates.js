@@ -3,7 +3,8 @@
 
 const args = require("minimist")(process.argv.slice(2), {
   boolean: [
-    "color", "no-color",
+    "color", "c",
+    "no-color", "n",
     "help", "h",
     "json", "j",
     "latest", "l",
@@ -12,11 +13,13 @@ const args = require("minimist")(process.argv.slice(2), {
     "version", "v",
   ],
   alias: {
+    c: "color",
     e: "exclude",
     h: "help",
     i: "include",
     j: "json",
     l: "latest",
+    n: "no-color",
     p: "prerelease",
     u: "update",
     v: "version",
@@ -53,15 +56,14 @@ if (args.version) {
   process.exit(0);
 }
 
-if (process.argv.includes("-n")) process.argv.push("--no-color");
-if (process.argv.includes("-c")) process.argv.push("--color");
+if (args["color"]) process.env.FORCE_COLOR = "1";
+if (args["no-color"]) process.env.FORCE_COLOR = "0";
 
 const fs = require("fs");
 const semver = require("semver");
 const columnify = require("columnify");
 const chalk = require("chalk");
 const esc = require("escape-string-regexp");
-const fetch = require("make-fetch-happen");
 
 const url = "https://registry.npmjs.org/";
 const packageFile = path.join(process.cwd(), "package.json");
@@ -111,6 +113,8 @@ dependencyTypes.forEach(key => {
 if (!Object.keys(deps).length) {
   finish(new Error("No packages match the given include/exclude parameters"));
 }
+
+const fetch = require("make-fetch-happen");
 
 Promise.all(Object.keys(deps).map(dep => fetch(url + dep).then(r => r.json()))).then(d => {
   d.forEach(data => {
