@@ -172,11 +172,11 @@ function highlightDiff(a, b, added) {
 
   for (let i = 0; i < aParts.length; i++) {
     if (aParts[i] !== bParts[i]) {
-      if (/^[0-9]+$/.test(aParts[i])) {
+      if (/^[0-9a-zA-Z-.]+$/.test(aParts[i])) {
         res += chalk[added ? "green" : "red"](aParts.slice(i).join("."));
       } else {
         res += aParts[i].split("").map(char => {
-          if (/^[0-9]+$/.test(char)) {
+          if (/^[0-9a-zA-Z-.]+$/.test(char)) {
             return chalk[added ? "green" : "red"](char + ".");
           } else {
             return char;
