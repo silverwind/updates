@@ -30,9 +30,8 @@
     "chalk": "2.4.1",
     "columnify": "^1.5.4",
     "escape-string-regexp": "^1.0.5",
+    "make-fetch-happen": "^4.0.1",
     "minimist": "^1.2.0",
-    "request": "^2.87.0",
-    "request-promise-native": "^1.0.5",
     "semver": "^5.5.0"
   },
   "devDependencies": {

@@ -54,11 +54,11 @@ if (process.argv.includes("-n")) process.argv.push("--no-color");
 if (process.argv.includes("-c")) process.argv.push("--color");
 
 const fs = require("fs");
-const rp = require("request-promise-native");
 const semver = require("semver");
 const columnify = require("columnify");
 const chalk = require("chalk");
 const esc = require("escape-string-regexp");
+const fetch = require("make-fetch-happen");
 
 const url = "https://registry.npmjs.org/";
 const packageFile = path.join(process.cwd(), "package.json");
@@ -109,9 +109,8 @@ if (!Object.keys(deps).length) {
   finish(new Error("No packages match the given include/exclude parameters"));
 }
 
-Promise.all(Object.keys(deps).map(dep => rp(url + dep))).then(responses => {
-  responses.forEach(res => {
-    const data = JSON.parse(res);
+Promise.all(Object.keys(deps).map(dep => fetch(url + dep).then(r => r.json()))).then(d => {
+  d.forEach(data => {
     const oldRange = deps[data.name].old;
     const highestVersion = findHighestVersion(Object.keys(data.versions));
     const newRange = updateRange(oldRange, highestVersion);
