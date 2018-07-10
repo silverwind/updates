@@ -1,14 +1,12 @@
-BIN:=node_modules/.bin
-
 test:
-	$(BIN)/eslint --color --quiet *.js
+	npx eslint --color --quiet *.js
 
 publish:
 	git push -u --tags origin master
 	npm publish
 
 update:
-	./updates.js -u
+	node updates.js -u
 	rm -rf node_modules
 	yarn
 
