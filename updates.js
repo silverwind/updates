@@ -67,6 +67,7 @@ const esc = require("escape-string-regexp");
 
 const url = "https://registry.npmjs.org/";
 const packageFile = path.join(process.cwd(), "package.json");
+const versionPartRe = /^[0-9a-zA-Z-.]+$/;
 
 const dependencyTypes = [
   "dependencies",
@@ -185,11 +186,11 @@ function highlightDiff(a, b, added) {
 
   for (let i = 0; i < aParts.length; i++) {
     if (aParts[i] !== bParts[i]) {
-      if (/^[0-9a-zA-Z-.]+$/.test(aParts[i])) {
+      if (versionPartRe.test(aParts[i])) {
         res += chalk[added ? "green" : "red"](aParts.slice(i).join("."));
       } else {
         res += aParts[i].split("").map(char => {
-          if (/^[0-9a-zA-Z-.]+$/.test(char)) {
+          if (versionPartRe.test(char)) {
             return chalk[added ? "green" : "red"](char);
           } else {
             return char;
@@ -242,11 +243,11 @@ function isValidSemverRange(range) {
 
 // find the newest version, ignoring prerelease version unless they are requested
 function findHighestVersion(versions) {
-  let highest;
+  let highest = "0.0.0";
   while (versions.length) {
     const parsed = semver.parse(versions.pop());
     if (!args.prerelease && parsed.prerelease.length) continue;
-    if (semver.gt(parsed.version, highest || "0.0.0")) {
+    if (semver.gt(parsed.version, highest)) {
       highest = parsed.version;
     }
   }
