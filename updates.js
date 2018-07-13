@@ -73,7 +73,6 @@ const dependencyTypes = [
   "dependencies",
   "devDependencies",
   "peerDependencies",
-  "bundledDependencies",
   "optionalDependencies"
 ];
 
