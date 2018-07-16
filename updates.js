@@ -250,5 +250,5 @@ function findHighestVersion(versions) {
       highest = parsed.version;
     }
   }
-  return highest;
+  return highest === "0.0.0" ? null : highest;
 }
