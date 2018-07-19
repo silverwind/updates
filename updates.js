@@ -4,10 +4,10 @@
 const args = require("minimist")(process.argv.slice(2), {
   boolean: [
     "color", "c",
-    "no-color", "n",
+    "greatest", "g",
     "help", "h",
     "json", "j",
-    "latest", "l",
+    "no-color", "n",
     "prerelease", "p",
     "update", "u",
     "version", "v",
@@ -15,10 +15,10 @@ const args = require("minimist")(process.argv.slice(2), {
   alias: {
     c: "color",
     e: "exclude",
+    g: "greatest",
     h: "help",
     i: "include",
     j: "json",
-    l: "latest",
     n: "no-color",
     p: "prerelease",
     u: "update",
@@ -33,7 +33,7 @@ if (args.help) {
     -u, --update             Update package.json
     -p, --prerelease         Consider prerelease versions
     -j, --json               Output a JSON object
-    -l, --latest             Prefer latest over highest version
+    -g, --greatest           Prefer greatest over latest version
     -i, --include <pkg,...>  Only include given packages
     -e, --exclude <pkg,...>  Exclude given packages
     -c, --color              Force-enable color output
@@ -119,10 +119,10 @@ const fetch = require("make-fetch-happen");
 Promise.all(Object.keys(deps).map(dep => fetch(url + dep).then(r => r.json()))).then(d => {
   d.forEach(data => {
     let newVersion;
-    if (args.latest) {
-      newVersion = data["dist-tags"].latest;
-    } else {
+    if (args.greatest) {
       newVersion = findHighestVersion(Object.keys(data.versions));
+    } else {
+      newVersion = data["dist-tags"].latest;
     }
 
     const oldRange = deps[data.name].old;
