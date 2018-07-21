@@ -150,9 +150,9 @@ Promise.all(Object.keys(deps).map(dep => fetch(url + dep).then(r => r.json()))).
       finish(new Error(`Error writing package.json: ${err.message}`));
     } else {
       finish(chalk.green(`
- ╭──────────────────────────╮
- │✨ package.json updated ✨│
- ╰──────────────────────────╯`));
+ ╭────────────────────────╮
+ │  package.json updated  │
+ ╰────────────────────────╯`));
     }
   });
 });
