@@ -36,6 +36,6 @@
   },
   "devDependencies": {
     "eslint": "^5.2.0",
-    "eslint-config-silverwind": "^1.0.44"
+    "eslint-config-silverwind": "^1.0.45"
   }
 }
