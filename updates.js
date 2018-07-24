@@ -12,6 +12,12 @@ const args = require("minimist")(process.argv.slice(2), {
     "update", "u",
     "version", "v",
   ],
+  string: [
+    "registry", "r",
+  ],
+  default: {
+    "registry": "https://registry.npmjs.org/",
+  },
   alias: {
     c: "color",
     e: "exclude",
@@ -21,6 +27,7 @@ const args = require("minimist")(process.argv.slice(2), {
     j: "json",
     n: "no-color",
     p: "prerelease",
+    r: "registry",
     u: "update",
     v: "version",
   },
@@ -38,6 +45,7 @@ if (args.help) {
     -e, --exclude <pkg,...>  Exclude given packages
     -c, --color              Force-enable color output
     -n, --no-color           Disable color output
+    -r, --registry           Set a custom NPM registry url
     -v, --version            Print the version
     -h, --help               Print this help
 
@@ -65,7 +73,7 @@ const columnify = require("columnify");
 const chalk = require("chalk");
 const esc = require("escape-string-regexp");
 
-const url = "https://registry.npmjs.org/";
+const url = args.registry.endsWith("/") ? args.registry : args.registry + "/";
 const packageFile = path.join(process.cwd(), "package.json");
 const versionPartRe = /^[0-9a-zA-Z-.]+$/;
 
