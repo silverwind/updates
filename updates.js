@@ -160,7 +160,7 @@ Promise.all(Object.keys(deps).map(dep => fetch(url + dep).then(r => r.json()))).
       finish(chalk.green(`
  ╭────────────────────────╮
  │  package.json updated  │
- ╰────────────────────────╯`));
+ ╰────────────────────────╯`.substring(1)));
     }
   });
 }).catch(finish);

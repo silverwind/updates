@@ -30,7 +30,9 @@ NAME        OLD       NEW
 chalk       1.3.0     2.3.0
 got         ^7.0.1    ^8.0.1
 minimist    ^1.0.0    ^1.2.0
-package.json updated!
+╭────────────────────────╮
+│  package.json updated  │
+╰────────────────────────╯
 ```
 ### JSON Output
 
