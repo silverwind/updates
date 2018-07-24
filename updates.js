@@ -163,22 +163,26 @@ Promise.all(Object.keys(deps).map(dep => fetch(url + dep).then(r => r.json()))).
  ╰────────────────────────╯`));
     }
   });
-});
+}).catch(finish);
 
 function finish(obj, opts) {
   opts = opts || {};
   const output = {};
+  const hadError = obj instanceof Error;
+
   if (typeof obj === "string") {
     output.message = obj;
-  } else if (obj instanceof Error) {
+  } else if (hadError) {
     output.error = obj.message;
   }
 
   if (args.json) {
-    output.results = deps;
+    if (!hadError) {
+      output.results = deps;
+    }
     console.info(JSON.stringify(output, null, 2));
   } else {
-    if (Object.keys(deps).length) {
+    if (Object.keys(deps).length && !hadError) {
       console.info(formatDeps(deps));
     }
     if (output.message || output.error) {
