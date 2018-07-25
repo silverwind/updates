@@ -196,20 +196,21 @@ function finish(obj, opts) {
 function highlightDiff(a, b, added) {
   const aParts = a.split(/\./);
   const bParts = b.split(/\./);
+  const color = chalk[added ? "green" : "red"];
   let res = "";
 
   for (let i = 0; i < aParts.length; i++) {
     if (aParts[i] !== bParts[i]) {
       if (versionPartRe.test(aParts[i])) {
-        res += chalk[added ? "green" : "red"](aParts.slice(i).join("."));
+        res += color(aParts.slice(i).join("."));
       } else {
         res += aParts[i].split("").map(char => {
           if (versionPartRe.test(char)) {
-            return chalk[added ? "green" : "red"](char);
+            return color(char);
           } else {
             return char;
           }
-        }).join("") + chalk[added ? "green" : "red"]("." + aParts.slice(i + 1).join("."));
+        }).join("") + color("." + aParts.slice(i + 1).join("."));
       }
       break;
     } else {
