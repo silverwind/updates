@@ -45,7 +45,7 @@ if (args.help) {
     -e, --exclude <pkg,...>  Exclude given packages
     -c, --color              Force-enable color output
     -n, --no-color           Disable color output
-    -r, --registry           Set a custom NPM registry url
+    -r, --registry <url>     Use a custom registry
     -v, --version            Print the version
     -h, --help               Print this help
 
