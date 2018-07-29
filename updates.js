@@ -123,8 +123,14 @@ if (!Object.keys(deps).length) {
 }
 
 const fetch = require("make-fetch-happen");
+const npmPackageArg = require("npm-package-arg");
 
-Promise.all(Object.keys(deps).map(dep => fetch(url + dep).then(r => r.json()))).then(d => {
+const buildUrl = (url, name) => {
+  const parsed = npmPackageArg(name);
+  return url + ((parsed && parsed.escapedName) ? parsed.escapedName : name);
+};
+
+Promise.all(Object.keys(deps).map(name => fetch(buildUrl(url, name)).then(r => r.json()))).then(d => {
   d.forEach(data => {
     let newVersion;
     if (args.greatest) {
