@@ -126,7 +126,12 @@ const columnify = require("columnify");
 const chalk = require("chalk");
 
 const buildUrl = name => {
-  const parsed = npmPackageArg(name);
+  let parsed;
+  try {
+    parsed = npmPackageArg(name);
+  } catch (err) {
+    finish(err);
+  }
   return registry + ((parsed && parsed.escapedName) ? parsed.escapedName : name);
 };
 
