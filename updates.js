@@ -73,7 +73,7 @@ const columnify = require("columnify");
 const chalk = require("chalk");
 const esc = require("escape-string-regexp");
 
-const url = args.registry.endsWith("/") ? args.registry : args.registry + "/";
+const registry = args.registry.endsWith("/") ? args.registry : args.registry + "/";
 const packageFile = path.join(process.cwd(), "package.json");
 const versionPartRe = /^[0-9a-zA-Z-.]+$/;
 
@@ -125,12 +125,12 @@ if (!Object.keys(deps).length) {
 const fetch = require("make-fetch-happen");
 const npmPackageArg = require("npm-package-arg");
 
-const buildUrl = (url, name) => {
+const buildUrl = name => {
   const parsed = npmPackageArg(name);
-  return url + ((parsed && parsed.escapedName) ? parsed.escapedName : name);
+  return registry + ((parsed && parsed.escapedName) ? parsed.escapedName : name);
 };
 
-Promise.all(Object.keys(deps).map(name => fetch(buildUrl(url, name)).then(r => r.json()))).then(d => {
+Promise.all(Object.keys(deps).map(name => fetch(buildUrl(name)).then(r => r.json()))).then(d => {
   d.forEach(data => {
     let newVersion;
     if (args.greatest) {
