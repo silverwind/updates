@@ -68,14 +68,9 @@ if (args["color"]) process.env.FORCE_COLOR = "1";
 if (args["no-color"]) process.env.FORCE_COLOR = "0";
 
 const fs = require("fs");
-const semver = require("semver");
-const columnify = require("columnify");
-const chalk = require("chalk");
-const esc = require("escape-string-regexp");
 
 const registry = args.registry.endsWith("/") ? args.registry : args.registry + "/";
 const packageFile = path.join(process.cwd(), "package.json");
-const versionPartRe = /^[0-9a-zA-Z-.]+$/;
 
 const dependencyTypes = [
   "dependencies",
@@ -98,6 +93,8 @@ try {
 } catch (err) {
   finish(new Error(`Error parsing package.json: ${err.message}`));
 }
+
+const semver = require("semver");
 
 let include, exclude;
 if (args.include) include = args.include.split(",");
@@ -124,6 +121,9 @@ if (!Object.keys(deps).length) {
 
 const fetch = require("make-fetch-happen");
 const npmPackageArg = require("npm-package-arg");
+const esc = require("escape-string-regexp");
+const columnify = require("columnify");
+const chalk = require("chalk");
 
 const buildUrl = name => {
   const parsed = npmPackageArg(name);
@@ -203,6 +203,7 @@ function highlightDiff(a, b, added) {
   const aParts = a.split(/\./);
   const bParts = b.split(/\./);
   const color = chalk[added ? "green" : "red"];
+  const versionPartRe = /^[0-9a-zA-Z-.]+$/;
   let res = "";
 
   for (let i = 0; i < aParts.length; i++) {
