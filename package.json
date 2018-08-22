@@ -33,10 +33,10 @@
     "make-fetch-happen": "^4.0.1",
     "minimist": "^1.2.0",
     "npm-package-arg": "^6.1.0",
-    "semver": "^5.5.0"
+    "semver": "^5.5.1"
   },
   "devDependencies": {
-    "eslint": "^5.2.0",
-    "eslint-config-silverwind": "^1.0.45"
+    "eslint": "^5.4.0",
+    "eslint-config-silverwind": "^2.0.6"
   }
 }
