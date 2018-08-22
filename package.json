@@ -28,15 +28,15 @@
   ],
   "dependencies": {
     "chalk": "2.4.1",
-    "columnify": "^1.5.4",
-    "escape-string-regexp": "^1.0.5",
-    "make-fetch-happen": "^4.0.1",
-    "minimist": "^1.2.0",
-    "npm-package-arg": "^6.1.0",
-    "semver": "^5.5.1"
+    "columnify": "1.5.4",
+    "escape-string-regexp": "1.0.5",
+    "make-fetch-happen": "4.0.1",
+    "minimist": "1.2.0",
+    "npm-package-arg": "6.1.0",
+    "semver": "5.5.1"
   },
   "devDependencies": {
-    "eslint": "^5.4.0",
-    "eslint-config-silverwind": "^2.0.6"
+    "eslint": "5.4.0",
+    "eslint-config-silverwind": "2.0.6"
   }
 }
