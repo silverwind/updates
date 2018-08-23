@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 "use strict";
 
+process.env.NODE_ENV = "production";
+
 const args = require("minimist")(process.argv.slice(2), {
   boolean: [
     "color", "c",
@@ -100,20 +102,20 @@ let include, exclude;
 if (args.include) include = args.include.split(",");
 if (args.exclude) exclude = args.exclude.split(",");
 
-dependencyTypes.forEach(key => {
+for (const key of dependencyTypes) {
   if (pkg[key]) {
     const names = Object.keys(pkg[key])
       .filter(name => !include ? true : include.includes(name))
       .filter(name => !exclude ? true : !exclude.includes(name));
 
-    names.forEach(name => {
+    for (const name of names) {
       const old = pkg[key][name];
       if (isValidSemverRange(old)) {
         deps[name] = {old};
       }
-    });
+    }
   }
-});
+}
 
 if (!Object.keys(deps).length) {
   finish(new Error("No packages match the given include/exclude parameters"));
@@ -122,7 +124,6 @@ if (!Object.keys(deps).length) {
 const fetch = require("make-fetch-happen");
 const npmPackageArg = require("npm-package-arg");
 const esc = require("escape-string-regexp");
-const columnify = require("columnify");
 const chalk = require("chalk");
 
 const buildUrl = name => {
@@ -135,15 +136,9 @@ const buildUrl = name => {
   return registry + ((parsed && parsed.escapedName) ? parsed.escapedName : name);
 };
 
-Promise.all(Object.keys(deps).map(name => fetch(buildUrl(name)).then(r => r.json()))).then(d => {
-  d.forEach(data => {
-    let newVersion;
-    if (args.greatest) {
-      newVersion = findHighestVersion(Object.keys(data.versions));
-    } else {
-      newVersion = data["dist-tags"].latest;
-    }
-
+Promise.all(Object.keys(deps).map(name => fetch(buildUrl(name)).then(r => r.json()))).then(dati => {
+  for (const data of dati) {
+    const newVersion = args.greatest ? findHighestVersion(Object.keys(data.versions)) : data["dist-tags"].latest;
     const oldRange = deps[data.name].old;
     const newRange = updateRange(oldRange, newVersion);
 
@@ -152,28 +147,28 @@ Promise.all(Object.keys(deps).map(name => fetch(buildUrl(name)).then(r => r.json
     } else {
       deps[data.name].new = newRange;
     }
-  });
+  }
 
-  // log results
   if (!Object.keys(deps).length) {
     finish("All packages are up to date.");
   }
 
-  // exit if -u is not given
   if (!args.update) {
-    finish(0);
+    finish();
   }
 
-  fs.writeFile(packageFile, updatePkg(), "utf8", err => {
-    if (err) {
-      finish(new Error(`Error writing package.json: ${err.message}`));
-    } else {
-      finish(chalk.green(`
+  try {
+    fs.writeFileSync(packageFile, updatePkg(), "utf8");
+  } catch (err) {
+    finish(new Error(`Error writing package.json: ${err.message}`));
+  }
+
+  const msg = `
  ╭────────────────────────╮
  │  package.json updated  │
- ╰────────────────────────╯`.substring(1)));
-    }
-  });
+ ╰────────────────────────╯`;
+
+  finish(chalk.green(msg.substring(1)));
 }).catch(finish);
 
 function finish(obj, opts) {
@@ -217,11 +212,7 @@ function highlightDiff(a, b, added) {
         res += color(aParts.slice(i).join("."));
       } else {
         res += aParts[i].split("").map(char => {
-          if (versionPartRe.test(char)) {
-            return color(char);
-          } else {
-            return char;
-          }
+          return versionPartRe.test(char) ? color(char) : char;
         }).join("") + color("." + aParts.slice(i + 1).join("."));
       }
       break;
@@ -234,7 +225,7 @@ function highlightDiff(a, b, added) {
 }
 
 function formatDeps() {
-  return columnify(Object.keys(deps).map(dep => {
+  return require("columnify")(Object.keys(deps).map(dep => {
     return {
       "name": dep,
       "old": highlightDiff(deps[dep].old, deps[dep].new, false),
@@ -247,10 +238,10 @@ function formatDeps() {
 
 function updatePkg() {
   let newPkgStr = pkgStr;
-  Object.keys(deps).forEach(dep => {
+  for (const dep of Object.keys(deps)) {
     const re = new RegExp(`"${esc(dep)}": +"${esc(deps[dep].old)}"`, "g");
     newPkgStr = newPkgStr.replace(re, `"${dep}": "${deps[dep].new}"`);
-  });
+  }
   return newPkgStr;
 }
 
