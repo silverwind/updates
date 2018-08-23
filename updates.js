@@ -15,6 +15,7 @@ const args = require("minimist")(process.argv.slice(2), {
     "version", "v",
   ],
   string: [
+    "file", "f",
     "registry", "r",
   ],
   default: {
@@ -23,6 +24,7 @@ const args = require("minimist")(process.argv.slice(2), {
   alias: {
     c: "color",
     e: "exclude",
+    f: "file",
     g: "greatest",
     h: "help",
     i: "include",
@@ -45,9 +47,10 @@ if (args.help) {
     -g, --greatest           Prefer greatest over latest version
     -i, --include <pkg,...>  Only include given packages
     -e, --exclude <pkg,...>  Exclude given packages
+    -r, --registry <url>     Use a custom registry
+    -f, --file <path>        Use specified package.json file
     -c, --color              Force-enable color output
     -n, --no-color           Disable color output
-    -r, --registry <url>     Use a custom registry
     -v, --version            Print the version
     -h, --help               Print this help
 
@@ -72,7 +75,7 @@ if (args["no-color"]) process.env.FORCE_COLOR = "0";
 const fs = require("fs");
 
 const registry = args.registry.endsWith("/") ? args.registry : args.registry + "/";
-const packageFile = require("find-up").sync("package.json");
+const packageFile = args.file || require("find-up").sync("package.json");
 
 const dependencyTypes = [
   "dependencies",
