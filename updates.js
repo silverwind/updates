@@ -72,7 +72,7 @@ if (args["no-color"]) process.env.FORCE_COLOR = "0";
 const fs = require("fs");
 
 const registry = args.registry.endsWith("/") ? args.registry : args.registry + "/";
-const packageFile = path.join(process.cwd(), "package.json");
+const packageFile = require("find-up").sync("package.json");
 
 const dependencyTypes = [
   "dependencies",
