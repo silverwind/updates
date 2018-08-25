@@ -121,7 +121,11 @@ for (const key of dependencyTypes) {
 }
 
 if (!Object.keys(deps).length) {
-  finish(new Error("No packages match the given include/exclude parameters"));
+  if (include || exclude) {
+    finish(new Error("No packages match the given include/exclude parameters"));
+  } else {
+    finish(new Error("No packages found"));
+  }
 }
 
 const fetch = require("make-fetch-happen");
