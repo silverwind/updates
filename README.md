@@ -36,7 +36,7 @@ usage: updates [options]
     $ updates
     $ updates -u
     $ updates -u -e semver
-``
+```
 
 ## Examples
 
