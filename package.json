@@ -37,7 +37,7 @@
     "semver": "5.5.1"
   },
   "devDependencies": {
-    "eslint": "5.4.0",
-    "eslint-config-silverwind": "2.0.7"
+    "eslint": "5.5.0",
+    "eslint-config-silverwind": "2.0.9"
   }
 }
