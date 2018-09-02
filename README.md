@@ -19,18 +19,18 @@ $ npm i -g updates
 usage: updates [options]
 
   Options:
-    -u, --update             Update package.json
-    -p, --prerelease         Consider prerelease versions
-    -j, --json               Output a JSON object
-    -g, --greatest           Prefer greatest over latest version
-    -i, --include <pkg,...>  Only include given packages
-    -e, --exclude <pkg,...>  Exclude given packages
-    -r, --registry <url>     Use a custom registry
-    -f, --file <path>        Use specified package.json file
-    -c, --color              Force-enable color output
-    -n, --no-color           Disable color output
-    -v, --version            Print the version
-    -h, --help               Print this help
+    -u, --update                  Update package.json
+    -p, --prerelease [<pkg,...>]  Consider prerelease versions
+    -j, --json                    Output a JSON object
+    -g, --greatest [<pkg,...>]    Prefer greatest over latest version
+    -i, --include <pkg,...>       Only include given packages
+    -e, --exclude <pkg,...>       Exclude given packages
+    -r, --registry <url>          Use a custom registry
+    -f, --file <path>             Use specified package.json file
+    -c, --color                   Force-enable color output
+    -n, --no-color                Disable color output
+    -v, --version                 Print the version
+    -h, --help                    Print this help
 
   Examples:
     $ updates

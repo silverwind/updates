@@ -5,18 +5,19 @@ process.env.NODE_ENV = "production";
 
 const args = require("minimist")(process.argv.slice(2), {
   boolean: [
-    "color", "c",
-    "greatest", "g",
-    "help", "h",
-    "json", "j",
-    "no-color", "n",
-    "prerelease", "p",
-    "update", "u",
-    "version", "v",
+    "c", "color",
+    "h", "help",
+    "j", "json",
+    "n", "no-color",
+    "u", "update",
+    "v", "version",
   ],
   string: [
-    "file", "f",
-    "registry", "r",
+    "f", "file",
+    "g", "greatest",
+    "p", "prerelease",
+    "p", "prerelease",
+    "r", "registry",
   ],
   default: {
     "registry": "https://registry.npmjs.org/",
@@ -41,18 +42,18 @@ if (args.help) {
   process.stdout.write(`usage: updates [options]
 
   Options:
-    -u, --update             Update package.json
-    -p, --prerelease         Consider prerelease versions
-    -j, --json               Output a JSON object
-    -g, --greatest           Prefer greatest over latest version
-    -i, --include <pkg,...>  Only include given packages
-    -e, --exclude <pkg,...>  Exclude given packages
-    -r, --registry <url>     Use a custom registry
-    -f, --file <path>        Use specified package.json file
-    -c, --color              Force-enable color output
-    -n, --no-color           Disable color output
-    -v, --version            Print the version
-    -h, --help               Print this help
+    -u, --update                  Update package.json
+    -p, --prerelease [<pkg,...>]  Consider prerelease versions
+    -j, --json                    Output a JSON object
+    -g, --greatest [<pkg,...>]    Prefer greatest over latest version
+    -i, --include <pkg,...>       Only include given packages
+    -e, --exclude <pkg,...>       Exclude given packages
+    -r, --registry <url>          Use a custom registry
+    -f, --file <path>             Use specified package.json file
+    -c, --color                   Force-enable color output
+    -n, --no-color                Disable color output
+    -v, --version                 Print the version
+    -h, --help                    Print this help
 
   Examples:
     $ updates
@@ -72,7 +73,8 @@ if (args.version) {
 if (args["color"]) process.env.FORCE_COLOR = "1";
 if (args["no-color"]) process.env.FORCE_COLOR = "0";
 
-const fs = require("fs");
+const greatest = parseMixedArg(args.greatest);
+const prerelease = parseMixedArg(args.greatest);
 
 const registry = args.registry.endsWith("/") ? args.registry : args.registry + "/";
 const packageFile = args.file || require("find-up").sync("package.json");
@@ -84,6 +86,7 @@ const dependencyTypes = [
   "optionalDependencies"
 ];
 
+const fs = require("fs");
 let pkg, pkgStr;
 const deps = {};
 
@@ -145,7 +148,10 @@ const buildUrl = name => {
 
 Promise.all(Object.keys(deps).map(name => fetch(buildUrl(name)).then(r => r.json()))).then(dati => {
   for (const data of dati) {
-    const newVersion = args.greatest ? findHighestVersion(Object.keys(data.versions)) : data["dist-tags"].latest;
+    const useGreatest = typeof greatest === "boolean" ? greatest : greatest.includes(data.name);
+    const usePre = typeof prerelease === "boolean" ? prerelease : prerelease.includes(data.name);
+
+    const newVersion = useGreatest ? findHighestVersion(Object.keys(data.versions), usePre) : data["dist-tags"].latest;
     const oldRange = deps[data.name].old;
     const newRange = updateRange(oldRange, newVersion);
 
@@ -267,14 +273,26 @@ function isValidSemverRange(range) {
 }
 
 // find the newest version, ignoring prerelease version unless they are requested
-function findHighestVersion(versions) {
+function findHighestVersion(versions, pre) {
   let highest = "0.0.0";
   while (versions.length) {
     const parsed = semver.parse(versions.pop());
-    if (!args.prerelease && parsed.prerelease.length) continue;
+    if (!pre && parsed.prerelease.length) continue;
     if (semver.gt(parsed.version, highest)) {
       highest = parsed.version;
     }
   }
   return highest === "0.0.0" ? null : highest;
+}
+
+function parseMixedArg(arg) {
+  if (arg === "") {
+    return true;
+  } else if (typeof arg === "string") {
+    return arg.includes(",") ? arg.split(",") : [arg];
+  } else if (Array.isArray(arg)) {
+    return arg;
+  } else {
+    return false;
+  }
 }
