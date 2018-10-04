@@ -19,7 +19,7 @@ $ npm i -g updates
 usage: updates [options]
 
   Options:
-    -u, --update                  Update package.json
+    -u, --update [<pkg,...>]      Update packages and write package.json
     -p, --prerelease [<pkg,...>]  Consider prerelease versions
     -g, --greatest [<pkg,...>]    Prefer greatest over latest version
     -i, --include <pkg,...>       Only include given packages

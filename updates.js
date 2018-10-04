@@ -9,7 +9,6 @@ const args = require("minimist")(process.argv.slice(2), {
     "h", "help",
     "j", "json",
     "n", "no-color",
-    "u", "update",
     "v", "version",
   ],
   string: [
@@ -17,6 +16,7 @@ const args = require("minimist")(process.argv.slice(2), {
     "g", "greatest",
     "p", "prerelease",
     "r", "registry",
+    "u", "update",
   ],
   default: {
     "registry": "https://registry.npmjs.org/",
@@ -41,7 +41,7 @@ if (args.help) {
   process.stdout.write(`usage: updates [options]
 
   Options:
-    -u, --update                  Update package.json
+    -u, --update [<pkg,...>]      Update packages and write package.json
     -p, --prerelease [<pkg,...>]  Consider prerelease versions
     -g, --greatest [<pkg,...>]    Prefer greatest over latest version
     -i, --include <pkg,...>       Only include given packages
@@ -74,6 +74,7 @@ if (args["no-color"]) process.env.FORCE_COLOR = "0";
 
 const greatest = parseMixedArg(args.greatest);
 const prerelease = parseMixedArg(args.prerelease);
+const update = parseMixedArg(args.update);
 
 const registry = args.registry.endsWith("/") ? args.registry : args.registry + "/";
 const packageFile = args.file || require("find-up").sync("package.json");
@@ -110,6 +111,7 @@ if (args.exclude) exclude = args.exclude.split(",");
 for (const key of dependencyTypes) {
   if (pkg[key]) {
     const names = Object.keys(pkg[key])
+      .filter(name => Array.isArray(update) ? update.includes(name) : true)
       .filter(name => !include ? true : include.includes(name))
       .filter(name => !exclude ? true : !exclude.includes(name));
 
@@ -123,8 +125,8 @@ for (const key of dependencyTypes) {
 }
 
 if (!Object.keys(deps).length) {
-  if (include || exclude) {
-    finish(new Error("No packages match the given include/exclude parameters"));
+  if (Array.isArray(update) || include || exclude) {
+    finish(new Error("No packages match the given filters"));
   } else {
     finish(new Error("No packages found"));
   }
