@@ -167,7 +167,7 @@ Promise.all(Object.keys(deps).map(name => fetch(buildUrl(name)).then(r => r.json
     finish("All packages are up to date.");
   }
 
-  if (!args.update) {
+  if (args.update === false) {
     finish();
   }
 
@@ -239,14 +239,15 @@ function highlightDiff(a, b, added) {
 }
 
 function formatDeps() {
-  return require("columnify")(Object.keys(deps).map(dep => {
-    return {
-      "name": dep,
-      "old": highlightDiff(deps[dep].old, deps[dep].new, false),
-      "new": highlightDiff(deps[dep].new, deps[dep].old, true),
-    };
-  }), {
-    columnSplitter: " ".repeat(4),
+  const arr = [["NAME", "OLD", "NEW"]];
+  for (const [name, versions] of Object.entries(deps)) arr.push([
+    name,
+    highlightDiff(versions.old, versions.new, false),
+    highlightDiff(versions.new, versions.old, true),
+  ]);
+  return require("text-table")(arr, {
+    hsep: " ".repeat(4),
+    stringLength: require("string-width"),
   });
 }
 
