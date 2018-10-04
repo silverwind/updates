@@ -16,7 +16,6 @@ const args = require("minimist")(process.argv.slice(2), {
     "f", "file",
     "g", "greatest",
     "p", "prerelease",
-    "p", "prerelease",
     "r", "registry",
   ],
   default: {
@@ -74,7 +73,7 @@ if (args["color"]) process.env.FORCE_COLOR = "1";
 if (args["no-color"]) process.env.FORCE_COLOR = "0";
 
 const greatest = parseMixedArg(args.greatest);
-const prerelease = parseMixedArg(args.greatest);
+const prerelease = parseMixedArg(args.prerelease);
 
 const registry = args.registry.endsWith("/") ? args.registry : args.registry + "/";
 const packageFile = args.file || require("find-up").sync("package.json");
