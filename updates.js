@@ -134,15 +134,16 @@ const fetch = require("make-fetch-happen");
 const esc = require("escape-string-regexp");
 const chalk = require("chalk");
 
-const buildUrl = name => {
-  // on scoped package,s replace "/" with "%2f"
+const get = async name => {
+  // on scoped packages replace "/" with "%2f"
   if (/@[a-z0-9][\w-.]+\/[a-z0-9][\w-.]*/gi.test(name)) {
     name = name.replace(/\//g, "%2f");
   }
-  return registry + name;
+
+  return fetch(registry + name).then(r => r.json());
 };
 
-Promise.all(Object.keys(deps).map(name => fetch(buildUrl(name)).then(r => r.json()))).then(dati => {
+Promise.all(Object.keys(deps).map(name => get(name))).then(dati => {
   for (const data of dati) {
     const useGreatest = typeof greatest === "boolean" ? greatest : greatest.includes(data.name);
     const usePre = typeof prerelease === "boolean" ? prerelease : prerelease.includes(data.name);
