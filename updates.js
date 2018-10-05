@@ -131,18 +131,15 @@ if (!Object.keys(deps).length) {
 }
 
 const fetch = require("make-fetch-happen");
-const npmPackageArg = require("npm-package-arg");
 const esc = require("escape-string-regexp");
 const chalk = require("chalk");
 
 const buildUrl = name => {
-  let parsed;
-  try {
-    parsed = npmPackageArg(name);
-  } catch (err) {
-    finish(err);
+  // on scoped package,s replace "/" with "%2f"
+  if (/@[a-z0-9][\w-.]+\/[a-z0-9][\w-.]*/gi.test(name)) {
+    name = name.replace(/\//g, "%2f");
   }
-  return registry + ((parsed && parsed.escapedName) ? parsed.escapedName : name);
+  return registry + name;
 };
 
 Promise.all(Object.keys(deps).map(name => fetch(buildUrl(name)).then(r => r.json()))).then(dati => {
