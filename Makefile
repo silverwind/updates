@@ -1,26 +1,32 @@
+.PHONY: test
 test:
 	npx eslint --color --quiet *.js
 
+.PHONY: publish
 publish:
 	git push -u --tags origin master
 	npm publish
 
+.PHONY: update
 update:
 	node updates.js -u
 	rm -rf node_modules
-	npm i
+	npm i --no-package-lock
 
-npm-patch:
-	npm version patch
+.PHONY: patch
+patch:
+	$(MAKE) test
+	npx ver patch
+	$(MAKE) publish
 
-npm-minor:
-	npm version minor
+.PHONY: minor
+minor:
+	$(MAKE) test
+	npx ver minor
+	$(MAKE) publish
 
-npm-major:
-	npm version major
-
-patch: test npm-patch publish
-minor: test npm-minor publish
-major: test npm-major publish
-
-.PHONY: test publish update npm-patch npm-minor npm-major patch minor major
+.PHONY: major
+major:
+	$(MAKE) test
+	npx ver major
+	$(MAKE) publish
