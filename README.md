@@ -24,6 +24,7 @@ usage: updates [options]
     -g, --greatest [<pkg,...>]    Prefer greatest over latest version
     -i, --include <pkg,...>       Only include given packages
     -e, --exclude <pkg,...>       Exclude given packages
+    -E, --exit-code               Exit with code 2 on outdated packages
     -r, --registry <url>          Use a custom registry
     -f, --file <path>             Use specified package.json file
     -j, --json                    Output a JSON object
