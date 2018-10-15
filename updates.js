@@ -6,6 +6,7 @@ process.env.NODE_ENV = "production";
 const args = require("minimist")(process.argv.slice(2), {
   boolean: [
     "c", "color",
+    "E", "error-on-outdated",
     "h", "help",
     "j", "json",
     "n", "no-color",
@@ -13,7 +14,6 @@ const args = require("minimist")(process.argv.slice(2), {
     "v", "version",
   ],
   string: [
-    "E", "exit-code",
     "f", "file",
     "g", "greatest",
     "p", "prerelease",
@@ -25,7 +25,7 @@ const args = require("minimist")(process.argv.slice(2), {
   alias: {
     c: "color",
     e: "exclude",
-    E: "exit-code",
+    E: "error-on-outdated",
     f: "file",
     g: "greatest",
     h: "help",
@@ -48,7 +48,7 @@ if (args.help) {
     -g, --greatest [<pkg,...>]    Prefer greatest over latest version
     -i, --include <pkg,...>       Only include given packages
     -e, --exclude <pkg,...>       Exclude given packages
-    -E, --exit-code               Exit with code 2 on outdated packages
+    -E, --error-on-outdated       Exit with error code 2 on outdated packages
     -r, --registry <url>          Use a custom registry
     -f, --file <path>             Use specified package.json file
     -j, --json                    Output a JSON object
@@ -77,11 +77,6 @@ if (args["no-color"]) process.env.FORCE_COLOR = "0";
 
 const greatest = parseMixedArg(args.greatest);
 const prerelease = parseMixedArg(args.prerelease);
-
-let exitCode = parseMixedArg(args["exit-code"]);
-if (Array.isArray(exitCode) && exitCode.length) {
-  exitCode = true;
-}
 
 const registry = args.registry.endsWith("/") ? args.registry : args.registry + "/";
 const packageFile = args.file || require("find-up").sync("package.json");
@@ -214,7 +209,7 @@ function finish(obj, opts) {
     }
   }
 
-  if (exitCode) {
+  if (args["error-on-outdated"]) {
     process.exit(Object.keys(deps).length ? 2 : 0);
   } else {
     process.exit(opts.exitCode || (output.error ? 1 : 0));
