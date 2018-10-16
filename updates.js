@@ -45,15 +45,15 @@ if (args.help) {
   process.stdout.write(`usage: updates [options]
 
   Options:
-    -u, --update                  Update packages and write package.json
+    -u, --update                  Update versions and write package.json
     -p, --prerelease [<pkg,...>]  Consider prerelease versions
     -g, --greatest [<pkg,...>]    Prefer greatest over latest version
-    -t, --types <type,...>        Use only provided dependency types
-    -i, --include <pkg,...>       Only include given packages
+    -i, --include <pkg,...>       Include only given packages
     -e, --exclude <pkg,...>       Exclude given packages
+    -t, --types <type,...>        Check only given dependency types
     -E, --error-on-outdated       Exit with error code 2 on outdated packages
-    -r, --registry <url>          Use a custom registry
-    -f, --file <path>             Use specified package.json file
+    -r, --registry <url>          Use given registry URL
+    -f, --file <path>             Use given package.json file
     -j, --json                    Output a JSON object
     -c, --color                   Force-enable color output
     -n, --no-color                Disable color output
