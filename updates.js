@@ -18,14 +18,15 @@ const args = require("minimist")(process.argv.slice(2), {
     "g", "greatest",
     "p", "prerelease",
     "r", "registry",
+    "t", "types",
   ],
   default: {
     "registry": "https://registry.npmjs.org/",
   },
   alias: {
     c: "color",
-    e: "exclude",
     E: "error-on-outdated",
+    e: "exclude",
     f: "file",
     g: "greatest",
     h: "help",
@@ -34,6 +35,7 @@ const args = require("minimist")(process.argv.slice(2), {
     n: "no-color",
     p: "prerelease",
     r: "registry",
+    t: "types",
     u: "update",
     v: "version",
   },
@@ -46,6 +48,7 @@ if (args.help) {
     -u, --update                  Update packages and write package.json
     -p, --prerelease [<pkg,...>]  Consider prerelease versions
     -g, --greatest [<pkg,...>]    Prefer greatest over latest version
+    -t, --types <type,...>        Use only provided dependency types
     -i, --include <pkg,...>       Only include given packages
     -e, --exclude <pkg,...>       Exclude given packages
     -E, --error-on-outdated       Exit with error code 2 on outdated packages
@@ -61,6 +64,7 @@ if (args.help) {
     $ updates
     $ updates -u
     $ updates -u -e semver
+    $ updates -u -t devDependencies
 `);
   process.exit(0);
 }
@@ -81,12 +85,19 @@ const prerelease = parseMixedArg(args.prerelease);
 const registry = args.registry.endsWith("/") ? args.registry : args.registry + "/";
 const packageFile = args.file || require("find-up").sync("package.json");
 
-const dependencyTypes = [
+const availableDependencyTypes = [
   "dependencies",
   "devDependencies",
   "peerDependencies",
   "optionalDependencies"
 ];
+
+let dependencyTypes;
+if (args.types) {
+  dependencyTypes = Array.isArray(args.types) ? args.types : args.types.split(",");
+} else {
+  dependencyTypes = availableDependencyTypes;
+}
 
 const fs = require("fs");
 let pkg, pkgStr;

@@ -22,6 +22,7 @@ usage: updates [options]
     -u, --update                  Update packages and write package.json
     -p, --prerelease [<pkg,...>]  Consider prerelease versions
     -g, --greatest [<pkg,...>]    Prefer greatest over latest version
+    -t, --types <type,...>        Use only provided dependency types
     -i, --include <pkg,...>       Only include given packages
     -e, --exclude <pkg,...>       Exclude given packages
     -E, --error-on-outdated       Exit with error code 2 on outdated packages
@@ -37,6 +38,7 @@ usage: updates [options]
     $ updates
     $ updates -u
     $ updates -u -e semver
+    $ updates -u -t devDependencies
 ```
 
 ## Examples
