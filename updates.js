@@ -85,18 +85,16 @@ const prerelease = parseMixedArg(args.prerelease);
 const registry = args.registry.endsWith("/") ? args.registry : args.registry + "/";
 const packageFile = args.file || require("find-up").sync("package.json");
 
-const availableDependencyTypes = [
-  "dependencies",
-  "devDependencies",
-  "peerDependencies",
-  "optionalDependencies"
-];
-
 let dependencyTypes;
 if (args.types) {
   dependencyTypes = Array.isArray(args.types) ? args.types : args.types.split(",");
 } else {
-  dependencyTypes = availableDependencyTypes;
+  dependencyTypes = [
+    "dependencies",
+    "devDependencies",
+    "peerDependencies",
+    "optionalDependencies",
+  ];
 }
 
 const fs = require("fs");
