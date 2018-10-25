@@ -208,7 +208,7 @@ function finish(obj, opts) {
     if (!hadError) {
       output.results = deps;
     }
-    console.info(JSON.stringify(output, null, 2));
+    console.info(JSON.stringify(output));
   } else {
     if (Object.keys(deps).length && !hadError) {
       console.info(formatDeps(deps));

@@ -64,10 +64,10 @@ minimist    ^1.0.0    ^1.2.0
 ```
 ### JSON Output
 
-`updates` can output JSON. The result is always an object with the key `results` and depending on operation, `message` and `error` properties can also be present.
+The JSON output is an option with possible properties `results`, `message` and `error`:
 
 ```console
-$ updates -j
+$ updates -j | jq
 {
   "results": {
     "chalk": {
