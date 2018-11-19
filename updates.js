@@ -19,6 +19,7 @@ const args = require("minimist")(process.argv.slice(2), {
     "p", "prerelease",
     "r", "registry",
     "t", "types",
+    "s", "semver",
   ],
   default: {
     "registry": "https://registry.npmjs.org/",
@@ -35,6 +36,7 @@ const args = require("minimist")(process.argv.slice(2), {
     n: "no-color",
     p: "prerelease",
     r: "registry",
+    s: "semver",
     t: "types",
     u: "update",
     v: "version",
@@ -51,6 +53,7 @@ if (args.help) {
     -i, --include <pkg,...>       Include only given packages
     -e, --exclude <pkg,...>       Exclude given packages
     -t, --types <type,...>        Check only given dependency types
+    -s, --semver patch|minor      Consider only up to given semver level
     -E, --error-on-outdated       Exit with error code 2 on outdated packages
     -r, --registry <url>          Use given registry URL
     -f, --file <path>             Use given package.json file
@@ -97,6 +100,15 @@ if (args.types) {
   ];
 }
 
+let semvers;
+if (args.semver === "patch") {
+  semvers = ["patch"];
+} else if (args.semver === "minor") {
+  semvers = ["patch", "minor"];
+} else {
+  semvers = ["patch", "minor", "major"];
+}
+
 const fs = require("fs");
 let pkg, pkgStr;
 const deps = {};
@@ -116,8 +128,8 @@ try {
 const semver = require("semver");
 
 let include, exclude;
-if (args.include) include = args.include.split(",");
-if (args.exclude) exclude = args.exclude.split(",");
+if (args.include && args.include !== true) include = args.include.split(",");
+if (args.exclude && args.exclude !== true) exclude = args.exclude.split(",");
 
 for (const key of dependencyTypes) {
   if (pkg[key]) {
@@ -159,9 +171,8 @@ Promise.all(Object.keys(deps).map(name => get(name))).then(dati => {
   for (const data of dati) {
     const useGreatest = typeof greatest === "boolean" ? greatest : greatest.includes(data.name);
     const usePre = typeof prerelease === "boolean" ? prerelease : prerelease.includes(data.name);
-
-    const newVersion = useGreatest ? findHighestVersion(Object.keys(data.versions), usePre) : data["dist-tags"].latest;
     const oldRange = deps[data.name].old;
+    const newVersion = findNewVersion(data, {usePre, useGreatest, range: oldRange});
     const newRange = updateRange(oldRange, newVersion);
 
     if (!newVersion || oldRange === newRange) {
@@ -201,7 +212,7 @@ function finish(obj, opts) {
   if (typeof obj === "string") {
     output.message = obj;
   } else if (hadError) {
-    output.error = obj.message;
+    output.error = obj.stack;
   }
 
   if (args.json) {
@@ -286,17 +297,41 @@ function isValidSemverRange(range) {
   return valid;
 }
 
-// find the newest version, ignoring prerelease version unless they are requested
-function findHighestVersion(versions, pre) {
-  let highest = "0.0.0";
-  while (versions.length) {
-    const parsed = semver.parse(versions.pop());
-    if (!pre && parsed.prerelease.length) continue;
-    if (semver.gt(parsed.version, highest)) {
-      highest = parsed.version;
+function findNewVersion(data, opts) {
+  const versions = Object.keys(data.time).filter(version => semver.valid(version));
+  const newVersion = [semver.coerce(opts.range) || "0.0.0", 0];
+
+  for (const version of versions) {
+    const parsed = semver.parse(version);
+    if (parsed.prerelease.length && !opts.usePre) continue;
+
+    let diff = semver.diff(newVersion[0], parsed.version);
+    if (diff && opts.usePre) {
+      diff = diff.replace(/^pre(?!release)/, "");
+    }
+
+    if ((diff === null) ||
+        (semvers.includes(diff) && semver.gte(parsed.version, newVersion[0])) ||
+        (opts.usePre && diff === "prerelease")) {
+      if (opts.useGreatest && semver.gt(parsed.version, newVersion[0])) {
+        newVersion[0] = parsed.version;
+      } else {
+        const date = (new Date(data.time[version])).getTime();
+        if (date >= 0 && date > newVersion[1]) {
+          newVersion[0] = parsed.version;
+          newVersion[1] = date;
+        }
+      }
     }
   }
-  return highest === "0.0.0" ? null : highest;
+
+  // special case for when pre-releases are tagged as latest
+  const latestTag = data["dist-tags"].latest;
+  if (!opts.useGreatest && latestTag !== newVersion[0]) {
+    newVersion[0] = latestTag;
+  }
+
+  return newVersion[0] === "0.0.0" ? null : newVersion[0];
 }
 
 function parseMixedArg(arg) {
