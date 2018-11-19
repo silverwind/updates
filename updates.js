@@ -325,9 +325,11 @@ function findNewVersion(data, opts) {
     }
   }
 
-  // special case for when pre-releases are tagged as latest
+  // Special case for when pre-releases are tagged as latest. This ignores the
+  // --prerelease option, but it's how npm and other tools work so we copy
+  // their behaviour.
   const latestTag = data["dist-tags"].latest;
-  if (!opts.useGreatest && latestTag !== newVersion[0]) {
+  if (!opts.useGreatest && latestTag !== newVersion[0] && semver.diff(newVersion[0], latestTag) === "prerelease") {
     newVersion[0] = latestTag;
   }
 
