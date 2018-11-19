@@ -25,6 +25,7 @@ usage: updates [options]
     -i, --include <pkg,...>       Include only given packages
     -e, --exclude <pkg,...>       Exclude given packages
     -t, --types <type,...>        Check only given dependency types
+    -s, --semver patch|minor      Consider only up to given semver level
     -E, --error-on-outdated       Exit with error code 2 on outdated packages
     -r, --registry <url>          Use given registry URL
     -f, --file <path>             Use given package.json file
@@ -37,7 +38,8 @@ usage: updates [options]
   Examples:
     $ updates
     $ updates -u
-    $ updates -u -e semver
+    $ updates -u -e chalk
+    $ updates -u -s minor
     $ updates -u -t devDependencies
 ```
 
