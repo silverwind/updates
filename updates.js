@@ -168,6 +168,15 @@ const get = async name => {
   return fetch(registry + name).then(r => r.json());
 };
 
+const getInfoUrl = ({repository, homepage}) => {
+  if (repository) {
+    const gitUrl = typeof repository === "string" ? repository : repository.url;
+    return require("hosted-git-info").fromUrl(gitUrl).browse();
+  }
+
+  return homepage || "";
+};
+
 Promise.all(Object.keys(deps).map(name => get(name))).then(dati => {
   for (const data of dati) {
     const useGreatest = typeof greatest === "boolean" ? greatest : greatest.includes(data.name);
@@ -180,6 +189,7 @@ Promise.all(Object.keys(deps).map(name => get(name))).then(dati => {
       delete deps[data.name];
     } else {
       deps[data.name].new = newRange;
+      deps[data.name].info = getInfoUrl(data);
     }
   }
 
@@ -263,11 +273,12 @@ function highlightDiff(a, b, added) {
 }
 
 function formatDeps() {
-  const arr = [["NAME", "OLD", "NEW"]];
-  for (const [name, versions] of Object.entries(deps)) arr.push([
+  const arr = [["NAME", "OLD", "NEW", "INFO"]];
+  for (const [name, data] of Object.entries(deps)) arr.push([
     name,
-    highlightDiff(versions.old, versions.new, false),
-    highlightDiff(versions.new, versions.old, true),
+    highlightDiff(data.old, data.new, false),
+    highlightDiff(data.new, data.old, true),
+    data.info
   ]);
   return require("text-table")(arr, {
     hsep: " ".repeat(4),
