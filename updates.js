@@ -180,6 +180,7 @@ Promise.all(Object.keys(deps).map(name => get(name))).then(dati => {
       delete deps[data.name];
     } else {
       deps[data.name].new = newRange;
+      deps[data.name].homepage = data.homepage;
     }
   }
 
@@ -263,11 +264,12 @@ function highlightDiff(a, b, added) {
 }
 
 function formatDeps() {
-  const arr = [["NAME", "OLD", "NEW"]];
-  for (const [name, versions] of Object.entries(deps)) arr.push([
+  const arr = [["NAME", "OLD", "NEW", "HOMEPAGE"]];
+  for (const [name, data] of Object.entries(deps)) arr.push([
     name,
-    highlightDiff(versions.old, versions.new, false),
-    highlightDiff(versions.new, versions.old, true),
+    highlightDiff(data.old, data.new, false),
+    highlightDiff(data.new, data.old, true),
+    data.homepage || ""
   ]);
   return require("text-table")(arr, {
     hsep: " ".repeat(4),
