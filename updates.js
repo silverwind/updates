@@ -168,6 +168,17 @@ const get = async name => {
   return fetch(registry + name).then(r => r.json());
 };
 
+const getHomepage = data => {
+  const {repository} = data;
+
+  if (repository) {
+    const gitUrl = typeof repository === "string" ? repository : repository.url;
+    return require("hosted-git-info").fromUrl(gitUrl).browse();
+  }
+
+  return data.homepage || "";
+};
+
 Promise.all(Object.keys(deps).map(name => get(name))).then(dati => {
   for (const data of dati) {
     const useGreatest = typeof greatest === "boolean" ? greatest : greatest.includes(data.name);
@@ -180,7 +191,7 @@ Promise.all(Object.keys(deps).map(name => get(name))).then(dati => {
       delete deps[data.name];
     } else {
       deps[data.name].new = newRange;
-      deps[data.name].homepage = data.homepage;
+      deps[data.name].homepage = getHomepage(data);
     }
   }
 
@@ -269,7 +280,7 @@ function formatDeps() {
     name,
     highlightDiff(data.old, data.new, false),
     highlightDiff(data.new, data.old, true),
-    data.homepage || ""
+    data.homepage
   ]);
   return require("text-table")(arr, {
     hsep: " ".repeat(4),
