@@ -168,15 +168,13 @@ const get = async name => {
   return fetch(registry + name).then(r => r.json());
 };
 
-const getHomepage = data => {
-  const {repository} = data;
-
+const getHomepage = ({repository, homepage}) => {
   if (repository) {
     const gitUrl = typeof repository === "string" ? repository : repository.url;
     return require("hosted-git-info").fromUrl(gitUrl).browse();
   }
 
-  return data.homepage || "";
+  return homepage || "";
 };
 
 Promise.all(Object.keys(deps).map(name => get(name))).then(dati => {
