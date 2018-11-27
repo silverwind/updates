@@ -158,6 +158,7 @@ if (!Object.keys(deps).length) {
 const fetch = require("make-fetch-happen");
 const esc = require("escape-string-regexp");
 const chalk = require("chalk");
+const hostedGitInfo = require("hosted-git-info");
 
 const get = async name => {
   // on scoped packages replace "/" with "%2f"
@@ -171,7 +172,7 @@ const get = async name => {
 const getInfoUrl = ({repository, homepage}) => {
   if (repository) {
     const gitUrl = typeof repository === "string" ? repository : repository.url;
-    const info = require("hosted-git-info").fromUrl(gitUrl);
+    const info = hostedGitInfo.fromUrl(gitUrl);
     if (info && info.browse) return info.browse();
   }
 
