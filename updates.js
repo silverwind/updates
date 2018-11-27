@@ -171,7 +171,8 @@ const get = async name => {
 const getInfoUrl = ({repository, homepage}) => {
   if (repository) {
     const gitUrl = typeof repository === "string" ? repository : repository.url;
-    return require("hosted-git-info").fromUrl(gitUrl).browse();
+    const info = require("hosted-git-info").fromUrl(gitUrl);
+    if (info && info.browse) return info.browse();
   }
 
   return homepage || "";
