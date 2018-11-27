@@ -56,7 +56,7 @@ if (args.help) {
     -s, --semver patch|minor      Consider only up to given semver level
     -E, --error-on-outdated       Exit with error code 2 on outdated packages
     -r, --registry <url>          Use given registry URL
-    -f, --file <path>             Use given package.json file
+    -f, --file <path>             Use given package.json file or module directory
     -j, --json                    Output a JSON object
     -c, --color                   Force-enable color output
     -n, --no-color                Disable color output
@@ -87,7 +87,17 @@ const greatest = parseMixedArg(args.greatest);
 const prerelease = parseMixedArg(args.prerelease);
 
 const registry = args.registry.endsWith("/") ? args.registry : args.registry + "/";
-const packageFile = args.file || require("find-up").sync("package.json");
+
+let packageFile;
+if (args.file) {
+  if (args.file.endsWith("package.json")) {
+    packageFile = args.file;
+  } else {
+    packageFile = path.join(args.file, "package.json");
+  }
+} else {
+  packageFile = require("find-up").sync("package.json");
+}
 
 let dependencyTypes;
 if (args.types) {
