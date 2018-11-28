@@ -80,14 +80,8 @@ if (args.version) {
   process.exit(0);
 }
 
-let useColor = Boolean(process.stdout.isTTY);
-if (args["color"]) useColor = true;
-if (args["no-color"]) useColor = false;
-
-const colors = {
-  green: str => useColor ? `\x1b[0;32m${str}\x1b[0m` : str,
-  red: str => useColor ? `\x1b[0;31m${str}\x1b[0m` : str,
-};
+if (args["color"]) process.env.FORCE_COLOR = "1";
+if (args["no-color"]) process.env.FORCE_COLOR = "0";
 
 const greatest = parseMixedArg(args.greatest);
 const prerelease = parseMixedArg(args.prerelease);
@@ -173,6 +167,7 @@ if (!Object.keys(deps).length) {
 
 const fetch = require("make-fetch-happen");
 const esc = require("escape-string-regexp");
+const chalk = require("chalk");
 const hostedGitInfo = require("hosted-git-info");
 
 const get = async name => {
@@ -229,7 +224,7 @@ Promise.all(Object.keys(deps).map(name => get(name))).then(dati => {
  │  package.json updated  │
  ╰────────────────────────╯`;
 
-  finish(colors.green(msg.substring(1)));
+  finish(chalk.green(msg.substring(1)));
 }).catch(finish);
 
 function finish(obj, opts) {
@@ -267,7 +262,7 @@ function finish(obj, opts) {
 function highlightDiff(a, b, added) {
   const aParts = a.split(/\./);
   const bParts = b.split(/\./);
-  const color = colors[added ? "green" : "red"];
+  const color = chalk[added ? "green" : "red"];
   const versionPartRe = /^[0-9a-zA-Z-.]+$/;
   let res = "";
 
