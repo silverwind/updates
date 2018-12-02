@@ -66,7 +66,7 @@ minimist    ^1.0.0    ^1.2.0
 ```
 ### JSON Output
 
-The JSON output is an option with possible properties `results`, `message` and `error`:
+The JSON output is an object with possible properties `results`, `message` and `error`:
 
 ```console
 $ updates -j | jq
