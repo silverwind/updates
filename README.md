@@ -25,7 +25,8 @@ usage: updates [options]
     -i, --include <pkg,...>       Include only given packages
     -e, --exclude <pkg,...>       Exclude given packages
     -t, --types <type,...>        Check only given dependency types
-    -s, --semver patch|minor      Consider only up to given semver level
+    -P, --patch [<pkg,...>]       Consider only up to semver-patch
+    -m, --minor [<pkg,...>]       Consider only up to semver-minor
     -E, --error-on-outdated       Exit with error code 2 on outdated packages
     -r, --registry <url>          Use given registry URL
     -f, --file <path>             Use given package.json file or module directory
@@ -48,18 +49,18 @@ usage: updates [options]
 ### Check for updates
 ```console
 $ updates
-NAME        OLD       NEW
-chalk       1.3.0     2.3.0
-got         ^7.0.1    ^8.0.1
-minimist    ^1.0.0    ^1.2.0
+NAME                        OLD       NEW       INFO
+string-width                2.1.1     3.0.0     https://github.com/sindresorhus/string-width
+eslint                      5.9.0     5.10.0    https://github.com/eslint/eslint
+eslint-config-silverwind    2.0.11    2.0.12    https://github.com/silverwind/eslint-config-silverwind
 ```
 ### Update package.json
 ```console
 $ updates -u
-NAME        OLD       NEW
-chalk       1.3.0     2.3.0
-got         ^7.0.1    ^8.0.1
-minimist    ^1.0.0    ^1.2.0
+NAME                        OLD       NEW       INFO
+string-width                2.1.1     3.0.0     https://github.com/sindresorhus/string-width
+eslint                      5.9.0     5.10.0    https://github.com/eslint/eslint
+eslint-config-silverwind    2.0.11    2.0.12    https://github.com/silverwind/eslint-config-silverwind
 ╭────────────────────────╮
 │  package.json updated  │
 ╰────────────────────────╯
@@ -72,17 +73,20 @@ The JSON output is an object with possible properties `results`, `message` and `
 $ updates -j | jq
 {
   "results": {
-    "chalk": {
-      "old": "1.3.0",
-      "new": "2.3.0"
+    "string-width": {
+      "old": "2.1.1",
+      "new": "3.0.0",
+      "info": "https://github.com/sindresorhus/string-width"
     },
-    "got": {
-      "old": "^7.0.1",
-      "new": "^8.0.1"
+    "eslint": {
+      "old": "5.9.0",
+      "new": "5.10.0",
+      "info": "https://github.com/eslint/eslint"
     },
-    "minimist": {
-      "old": "^1.0.0",
-      "new": "^1.2.0"
+    "eslint-config-silverwind": {
+      "old": "2.0.11",
+      "new": "2.0.12",
+      "info": "https://github.com/silverwind/eslint-config-silverwind"
     }
   }
 }

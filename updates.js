@@ -16,10 +16,11 @@ const args = require("minimist")(process.argv.slice(2), {
   string: [
     "f", "file",
     "g", "greatest",
+    "m", "minor",
+    "P", "patch",
     "p", "prerelease",
     "r", "registry",
     "t", "types",
-    "s", "semver",
   ],
   default: {
     "registry": "https://registry.npmjs.org/",
@@ -33,7 +34,9 @@ const args = require("minimist")(process.argv.slice(2), {
     h: "help",
     i: "include",
     j: "json",
+    m: "minor",
     n: "no-color",
+    P: "patch",
     p: "prerelease",
     r: "registry",
     s: "semver",
@@ -53,7 +56,8 @@ if (args.help) {
     -i, --include <pkg,...>       Include only given packages
     -e, --exclude <pkg,...>       Exclude given packages
     -t, --types <type,...>        Check only given dependency types
-    -s, --semver patch|minor      Consider only up to given semver level
+    -P, --patch [<pkg,...>]       Consider only up to semver-patch
+    -m, --minor [<pkg,...>]       Consider only up to semver-minor
     -E, --error-on-outdated       Exit with error code 2 on outdated packages
     -r, --registry <url>          Use given registry URL
     -f, --file <path>             Use given package.json file or module directory
@@ -85,6 +89,8 @@ if (args["no-color"]) process.env.FORCE_COLOR = "0";
 
 const greatest = parseMixedArg(args.greatest);
 const prerelease = parseMixedArg(args.prerelease);
+const patch = parseMixedArg(args.patch);
+const minor = parseMixedArg(args.minor);
 
 const registry = args.registry.endsWith("/") ? args.registry : args.registry + "/";
 
@@ -109,15 +115,6 @@ if (args.types) {
     "peerDependencies",
     "optionalDependencies",
   ];
-}
-
-let semvers;
-if (args.semver === "patch") {
-  semvers = ["patch"];
-} else if (args.semver === "minor") {
-  semvers = ["patch", "minor"];
-} else {
-  semvers = ["patch", "minor", "major"];
 }
 
 const fs = require("fs");
@@ -193,8 +190,18 @@ Promise.all(Object.keys(deps).map(name => get(name))).then(dati => {
   for (const data of dati) {
     const useGreatest = typeof greatest === "boolean" ? greatest : greatest.includes(data.name);
     const usePre = typeof prerelease === "boolean" ? prerelease : prerelease.includes(data.name);
+
+    let semvers;
+    if (patch === true || Array.isArray(patch) && patch.includes(data.name)) {
+      semvers = ["patch"];
+    } else if (minor === true || Array.isArray(minor) && minor.includes(data.name)) {
+      semvers = ["patch", "minor"];
+    } else {
+      semvers = ["patch", "minor", "major"];
+    }
+
     const oldRange = deps[data.name].old;
-    const newVersion = findNewVersion(data, {usePre, useGreatest, range: oldRange});
+    const newVersion = findNewVersion(data, {usePre, useGreatest, semvers, range: oldRange});
     const newRange = updateRange(oldRange, newVersion);
 
     if (!newVersion || oldRange === newRange) {
@@ -335,7 +342,7 @@ function findNewVersion(data, opts) {
     }
 
     if ((diff === null) ||
-        (semvers.includes(diff) && semver.gte(parsed.version, newVersion[0])) ||
+        (opts.semvers.includes(diff) && semver.gte(parsed.version, newVersion[0])) ||
         (opts.usePre && diff === "prerelease")) {
       if (opts.useGreatest && semver.gt(parsed.version, newVersion[0])) {
         newVersion[0] = parsed.version;
