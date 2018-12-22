@@ -330,28 +330,30 @@ function isValidSemverRange(range) {
 
 function findNewVersion(data, opts) {
   const versions = Object.keys(data.time).filter(version => semver.valid(version));
-  const newVersion = [semver.coerce(opts.range) || "0.0.0", 0];
+  let tempVersion = semver.coerce(opts.range) || "0.0.0";
+  let tempDate = 0;
 
   for (const version of versions) {
     const parsed = semver.parse(version);
     if (parsed.prerelease.length && !opts.usePre) continue;
 
-    let diff = semver.diff(newVersion[0], parsed.version);
+    let diff = semver.diff(tempVersion, parsed.version);
     if (diff && opts.usePre) {
       diff = diff.replace(/^pre(?!release)/, "");
     }
 
-    if ((diff === null) ||
-        (opts.semvers.includes(diff) && semver.gte(parsed.version, newVersion[0])) ||
-        (opts.usePre && diff === "prerelease")) {
-      if (opts.useGreatest && semver.gt(parsed.version, newVersion[0])) {
-        newVersion[0] = parsed.version;
-      } else {
-        const date = (new Date(data.time[version])).getTime();
-        if (date >= 0 && date > newVersion[1]) {
-          newVersion[0] = parsed.version;
-          newVersion[1] = date;
-        }
+    if (!opts.semvers.includes(diff)) continue;
+    if (diff === "prerelease" && !opts.usePre) continue;
+
+    if (opts.useGreatest) {
+      if (semver.gte(parsed.version, tempVersion)) {
+        tempVersion = parsed.version;
+      }
+    } else {
+      const date = (new Date(data.time[version])).getTime();
+      if (date >= 0 && date > tempDate) {
+        tempVersion = parsed.version;
+        tempDate = date;
       }
     }
   }
@@ -360,11 +362,11 @@ function findNewVersion(data, opts) {
   // --prerelease option, but it's how npm and other tools work so we copy
   // their behaviour.
   const latestTag = data["dist-tags"].latest;
-  if (!opts.useGreatest && latestTag !== newVersion[0] && semver.diff(newVersion[0], latestTag) === "prerelease") {
-    newVersion[0] = latestTag;
+  if (!opts.useGreatest && latestTag !== tempVersion && semver.diff(tempVersion, latestTag) === "prerelease") {
+    tempVersion = latestTag;
   }
 
-  return newVersion[0] === "0.0.0" ? null : newVersion[0];
+  return tempVersion === "0.0.0" ? null : tempVersion;
 }
 
 function parseMixedArg(arg) {
