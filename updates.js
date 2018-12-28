@@ -344,9 +344,8 @@ function findNewVersion(data, opts) {
 
     if (!opts.semvers.includes(diff)) continue;
     if (diff === "prerelease" && !opts.usePre) continue;
-    if (!semver.gte(parsed.version, tempVersion)) continue;
 
-    if (opts.useGreatest) {
+    if (opts.useGreatest && semver.gte(parsed.version, tempVersion)) {
       tempVersion = parsed.version;
     } else {
       const date = (new Date(data.time[version])).getTime();
