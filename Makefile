@@ -1,6 +1,7 @@
 .PHONY: test
 test:
 	npx eslint --color --quiet *.js
+	node --trace-deprecation --throw-deprecation test.js
 
 .PHONY: publish
 publish:

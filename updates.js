@@ -324,7 +324,6 @@ function updatePkg() {
   return newPkgStr;
 }
 
-// naive regex replace
 function updateRange(range, version) {
   return range.replace(/[0-9]+\.[0-9]+\.[0-9]+(-.+)?/g, version);
 }
@@ -338,9 +337,25 @@ function isValidSemverRange(range) {
   return valid;
 }
 
-function findNewVersion(data, opts) {
-  const versions = Object.keys(data.time).filter(version => semver.valid(version));
-  let tempVersion = semver.coerce(opts.range) || "0.0.0";
+function isVersionPrerelease(version) {
+  return semver.parse(version).prerelease.length;
+}
+
+function isRangePrerelease(range) {
+  // can not use semver.coerce here because it ignores prerelease tags
+  return /[0-9]+\.[0-9]+\.[0-9]+-.+/.test(range);
+}
+
+function rangeToVersion(range) {
+  try {
+    return semver.coerce(range).version;
+  } catch (err) {
+    return "0.0.0";
+  }
+}
+
+function findVersion(data, versions, opts) {
+  let tempVersion = rangeToVersion(opts.range);
   let tempDate = 0;
 
   for (const version of versions) {
@@ -353,7 +368,7 @@ function findNewVersion(data, opts) {
     }
 
     if (!opts.semvers.includes(diff)) continue;
-    if (diff === "prerelease" && !opts.usePre) continue;
+    if (isVersionPrerelease(parsed.version) && !opts.usePre) continue;
 
     if (opts.useGreatest) {
       if (semver.gte(parsed.version, tempVersion)) {
@@ -368,15 +383,40 @@ function findNewVersion(data, opts) {
     }
   }
 
-  // Special case for when pre-releases are tagged as latest. This ignores the
-  // --prerelease option, but it's how npm and other tools work so we copy
-  // their behaviour.
-  const latestTag = data["dist-tags"].latest;
-  if (!opts.useGreatest && latestTag !== tempVersion && semver.diff(tempVersion, latestTag) === "prerelease") {
-    tempVersion = latestTag;
-  }
-
   return tempVersion === "0.0.0" ? null : tempVersion;
+}
+
+function findNewVersion(data, opts) {
+  const versions = Object.keys(data.time).filter(version => semver.valid(version));
+  const version = findVersion(data, versions, opts);
+
+  if (opts.useGreatest) {
+    return version;
+  } else {
+    const latestTag = data["dist-tags"].latest;
+    const oldVersion = semver.coerce(opts.range);
+    const oldIsPre = isRangePrerelease(opts.range);
+    const newIsPre = isVersionPrerelease(version);
+    const isGreater = semver.gt(version, oldVersion);
+
+    // update to new prerelease
+    if (opts.usePre && newIsPre && isGreater) {
+      return version;
+    }
+
+    // update from prerelease to release
+    if (oldIsPre && !newIsPre && isGreater) {
+      return version;
+    }
+
+    // do not downgrade from prerelease to release
+    if (oldIsPre && !newIsPre && !isGreater) {
+      return oldVersion;
+    }
+
+    // in all other cases, return latest dist-tag
+    return latestTag;
+  }
 }
 
 function parseMixedArg(arg) {
