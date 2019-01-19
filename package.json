@@ -27,7 +27,7 @@
     "updates.js"
   ],
   "dependencies": {
-    "chalk": "2.4.1",
+    "chalk": "2.4.2",
     "escape-string-regexp": "1.0.5",
     "find-up": "3.0.0",
     "hosted-git-info": "^2.7.1",
@@ -38,7 +38,7 @@
     "text-table": "0.2.0"
   },
   "devDependencies": {
-    "eslint": "5.11.1",
+    "eslint": "5.12.1",
     "eslint-config-silverwind": "2.0.14",
     "ver": "3.0.1"
   }
