@@ -95,11 +95,22 @@ const minor = parseMixedArg(args.minor);
 const registry = args.registry.endsWith("/") ? args.registry : args.registry + "/";
 
 let packageFile;
+const deps = {};
+
 if (args.file) {
-  if (args.file.endsWith("package.json")) {
+  let stat;
+  try {
+    stat = require("fs").lstatSync(args.file);
+  } catch (err) {
+    finish(new Error(`Unable to open ${args.file}: ${err.message}`));
+  }
+
+  if (stat && stat.isFile()) {
     packageFile = args.file;
-  } else {
+  } else if (stat && stat.isDirectory()) {
     packageFile = path.join(args.file, "package.json");
+  } else {
+    finish(new Error(`${args.file} is neither a file nor directory`));
   }
 } else {
   packageFile = require("find-up").sync("package.json");
@@ -119,7 +130,6 @@ if (args.types) {
 
 const fs = require("fs");
 let pkg, pkgStr;
-const deps = {};
 
 try {
   pkgStr = fs.readFileSync(packageFile, "utf8");
