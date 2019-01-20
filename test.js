@@ -50,6 +50,26 @@ async function main() {
       }
     }
   });
+
+  assert.deepStrictEqual(await run("-j -g -p -f test.json"), {
+    results: {
+      "gulp-sourcemaps": {
+        old: "2.0.0",
+        new: "2.6.4",
+        info: "https://github.com/floridoo/gulp-sourcemaps",
+      },
+      "prismjs": {
+        old: "1.0.0",
+        new: "9000.0.2",
+        info: "https://github.com/LeaVerou/prism",
+      },
+      "svgstore": {
+        old: "^3.0.0",
+        new: "^3.0.0-2",
+        info: "https://github.com/svgstore/svgstore",
+      }
+    }
+  });
 }
 
 main().then(exit).catch(exit);

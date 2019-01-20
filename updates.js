@@ -390,13 +390,13 @@ function findVersion(data, versions, opts) {
 function findNewVersion(data, opts) {
   const versions = Object.keys(data.time).filter(version => semver.valid(version));
   const version = findVersion(data, versions, opts);
-  const oldIsPre = isRangePrerelease(opts.range);
 
   if (opts.useGreatest) {
     return version;
   } else {
     const latestTag = data["dist-tags"].latest;
     const oldVersion = semver.coerce(opts.range).version;
+    const oldIsPre = isRangePrerelease(opts.range);
     const newIsPre = isVersionPrerelease(version);
     const isGreater = semver.gt(version, oldVersion);
 
