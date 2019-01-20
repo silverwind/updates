@@ -338,7 +338,7 @@ function isValidSemverRange(range) {
 }
 
 function isVersionPrerelease(version) {
-  return semver.parse(version).prerelease.length;
+  return Boolean(semver.parse(version).prerelease.length);
 }
 
 function isRangePrerelease(range) {
@@ -357,21 +357,22 @@ function rangeToVersion(range) {
 function findVersion(data, versions, opts) {
   let tempVersion = rangeToVersion(opts.range);
   let tempDate = 0;
+  let semvers = opts.semvers.slice();
+  const usePre = isRangePrerelease(opts.range) || opts.usePre;
+
+  if (usePre) {
+    semvers = semvers.concat(["prerelease", "prepatch", "preminor", "premajor"]);
+  }
 
   for (const version of versions) {
     const parsed = semver.parse(version);
-    if (parsed.prerelease.length && !opts.usePre) continue;
+    if (parsed.prerelease.length && !usePre) continue;
 
-    let diff = semver.diff(tempVersion, parsed.version);
-    if (diff && opts.usePre) {
-      diff = diff.replace(/^pre(?!release)/, "");
-    }
-
-    if (!opts.semvers.includes(diff)) continue;
-    if (isVersionPrerelease(parsed.version) && !opts.usePre) continue;
+    const diff = semver.diff(tempVersion, parsed.version);
+    if (!diff || !semvers.includes(diff)) continue;
 
     if (opts.useGreatest) {
-      if (semver.gte(parsed.version, tempVersion)) {
+      if (semver.gte(semver.coerce(parsed.version).version, tempVersion)) {
         tempVersion = parsed.version;
       }
     } else {
@@ -389,13 +390,13 @@ function findVersion(data, versions, opts) {
 function findNewVersion(data, opts) {
   const versions = Object.keys(data.time).filter(version => semver.valid(version));
   const version = findVersion(data, versions, opts);
+  const oldIsPre = isRangePrerelease(opts.range);
 
   if (opts.useGreatest) {
     return version;
   } else {
     const latestTag = data["dist-tags"].latest;
-    const oldVersion = semver.coerce(opts.range);
-    const oldIsPre = isRangePrerelease(opts.range);
+    const oldVersion = semver.coerce(opts.range).version;
     const newIsPre = isVersionPrerelease(version);
     const isGreater = semver.gt(version, oldVersion);
 
@@ -411,7 +412,7 @@ function findNewVersion(data, opts) {
 
     // do not downgrade from prerelease to release
     if (oldIsPre && !newIsPre && !isGreater) {
-      return oldVersion;
+      return null;
     }
 
     // in all other cases, return latest dist-tag

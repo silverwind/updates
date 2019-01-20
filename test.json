@@ -1,6 +1,7 @@
 {
   "dependencies": {
     "gulp-sourcemaps": "2.0.0",
-    "prismjs": "1.0.0"
+    "prismjs": "1.0.0",
+    "svgstore": "^3.0.0"
   }
 }
