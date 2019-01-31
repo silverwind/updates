@@ -84,8 +84,11 @@ if (args.version) {
   process.exit(0);
 }
 
-if (args["color"]) process.env.FORCE_COLOR = "1";
-if (args["no-color"]) process.env.FORCE_COLOR = "0";
+if (args["no-color"]) {
+  process.env.FORCE_COLOR = "0";
+} else if (args["color"] || process.stdout.isTTY === undefined) { // winpty compat
+  process.env.FORCE_COLOR = "1";
+}
 
 const greatest = parseMixedArg(args.greatest);
 const prerelease = parseMixedArg(args.prerelease);
