@@ -21,7 +21,7 @@ async function main() {
       "gulp-sourcemaps": {
         old: "2.0.0",
         new: "2.6.4",
-        info: "https://github.com/floridoo/gulp-sourcemaps",
+        info: "https://github.com/gulp-sourcemaps/gulp-sourcemaps",
       },
       "prismjs": {
         old: "1.0.0",
@@ -41,7 +41,7 @@ async function main() {
       "gulp-sourcemaps": {
         old: "2.0.0",
         new: "2.6.4",
-        info: "https://github.com/floridoo/gulp-sourcemaps",
+        info: "https://github.com/gulp-sourcemaps/gulp-sourcemaps",
       },
       "prismjs": {
         old: "1.0.0",
@@ -56,7 +56,7 @@ async function main() {
       "gulp-sourcemaps": {
         old: "2.0.0",
         new: "2.6.4",
-        info: "https://github.com/floridoo/gulp-sourcemaps",
+        info: "https://github.com/gulp-sourcemaps/gulp-sourcemaps",
       },
       "prismjs": {
         old: "1.0.0",
