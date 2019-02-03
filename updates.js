@@ -221,7 +221,7 @@ Promise.all(Object.keys(deps).map(name => get(name))).then(dati => {
       delete deps[data.name];
     } else {
       deps[data.name].new = newRange;
-      deps[data.name].info = getInfoUrl(data);
+      deps[data.name].info = getInfoUrl(data.versions[newVersion] || data);
     }
   }
 
