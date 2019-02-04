@@ -176,7 +176,6 @@ if (!Object.keys(deps).length) {
 }
 
 const fetch = require("make-fetch-happen");
-const esc = require("escape-string-regexp");
 const chalk = require("chalk");
 const hostedGitInfo = require("hosted-git-info");
 
@@ -306,12 +305,14 @@ function highlightDiff(a, b, added) {
 
 function formatDeps() {
   const arr = [["NAME", "OLD", "NEW", "INFO"]];
+
   for (const [name, data] of Object.entries(deps)) arr.push([
     name,
     highlightDiff(data.old, data.new, false),
     highlightDiff(data.new, data.old, true),
-    data.info
+    data.info,
   ]);
+
   return require("text-table")(arr, {
     hsep: " ".repeat(4),
     stringLength: require("string-width"),
@@ -319,11 +320,14 @@ function formatDeps() {
 }
 
 function updatePkg() {
+  const esc = require("escape-string-regexp");
   let newPkgStr = pkgStr;
+
   for (const dep of Object.keys(deps)) {
     const re = new RegExp(`"${esc(dep)}": +"${esc(deps[dep].old)}"`, "g");
     newPkgStr = newPkgStr.replace(re, `"${dep}": "${deps[dep].new}"`);
   }
+
   return newPkgStr;
 }
 
