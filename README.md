@@ -39,8 +39,8 @@ usage: updates [options]
   Examples:
     $ updates
     $ updates -u
+    $ updates -u -m
     $ updates -u -e chalk
-    $ updates -u -s minor
     $ updates -u -t devDependencies
 ```
 
