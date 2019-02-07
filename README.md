@@ -29,6 +29,7 @@ usage: updates [options]
     -m, --minor [<pkg,...>]       Consider only up to semver-minor
     -E, --error-on-outdated       Exit with error code 2 on outdated packages
     -r, --registry <url>          Use given registry URL
+    -a, --auth                    Authorize against the registry
     -f, --file <path>             Use given package.json file or module directory
     -j, --json                    Output a JSON object
     -c, --color                   Force-enable color output

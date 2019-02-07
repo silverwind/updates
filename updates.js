@@ -5,6 +5,7 @@ process.env.NODE_ENV = "production";
 
 const args = require("minimist")(process.argv.slice(2), {
   boolean: [
+    "a", "auth",
     "c", "color",
     "E", "error-on-outdated",
     "h", "help",
@@ -26,6 +27,7 @@ const args = require("minimist")(process.argv.slice(2), {
     "registry": "https://registry.npmjs.org/",
   },
   alias: {
+    a: "auth",
     c: "color",
     E: "error-on-outdated",
     e: "exclude",
@@ -60,6 +62,7 @@ if (args.help) {
     -m, --minor [<pkg,...>]       Consider only up to semver-minor
     -E, --error-on-outdated       Exit with error code 2 on outdated packages
     -r, --registry <url>          Use given registry URL
+    -a, --auth                    Authorize against the registry
     -f, --file <path>             Use given package.json file or module directory
     -j, --json                    Output a JSON object
     -c, --color                   Force-enable color output
@@ -179,13 +182,30 @@ const fetch = require("make-fetch-happen");
 const chalk = require("chalk");
 const hostedGitInfo = require("hosted-git-info");
 
+let auth;
+if (args.auth) {
+  auth = require("registry-auth-token")(registry);
+  if (!auth) {
+    finish(new Error(`Unable to find auth token for ${registry}`));
+  }
+}
+
 const get = async name => {
   // on scoped packages replace "/" with "%2f"
   if (/@[a-z0-9][\w-.]+\/[a-z0-9][\w-.]*/gi.test(name)) {
     name = name.replace(/\//g, "%2f");
   }
 
-  return fetch(registry + name).then(r => r.json());
+  let opts;
+  if (auth && auth.token) {
+    opts = {
+      headers: {
+        Authorization: `Bearer ${auth.token}`,
+      },
+    };
+  }
+
+  return fetch(registry + name, opts).then(r => r.json());
 };
 
 const getInfoUrl = ({repository, homepage}) => {
