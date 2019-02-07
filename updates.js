@@ -5,7 +5,6 @@ process.env.NODE_ENV = "production";
 
 const args = require("minimist")(process.argv.slice(2), {
   boolean: [
-    "a", "auth",
     "c", "color",
     "E", "error-on-outdated",
     "h", "help",
@@ -27,7 +26,6 @@ const args = require("minimist")(process.argv.slice(2), {
     "registry": "https://registry.npmjs.org/",
   },
   alias: {
-    a: "auth",
     c: "color",
     E: "error-on-outdated",
     e: "exclude",
@@ -62,7 +60,6 @@ if (args.help) {
     -m, --minor [<pkg,...>]       Consider only up to semver-minor
     -E, --error-on-outdated       Exit with error code 2 on outdated packages
     -r, --registry <url>          Use given registry URL
-    -a, --auth                    Authorize against the registry
     -f, --file <path>             Use given package.json file or module directory
     -j, --json                    Output a JSON object
     -c, --color                   Force-enable color output
@@ -183,11 +180,10 @@ const chalk = require("chalk");
 const hostedGitInfo = require("hosted-git-info");
 
 let auth;
-if (args.auth) {
+try {
   auth = require("registry-auth-token")(registry);
-  if (!auth) {
-    finish(new Error(`Unable to find auth token for ${registry}`));
-  }
+} catch (err) {
+  finish(err);
 }
 
 const get = async name => {
@@ -220,6 +216,10 @@ const getInfoUrl = ({repository, homepage}) => {
 
 Promise.all(Object.keys(deps).map(name => get(name))).then(dati => {
   for (const data of dati) {
+    if (data && data.error) {
+      finish(new Error(data.error));
+    }
+
     const useGreatest = typeof greatest === "boolean" ? greatest : greatest.includes(data.name);
     const usePre = typeof prerelease === "boolean" ? prerelease : prerelease.includes(data.name);
 
