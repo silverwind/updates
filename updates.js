@@ -3,6 +3,8 @@
 
 process.env.NODE_ENV = "production";
 
+const npmRegisty = "https://registry.npmjs.org/";
+
 const args = require("minimist")(process.argv.slice(2), {
   boolean: [
     "c", "color",
@@ -22,9 +24,6 @@ const args = require("minimist")(process.argv.slice(2), {
     "r", "registry",
     "t", "types",
   ],
-  default: {
-    "registry": "https://registry.npmjs.org/",
-  },
   alias: {
     c: "color",
     E: "error-on-outdated",
@@ -95,7 +94,19 @@ const prerelease = parseMixedArg(args.prerelease);
 const patch = parseMixedArg(args.patch);
 const minor = parseMixedArg(args.minor);
 
-const registry = args.registry.endsWith("/") ? args.registry : args.registry + "/";
+let registry;
+if (args.registry) {
+  registry = args.registry;
+} else {
+  try {
+    registry = require("npm-conf")().get("registry");
+  } catch (err) {
+    registry = npmRegisty;
+  }
+}
+if (!registry.endsWith("/")) {
+  registry += "/";
+}
 
 let packageFile;
 const deps = {};
@@ -178,30 +189,37 @@ if (!Object.keys(deps).length) {
 const fetch = require("make-fetch-happen");
 const chalk = require("chalk");
 const hostedGitInfo = require("hosted-git-info");
+const registryAuthToken = require("registry-auth-token");
 
-let auth;
-try {
-  auth = require("registry-auth-token")(registry);
-} catch (err) {
-  finish(err);
-}
+function fetchFromRegistry(name, registry) {
+  let auth;
+  try {
+    auth = registryAuthToken(registry);
+  } catch (err) {
+    finish(err);
+  }
 
-const get = async name => {
   // on scoped packages replace "/" with "%2f"
   if (/@[a-z0-9][\w-.]+\/[a-z0-9][\w-.]*/gi.test(name)) {
     name = name.replace(/\//g, "%2f");
   }
 
-  let opts;
-  if (auth && auth.token) {
-    opts = {
-      headers: {
-        Authorization: `Bearer ${auth.token}`,
-      },
-    };
-  }
+  const opts = (auth && auth.token) ? {headers: {Authorization: `Bearer ${auth.token}`}} : undefined;
+  return fetch(registry + name, opts);
+}
 
-  return fetch(registry + name, opts).then(r => r.json());
+const get = async name => {
+  let res = await fetchFromRegistry(name, registry);
+  if (registry === npmRegisty || (res.status >= 200 && res.status < 300)) {
+    return await res.json();
+  } else { // retry on official registry if custom registry fails
+    res = await fetchFromRegistry(name, npmRegisty);
+    if (res.status >= 200 && res.status < 300) {
+      return await res.json();
+    } else {
+      throw new Error(`Received ${res.status} ${res.statusText} for ${name}`);
+    }
+  }
 };
 
 const getInfoUrl = ({repository, homepage}) => {
@@ -217,7 +235,7 @@ const getInfoUrl = ({repository, homepage}) => {
 Promise.all(Object.keys(deps).map(name => get(name))).then(dati => {
   for (const data of dati) {
     if (data && data.error) {
-      finish(new Error(data.error));
+      throw new Error(data.error);
     }
 
     const useGreatest = typeof greatest === "boolean" ? greatest : greatest.includes(data.name);
