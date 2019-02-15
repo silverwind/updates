@@ -433,6 +433,7 @@ function findVersion(data, versions, opts) {
 }
 
 function findNewVersion(data, opts) {
+  if (opts.range === "*") return "*";
   const versions = Object.keys(data.time).filter(version => semver.valid(version));
   const version = findVersion(data, versions, opts);
 
