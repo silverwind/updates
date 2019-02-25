@@ -21,6 +21,7 @@ usage: updates [options]
   Options:
     -u, --update                  Update versions and write package.json
     -p, --prerelease [<pkg,...>]  Consider prerelease versions
+    -R, --release [<pkg,...>]     Only use release versions, may downgrade
     -g, --greatest [<pkg,...>]    Prefer greatest over latest version
     -i, --include <pkg,...>       Include only given packages
     -e, --exclude <pkg,...>       Exclude given packages

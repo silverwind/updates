@@ -21,6 +21,7 @@ const args = require("minimist")(process.argv.slice(2), {
     "m", "minor",
     "P", "patch",
     "p", "prerelease",
+    "R", "release",
     "r", "registry",
     "t", "types",
   ],
@@ -38,6 +39,7 @@ const args = require("minimist")(process.argv.slice(2), {
     P: "patch",
     p: "prerelease",
     r: "registry",
+    R: "release",
     s: "semver",
     t: "types",
     u: "update",
@@ -51,6 +53,7 @@ if (args.help) {
   Options:
     -u, --update                  Update versions and write package.json
     -p, --prerelease [<pkg,...>]  Consider prerelease versions
+    -R, --release [<pkg,...>]     Only use release versions, may downgrade
     -g, --greatest [<pkg,...>]    Prefer greatest over latest version
     -i, --include <pkg,...>       Include only given packages
     -e, --exclude <pkg,...>       Exclude given packages
@@ -91,6 +94,7 @@ if (args["no-color"]) {
 
 const greatest = parseMixedArg(args.greatest);
 const prerelease = parseMixedArg(args.prerelease);
+const release = parseMixedArg(args.release);
 const patch = parseMixedArg(args.patch);
 const minor = parseMixedArg(args.minor);
 
@@ -240,6 +244,7 @@ Promise.all(Object.keys(deps).map(name => get(name))).then(dati => {
 
     const useGreatest = typeof greatest === "boolean" ? greatest : greatest.includes(data.name);
     const usePre = typeof prerelease === "boolean" ? prerelease : prerelease.includes(data.name);
+    const useRel = typeof release === "boolean" ? release : release.includes(data.name);
 
     let semvers;
     if (patch === true || Array.isArray(patch) && patch.includes(data.name)) {
@@ -251,7 +256,7 @@ Promise.all(Object.keys(deps).map(name => get(name))).then(dati => {
     }
 
     const oldRange = deps[data.name].old;
-    const newVersion = findNewVersion(data, {usePre, useGreatest, semvers, range: oldRange});
+    const newVersion = findNewVersion(data, {usePre, useRel, useGreatest, semvers, range: oldRange});
     const newRange = updateRange(oldRange, newVersion);
 
     if (!newVersion || oldRange === newRange) {
@@ -403,6 +408,7 @@ function findVersion(data, versions, opts) {
   let tempVersion = rangeToVersion(opts.range);
   let tempDate = 0;
   let semvers = opts.semvers.slice();
+
   const usePre = isRangePrerelease(opts.range) || opts.usePre;
 
   if (usePre) {
@@ -411,7 +417,7 @@ function findVersion(data, versions, opts) {
 
   for (const version of versions) {
     const parsed = semver.parse(version);
-    if (parsed.prerelease.length && !usePre) continue;
+    if (parsed.prerelease.length && (!usePre || opts.useRel)) continue;
 
     const diff = semver.diff(tempVersion, parsed.version);
     if (!diff || !semvers.includes(diff)) continue;
@@ -444,13 +450,17 @@ function findNewVersion(data, opts) {
     const oldVersion = semver.coerce(opts.range).version;
     const oldIsPre = isRangePrerelease(opts.range);
     const newIsPre = isVersionPrerelease(version);
+    const isGreater = semver.gt(version, oldVersion);
 
     // update to new prerelease
-    if (opts.usePre || (oldIsPre && newIsPre)) {
+    if (!opts.useRel && opts.usePre || (oldIsPre && newIsPre)) {
       return version;
     }
 
-    const isGreater = semver.gt(version, oldVersion);
+    // downgrade from prerelease to release on --release-only
+    if (opts.useRel && !isGreater && oldIsPre && !newIsPre) {
+      return version;
+    }
 
     // update from prerelease to release
     if (oldIsPre && !newIsPre && isGreater) {
@@ -460,6 +470,17 @@ function findNewVersion(data, opts) {
     // do not downgrade from prerelease to release
     if (oldIsPre && !newIsPre && !isGreater) {
       return null;
+    }
+
+    // check if latestTag is allowed by semvers
+    const diff = semver.diff(oldVersion, latestTag);
+    if (diff && diff !== "prerelease" && !opts.semvers.includes(diff.replace(/^pre/, ""))) {
+      return version;
+    }
+
+    // prevent upgrading to prerelease with --release-only
+    if (opts.useRel && isVersionPrerelease(latestTag)) {
+      return version;
     }
 
     // in all other cases, return latest dist-tag

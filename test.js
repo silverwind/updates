@@ -37,6 +37,11 @@ async function main() {
         old: "4.0.0-alpha.2",
         new: "4.0.0-beta.5",
         info: "https://github.com/jantimon/html-webpack-plugin",
+      },
+      "noty": {
+        old: "3.1.0",
+        new: "3.2.0-beta",
+        info: "https://github.com/needim/noty",
       }
     }
   });
@@ -57,6 +62,11 @@ async function main() {
         old: "4.0.0-alpha.2",
         new: "4.0.0-beta.5",
         info: "https://github.com/jantimon/html-webpack-plugin",
+      },
+      "noty": {
+        old: "3.1.0",
+        new: "3.1.4",
+        info: "https://github.com/needim/noty",
       }
     }
   });
@@ -82,6 +92,41 @@ async function main() {
         old: "4.0.0-alpha.2",
         new: "4.0.0-beta.5",
         info: "https://github.com/jantimon/html-webpack-plugin",
+      },
+      "noty": {
+        old: "3.1.0",
+        new: "3.2.0-beta",
+        info: "https://github.com/needim/noty",
+      }
+    }
+  });
+
+  assert.deepStrictEqual(await run("-j -R -f test.json"), {
+    results: {
+      "gulp-sourcemaps": {
+        old: "2.0.0",
+        new: "2.6.5",
+        info: "https://github.com/gulp-sourcemaps/gulp-sourcemaps",
+      },
+      "prismjs": {
+        old: "1.0.0",
+        new: "1.15.0",
+        info: "https://github.com/LeaVerou/prism",
+      },
+      "svgstore": {
+        old: "^3.0.0",
+        new: "^2.0.3",
+        info: "https://github.com/svgstore/svgstore",
+      },
+      "html-webpack-plugin": {
+        old: "4.0.0-alpha.2",
+        new: "3.2.0",
+        info: "https://github.com/jantimon/html-webpack-plugin",
+      },
+      "noty": {
+        old: "3.1.0",
+        new: "3.1.4",
+        info: "https://github.com/needim/noty",
       }
     }
   });
