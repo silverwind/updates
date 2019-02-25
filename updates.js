@@ -444,12 +444,13 @@ function findNewVersion(data, opts) {
     const oldVersion = semver.coerce(opts.range).version;
     const oldIsPre = isRangePrerelease(opts.range);
     const newIsPre = isVersionPrerelease(version);
-    const isGreater = semver.gt(version, oldVersion);
 
     // update to new prerelease
-    if (opts.usePre && newIsPre && isGreater) {
+    if (opts.usePre || (oldIsPre && newIsPre)) {
       return version;
     }
+
+    const isGreater = semver.gt(version, oldVersion);
 
     // update from prerelease to release
     if (oldIsPre && !newIsPre && isGreater) {

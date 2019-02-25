@@ -20,7 +20,7 @@ async function main() {
     results: {
       "gulp-sourcemaps": {
         old: "2.0.0",
-        new: "2.6.4",
+        new: "2.6.5",
         info: "https://github.com/gulp-sourcemaps/gulp-sourcemaps",
       },
       "prismjs": {
@@ -32,6 +32,11 @@ async function main() {
         old: "^3.0.0",
         new: "^3.0.0-2",
         info: "https://github.com/svgstore/svgstore",
+      },
+      "html-webpack-plugin": {
+        old: "4.0.0-alpha.2",
+        new: "4.0.0-beta.5",
+        info: "https://github.com/jantimon/html-webpack-plugin",
       }
     }
   });
@@ -40,13 +45,18 @@ async function main() {
     results: {
       "gulp-sourcemaps": {
         old: "2.0.0",
-        new: "2.6.4",
+        new: "2.6.5",
         info: "https://github.com/gulp-sourcemaps/gulp-sourcemaps",
       },
       "prismjs": {
         old: "1.0.0",
         new: "9000.0.2",
         info: "https://github.com/LeaVerou/prism",
+      },
+      "html-webpack-plugin": {
+        old: "4.0.0-alpha.2",
+        new: "4.0.0-beta.5",
+        info: "https://github.com/jantimon/html-webpack-plugin",
       }
     }
   });
@@ -55,7 +65,7 @@ async function main() {
     results: {
       "gulp-sourcemaps": {
         old: "2.0.0",
-        new: "2.6.4",
+        new: "2.6.5",
         info: "https://github.com/gulp-sourcemaps/gulp-sourcemaps",
       },
       "prismjs": {
@@ -67,6 +77,11 @@ async function main() {
         old: "^3.0.0",
         new: "^3.0.0-2",
         info: "https://github.com/svgstore/svgstore",
+      },
+      "html-webpack-plugin": {
+        old: "4.0.0-alpha.2",
+        new: "4.0.0-beta.5",
+        info: "https://github.com/jantimon/html-webpack-plugin",
       }
     }
   });
