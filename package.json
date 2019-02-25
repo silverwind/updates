@@ -40,8 +40,8 @@
     "text-table": "0.2.0"
   },
   "devDependencies": {
-    "eslint": "5.13.0",
-    "eslint-config-silverwind": "2.0.14",
+    "eslint": "5.14.1",
+    "eslint-config-silverwind": "2.1.0",
     "execa": "1.0.0",
     "ver": "4.0.1"
   }
