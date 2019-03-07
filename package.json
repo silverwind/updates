@@ -1,7 +1,7 @@
 {
   "name": "updates",
   "version": "7.2.0",
-  "description": "Fast npm dependency updating tool",
+  "description": "flexible npm dependency update tool",
   "author": "silverwind",
   "repository": "silverwind/updates",
   "license": "BSD-2-Clause",
