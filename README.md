@@ -26,7 +26,7 @@ $ updates -u && rm -rf node_modules && yarn
 
 ## Options
 
-See `--help` or below for the available options. Option that take multiple arguments can take them either via comma-separated value or by specifying the option multiple times. If an option has a optional `pkg` argument but non is given, the action will be applied to all packages instead.
+See `--help` or below for the available options. Option that take multiple arguments can take them either via comma-separated value or by specifying the option multiple times. If an option has a optional `pkg` argument but none is given, the option will be applied to all packages instead.
 
 ```
 usage: updates [options]
