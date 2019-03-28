@@ -388,7 +388,9 @@ function isValidSemverRange(range) {
 }
 
 function isVersionPrerelease(version) {
-  return Boolean(semver.parse(version).prerelease.length);
+  const parsed = semver.parse(version);
+  if (!parsed) return false;
+  return Boolean(parsed.prerelease.length);
 }
 
 function isRangePrerelease(range) {
@@ -400,7 +402,7 @@ function rangeToVersion(range) {
   try {
     return semver.coerce(range).version;
   } catch (err) {
-    return "0.0.0";
+    return null;
   }
 }
 
@@ -435,7 +437,7 @@ function findVersion(data, versions, opts) {
     }
   }
 
-  return tempVersion === "0.0.0" ? null : tempVersion;
+  return tempVersion || null;
 }
 
 function findNewVersion(data, opts) {

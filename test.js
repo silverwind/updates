@@ -25,7 +25,7 @@ async function main() {
       },
       "prismjs": {
         old: "1.0.0",
-        new: "1.15.0",
+        new: "1.16.0",
         info: "https://github.com/LeaVerou/prism",
       },
       "svgstore": {
@@ -42,6 +42,11 @@ async function main() {
         old: "3.1.0",
         new: "3.2.0-beta",
         info: "https://github.com/needim/noty",
+      },
+      "jpeg-buffer-orientation": {
+        old: "0.0.0",
+        new: "1.0.0",
+        info: "https://github.com/fisker/jpeg-buffer-orientation",
       }
     }
   });
@@ -67,6 +72,11 @@ async function main() {
         old: "3.1.0",
         new: "3.1.4",
         info: "https://github.com/needim/noty",
+      },
+      "jpeg-buffer-orientation": {
+        old: "0.0.0",
+        new: "1.0.0",
+        info: "https://github.com/fisker/jpeg-buffer-orientation",
       }
     }
   });
@@ -97,6 +107,11 @@ async function main() {
         old: "3.1.0",
         new: "3.2.0-beta",
         info: "https://github.com/needim/noty",
+      },
+      "jpeg-buffer-orientation": {
+        old: "0.0.0",
+        new: "1.0.0",
+        info: "https://github.com/fisker/jpeg-buffer-orientation",
       }
     }
   });
@@ -110,7 +125,7 @@ async function main() {
       },
       "prismjs": {
         old: "1.0.0",
-        new: "1.15.0",
+        new: "1.16.0",
         info: "https://github.com/LeaVerou/prism",
       },
       "svgstore": {
@@ -127,7 +142,37 @@ async function main() {
         old: "3.1.0",
         new: "3.1.4",
         info: "https://github.com/needim/noty",
+      },
+      "jpeg-buffer-orientation": {
+        old: "0.0.0",
+        new: "1.0.0",
+        info: "https://github.com/fisker/jpeg-buffer-orientation",
       }
+    }
+  });
+
+  assert.deepStrictEqual(await run("-j -P -f test.json"), {
+    results: {
+      "gulp-sourcemaps": {
+        old: "2.0.0",
+        new: "2.0.1",
+        info: "https://github.com/floridoo/gulp-sourcemaps",
+      },
+      "svgstore": {
+        old: "^3.0.0",
+        new: "^3.0.0-2",
+        info: "https://github.com/svgstore/svgstore",
+      },
+      "html-webpack-plugin": {
+        old: "4.0.0-alpha.2",
+        new: "4.0.0-beta.5",
+        info: "https://github.com/jantimon/html-webpack-plugin",
+      },
+      "noty": {
+        old: "3.1.0",
+        new: "3.1.4",
+        info: "https://github.com/needim/noty",
+      },
     }
   });
 }
