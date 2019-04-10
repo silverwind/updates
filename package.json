@@ -1,7 +1,7 @@
 {
   "name": "updates",
   "version": "8.0.0",
-  "description": "flexible npm dependency update tool",
+  "description": "Flexible npm dependency update tool",
   "author": "silverwind",
   "repository": "silverwind/updates",
   "license": "BSD-2-Clause",
