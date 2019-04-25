@@ -28,7 +28,7 @@
   ],
   "dependencies": {
     "chalk": "2.4.2",
-    "escape-string-regexp": "1.0.5",
+    "escape-string-regexp": "2.0.0",
     "find-up": "3.0.0",
     "hosted-git-info": "2.7.1",
     "make-fetch-happen": "4.0.1",
@@ -43,6 +43,6 @@
     "eslint": "5.16.0",
     "eslint-config-silverwind": "2.1.0",
     "execa": "1.0.0",
-    "ver": "4.1.0"
+    "ver": "4.2.0"
   }
 }
