@@ -47,7 +47,12 @@ async function main() {
         old: "0.0.0",
         new: "1.0.0",
         info: "https://github.com/fisker/jpeg-buffer-orientation",
-      }
+      },
+      "styled-components": {
+        old: "2.5.0-1",
+        new: "4.2.0",
+        info: "https://github.com/styled-components/styled-components",
+      },
     }
   });
 
@@ -77,7 +82,12 @@ async function main() {
         old: "0.0.0",
         new: "1.0.0",
         info: "https://github.com/fisker/jpeg-buffer-orientation",
-      }
+      },
+      "styled-components": {
+        old: "2.5.0-1",
+        new: "4.2.0",
+        info: "https://github.com/styled-components/styled-components",
+      },
     }
   });
 
@@ -112,7 +122,12 @@ async function main() {
         old: "0.0.0",
         new: "1.0.0",
         info: "https://github.com/fisker/jpeg-buffer-orientation",
-      }
+      },
+      "styled-components": {
+        old: "2.5.0-1",
+        new: "4.2.0",
+        info: "https://github.com/styled-components/styled-components",
+      },
     }
   });
 
@@ -147,7 +162,12 @@ async function main() {
         old: "0.0.0",
         new: "1.0.0",
         info: "https://github.com/fisker/jpeg-buffer-orientation",
-      }
+      },
+      "styled-components": {
+        old: "2.5.0-1",
+        new: "4.2.0",
+        info: "https://github.com/styled-components/styled-components",
+      },
     }
   });
 

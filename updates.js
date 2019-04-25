@@ -409,12 +409,15 @@ function rangeToVersion(range) {
 function findVersion(data, versions, opts) {
   let tempVersion = rangeToVersion(opts.range);
   let tempDate = 0;
-  let semvers = opts.semvers.slice();
 
+  const semvers = opts.semvers.slice();
   const usePre = isRangePrerelease(opts.range) || opts.usePre;
 
   if (usePre) {
-    semvers = semvers.concat(["prerelease", "prepatch", "preminor", "premajor"]);
+    semvers.push("prerelease");
+    if (semvers.includes("patch")) semvers.push("prepatch");
+    if (semvers.includes("minor")) semvers.push("preminor");
+    if (semvers.includes("major")) semvers.push("premajor");
   }
 
   for (const version of versions) {
