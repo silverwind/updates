@@ -21,7 +21,7 @@ $ updates
 
 When changes are satisfactory, update `package.json` and re-install modules:
 ```console
-$ updates -u && rm -rf node_modules && yarn
+$ updates -u && rm -rf node_modules && npm i
 ```
 
 ## Options
