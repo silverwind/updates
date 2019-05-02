@@ -12,7 +12,7 @@ publish:
 update:
 	node updates.js -u
 	rm -rf node_modules
-	yarn --no-lockfile
+	npm i
 
 .PHONY: patch
 patch:
