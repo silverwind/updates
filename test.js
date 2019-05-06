@@ -50,7 +50,7 @@ async function main() {
       },
       "styled-components": {
         old: "2.5.0-1",
-        new: "4.2.0",
+        new: "5.0.0-3.canary-sheet",
         info: "https://github.com/styled-components/styled-components",
       },
     }
@@ -85,7 +85,7 @@ async function main() {
       },
       "styled-components": {
         old: "2.5.0-1",
-        new: "4.2.0",
+        new: "5.0.0-3.canary-sheet",
         info: "https://github.com/styled-components/styled-components",
       },
     }
@@ -125,7 +125,7 @@ async function main() {
       },
       "styled-components": {
         old: "2.5.0-1",
-        new: "4.2.0",
+        new: "5.0.0-3.canary-sheet",
         info: "https://github.com/styled-components/styled-components",
       },
     }
