@@ -281,16 +281,13 @@ Promise.all(Object.keys(deps).map(name => get(name))).then(dati => {
     finish(new Error(`Error writing package.json: ${err.message}`));
   }
 
-  const msg = `
+  finish(chalk.green(`
  ╭────────────────────────╮
  │  package.json updated  │
- ╰────────────────────────╯`;
-
-  finish(chalk.green(msg.substring(1)));
+ ╰────────────────────────╯`.substring(1)));
 }).catch(finish);
 
-function finish(obj, opts) {
-  opts = opts || {};
+function finish(obj, opts = {}) {
   const output = {};
   const hadError = obj instanceof Error;
 
