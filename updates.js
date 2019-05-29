@@ -98,6 +98,8 @@ const release = parseMixedArg(args.release);
 const patch = parseMixedArg(args.patch);
 const minor = parseMixedArg(args.minor);
 
+const chalk = require("chalk");
+
 let registry;
 if (args.registry) {
   registry = args.registry;
@@ -194,7 +196,6 @@ if (!Object.keys(deps).length) {
 }
 
 const fetch = require("make-fetch-happen");
-const chalk = require("chalk");
 const hostedGitInfo = require("hosted-git-info");
 const registryAuthToken = require("registry-auth-token");
 
@@ -310,7 +311,14 @@ function finish(obj, opts = {}) {
       console.info(formatDeps(deps));
     }
     if (output.message || output.error) {
-      console.info(output.message || output.error);
+      if (output.message) {
+        console.info(output.message);
+      } else if (output.error) {
+        const lines = output.error.split(/\r?\n/);
+        for (const [index, line] of Object.entries(lines)) {
+          console.info(chalk[index === "0" ? "red" : "grey"](line));
+        }
+      }
     }
   }
 
