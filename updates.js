@@ -133,7 +133,7 @@ if (args.file) {
 } else {
   packageFile = require("find-up").sync("package.json");
   if (!packageFile) {
-    finish(new Error(`Unable to find package.json in this or any parent directories`));
+    finish(new Error(`Unable to find package.json in ${process.cwd()} or any of its parent directories`));
   }
 }
 
