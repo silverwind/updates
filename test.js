@@ -12,7 +12,8 @@ function exit(err) {
 }
 
 async function run(args) {
-  return JSON.parse(await execa.stdout("./updates.js", args.split(/\s+/)));
+  const {stdout} = await execa("./updates.js", args.split(/\s+/));
+  return JSON.parse(stdout);
 }
 
 async function main() {
