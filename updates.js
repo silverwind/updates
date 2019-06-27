@@ -352,11 +352,7 @@ function finish(obj, opts = {}) {
 }
 
 function normalizeRegistryUrl(url) {
-  if (url.endsWith("/")) {
-    return url.substring(0, url.length - 1);
-  } else {
-    return url;
-  }
+  return url.endsWith("/") ? url.substring(0, url.length - 1) : url;
 }
 
 function highlightDiff(a, b, added) {
