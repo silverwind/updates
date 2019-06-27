@@ -215,6 +215,8 @@ function getAuthAndRegistry(name, registry) {
             registry = url;
           }
         } catch (err) {}
+      } else {
+        auth = registryAuthToken(registry);
       }
     }
   } catch (err) {

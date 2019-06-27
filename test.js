@@ -53,6 +53,11 @@ async function main() {
         new: "5.0.0-beta.6",
         info: "https://github.com/styled-components/styled-components",
       },
+      "@babel/preset-env": {
+        old: "7.0.0",
+        new: "7.4.5",
+        info: "https://babeljs.io/",
+      }
     }
   });
 
@@ -88,6 +93,11 @@ async function main() {
         new: "5.0.0-beta.6",
         info: "https://github.com/styled-components/styled-components",
       },
+      "@babel/preset-env": {
+        old: "7.0.0",
+        new: "7.4.5",
+        info: "https://babeljs.io/",
+      }
     }
   });
 
@@ -128,6 +138,11 @@ async function main() {
         new: "5.0.0-beta.6",
         info: "https://github.com/styled-components/styled-components",
       },
+      "@babel/preset-env": {
+        old: "7.0.0",
+        new: "7.4.5",
+        info: "https://babeljs.io/",
+      }
     }
   });
 
@@ -168,6 +183,11 @@ async function main() {
         new: "4.3.2",
         info: "https://github.com/styled-components/styled-components",
       },
+      "@babel/preset-env": {
+        old: "7.0.0",
+        new: "7.4.5",
+        info: "https://babeljs.io/",
+      }
     }
   });
 
