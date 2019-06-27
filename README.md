@@ -11,17 +11,17 @@
 ## Usage
 
 ```console
-$ npm i -g updates
+$ npm i updates
 ```
 
 Then, check for new updates:
 ```console
-$ updates
+$ npx updates
 ```
 
 When changes are satisfactory, update `package.json` and re-install modules:
 ```console
-$ updates -u && rm -rf node_modules && npm i
+$ npx updates -u && rm -rf node_modules && npm i
 ```
 
 ## Options
