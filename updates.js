@@ -110,9 +110,7 @@ if (args.registry) {
     registry = npmRegisty;
   }
 }
-if (!registry.endsWith("/")) {
-  registry += "/";
-}
+registry = normalizeRegistryUrl(registry);
 
 let packageFile;
 const deps = {};
@@ -198,40 +196,64 @@ if (!Object.keys(deps).length) {
 const fetch = require("make-fetch-happen");
 const hostedGitInfo = require("hosted-git-info");
 const registryAuthToken = require("registry-auth-token");
+const registryUrl = require("registry-auth-token/registry-url");
 
-function fetchFromRegistry(name, registry) {
+function getAuthAndRegistry(name, registry) {
   let auth;
+
   try {
-    auth = registryAuthToken(registry);
+    if (!name.startsWith("@")) {
+      auth = registryAuthToken(registry);
+    } else {
+      const scope = (/@[a-z0-9][\w-.]+/.exec(name) || [])[0];
+      const url = normalizeRegistryUrl(registryUrl(scope));
+      if (url !== registry) {
+        try {
+          const newAuth = registryAuthToken(url);
+          if (newAuth && newAuth.token) {
+            auth = newAuth;
+            registry = url;
+          }
+        } catch (err) {}
+      }
+    }
   } catch (err) {
     finish(err);
   }
 
+  return [auth, registry];
+}
+
+function fetchFromRegistry(name, registry, auth) {
   // on scoped packages replace "/" with "%2f"
   if (/@[a-z0-9][\w-.]+\/[a-z0-9][\w-.]*/gi.test(name)) {
     name = name.replace(/\//g, "%2f");
   }
 
   const opts = (auth && auth.token) ? {headers: {Authorization: `Bearer ${auth.token}`}} : undefined;
-  return fetch(registry + name, opts);
+  return fetch(`${registry}/${name}`, opts);
 }
 
-const get = async name => {
-  let res = await fetchFromRegistry(name, registry);
+const get = async (name, originalRegistry) => {
+  const [auth, registry] = getAuthAndRegistry(name, originalRegistry);
+
+  let res = await fetchFromRegistry(name, registry, auth);
   if (registry === npmRegisty || (res.status >= 200 && res.status < 300)) {
-    return await res.json();
+    return [await res.json(), registry];
   } else { // retry on official registry if custom registry fails
     res = await fetchFromRegistry(name, npmRegisty);
     if (res.status >= 200 && res.status < 300) {
-      return await res.json();
+      return [await res.json(), registry];
     } else {
       throw new Error(`Received ${res.status} ${res.statusText} for ${name}`);
     }
   }
 };
 
-const getInfoUrl = ({repository, homepage}) => {
-  if (repository) {
+const getInfoUrl = ({repository, homepage}, registry, name) => {
+  if (registry === "https://npm.pkg.github.com") {
+    return `https://github.com/${name.replace(/^@/, "")}`;
+  } else if (repository) {
     const gitUrl = typeof repository === "string" ? repository : repository.url;
     const info = hostedGitInfo.fromUrl(gitUrl);
     if (info && info.browse) return info.browse();
@@ -240,8 +262,8 @@ const getInfoUrl = ({repository, homepage}) => {
   return homepage || "";
 };
 
-Promise.all(Object.keys(deps).map(name => get(name))).then(dati => {
-  for (const data of dati) {
+Promise.all(Object.keys(deps).map(name => get(name, registry))).then(dati => {
+  for (const [data, registry] of dati) {
     if (data && data.error) {
       throw new Error(data.error);
     }
@@ -267,7 +289,7 @@ Promise.all(Object.keys(deps).map(name => get(name))).then(dati => {
       delete deps[data.name];
     } else {
       deps[data.name].new = newRange;
-      deps[data.name].info = getInfoUrl(data.versions[newVersion] || data);
+      deps[data.name].info = getInfoUrl(data.versions[newVersion] || data, registry, data.name);
     }
   }
 
@@ -326,6 +348,14 @@ function finish(obj, opts = {}) {
     process.exit(Object.keys(deps).length ? 2 : 0);
   } else {
     process.exit(opts.exitCode || (output.error ? 1 : 0));
+  }
+}
+
+function normalizeRegistryUrl(url) {
+  if (url.endsWith("/")) {
+    return url.substring(0, url.length - 1);
+  } else {
+    return url;
   }
 }
 
@@ -435,7 +465,7 @@ function findVersion(data, versions, opts) {
     const diff = semver.diff(tempVersion, parsed.version);
     if (!diff || !semvers.includes(diff)) continue;
 
-    if (opts.useGreatest) {
+    if (opts.useGreatest || !("time" in data)) { // some registries like github don't have data.time available, fall back to greatest on them
       if (semver.gte(semver.coerce(parsed.version).version, tempVersion)) {
         tempVersion = parsed.version;
       }
@@ -453,7 +483,7 @@ function findVersion(data, versions, opts) {
 
 function findNewVersion(data, opts) {
   if (opts.range === "*") return "*";
-  const versions = Object.keys(data.time).filter(version => semver.valid(version));
+  const versions = Object.keys(data.versions).filter(version => semver.valid(version));
   const version = findVersion(data, versions, opts);
 
   if (opts.useGreatest) {

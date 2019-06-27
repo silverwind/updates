@@ -50,7 +50,7 @@ async function main() {
       },
       "styled-components": {
         old: "2.5.0-1",
-        new: "5.0.0-4.canary-sheet",
+        new: "5.0.0-beta.6",
         info: "https://github.com/styled-components/styled-components",
       },
     }
@@ -65,7 +65,7 @@ async function main() {
       },
       "prismjs": {
         old: "1.0.0",
-        new: "9000.0.2",
+        new: "9000.0.1",
         info: "https://github.com/LeaVerou/prism",
       },
       "html-webpack-plugin": {
@@ -85,7 +85,7 @@ async function main() {
       },
       "styled-components": {
         old: "2.5.0-1",
-        new: "5.0.0-4.canary-sheet",
+        new: "5.0.0-beta.6",
         info: "https://github.com/styled-components/styled-components",
       },
     }
@@ -100,7 +100,7 @@ async function main() {
       },
       "prismjs": {
         old: "1.0.0",
-        new: "9000.0.2",
+        new: "9000.0.1",
         info: "https://github.com/LeaVerou/prism",
       },
       "svgstore": {
@@ -125,7 +125,7 @@ async function main() {
       },
       "styled-components": {
         old: "2.5.0-1",
-        new: "5.0.0-4.canary-sheet",
+        new: "5.0.0-beta.6",
         info: "https://github.com/styled-components/styled-components",
       },
     }
@@ -165,7 +165,7 @@ async function main() {
       },
       "styled-components": {
         old: "2.5.0-1",
-        new: "4.2.0",
+        new: "4.3.2",
         info: "https://github.com/styled-components/styled-components",
       },
     }
