@@ -11,7 +11,7 @@
 ## Usage
 
 ```console
-$ npm i updates
+$ npm i --save-dev updates
 ```
 
 Then, check for new updates:
