@@ -51,7 +51,7 @@ async function main() {
       },
       "styled-components": {
         old: "2.5.0-1",
-        new: "5.0.0-beta.6",
+        new: "5.0.0-beta.6-ej2",
         info: "https://github.com/styled-components/styled-components",
       },
       "@babel/preset-env": {
@@ -91,7 +91,7 @@ async function main() {
       },
       "styled-components": {
         old: "2.5.0-1",
-        new: "5.0.0-beta.6",
+        new: "5.0.0-beta.6-ej2",
         info: "https://github.com/styled-components/styled-components",
       },
       "@babel/preset-env": {
@@ -136,7 +136,7 @@ async function main() {
       },
       "styled-components": {
         old: "2.5.0-1",
-        new: "5.0.0-beta.6",
+        new: "5.0.0-beta.6-ej2",
         info: "https://github.com/styled-components/styled-components",
       },
       "@babel/preset-env": {
