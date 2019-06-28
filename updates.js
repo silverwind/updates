@@ -195,35 +195,41 @@ if (!Object.keys(deps).length) {
 
 const fetch = require("make-fetch-happen");
 const hostedGitInfo = require("hosted-git-info");
-const registryAuthToken = require("registry-auth-token");
-const registryUrl = require("registry-auth-token/registry-url");
+
+// auth token functions are memoized to reduce file system accesses
+const registryAuthToken = memoize(require("registry-auth-token"));
+const registryUrl = memoize(require("registry-auth-token/registry-url"));
+
+function memoize(fn) {
+  const cache = {};
+  return arg => {
+    if (cache[arg]) {
+      return cache[arg];
+    } else {
+      return cache[arg] = fn(arg);
+    }
+  };
+}
 
 function getAuthAndRegistry(name, registry) {
-  let auth;
-
-  try {
-    if (!name.startsWith("@")) {
-      auth = registryAuthToken(registry);
-    } else {
-      const scope = (/@[a-z0-9][\w-.]+/.exec(name) || [])[0];
-      const url = normalizeRegistryUrl(registryUrl(scope));
-      if (url !== registry) {
-        try {
-          const newAuth = registryAuthToken(url);
-          if (newAuth && newAuth.token) {
-            auth = newAuth;
-            registry = url;
-          }
-        } catch (err) {}
-      } else {
-        auth = registryAuthToken(registry);
+  if (!name.startsWith("@")) {
+    return [registryAuthToken(registry), registry];
+  } else {
+    const scope = (/@[a-z0-9][\w-.]+/.exec(name) || [])[0];
+    const url = normalizeRegistryUrl(registryUrl(scope));
+    if (url !== registry) {
+      try {
+        const newAuth = registryAuthToken(url);
+        if (newAuth && newAuth.token) {
+          return [newAuth, url];
+        }
+      } catch (err) {
+        return [registryAuthToken(registry), registry];
       }
+    } else {
+      return [registryAuthToken(registry), registry];
     }
-  } catch (err) {
-    finish(err);
   }
-
-  return [auth, registry];
 }
 
 function fetchFromRegistry(name, registry, auth) {
