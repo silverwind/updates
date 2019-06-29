@@ -3,7 +3,7 @@
 
 process.env.NODE_ENV = "production";
 
-const npmRegisty = "https://registry.npmjs.org/";
+const npmRegisty = "https://registry.npmjs.org";
 
 const args = require("minimist")(process.argv.slice(2), {
   boolean: [
@@ -200,15 +200,10 @@ const hostedGitInfo = require("hosted-git-info");
 const registryAuthToken = memoize(require("registry-auth-token"));
 const registryUrl = memoize(require("registry-auth-token/registry-url"));
 
+// single arg memoize
 function memoize(fn) {
   const cache = {};
-  return arg => {
-    if (cache[arg]) {
-      return cache[arg];
-    } else {
-      return cache[arg] = fn(arg);
-    }
-  };
+  return arg => cache[arg] || (cache[arg] = fn(arg));
 }
 
 function getAuthAndRegistry(name, registry) {
@@ -469,7 +464,8 @@ function findVersion(data, versions, opts) {
     const diff = semver.diff(tempVersion, parsed.version);
     if (!diff || !semvers.includes(diff)) continue;
 
-    if (opts.useGreatest || !("time" in data)) { // some registries like github don't have data.time available, fall back to greatest on them
+    // some registries like github don't have data.time available, fall back to greatest on them
+    if (opts.useGreatest || !("time" in data)) {
       if (semver.gte(semver.coerce(parsed.version).version, tempVersion)) {
         tempVersion = parsed.version;
       }
