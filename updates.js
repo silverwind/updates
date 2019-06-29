@@ -3,8 +3,6 @@
 
 process.env.NODE_ENV = "production";
 
-const npmRegisty = "https://registry.npmjs.org";
-
 const args = require("minimist")(process.argv.slice(2), {
   boolean: [
     "c", "color",
@@ -61,7 +59,7 @@ if (args.help) {
     -P, --patch [<pkg,...>]       Consider only up to semver-patch
     -m, --minor [<pkg,...>]       Consider only up to semver-minor
     -E, --error-on-outdated       Exit with error code 2 on outdated packages
-    -r, --registry <url>          Use given registry URL
+    -r, --registry <url>          Override npm registry URL
     -f, --file <path>             Use given package.json file or module directory
     -j, --json                    Output a JSON object
     -c, --color                   Force-enable color output
@@ -80,6 +78,7 @@ if (args.help) {
 }
 
 const path = require("path");
+const chalk = require("chalk");
 
 if (args.version) {
   console.info(require(path.join(__dirname, "package.json")).version);
@@ -98,17 +97,12 @@ const release = parseMixedArg(args.release);
 const patch = parseMixedArg(args.patch);
 const minor = parseMixedArg(args.minor);
 
-const chalk = require("chalk");
-
+const defaultRegistry = "https://registry.npmjs.org";
 let registry;
 if (args.registry) {
   registry = args.registry;
 } else {
-  try {
-    registry = require("npm-conf")().get("registry");
-  } catch (err) {
-    registry = npmRegisty;
-  }
+  registry = require("rc")("npm").registry || defaultRegistry;
 }
 registry = normalizeRegistryUrl(registry);
 
@@ -244,14 +238,25 @@ function fetchFromRegistry(name, registry, auth) {
 const get = async (name, originalRegistry) => {
   const [auth, registry] = getAuthAndRegistry(name, originalRegistry);
 
-  let res = await fetchFromRegistry(name, registry, auth);
-  if (registry === npmRegisty || (res.status >= 200 && res.status < 300)) {
+  let res;
+  try {
+    res = await fetchFromRegistry(name, registry, auth);
+  } catch (err) {
+    if (registry === defaultRegistry) throw err;
+  }
+  if (res && res.ok) {
     return [await res.json(), registry];
-  } else { // retry on official registry if custom registry fails
-    res = await fetchFromRegistry(name, npmRegisty);
-    if (res.status >= 200 && res.status < 300) {
+  } else if (res && res.status && res.statusText && registry === defaultRegistry) {
+    throw new Error(`Received ${res.status} ${res.statusText} for ${name}`);
+  }
+
+  // retry on default registry if custom registry fails
+  // TODO: evaluate if this retrying can be dropped
+  if (registry !== defaultRegistry) {
+    res = await fetchFromRegistry(name, defaultRegistry);
+    if (res && res.ok) {
       return [await res.json(), registry];
-    } else {
+    } else if (res && res.status && res.statusText) {
       throw new Error(`Received ${res.status} ${res.statusText} for ${name}`);
     }
   }

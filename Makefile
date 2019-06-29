@@ -11,7 +11,7 @@ deps:
 	npm i
 
 update:
-	node updates.js -u
+	node updates.js -cu
 	$(MAKE) deps
 
 patch:
