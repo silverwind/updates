@@ -206,6 +206,10 @@ function memoize(fn) {
   return arg => cache[arg] || (cache[arg] = fn(arg));
 }
 
+function esc(str) {
+  return str.replace(/[|\\{}()[\]^$+*?.-]/g, "\\$&");
+}
+
 function getAuthAndRegistry(name, registry) {
   if (!name.startsWith("@")) {
     return [registryAuthToken(registry), registry];
@@ -400,7 +404,6 @@ function formatDeps() {
 }
 
 function updatePkg() {
-  const esc = require("escape-string-regexp");
   let newPkgStr = pkgStr;
 
   for (const dep of Object.keys(deps)) {
