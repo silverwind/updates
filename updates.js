@@ -238,7 +238,7 @@ function fetchFromRegistry(name, registry, auth) {
     name = name.replace(/\//g, "%2f");
   }
 
-  const opts = (auth && auth.token) ? {headers: {Authorization: `Bearer ${auth.token}`}} : undefined;
+  const opts = (auth && auth.token) ? {headers: {Authorization: `${auth.type} ${auth.token}`}} : undefined;
   return fetch(`${registry}/${name}`, opts);
 }
 
