@@ -98,13 +98,8 @@ const patch = parseMixedArg(args.patch);
 const minor = parseMixedArg(args.minor);
 
 const defaultRegistry = "https://registry.npmjs.org";
-let registry;
-if (args.registry) {
-  registry = args.registry;
-} else {
-  registry = require("rc")("npm").registry || defaultRegistry;
-}
-registry = normalizeRegistryUrl(registry);
+const npmrc = require("rc")("npm", {registry: defaultRegistry});
+const registry = normalizeRegistryUrl(args.registry || npmrc.registry);
 
 let packageFile;
 const deps = {};
@@ -188,39 +183,36 @@ if (!Object.keys(deps).length) {
 }
 
 const fetch = require("make-fetch-happen");
-const hostedGitInfo = require("hosted-git-info");
-
-// auth token functions are memoized to reduce file system accesses
+const gitInfo = memoize(require("hosted-git-info").fromUrl);
 const registryAuthToken = memoize(require("registry-auth-token"));
 const registryUrl = memoize(require("registry-auth-token/registry-url"));
-
-// single arg memoize
-function memoize(fn) {
-  const cache = {};
-  return arg => cache[arg] || (cache[arg] = fn(arg));
-}
 
 function esc(str) {
   return str.replace(/[|\\{}()[\]^$+*?.-]/g, "\\$&");
 }
 
+function memoize(fn) {
+  const cache = {};
+  return (arg, arg2) => cache[arg] || (cache[arg] = fn(arg, arg2));
+}
+
 function getAuthAndRegistry(name, registry) {
   if (!name.startsWith("@")) {
-    return [registryAuthToken(registry), registry];
+    return [registryAuthToken(registry, {npmrc}), registry];
   } else {
     const scope = (/@[a-z0-9][\w-.]+/.exec(name) || [])[0];
-    const url = normalizeRegistryUrl(registryUrl(scope));
+    const url = normalizeRegistryUrl(registryUrl(scope, npmrc));
     if (url !== registry) {
       try {
-        const newAuth = registryAuthToken(url);
+        const newAuth = registryAuthToken(url, {npmrc});
         if (newAuth && newAuth.token) {
           return [newAuth, url];
         }
       } catch (err) {
-        return [registryAuthToken(registry), registry];
+        return [registryAuthToken(registry, {npmrc}), registry];
       }
     } else {
-      return [registryAuthToken(registry), registry];
+      return [registryAuthToken(registry, {npmrc}), registry];
     }
   }
 }
@@ -266,8 +258,8 @@ const getInfoUrl = ({repository, homepage}, registry, name) => {
   if (registry === "https://npm.pkg.github.com") {
     return `https://github.com/${name.replace(/^@/, "")}`;
   } else if (repository) {
-    const gitUrl = typeof repository === "string" ? repository : repository.url;
-    const info = hostedGitInfo.fromUrl(gitUrl);
+    const url = typeof repository === "string" ? repository : repository.url;
+    const info = gitInfo(url);
     if (info && info.browse) return info.browse();
   }
 
