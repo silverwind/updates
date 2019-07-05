@@ -46,17 +46,17 @@ async function main() {
       },
       "jpeg-buffer-orientation": {
         old: "0.0.0",
-        new: "1.0.1",
+        new: "2.0.0",
         info: "https://github.com/fisker/jpeg-buffer-orientation",
       },
       "styled-components": {
         old: "2.5.0-1",
-        new: "5.0.0-beta.6-ej2",
+        new: "5.0.0-beta.8",
         info: "https://github.com/styled-components/styled-components",
       },
       "@babel/preset-env": {
         old: "7.0.0",
-        new: "7.4.5",
+        new: "7.5.0",
         info: "https://babeljs.io/",
       }
     }
@@ -86,17 +86,17 @@ async function main() {
       },
       "jpeg-buffer-orientation": {
         old: "0.0.0",
-        new: "1.0.1",
+        new: "2.0.0",
         info: "https://github.com/fisker/jpeg-buffer-orientation",
       },
       "styled-components": {
         old: "2.5.0-1",
-        new: "5.0.0-beta.6-ej2",
+        new: "5.0.0-beta.8",
         info: "https://github.com/styled-components/styled-components",
       },
       "@babel/preset-env": {
         old: "7.0.0",
-        new: "7.4.5",
+        new: "7.5.0",
         info: "https://babeljs.io/",
       }
     }
@@ -131,17 +131,17 @@ async function main() {
       },
       "jpeg-buffer-orientation": {
         old: "0.0.0",
-        new: "1.0.1",
+        new: "2.0.0",
         info: "https://github.com/fisker/jpeg-buffer-orientation",
       },
       "styled-components": {
         old: "2.5.0-1",
-        new: "5.0.0-beta.6-ej2",
+        new: "5.0.0-beta.8",
         info: "https://github.com/styled-components/styled-components",
       },
       "@babel/preset-env": {
         old: "7.0.0",
-        new: "7.4.5",
+        new: "7.5.0",
         info: "https://babeljs.io/",
       }
     }
@@ -176,7 +176,7 @@ async function main() {
       },
       "jpeg-buffer-orientation": {
         old: "0.0.0",
-        new: "1.0.1",
+        new: "2.0.0",
         info: "https://github.com/fisker/jpeg-buffer-orientation",
       },
       "styled-components": {
@@ -186,7 +186,7 @@ async function main() {
       },
       "@babel/preset-env": {
         old: "7.0.0",
-        new: "7.4.5",
+        new: "7.5.0",
         info: "https://babeljs.io/",
       }
     }
