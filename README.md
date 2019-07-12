@@ -19,7 +19,7 @@ Then, check for new updates:
 $ npx updates
 ```
 
-When changes are satisfactory, update `package.json` and re-install modules:
+When changes are satisfactory, update `package.json` and reinstall modules:
 ```console
 $ npx updates -u && rm -rf node_modules && npm i
 ```
