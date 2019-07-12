@@ -24,6 +24,11 @@ When changes are satisfactory, update `package.json` and re-install modules:
 $ npx updates -u && rm -rf node_modules && npm i
 ```
 
+To conditionally reinstall modules only when updates are available:
+```console
+$ npx updates -S -u && rm -rf node_modules && npm i
+```
+
 ## Options
 
 See `--help` or below for the available options. Option that take multiple arguments can take them either via comma-separated value or by specifying the option multiple times. If an option has a optional `pkg` argument but none is given, the option will be applied to all packages instead.
@@ -41,8 +46,9 @@ usage: updates [options]
     -t, --types <type,...>        Check only given dependency types
     -P, --patch [<pkg,...>]       Consider only up to semver-patch
     -m, --minor [<pkg,...>]       Consider only up to semver-minor
-    -E, --error-on-outdated       Exit with error code 2 on outdated packages
-    -r, --registry <url>          Use given registry URL
+    -E, --error-on-outdated       Exit with code 2 when updates are available and code 0 when not
+    -S, --success-on-unchanged    Exit with code 0 when updates are available and code 2 when not
+    -r, --registry <url>          Override npm registry URL
     -f, --file <path>             Use given package.json file or module directory
     -j, --json                    Output a JSON object
     -c, --color                   Force-enable color output
