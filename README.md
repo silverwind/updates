@@ -24,10 +24,15 @@ When changes are satisfactory, update `package.json` and reinstall modules:
 $ npx updates -u && rm -rf node_modules && npm i
 ```
 
-To conditionally reinstall modules only when updates are available:
+To only reinstall modules when updates are available:
 ```console
-$ npx updates -S -u && rm -rf node_modules && npm i
+$ npx updates -uU && rm -rf node_modules && npm i
 ```
+
+On a CI, it might be desireable to fail a build when updates are available:
+```console
+$ npx updates -E
+``
 
 ## Options
 
@@ -47,7 +52,7 @@ usage: updates [options]
     -P, --patch [<pkg,...>]       Consider only up to semver-patch
     -m, --minor [<pkg,...>]       Consider only up to semver-minor
     -E, --error-on-outdated       Exit with code 2 when updates are available and code 0 when not
-    -S, --success-on-unchanged    Exit with code 0 when updates are available and code 2 when not
+    -U, --error-on-unchanged      Exit with code 0 when updates are available and code 2 when not
     -r, --registry <url>          Override npm registry URL
     -f, --file <path>             Use given package.json file or module directory
     -j, --json                    Output a JSON object

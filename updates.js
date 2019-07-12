@@ -7,7 +7,7 @@ const args = require("minimist")(process.argv.slice(2), {
   boolean: [
     "c", "color",
     "E", "error-on-outdated",
-    "S", "success-on-unchanged",
+    "U", "error-on-unchanged",
     "h", "help",
     "j", "json",
     "n", "no-color",
@@ -27,7 +27,7 @@ const args = require("minimist")(process.argv.slice(2), {
   alias: {
     c: "color",
     E: "error-on-outdated",
-    S: "success-on-unchanged",
+    U: "error-on-unchanged",
     e: "exclude",
     f: "file",
     g: "greatest",
@@ -61,7 +61,7 @@ if (args.help) {
     -P, --patch [<pkg,...>]       Consider only up to semver-patch
     -m, --minor [<pkg,...>]       Consider only up to semver-minor
     -E, --error-on-outdated       Exit with code 2 when updates are available and code 0 when not
-    -S, --success-on-unchanged    Exit with code 0 when updates are available and code 2 when not
+    -U, --error-on-unchanged      Exit with code 0 when updates are available and code 2 when not
     -r, --registry <url>          Override npm registry URL
     -f, --file <path>             Use given package.json file or module directory
     -j, --json                    Output a JSON object
@@ -353,7 +353,7 @@ function finish(obj, opts = {}) {
 
   if (args["error-on-outdated"]) {
     process.exit(Object.keys(deps).length ? 2 : 0);
-  } else if (args["success-on-unchanged"]) {
+  } else if (args["error-on-unchanged"]) {
     process.exit(Object.keys(deps).length ? 0 : 2);
   } else {
     process.exit(opts.exitCode || (output.error ? 1 : 0));
