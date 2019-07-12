@@ -36,7 +36,7 @@ async function main() {
       },
       "html-webpack-plugin": {
         old: "4.0.0-alpha.2",
-        new: "4.0.0-beta.5",
+        new: "4.0.0-beta.7",
         info: "https://github.com/jantimon/html-webpack-plugin",
       },
       "noty": {
@@ -56,7 +56,7 @@ async function main() {
       },
       "@babel/preset-env": {
         old: "7.0.0",
-        new: "7.5.0",
+        new: "7.5.4",
         info: "https://babeljs.io/",
       }
     }
@@ -76,7 +76,7 @@ async function main() {
       },
       "html-webpack-plugin": {
         old: "4.0.0-alpha.2",
-        new: "4.0.0-beta.5",
+        new: "4.0.0-beta.7",
         info: "https://github.com/jantimon/html-webpack-plugin",
       },
       "noty": {
@@ -96,7 +96,7 @@ async function main() {
       },
       "@babel/preset-env": {
         old: "7.0.0",
-        new: "7.5.0",
+        new: "7.5.4",
         info: "https://babeljs.io/",
       }
     }
@@ -121,7 +121,7 @@ async function main() {
       },
       "html-webpack-plugin": {
         old: "4.0.0-alpha.2",
-        new: "4.0.0-beta.5",
+        new: "4.0.0-beta.7",
         info: "https://github.com/jantimon/html-webpack-plugin",
       },
       "noty": {
@@ -141,7 +141,7 @@ async function main() {
       },
       "@babel/preset-env": {
         old: "7.0.0",
-        new: "7.5.0",
+        new: "7.5.4",
         info: "https://babeljs.io/",
       }
     }
@@ -186,7 +186,7 @@ async function main() {
       },
       "@babel/preset-env": {
         old: "7.0.0",
-        new: "7.5.0",
+        new: "7.5.4",
         info: "https://babeljs.io/",
       }
     }
@@ -206,7 +206,7 @@ async function main() {
       },
       "html-webpack-plugin": {
         old: "4.0.0-alpha.2",
-        new: "4.0.0-beta.5",
+        new: "4.0.0-beta.7",
         info: "https://github.com/jantimon/html-webpack-plugin",
       },
       "noty": {
