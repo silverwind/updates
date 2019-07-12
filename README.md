@@ -32,7 +32,7 @@ $ npx updates -uU && rm -rf node_modules && npm i
 On a CI, it might be desireable to fail a build when updates are available:
 ```console
 $ npx updates -E
-``
+```
 
 ## Options
 
