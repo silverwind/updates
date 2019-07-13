@@ -2,6 +2,7 @@
 "use strict";
 
 process.env.NODE_ENV = "production";
+const MAX_SOCKETS = 64;
 
 const args = require("minimist")(process.argv.slice(2), {
   boolean: [
@@ -41,6 +42,7 @@ const args = require("minimist")(process.argv.slice(2), {
     r: "registry",
     R: "release",
     s: "semver",
+    S: "sockets",
     t: "types",
     u: "update",
     v: "version",
@@ -64,6 +66,7 @@ if (args.help) {
     -U, --error-on-unchanged      Exit with code 0 when updates are available and code 2 when not
     -r, --registry <url>          Override npm registry URL
     -f, --file <path>             Use given package.json file or module directory
+    -S, --sockets <num>           Number of parallel sockets opened. Default: ${MAX_SOCKETS}
     -j, --json                    Output a JSON object
     -c, --color                   Force-enable color output
     -n, --no-color                Disable color output
@@ -105,6 +108,7 @@ const defaultRegistry = "https://registry.npmjs.org";
 const npmrc = require("rc")("npm", {registry: defaultRegistry});
 const authTokenOpts = {npmrc, recursive: true};
 const registry = normalizeRegistryUrl(args.registry || npmrc.registry);
+const maxSockets = typeof args.sockets === "number" ? args.sockets : MAX_SOCKETS;
 
 let packageFile;
 const deps = {};
@@ -228,7 +232,11 @@ function fetchFromRegistry(name, registry, auth) {
     name = name.replace(/\//g, "%2f");
   }
 
-  const opts = (auth && auth.token) ? {headers: {Authorization: `${auth.type} ${auth.token}`}} : undefined;
+  const opts = {maxSockets};
+  if (auth && auth.token) {
+    opts.headers = {Authorization: `${auth.type} ${auth.token}`};
+  }
+
   return fetch(`${registry}/${name}`, opts);
 }
 
