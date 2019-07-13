@@ -67,6 +67,7 @@ usage: updates [options]
     $ updates -u -m
     $ updates -u -e chalk
     $ updates -u -t devDependencies
+    $ updates -u -U && rm -rf node_modules && npm i
 ```
 
 ## JSON Output

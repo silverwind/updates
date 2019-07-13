@@ -76,6 +76,7 @@ if (args.help) {
     $ updates -u -m
     $ updates -u -e chalk
     $ updates -u -t devDependencies
+    $ updates -u -U && rm -rf node_modules && npm i
 `);
   process.exit(0);
 }
