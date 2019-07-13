@@ -102,6 +102,7 @@ const minor = parseMixedArg(args.minor);
 
 const defaultRegistry = "https://registry.npmjs.org";
 const npmrc = require("rc")("npm", {registry: defaultRegistry});
+const authTokenOpts = {npmrc, recursive: true};
 const registry = normalizeRegistryUrl(args.registry || npmrc.registry);
 
 let packageFile;
@@ -201,21 +202,21 @@ function memoize(fn) {
 
 function getAuthAndRegistry(name, registry) {
   if (!name.startsWith("@")) {
-    return [registryAuthToken(registry, {npmrc}), registry];
+    return [registryAuthToken(registry, authTokenOpts), registry];
   } else {
     const scope = (/@[a-z0-9][\w-.]+/.exec(name) || [])[0];
     const url = normalizeRegistryUrl(registryUrl(scope, npmrc));
     if (url !== registry) {
       try {
-        const newAuth = registryAuthToken(url, {npmrc});
+        const newAuth = registryAuthToken(url, authTokenOpts);
         if (newAuth && newAuth.token) {
           return [newAuth, url];
         }
       } catch (err) {
-        return [registryAuthToken(registry, {npmrc}), registry];
+        return [registryAuthToken(registry, authTokenOpts), registry];
       }
     } else {
-      return [registryAuthToken(registry, {npmrc}), registry];
+      return [registryAuthToken(registry, authTokenOpts), registry];
     }
   }
 }
