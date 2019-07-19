@@ -57,7 +57,7 @@ async function main() {
       "@babel/preset-env": {
         old: "7.0.0",
         new: "7.5.5",
-        info: "https://babeljs.io/",
+        info: "https://github.com/babel/babel/tree/master/packages/babel-preset-env",
       }
     }
   });
@@ -97,7 +97,7 @@ async function main() {
       "@babel/preset-env": {
         old: "7.0.0",
         new: "7.5.5",
-        info: "https://babeljs.io/",
+        info: "https://github.com/babel/babel/tree/master/packages/babel-preset-env",
       }
     }
   });
@@ -142,7 +142,7 @@ async function main() {
       "@babel/preset-env": {
         old: "7.0.0",
         new: "7.5.5",
-        info: "https://babeljs.io/",
+        info: "https://github.com/babel/babel/tree/master/packages/babel-preset-env",
       }
     }
   });
@@ -187,7 +187,7 @@ async function main() {
       "@babel/preset-env": {
         old: "7.0.0",
         new: "7.5.5",
-        info: "https://babeljs.io/",
+        info: "https://github.com/babel/babel/tree/master/packages/babel-preset-env",
       }
     }
   });
