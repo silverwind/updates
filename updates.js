@@ -274,6 +274,7 @@ const getInfoUrl = ({repository, homepage}, registry, name) => {
     const url = typeof repository === "string" ? repository : repository.url;
     const info = gitInfo(url);
     if (info && info.browse) return info.browse();
+    if (repository && repository.url && /^https?:/.test(repository.url)) return repository.url;
   }
 
   return homepage || "";
