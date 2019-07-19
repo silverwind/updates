@@ -30,7 +30,7 @@
     "chalk": "2.4.2",
     "find-up": "4.1.0",
     "hosted-git-info": "2.7.1",
-    "make-fetch-happen": "4.0.2",
+    "make-fetch-happen": "5.0.0",
     "minimist": "1.2.0",
     "rc": "1.2.8",
     "registry-auth-token": "4.0.0",
