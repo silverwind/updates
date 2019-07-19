@@ -410,7 +410,7 @@ function formatDeps() {
   ]);
 
   return require("text-table")(arr, {
-    hsep: " ".repeat(4),
+    hsep: " ".repeat(2),
     stringLength: require("string-width"),
   });
 }
