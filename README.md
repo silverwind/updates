@@ -55,7 +55,7 @@ usage: updates [options]
     -U, --error-on-unchanged      Exit with code 0 when updates are available and code 2 when not
     -r, --registry <url>          Override npm registry URL
     -f, --file <path>             Use given package.json file or module directory
-    -S, --sockets <num>           Number of parallel sockets opened. Default: 64
+    -S, --sockets <num>           Maximum number of parallel HTTP sockets opened. Default: 64
     -j, --json                    Output a JSON object
     -c, --color                   Force-enable color output
     -n, --no-color                Disable color output
@@ -65,9 +65,7 @@ usage: updates [options]
   Examples:
     $ updates
     $ updates -u
-    $ updates -u -m
-    $ updates -u -e chalk
-    $ updates -u -t devDependencies
+    $ updates -u -m -e eslint
     $ updates -u -U && rm -rf node_modules && npm i
 ```
 

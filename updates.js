@@ -66,7 +66,7 @@ if (args.help) {
     -U, --error-on-unchanged      Exit with code 0 when updates are available and code 2 when not
     -r, --registry <url>          Override npm registry URL
     -f, --file <path>             Use given package.json file or module directory
-    -S, --sockets <num>           Number of parallel sockets opened. Default: ${MAX_SOCKETS}
+    -S, --sockets <num>           Maximum number of parallel HTTP sockets opened. Default: ${MAX_SOCKETS}
     -j, --json                    Output a JSON object
     -c, --color                   Force-enable color output
     -n, --no-color                Disable color output
@@ -76,9 +76,7 @@ if (args.help) {
   Examples:
     $ updates
     $ updates -u
-    $ updates -u -m
-    $ updates -u -e chalk
-    $ updates -u -t devDependencies
+    $ updates -u -m -e eslint
     $ updates -u -U && rm -rf node_modules && npm i
 `);
   process.exit(0);
