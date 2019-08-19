@@ -83,7 +83,6 @@ if (args.help) {
 }
 
 const path = require("path");
-const chalk = require("chalk");
 
 if (args.version) {
   console.info(require(path.join(__dirname, "package.json")).version);
@@ -102,6 +101,7 @@ const release = parseMixedArg(args.release);
 const patch = parseMixedArg(args.patch);
 const minor = parseMixedArg(args.minor);
 
+const chalk = require("chalk");
 const defaultRegistry = "https://registry.npmjs.org";
 const npmrc = require("rc")("npm", {registry: defaultRegistry});
 const authTokenOpts = {npmrc, recursive: true};
