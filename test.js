@@ -26,7 +26,7 @@ async function main() {
       },
       "prismjs": {
         old: "1.0.0",
-        new: "1.16.0",
+        new: "1.17.1",
         info: "https://github.com/LeaVerou/prism",
       },
       "svgstore": {
@@ -46,7 +46,7 @@ async function main() {
       },
       "jpeg-buffer-orientation": {
         old: "0.0.0",
-        new: "2.0.0",
+        new: "2.0.1",
         info: "https://github.com/fisker/jpeg-buffer-orientation",
       },
       "styled-components": {
@@ -86,7 +86,7 @@ async function main() {
       },
       "jpeg-buffer-orientation": {
         old: "0.0.0",
-        new: "2.0.0",
+        new: "2.0.1",
         info: "https://github.com/fisker/jpeg-buffer-orientation",
       },
       "styled-components": {
@@ -131,7 +131,7 @@ async function main() {
       },
       "jpeg-buffer-orientation": {
         old: "0.0.0",
-        new: "2.0.0",
+        new: "2.0.1",
         info: "https://github.com/fisker/jpeg-buffer-orientation",
       },
       "styled-components": {
@@ -156,7 +156,7 @@ async function main() {
       },
       "prismjs": {
         old: "1.0.0",
-        new: "1.16.0",
+        new: "1.17.1",
         info: "https://github.com/LeaVerou/prism",
       },
       "svgstore": {
@@ -176,7 +176,7 @@ async function main() {
       },
       "jpeg-buffer-orientation": {
         old: "0.0.0",
-        new: "2.0.0",
+        new: "2.0.1",
         info: "https://github.com/fisker/jpeg-buffer-orientation",
       },
       "styled-components": {
