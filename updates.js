@@ -318,7 +318,8 @@ Promise.all(Object.keys(deps).map(name => get(name, registry))).then(dati => {
   }
 
   try {
-    fs.writeFileSync(packageFile, updatePkg(), "utf8");
+    fs.truncateSync(packageFile, 0);
+    fs.writeFileSync(packageFile, updatePkg(), {flag: "r+"});
   } catch (err) {
     finish(new Error(`Error writing package.json: ${err.message}`));
   }
