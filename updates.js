@@ -318,10 +318,9 @@ Promise.all(Object.keys(deps).map(name => get(name, registry))).then(dati => {
   }
 
   try {
-    fs.truncateSync(packageFile, 0);
-    fs.writeFileSync(packageFile, updatePkg(), {flag: "r+"});
+    write(packageFile, updatePkg());
   } catch (err) {
-    finish(new Error(`Error writing package.json: ${err.message}`));
+    finish(new Error(`Error writing ${packageFile}: ${err.message}`));
   }
 
   finish(chalk.green(`
@@ -367,6 +366,16 @@ function finish(obj, opts = {}) {
     process.exit(Object.keys(deps).length ? 0 : 2);
   } else {
     process.exit(opts.exitCode || (output.error ? 1 : 0));
+  }
+}
+
+function write(file, content) {
+  if (require("os").platform() === "win32") {
+    // truncate and append on windows to preserve file metadata
+    fs.truncateSync(file, 0);
+    fs.writeFileSync(file, content, {encoding: "utf8", flag: "r+"});
+  } else {
+    fs.writeFileSync(file, content, {encoding: "utf8"});
   }
 }
 
