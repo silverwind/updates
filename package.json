@@ -11,7 +11,7 @@
     "node": ">=8"
   },
   "scripts": {
-    "test": "make test"
+    "test": "npx eslint --color --quiet *.js && node --trace-deprecation --throw-deprecation test.js"
   },
   "keywords": [
     "dependencies",

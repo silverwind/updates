@@ -1,2 +1,2 @@
 root: true
-extends: eslint-config-silverwind
+extends: silverwind
