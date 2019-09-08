@@ -51,12 +51,12 @@ async function main() {
       },
       "styled-components": {
         old: "2.5.0-1",
-        new: "5.0.0-beta.8",
+        new: "5.0.0-beta.8-groupsizefix",
         info: "https://github.com/styled-components/styled-components",
       },
       "@babel/preset-env": {
         old: "7.0.0",
-        new: "7.5.5",
+        new: "7.6.0",
         info: "https://github.com/babel/babel/tree/master/packages/babel-preset-env",
       }
     }
@@ -91,12 +91,12 @@ async function main() {
       },
       "styled-components": {
         old: "2.5.0-1",
-        new: "5.0.0-beta.8",
+        new: "5.0.0-beta.8-groupsizefix",
         info: "https://github.com/styled-components/styled-components",
       },
       "@babel/preset-env": {
         old: "7.0.0",
-        new: "7.5.5",
+        new: "7.6.0",
         info: "https://github.com/babel/babel/tree/master/packages/babel-preset-env",
       }
     }
@@ -136,12 +136,12 @@ async function main() {
       },
       "styled-components": {
         old: "2.5.0-1",
-        new: "5.0.0-beta.8",
+        new: "5.0.0-beta.8-groupsizefix",
         info: "https://github.com/styled-components/styled-components",
       },
       "@babel/preset-env": {
         old: "7.0.0",
-        new: "7.5.5",
+        new: "7.6.0",
         info: "https://github.com/babel/babel/tree/master/packages/babel-preset-env",
       }
     }
@@ -186,7 +186,7 @@ async function main() {
       },
       "@babel/preset-env": {
         old: "7.0.0",
-        new: "7.5.5",
+        new: "7.6.0",
         info: "https://github.com/babel/babel/tree/master/packages/babel-preset-env",
       }
     }
