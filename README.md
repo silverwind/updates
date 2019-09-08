@@ -77,20 +77,22 @@ The JSON output is an object with possible properties `results`, `message` and `
 $ updates -j | jq
 {
   "results": {
-    "string-width": {
-      "old": "2.1.1",
-      "new": "3.0.0",
-      "info": "https://github.com/sindresorhus/string-width"
-    },
-    "eslint": {
-      "old": "5.9.0",
-      "new": "5.10.0",
-      "info": "https://github.com/eslint/eslint"
-    },
-    "eslint-config-silverwind": {
-      "old": "2.0.11",
-      "new": "2.0.12",
-      "info": "https://github.com/silverwind/eslint-config-silverwind"
+    "dependencies": {
+      "string-width": {
+        "old": "2.1.1",
+        "new": "3.0.0",
+        "info": "https://github.com/sindresorhus/string-width"
+      },
+      "eslint": {
+        "old": "5.9.0",
+        "new": "5.10.0",
+        "info": "https://github.com/eslint/eslint"
+      },
+      "eslint-config-silverwind": {
+        "old": "2.0.11",
+        "new": "2.0.12",
+        "info": "https://github.com/silverwind/eslint-config-silverwind"
+      }
     }
   }
 }

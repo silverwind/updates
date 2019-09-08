@@ -175,7 +175,7 @@ for (const key of dependencyTypes) {
     for (const name of names) {
       const old = pkg[key][name];
       if (isValidSemverRange(old)) {
-        deps[name] = {old};
+        deps[`${key}|${name}`] = {old};
       }
     }
   }
@@ -238,7 +238,7 @@ function fetchFromRegistry(name, registry, auth) {
   return fetch(`${registry}/${name}`, opts);
 }
 
-const get = async (name, originalRegistry) => {
+const get = async (name, type, originalRegistry) => {
   const [auth, registry] = getAuthAndRegistry(name, originalRegistry);
 
   let res;
@@ -248,7 +248,7 @@ const get = async (name, originalRegistry) => {
     if (registry === defaultRegistry) throw err;
   }
   if (res && res.ok) {
-    return [await res.json(), registry];
+    return [await res.json(), type, registry];
   } else if (res && res.status && res.statusText && registry === defaultRegistry) {
     throw new Error(`Received ${res.status} ${res.statusText} for ${name}`);
   }
@@ -258,7 +258,7 @@ const get = async (name, originalRegistry) => {
   if (registry !== defaultRegistry) {
     res = await fetchFromRegistry(name, defaultRegistry);
     if (res && res.ok) {
-      return [await res.json(), registry];
+      return [await res.json(), type, registry];
     } else if (res && res.status && res.statusText) {
       throw new Error(`Received ${res.status} ${res.statusText} for ${name}`);
     }
@@ -278,8 +278,11 @@ const getInfoUrl = ({repository, homepage}, registry, name) => {
   return homepage || "";
 };
 
-Promise.all(Object.keys(deps).map(name => get(name, registry))).then(dati => {
-  for (const [data, registry] of dati) {
+Promise.all(Object.keys(deps).map(key => {
+  const [type, name] = key.split("|");
+  return get(name, type, registry);
+})).then(dati => {
+  for (const [data, type, registry] of dati) {
     if (data && data.error) {
       throw new Error(data.error);
     }
@@ -297,15 +300,16 @@ Promise.all(Object.keys(deps).map(name => get(name, registry))).then(dati => {
       semvers = ["patch", "minor", "major"];
     }
 
-    const oldRange = deps[data.name].old;
+    const key = `${type}|${data.name}`;
+    const oldRange = deps[key].old;
     const newVersion = findNewVersion(data, {usePre, useRel, useGreatest, semvers, range: oldRange});
     const newRange = updateRange(oldRange, newVersion);
 
     if (!newVersion || oldRange === newRange) {
-      delete deps[data.name];
+      delete deps[key];
     } else {
-      deps[data.name].new = newRange;
-      deps[data.name].info = getInfoUrl(data.versions[newVersion] || data, registry, data.name);
+      deps[key].new = newRange;
+      deps[key].info = getInfoUrl(data.versions[newVersion] || data, registry, data.name);
     }
   }
 
@@ -318,7 +322,7 @@ Promise.all(Object.keys(deps).map(name => get(name, registry))).then(dati => {
   }
 
   try {
-    write(packageFile, updatePkg());
+    write(packageFile, updatePackageJson());
   } catch (err) {
     finish(new Error(`Error writing ${packageFile}: ${err.message}`));
   }
@@ -341,7 +345,12 @@ function finish(obj, opts = {}) {
 
   if (args.json) {
     if (!hadError) {
-      output.results = deps;
+      output.results = {};
+      for (const [key, value] of Object.entries(deps)) {
+        const [type, name] = key.split("|");
+        if (!output.results[type]) output.results[type] = {};
+        output.results[type][name] = value;
+      }
     }
     console.info(JSON.stringify(output));
   } else {
@@ -411,12 +420,15 @@ function highlightDiff(a, b, added) {
 function formatDeps() {
   const arr = [["NAME", "OLD", "NEW", "INFO"]];
 
-  for (const [name, data] of Object.entries(deps)) arr.push([
-    name,
-    highlightDiff(data.old, data.new, false),
-    highlightDiff(data.new, data.old, true),
-    data.info,
-  ]);
+  for (const [key, data] of Object.entries(deps)) {
+    const [_type, name] = key.split("|");
+    arr.push([
+      name,
+      highlightDiff(data.old, data.new, false),
+      highlightDiff(data.new, data.old, true),
+      data.info,
+    ]);
+  }
 
   return require("text-table")(arr, {
     hsep: " ".repeat(2),
@@ -424,12 +436,13 @@ function formatDeps() {
   });
 }
 
-function updatePkg() {
+function updatePackageJson() {
   let newPkgStr = pkgStr;
 
-  for (const dep of Object.keys(deps)) {
-    const re = new RegExp(`"${esc(dep)}": +"${esc(deps[dep].old)}"`, "g");
-    newPkgStr = newPkgStr.replace(re, `"${dep}": "${deps[dep].new}"`);
+  for (const key of Object.keys(deps)) {
+    const [_type, name] = key.split("|");
+    const re = new RegExp(`"${esc(name)}": +"${esc(deps[key].old)}"`, "g");
+    newPkgStr = newPkgStr.replace(re, `"${name}": "${deps[key].new}"`);
   }
 
   return newPkgStr;

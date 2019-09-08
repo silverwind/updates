@@ -8,5 +8,8 @@
     "jpeg-buffer-orientation": "0.0.0",
     "styled-components": "2.5.0-1",
     "@babel/preset-env": "7.0.0"
+  },
+  "peerDependencies": {
+    "@babel/preset-env": "~6.0.0"
   }
 }
