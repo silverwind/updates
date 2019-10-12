@@ -52,19 +52,19 @@ async function main() {
         },
         "styled-components": {
           old: "2.5.0-1",
-          new: "5.0.0-beta.8-groupsizefix",
+          new: "4.4.0-reactnativewebfix",
           info: "https://github.com/styled-components/styled-components",
         },
         "@babel/preset-env": {
           old: "7.0.0",
-          new: "7.6.0",
+          new: "7.6.3",
           info: "https://github.com/babel/babel/tree/master/packages/babel-preset-env",
         }
       },
       peerDependencies: {
         "@babel/preset-env": {
           "old": "~6.0.0",
-          "new": "~7.6.0",
+          "new": "~7.6.3",
           "info": "https://github.com/babel/babel/tree/master/packages/babel-preset-env"
         }
       },
@@ -101,19 +101,19 @@ async function main() {
         },
         "styled-components": {
           old: "2.5.0-1",
-          new: "5.0.0-beta.8-groupsizefix",
+          new: "5.0.0-beta.9",
           info: "https://github.com/styled-components/styled-components",
         },
         "@babel/preset-env": {
           old: "7.0.0",
-          new: "7.6.0",
+          new: "7.6.3",
           info: "https://github.com/babel/babel/tree/master/packages/babel-preset-env",
         }
       },
       peerDependencies: {
         "@babel/preset-env": {
           "old": "~6.0.0",
-          "new": "~7.6.0",
+          "new": "~7.6.3",
           "info": "https://github.com/babel/babel/tree/master/packages/babel-preset-env"
         }
       }
@@ -155,19 +155,19 @@ async function main() {
         },
         "styled-components": {
           old: "2.5.0-1",
-          new: "5.0.0-beta.8-groupsizefix",
+          new: "5.0.0-beta.9",
           info: "https://github.com/styled-components/styled-components",
         },
         "@babel/preset-env": {
           old: "7.0.0",
-          new: "7.6.0",
+          new: "7.6.3",
           info: "https://github.com/babel/babel/tree/master/packages/babel-preset-env",
         }
       },
       peerDependencies: {
         "@babel/preset-env": {
           "old": "~6.0.0",
-          "new": "~7.6.0",
+          "new": "~7.6.3",
           "info": "https://github.com/babel/babel/tree/master/packages/babel-preset-env"
         }
       },
@@ -209,19 +209,19 @@ async function main() {
         },
         "styled-components": {
           old: "2.5.0-1",
-          new: "4.3.2",
+          new: "4.4.0",
           info: "https://github.com/styled-components/styled-components",
         },
         "@babel/preset-env": {
           old: "7.0.0",
-          new: "7.6.0",
+          new: "7.6.3",
           info: "https://github.com/babel/babel/tree/master/packages/babel-preset-env",
         }
       },
       peerDependencies: {
         "@babel/preset-env": {
           "old": "~6.0.0",
-          "new": "~7.6.0",
+          "new": "~7.6.3",
           "info": "https://github.com/babel/babel/tree/master/packages/babel-preset-env"
         }
       },

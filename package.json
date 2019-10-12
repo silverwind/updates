@@ -29,8 +29,8 @@
   "dependencies": {
     "chalk": "2.4.2",
     "find-up": "4.1.0",
-    "hosted-git-info": "3.0.0",
-    "make-fetch-happen": "5.0.0",
+    "hosted-git-info": "3.0.2",
+    "make-fetch-happen": "6.0.0",
     "minimist": "1.2.0",
     "rc": "1.2.8",
     "registry-auth-token": "4.0.0",
@@ -39,9 +39,9 @@
     "text-table": "0.2.0"
   },
   "devDependencies": {
-    "eslint": "6.3.0",
-    "eslint-config-silverwind": "4.1.1",
-    "execa": "2.0.4",
+    "eslint": "6.5.1",
+    "eslint-config-silverwind": "4.2.1",
+    "execa": "2.1.0",
     "ver": "5.1.4"
   }
 }
