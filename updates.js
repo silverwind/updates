@@ -278,61 +278,6 @@ const getInfoUrl = ({repository, homepage}, registry, name) => {
   return homepage || "";
 };
 
-Promise.all(Object.keys(deps).map(key => {
-  const [type, name] = key.split("|");
-  return get(name, type, registry);
-})).then(dati => {
-  for (const [data, type, registry] of dati) {
-    if (data && data.error) {
-      throw new Error(data.error);
-    }
-
-    const useGreatest = typeof greatest === "boolean" ? greatest : greatest.includes(data.name);
-    const usePre = typeof prerelease === "boolean" ? prerelease : prerelease.includes(data.name);
-    const useRel = typeof release === "boolean" ? release : release.includes(data.name);
-
-    let semvers;
-    if (patch === true || Array.isArray(patch) && patch.includes(data.name)) {
-      semvers = ["patch"];
-    } else if (minor === true || Array.isArray(minor) && minor.includes(data.name)) {
-      semvers = ["patch", "minor"];
-    } else {
-      semvers = ["patch", "minor", "major"];
-    }
-
-    const key = `${type}|${data.name}`;
-    const oldRange = deps[key].old;
-    const newVersion = findNewVersion(data, {usePre, useRel, useGreatest, semvers, range: oldRange});
-    const newRange = updateRange(oldRange, newVersion);
-
-    if (!newVersion || oldRange === newRange) {
-      delete deps[key];
-    } else {
-      deps[key].new = newRange;
-      deps[key].info = getInfoUrl(data.versions[newVersion] || data, registry, data.name);
-    }
-  }
-
-  if (!Object.keys(deps).length) {
-    finish("All packages are up to date.");
-  }
-
-  if (!args.update) {
-    finish();
-  }
-
-  try {
-    write(packageFile, updatePackageJson());
-  } catch (err) {
-    finish(new Error(`Error writing ${packageFile}: ${err.message}`));
-  }
-
-  finish(chalk.green(`
- ╭────────────────────────╮
- │  package.json updated  │
- ╰────────────────────────╯`.substring(1)));
-}).catch(finish);
-
 function finish(obj, opts = {}) {
   const output = {};
   const hadError = obj instanceof Error;
@@ -579,3 +524,62 @@ function parseMixedArg(arg) {
     return false;
   }
 }
+
+async function main() {
+  const dati = await Promise.all(Object.keys(deps).map(key => {
+    const [type, name] = key.split("|");
+    return get(name, type, registry);
+  }));
+
+  for (const [data, type, registry] of dati) {
+    if (data && data.error) {
+      throw new Error(data.error);
+    }
+
+    const useGreatest = typeof greatest === "boolean" ? greatest : greatest.includes(data.name);
+    const usePre = typeof prerelease === "boolean" ? prerelease : prerelease.includes(data.name);
+    const useRel = typeof release === "boolean" ? release : release.includes(data.name);
+
+    let semvers;
+    if (patch === true || Array.isArray(patch) && patch.includes(data.name)) {
+      semvers = ["patch"];
+    } else if (minor === true || Array.isArray(minor) && minor.includes(data.name)) {
+      semvers = ["patch", "minor"];
+    } else {
+      semvers = ["patch", "minor", "major"];
+    }
+
+    const key = `${type}|${data.name}`;
+    const oldRange = deps[key].old;
+    const newVersion = findNewVersion(data, {usePre, useRel, useGreatest, semvers, range: oldRange});
+    const newRange = updateRange(oldRange, newVersion);
+
+    if (!newVersion || oldRange === newRange) {
+      delete deps[key];
+    } else {
+      deps[key].new = newRange;
+      deps[key].info = getInfoUrl(data.versions[newVersion] || data, registry, data.name);
+    }
+  }
+
+  if (!Object.keys(deps).length) {
+    finish("All packages are up to date.");
+  }
+
+  if (!args.update) {
+    finish();
+  }
+
+  try {
+    write(packageFile, updatePackageJson());
+  } catch (err) {
+    finish(new Error(`Error writing ${packageFile}: ${err.message}`));
+  }
+
+  finish(chalk.green(`
+ ╭────────────────────────╮
+ │  package.json updated  │
+ ╰────────────────────────╯`.substring(1)));
+}
+
+main().catch(finish);
