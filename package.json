@@ -40,8 +40,8 @@
   },
   "devDependencies": {
     "eslint": "6.5.1",
-    "eslint-config-silverwind": "4.2.1",
-    "execa": "2.1.0",
-    "ver": "5.1.4"
+    "eslint-config-silverwind": "4.2.3",
+    "execa": "3.2.0",
+    "ver": "5.4.4"
   }
 }
