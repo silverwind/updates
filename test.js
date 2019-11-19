@@ -37,7 +37,7 @@ async function main() {
         },
         "html-webpack-plugin": {
           old: "4.0.0-alpha.2",
-          new: "4.0.0-beta.8",
+          new: "4.0.0-beta.11",
           info: "https://github.com/jantimon/html-webpack-plugin",
         },
         "noty": {
@@ -47,24 +47,24 @@ async function main() {
         },
         "jpeg-buffer-orientation": {
           old: "0.0.0",
-          new: "2.0.1",
+          new: "2.0.2",
           info: "https://github.com/fisker/jpeg-buffer-orientation",
         },
         "styled-components": {
           old: "2.5.0-1",
-          new: "4.4.0-reactnativewebfix",
+          new: "5.0.0-rc.2",
           info: "https://github.com/styled-components/styled-components",
         },
         "@babel/preset-env": {
           old: "7.0.0",
-          new: "7.6.3",
+          new: "7.7.1",
           info: "https://github.com/babel/babel/tree/master/packages/babel-preset-env",
         }
       },
       peerDependencies: {
         "@babel/preset-env": {
           "old": "~6.0.0",
-          "new": "~7.6.3",
+          "new": "~7.7.1",
           "info": "https://github.com/babel/babel/tree/master/packages/babel-preset-env"
         }
       },
@@ -81,12 +81,12 @@ async function main() {
         },
         "prismjs": {
           old: "1.0.0",
-          new: "9000.0.1",
+          new: "1.17.1",
           info: "https://github.com/LeaVerou/prism",
         },
         "html-webpack-plugin": {
           old: "4.0.0-alpha.2",
-          new: "4.0.0-beta.8",
+          new: "4.0.0-beta.11",
           info: "https://github.com/jantimon/html-webpack-plugin",
         },
         "noty": {
@@ -96,24 +96,24 @@ async function main() {
         },
         "jpeg-buffer-orientation": {
           old: "0.0.0",
-          new: "2.0.1",
+          new: "2.0.2",
           info: "https://github.com/fisker/jpeg-buffer-orientation",
         },
         "styled-components": {
           old: "2.5.0-1",
-          new: "5.0.0-beta.9",
+          new: "5.0.0-rc.2",
           info: "https://github.com/styled-components/styled-components",
         },
         "@babel/preset-env": {
           old: "7.0.0",
-          new: "7.6.3",
+          new: "7.7.1",
           info: "https://github.com/babel/babel/tree/master/packages/babel-preset-env",
         }
       },
       peerDependencies: {
         "@babel/preset-env": {
           "old": "~6.0.0",
-          "new": "~7.6.3",
+          "new": "~7.7.1",
           "info": "https://github.com/babel/babel/tree/master/packages/babel-preset-env"
         }
       }
@@ -130,7 +130,7 @@ async function main() {
         },
         "prismjs": {
           old: "1.0.0",
-          new: "9000.0.1",
+          new: "1.17.1",
           info: "https://github.com/LeaVerou/prism",
         },
         "svgstore": {
@@ -140,7 +140,7 @@ async function main() {
         },
         "html-webpack-plugin": {
           old: "4.0.0-alpha.2",
-          new: "4.0.0-beta.8",
+          new: "4.0.0-beta.11",
           info: "https://github.com/jantimon/html-webpack-plugin",
         },
         "noty": {
@@ -150,24 +150,24 @@ async function main() {
         },
         "jpeg-buffer-orientation": {
           old: "0.0.0",
-          new: "2.0.1",
+          new: "2.0.2",
           info: "https://github.com/fisker/jpeg-buffer-orientation",
         },
         "styled-components": {
           old: "2.5.0-1",
-          new: "5.0.0-beta.9",
+          new: "5.0.0-rc.2",
           info: "https://github.com/styled-components/styled-components",
         },
         "@babel/preset-env": {
           old: "7.0.0",
-          new: "7.6.3",
+          new: "7.7.1",
           info: "https://github.com/babel/babel/tree/master/packages/babel-preset-env",
         }
       },
       peerDependencies: {
         "@babel/preset-env": {
           "old": "~6.0.0",
-          "new": "~7.6.3",
+          "new": "~7.7.1",
           "info": "https://github.com/babel/babel/tree/master/packages/babel-preset-env"
         }
       },
@@ -204,24 +204,24 @@ async function main() {
         },
         "jpeg-buffer-orientation": {
           old: "0.0.0",
-          new: "2.0.1",
+          new: "2.0.2",
           info: "https://github.com/fisker/jpeg-buffer-orientation",
         },
         "styled-components": {
           old: "2.5.0-1",
-          new: "4.4.0",
+          new: "4.4.1",
           info: "https://github.com/styled-components/styled-components",
         },
         "@babel/preset-env": {
           old: "7.0.0",
-          new: "7.6.3",
+          new: "7.7.1",
           info: "https://github.com/babel/babel/tree/master/packages/babel-preset-env",
         }
       },
       peerDependencies: {
         "@babel/preset-env": {
           "old": "~6.0.0",
-          "new": "~7.6.3",
+          "new": "~7.7.1",
           "info": "https://github.com/babel/babel/tree/master/packages/babel-preset-env"
         }
       },
@@ -243,7 +243,7 @@ async function main() {
         },
         "html-webpack-plugin": {
           old: "4.0.0-alpha.2",
-          new: "4.0.0-beta.8",
+          new: "4.0.0-beta.11",
           info: "https://github.com/jantimon/html-webpack-plugin",
         },
         "noty": {
