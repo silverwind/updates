@@ -42,25 +42,26 @@ See `--help` or below for the available options. Option that take multiple argum
 usage: updates [options]
 
   Options:
-    -u, --update                  Update versions and write package.json
-    -p, --prerelease [<pkg,...>]  Consider prerelease versions
-    -R, --release [<pkg,...>]     Only use release versions, may downgrade
-    -g, --greatest [<pkg,...>]    Prefer greatest over latest version
-    -i, --include <pkg,...>       Include only given packages
-    -e, --exclude <pkg,...>       Exclude given packages
-    -t, --types <type,...>        Check only given dependency types
-    -P, --patch [<pkg,...>]       Consider only up to semver-patch
-    -m, --minor [<pkg,...>]       Consider only up to semver-minor
-    -E, --error-on-outdated       Exit with code 2 when updates are available and code 0 when not
-    -U, --error-on-unchanged      Exit with code 0 when updates are available and code 2 when not
-    -r, --registry <url>          Override npm registry URL
-    -f, --file <path>             Use given package.json file or module directory
-    -S, --sockets <num>           Maximum number of parallel HTTP sockets opened. Default: 64
-    -j, --json                    Output a JSON object
-    -c, --color                   Force-enable color output
-    -n, --no-color                Disable color output
-    -v, --version                 Print the version
-    -h, --help                    Print this help
+    -u, --update                       Update versions and write package.json
+    -p, --prerelease [<pkg,...>]       Consider prerelease versions
+    -R, --release [<pkg,...>]          Only use release versions, may downgrade
+    -g, --greatest [<pkg,...>]         Prefer greatest over latest version
+    -i, --include <pkg,...>            Include only given packages
+    -e, --exclude <pkg,...>            Exclude given packages
+    -t, --types <type,...>             Check only given dependency types
+    -P, --patch [<pkg,...>]            Consider only up to semver-patch
+    -m, --minor [<pkg,...>]            Consider only up to semver-minor
+    -d, --allow-downgrade [<pkg,...>]  Allow version downgrades when using latest version
+    -E, --error-on-outdated            Exit with code 2 when updates are available and code 0 when not
+    -U, --error-on-unchanged           Exit with code 0 when updates are available and code 2 when not
+    -r, --registry <url>               Override npm registry URL
+    -f, --file <path>                  Use given package.json file or module directory
+    -S, --sockets <num>                Maximum number of parallel HTTP sockets opened. Default: 64
+    -j, --json                         Output a JSON object
+    -c, --color                        Force-enable color output
+    -n, --no-color                     Disable color output
+    -v, --version                      Print the version
+    -h, --help                         Print this help
 
   Examples:
     $ updates

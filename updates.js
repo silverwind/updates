@@ -16,6 +16,7 @@ const args = require("minimist")(process.argv.slice(2), {
     "v", "version",
   ],
   string: [
+    "d", "allow-downgrade",
     "f", "file",
     "g", "greatest",
     "m", "minor",
@@ -27,6 +28,7 @@ const args = require("minimist")(process.argv.slice(2), {
   ],
   alias: {
     c: "color",
+    d: "allow-downgrade",
     E: "error-on-outdated",
     U: "error-on-unchanged",
     e: "exclude",
@@ -53,25 +55,26 @@ if (args.help) {
   process.stdout.write(`usage: updates [options]
 
   Options:
-    -u, --update                  Update versions and write package.json
-    -p, --prerelease [<pkg,...>]  Consider prerelease versions
-    -R, --release [<pkg,...>]     Only use release versions, may downgrade
-    -g, --greatest [<pkg,...>]    Prefer greatest over latest version
-    -i, --include <pkg,...>       Include only given packages
-    -e, --exclude <pkg,...>       Exclude given packages
-    -t, --types <type,...>        Check only given dependency types
-    -P, --patch [<pkg,...>]       Consider only up to semver-patch
-    -m, --minor [<pkg,...>]       Consider only up to semver-minor
-    -E, --error-on-outdated       Exit with code 2 when updates are available and code 0 when not
-    -U, --error-on-unchanged      Exit with code 0 when updates are available and code 2 when not
-    -r, --registry <url>          Override npm registry URL
-    -f, --file <path>             Use given package.json file or module directory
-    -S, --sockets <num>           Maximum number of parallel HTTP sockets opened. Default: ${MAX_SOCKETS}
-    -j, --json                    Output a JSON object
-    -c, --color                   Force-enable color output
-    -n, --no-color                Disable color output
-    -v, --version                 Print the version
-    -h, --help                    Print this help
+    -u, --update                       Update versions and write package.json
+    -p, --prerelease [<pkg,...>]       Consider prerelease versions
+    -R, --release [<pkg,...>]          Only use release versions, may downgrade
+    -g, --greatest [<pkg,...>]         Prefer greatest over latest version
+    -i, --include <pkg,...>            Include only given packages
+    -e, --exclude <pkg,...>            Exclude given packages
+    -t, --types <type,...>             Check only given dependency types
+    -P, --patch [<pkg,...>]            Consider only up to semver-patch
+    -m, --minor [<pkg,...>]            Consider only up to semver-minor
+    -d, --allow-downgrade [<pkg,...>]  Allow version downgrades when using latest version
+    -E, --error-on-outdated            Exit with code 2 when updates are available and code 0 when not
+    -U, --error-on-unchanged           Exit with code 0 when updates are available and code 2 when not
+    -r, --registry <url>               Override npm registry URL
+    -f, --file <path>                  Use given package.json file or module directory
+    -S, --sockets <num>                Maximum number of parallel HTTP sockets opened. Default: ${MAX_SOCKETS}
+    -j, --json                         Output a JSON object
+    -c, --color                        Force-enable color output
+    -n, --no-color                     Disable color output
+    -v, --version                      Print the version
+    -h, --help                         Print this help
 
   Examples:
     $ updates
@@ -100,6 +103,7 @@ const prerelease = parseMixedArg(args.prerelease);
 const release = parseMixedArg(args.release);
 const patch = parseMixedArg(args.patch);
 const minor = parseMixedArg(args.minor);
+const allowDowngrade = parseMixedArg(args["allow-downgrade"]);
 
 const chalk = require("chalk");
 const defaultRegistry = "https://registry.npmjs.org";
@@ -475,6 +479,7 @@ function findNewVersion(data, opts) {
     const oldVersion = semver.coerce(opts.range).version;
     const oldIsPre = isRangePrerelease(opts.range);
     const newIsPre = isVersionPrerelease(version);
+    const latestIsPre = isVersionPrerelease(latestTag);
     const isGreater = semver.gt(version, oldVersion);
 
     // update to new prerelease
@@ -506,6 +511,15 @@ function findNewVersion(data, opts) {
     // prevent upgrading to prerelease with --release-only
     if (opts.useRel && isVersionPrerelease(latestTag)) {
       return version;
+    }
+
+    // prevent downgrade to older version except with --downgrade
+    if (semver.lt(latestTag, oldVersion) && !latestIsPre) {
+      if (allowDowngrade === true || (Array.isArray(allowDowngrade) && allowDowngrade.includes(data.name))) {
+        return latestTag;
+      } else {
+        return null;
+      }
     }
 
     // in all other cases, return latest dist-tag
