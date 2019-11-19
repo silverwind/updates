@@ -513,7 +513,7 @@ function findNewVersion(data, opts) {
       return version;
     }
 
-    // prevent downgrade to older version except with --downgrade
+    // prevent downgrade to older version except with --allow-downgrade
     if (semver.lt(latestTag, oldVersion) && !latestIsPre) {
       if (allowDowngrade === true || (Array.isArray(allowDowngrade) && allowDowngrade.includes(data.name))) {
         return latestTag;
