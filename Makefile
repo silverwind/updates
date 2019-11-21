@@ -16,17 +16,17 @@ update:
 
 patch:
 	$(MAKE) test
-	npx ver -C patch
+	npx versions -C patch
 	$(MAKE) publish
 
 minor:
 	$(MAKE) test
-	npx ver -C minor
+	npx versions -C minor
 	$(MAKE) publish
 
 major:
 	$(MAKE) test
-	npx ver -C major
+	npx versions -C major
 	$(MAKE) publish
 
 .PHONY: test publish deps update patch minor major

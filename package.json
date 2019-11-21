@@ -42,6 +42,6 @@
     "eslint": "6.6.0",
     "eslint-config-silverwind": "5.0.0",
     "execa": "3.3.0",
-    "ver": "6.0.2"
+    "versions": "7.0.2"
   }
 }
