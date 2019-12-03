@@ -531,6 +531,7 @@ function findNewVersion(data, opts) {
 }
 
 // check github url dependencies. does only support hash, no tags
+// TODO: tests and some documentation
 //
 // git+ssh://git@github.com:npm/cli.git#v1.0.27 => npm/cli.git#v1.0.27
 // git+ssh://git@github.com:npm/cli#semver:^5.0 => npm/cli#semver:^5.0

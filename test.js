@@ -47,7 +47,7 @@ async function main() {
         },
         "jpeg-buffer-orientation": {
           old: "0.0.0",
-          new: "2.0.2",
+          new: "2.0.3",
           info: "https://github.com/fisker/jpeg-buffer-orientation",
         },
         "styled-components": {
@@ -57,14 +57,14 @@ async function main() {
         },
         "@babel/preset-env": {
           old: "7.0.0",
-          new: "7.7.1",
+          new: "7.7.4",
           info: "https://github.com/babel/babel/tree/master/packages/babel-preset-env",
         }
       },
       peerDependencies: {
         "@babel/preset-env": {
           "old": "~6.0.0",
-          "new": "~7.7.1",
+          "new": "~7.7.4",
           "info": "https://github.com/babel/babel/tree/master/packages/babel-preset-env"
         }
       },
@@ -96,7 +96,7 @@ async function main() {
         },
         "jpeg-buffer-orientation": {
           old: "0.0.0",
-          new: "2.0.2",
+          new: "2.0.3",
           info: "https://github.com/fisker/jpeg-buffer-orientation",
         },
         "styled-components": {
@@ -106,14 +106,14 @@ async function main() {
         },
         "@babel/preset-env": {
           old: "7.0.0",
-          new: "7.7.1",
+          new: "7.7.4",
           info: "https://github.com/babel/babel/tree/master/packages/babel-preset-env",
         }
       },
       peerDependencies: {
         "@babel/preset-env": {
           "old": "~6.0.0",
-          "new": "~7.7.1",
+          "new": "~7.7.4",
           "info": "https://github.com/babel/babel/tree/master/packages/babel-preset-env"
         }
       }
@@ -150,7 +150,7 @@ async function main() {
         },
         "jpeg-buffer-orientation": {
           old: "0.0.0",
-          new: "2.0.2",
+          new: "2.0.3",
           info: "https://github.com/fisker/jpeg-buffer-orientation",
         },
         "styled-components": {
@@ -160,14 +160,14 @@ async function main() {
         },
         "@babel/preset-env": {
           old: "7.0.0",
-          new: "7.7.1",
+          new: "7.7.4",
           info: "https://github.com/babel/babel/tree/master/packages/babel-preset-env",
         }
       },
       peerDependencies: {
         "@babel/preset-env": {
           "old": "~6.0.0",
-          "new": "~7.7.1",
+          "new": "~7.7.4",
           "info": "https://github.com/babel/babel/tree/master/packages/babel-preset-env"
         }
       },
@@ -204,7 +204,7 @@ async function main() {
         },
         "jpeg-buffer-orientation": {
           old: "0.0.0",
-          new: "2.0.2",
+          new: "2.0.3",
           info: "https://github.com/fisker/jpeg-buffer-orientation",
         },
         "styled-components": {
@@ -214,14 +214,14 @@ async function main() {
         },
         "@babel/preset-env": {
           old: "7.0.0",
-          new: "7.7.1",
+          new: "7.7.4",
           info: "https://github.com/babel/babel/tree/master/packages/babel-preset-env",
         }
       },
       peerDependencies: {
         "@babel/preset-env": {
           "old": "~6.0.0",
-          "new": "~7.7.1",
+          "new": "~7.7.4",
           "info": "https://github.com/babel/babel/tree/master/packages/babel-preset-env"
         }
       },
