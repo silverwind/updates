@@ -539,7 +539,7 @@ function findNewVersion(data, opts) {
 // mochajs/mocha#4727d357ea => mochajs/mocha#4727d357ea
 // https://github.com/leeoniya/uPlot/tarball/a913c4e4f317502d217615c0d3c3c48e516ac490 => leeoniya/uPlot/tarball/a913c4e4f317502d217615c0d3c3c48e516ac490
 async function checkUrlDep([key, dep]) {
-  const stripped = dep.old.replace(/^.*?:\/\/(git@)?(github\.com[:/])/, "");
+  const stripped = dep.old.replace(/^.*?:\/\/(.*?@)?(github\.com[:/])/, "");
   const [_, user, repo, oldSha] = /^([^/]+)\/([^/#.]+)?.*?([0-9a-f]+)$/i.exec(stripped);
   if (!user || !repo || !oldSha) return;
   const res = await fetch(`https://api.github.com/repos/${user}/${repo}/commits`);
