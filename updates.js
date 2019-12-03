@@ -114,6 +114,7 @@ const maxSockets = typeof args.sockets === "number" ? args.sockets : MAX_SOCKETS
 
 let packageFile;
 const deps = {};
+const maybeUrlDeps = {};
 
 if (args.file) {
   let stat;
@@ -180,6 +181,8 @@ for (const key of dependencyTypes) {
       const old = pkg[key][name];
       if (isValidSemverRange(old)) {
         deps[`${key}|${name}`] = {old};
+      } else {
+        maybeUrlDeps[`${key}|${name}`] = {old};
       }
     }
   }
@@ -373,8 +376,8 @@ function formatDeps() {
     const [_type, name] = key.split("|");
     arr.push([
       name,
-      highlightDiff(data.old, data.new, false),
-      highlightDiff(data.new, data.old, true),
+      highlightDiff(data.oldPrint || data.old, data.newPrint || data.new, false),
+      highlightDiff(data.newPrint || data.new, data.oldPrinnt || data.old, true),
       data.info,
     ]);
   }
@@ -527,6 +530,30 @@ function findNewVersion(data, opts) {
   }
 }
 
+// check github url dependencies. does only support hash, no tags
+//
+// git+ssh://git@github.com:npm/cli.git#v1.0.27 => npm/cli.git#v1.0.27
+// git+ssh://git@github.com:npm/cli#semver:^5.0 => npm/cli#semver:^5.0
+// git+https://isaacs@github.com/npm/cli.git => npm/cli.git
+// git://github.com/npm/cli.git#v1.0.27 => npm/cli.git#v1.0.27
+// mochajs/mocha#4727d357ea => mochajs/mocha#4727d357ea
+// https://github.com/leeoniya/uPlot/tarball/a913c4e4f317502d217615c0d3c3c48e516ac490 => leeoniya/uPlot/tarball/a913c4e4f317502d217615c0d3c3c48e516ac490
+async function checkUrlDep([key, dep]) {
+  const stripped = dep.old.replace(/^.*?:\/\/(git@)?(github\.com[:/])/, "");
+  const [_, user, repo, oldSha] = /^([^/]+)\/([^/#.]+)?.*?([0-9a-f]+)$/i.exec(stripped);
+  if (!user || !repo || !oldSha) return;
+  const res = await fetch(`https://api.github.com/repos/${user}/${repo}/commits`);
+  if (!res || !res.ok) return;
+  const data = await res.json();
+  let newSha = data.map(entry => entry.sha)[0];
+  if (!newSha || !newSha.length) return;
+  newSha = newSha.substring(0, oldSha.length);
+  const newRange = dep.old.replace(oldSha, newSha);
+  if (oldSha !== newSha) {
+    return {key, newRange, user, repo, oldSha, newSha};
+  }
+}
+
 function parseMixedArg(arg) {
   if (arg === "") {
     return true;
@@ -573,6 +600,21 @@ async function main() {
     } else {
       deps[key].new = newRange;
       deps[key].info = getInfoUrl(data.versions[newVersion] || data, registry, data.name);
+    }
+  }
+
+  if (Object.keys(maybeUrlDeps).length) {
+    let results = await Promise.all(Object.entries(maybeUrlDeps).map(checkUrlDep));
+    results = results.filter(r => !!r);
+    for (const res of results || []) {
+      const {key, newRange, user, repo, oldSha, newSha} = res;
+      deps[key] = {
+        old: maybeUrlDeps[key].old,
+        new: newRange,
+        oldPrint: oldSha.substring(0, 8),
+        newPrint: newSha.substring(0, 8),
+        info: `https://github.com/${user}/${repo}`,
+      };
     }
   }
 
