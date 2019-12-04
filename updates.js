@@ -4,6 +4,12 @@
 process.env.NODE_ENV = "production";
 const MAX_SOCKETS = 64;
 
+// regexes for url dependencies. does only github and only hash or exact semver
+// https://regex101.com/r/gCZzfK/1
+const stripRe = /^.*?:\/\/(.*?@)?(github\.com[:/])/i;
+const partsRe = /^([^/]+)\/([^/#.]+)?.*?([0-9a-f]+|v?[0-9]+\.[0-9]+\.[0-9]+)$/i;
+const hashRe = /^[0-9a-f]+$/i;
+
 const args = require("minimist")(process.argv.slice(2), {
   boolean: [
     "c", "color",
@@ -377,7 +383,7 @@ function formatDeps() {
     arr.push([
       name,
       highlightDiff(data.oldPrint || data.old, data.newPrint || data.new, false),
-      highlightDiff(data.newPrint || data.new, data.oldPrinnt || data.old, true),
+      highlightDiff(data.newPrint || data.new, data.oldPrint || data.old, true),
       data.info,
     ]);
   }
@@ -530,28 +536,58 @@ function findNewVersion(data, opts) {
   }
 }
 
-// check github url dependencies. does only support hash, no tags
-// TODO: tests and some documentation
-//
-// git+ssh://git@github.com:npm/cli.git#v1.0.27 => npm/cli.git#v1.0.27
-// git+ssh://git@github.com:npm/cli#semver:^5.0 => npm/cli#semver:^5.0
-// git+https://isaacs@github.com/npm/cli.git => npm/cli.git
-// git://github.com/npm/cli.git#v1.0.27 => npm/cli.git#v1.0.27
-// mochajs/mocha#4727d357ea => mochajs/mocha#4727d357ea
-// https://github.com/leeoniya/uPlot/tarball/a913c4e4f317502d217615c0d3c3c48e516ac490 => leeoniya/uPlot/tarball/a913c4e4f317502d217615c0d3c3c48e516ac490
-async function checkUrlDep([key, dep]) {
-  const stripped = dep.old.replace(/^.*?:\/\/(.*?@)?(github\.com[:/])/, "");
-  const [_, user, repo, oldSha] = /^([^/]+)\/([^/#.]+)?.*?([0-9a-f]+)$/i.exec(stripped);
-  if (!user || !repo || !oldSha) return;
-  const res = await fetch(`https://api.github.com/repos/${user}/${repo}/commits`);
-  if (!res || !res.ok) return;
-  const data = await res.json();
-  let newSha = data.map(entry => entry.sha)[0];
-  if (!newSha || !newSha.length) return;
-  newSha = newSha.substring(0, oldSha.length);
-  const newRange = dep.old.replace(oldSha, newSha);
-  if (oldSha !== newSha) {
-    return {key, newRange, user, repo, oldSha, newSha};
+async function checkUrlDep([key, dep], {useGreatest} = {}) {
+  const stripped = dep.old.replace(stripRe, "");
+  const [_, user, repo, oldRef] = partsRe.exec(stripped);
+  if (!user || !repo || !oldRef) return;
+
+  if (hashRe.test(oldRef)) {
+    const res = await fetch(`https://api.github.com/repos/${user}/${repo}/commits`);
+    if (!res || !res.ok) return;
+    const data = await res.json();
+    let newRef = data.map(entry => entry.sha)[0];
+    if (!newRef || !newRef.length) return;
+    newRef = newRef.substring(0, oldRef.length);
+    if (oldRef !== newRef) {
+      const newRange = dep.old.replace(oldRef, newRef);
+      return {key, newRange, user, repo, oldRef, newRef};
+    }
+  } else {
+    const res = await fetch(`https://api.github.com/repos/${user}/${repo}/git/refs/tags`);
+    if (!res || !res.ok) return;
+    const data = await res.json();
+    const tags = data.map(entry => entry.ref.replace(/^refs\/tags\//, ""));
+    const oldRefBare = oldRef.replace(/^v/, "");
+    if (!semver.valid(oldRefBare)) return;
+
+    if (!useGreatest) {
+      const lastTag = tags[tags.length - 1];
+      const lastTagBare = lastTag.replace(/^v/, "");
+      if (!semver.valid(lastTagBare)) return;
+
+      if (semver.neq(oldRefBare, lastTagBare)) {
+        const newRange = lastTag;
+        const newRef = lastTag;
+        return {key, newRange, user, repo, oldRef, newRef};
+      }
+    } else {
+      let greatestTag = oldRef;
+      let greatestTagBare = oldRef.replace(/^v/, "");
+
+      for (const tag of tags) {
+        const tagBare = tag.replace(/^v/, "");
+        if (!semver.valid(tagBare)) continue;
+        if (!greatestTag || semver.gt(tagBare, greatestTagBare)) {
+          greatestTag = tag;
+          greatestTagBare = tagBare;
+        }
+      }
+      if (semver.neq(oldRefBare, greatestTagBare)) {
+        const newRange = greatestTag;
+        const newRef = greatestTag;
+        return {key, newRange, user, repo, oldRef, newRef};
+      }
+    }
   }
 }
 
@@ -605,15 +641,19 @@ async function main() {
   }
 
   if (Object.keys(maybeUrlDeps).length) {
-    let results = await Promise.all(Object.entries(maybeUrlDeps).map(checkUrlDep));
+    let results = await Promise.all(Object.entries(maybeUrlDeps).map(([key, dep]) => {
+      const [_, name] = key.split("|");
+      const useGreatest = typeof greatest === "boolean" ? greatest : greatest.includes(name);
+      return checkUrlDep([key, dep], {useGreatest});
+    }));
     results = results.filter(r => !!r);
     for (const res of results || []) {
-      const {key, newRange, user, repo, oldSha, newSha} = res;
+      const {key, newRange, user, repo, oldRef, newRef} = res;
       deps[key] = {
         old: maybeUrlDeps[key].old,
         new: newRange,
-        oldPrint: oldSha.substring(0, 8),
-        newPrint: newSha.substring(0, 8),
+        oldPrint: hashRe.test(oldRef) ? oldRef.substring(0, 7) : oldRef,
+        newPrint: hashRe.test(newRef) ? newRef.substring(0, 7) : newRef,
         info: `https://github.com/${user}/${repo}`,
       };
     }
