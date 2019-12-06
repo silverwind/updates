@@ -40,7 +40,7 @@
   },
   "devDependencies": {
     "eslint": "6.7.2",
-    "eslint-config-silverwind": "5.0.2",
+    "eslint-config-silverwind": "5.0.3",
     "execa": "3.4.0",
     "versions": "7.0.3"
   }
