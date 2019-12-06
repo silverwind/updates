@@ -538,7 +538,7 @@ function findNewVersion(data, opts) {
 
 async function checkUrlDep([key, dep], {useGreatest} = {}) {
   const stripped = dep.old.replace(stripRe, "");
-  const [_, user, repo, oldRef] = partsRe.exec(stripped);
+  const [_, user, repo, oldRef] = partsRe.exec(stripped) || [];
   if (!user || !repo || !oldRef) return;
 
   if (hashRe.test(oldRef)) {
