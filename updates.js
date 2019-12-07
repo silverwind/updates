@@ -3,6 +3,7 @@
 
 process.env.NODE_ENV = "production";
 const MAX_SOCKETS = 64;
+const sep = "\0";
 
 // regexes for url dependencies. does only github and only hash or exact semver
 // https://regex101.com/r/gCZzfK/1
@@ -186,9 +187,9 @@ for (const key of dependencyTypes) {
     for (const name of names) {
       const old = pkg[key][name];
       if (isValidSemverRange(old)) {
-        deps[`${key}|${name}`] = {old};
+        deps[`${key}${sep}${name}`] = {old};
       } else {
-        maybeUrlDeps[`${key}|${name}`] = {old};
+        maybeUrlDeps[`${key}${sep}${name}`] = {old};
       }
     }
   }
@@ -305,7 +306,7 @@ function finish(obj, opts = {}) {
     if (!hadError) {
       output.results = {};
       for (const [key, value] of Object.entries(deps)) {
-        const [type, name] = key.split("|");
+        const [type, name] = key.split(sep);
         if (!output.results[type]) output.results[type] = {};
         output.results[type][name] = value;
       }
@@ -379,7 +380,7 @@ function formatDeps() {
   const arr = [["NAME", "OLD", "NEW", "INFO"]];
 
   for (const [key, data] of Object.entries(deps)) {
-    const [_type, name] = key.split("|");
+    const [_type, name] = key.split(sep);
     arr.push([
       name,
       highlightDiff(data.oldPrint || data.old, data.newPrint || data.new, false),
@@ -398,7 +399,7 @@ function updatePackageJson() {
   let newPkgStr = pkgStr;
 
   for (const key of Object.keys(deps)) {
-    const [_type, name] = key.split("|");
+    const [_type, name] = key.split(sep);
     const re = new RegExp(`"${esc(name)}": +"${esc(deps[key].old)}"`, "g");
     newPkgStr = newPkgStr.replace(re, `"${name}": "${deps[key].new}"`);
   }
@@ -605,7 +606,7 @@ function parseMixedArg(arg) {
 
 async function main() {
   const dati = await Promise.all(Object.keys(deps).map(key => {
-    const [type, name] = key.split("|");
+    const [type, name] = key.split(sep);
     return get(name, type, registry);
   }));
 
@@ -627,7 +628,7 @@ async function main() {
       semvers = ["patch", "minor", "major"];
     }
 
-    const key = `${type}|${data.name}`;
+    const key = `${type}${sep}${data.name}`;
     const oldRange = deps[key].old;
     const newVersion = findNewVersion(data, {usePre, useRel, useGreatest, semvers, range: oldRange});
     const newRange = updateRange(oldRange, newVersion);
@@ -642,7 +643,7 @@ async function main() {
 
   if (Object.keys(maybeUrlDeps).length) {
     let results = await Promise.all(Object.entries(maybeUrlDeps).map(([key, dep]) => {
-      const [_, name] = key.split("|");
+      const [_, name] = key.split(sep);
       const useGreatest = typeof greatest === "boolean" ? greatest : greatest.includes(name);
       return checkUrlDep([key, dep], {useGreatest});
     }));
