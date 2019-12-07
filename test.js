@@ -57,14 +57,14 @@ async function main() {
         },
         "@babel/preset-env": {
           old: "7.0.0",
-          new: "7.7.4",
+          new: "7.7.5",
           info: "https://github.com/babel/babel/tree/master/packages/babel-preset-env",
         }
       },
       peerDependencies: {
         "@babel/preset-env": {
           "old": "~6.0.0",
-          "new": "~7.7.4",
+          "new": "~7.7.5",
           "info": "https://github.com/babel/babel/tree/master/packages/babel-preset-env"
         }
       },
@@ -106,14 +106,14 @@ async function main() {
         },
         "@babel/preset-env": {
           old: "7.0.0",
-          new: "7.7.4",
+          new: "7.7.5",
           info: "https://github.com/babel/babel/tree/master/packages/babel-preset-env",
         }
       },
       peerDependencies: {
         "@babel/preset-env": {
           "old": "~6.0.0",
-          "new": "~7.7.4",
+          "new": "~7.7.5",
           "info": "https://github.com/babel/babel/tree/master/packages/babel-preset-env"
         }
       }
@@ -160,14 +160,14 @@ async function main() {
         },
         "@babel/preset-env": {
           old: "7.0.0",
-          new: "7.7.4",
+          new: "7.7.5",
           info: "https://github.com/babel/babel/tree/master/packages/babel-preset-env",
         }
       },
       peerDependencies: {
         "@babel/preset-env": {
           "old": "~6.0.0",
-          "new": "~7.7.4",
+          "new": "~7.7.5",
           "info": "https://github.com/babel/babel/tree/master/packages/babel-preset-env"
         }
       },
@@ -214,14 +214,14 @@ async function main() {
         },
         "@babel/preset-env": {
           old: "7.0.0",
-          new: "7.7.4",
+          new: "7.7.5",
           info: "https://github.com/babel/babel/tree/master/packages/babel-preset-env",
         }
       },
       peerDependencies: {
         "@babel/preset-env": {
           "old": "~6.0.0",
-          "new": "~7.7.4",
+          "new": "~7.7.5",
           "info": "https://github.com/babel/babel/tree/master/packages/babel-preset-env"
         }
       },
