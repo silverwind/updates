@@ -186,7 +186,7 @@ for (const key of dependencyTypes) {
 
     for (const name of names) {
       const old = pkg[key][name];
-      if (isValidSemverRange(old)) {
+      if (semver.validRange(old)) {
         deps[`${key}${sep}${name}`] = {old};
       } else {
         maybeUrlDeps[`${key}${sep}${name}`] = {old};
@@ -409,15 +409,6 @@ function updatePackageJson() {
 
 function updateRange(range, version) {
   return range.replace(/[0-9]+\.[0-9]+\.[0-9]+(-.+)?/g, version);
-}
-
-function isValidSemverRange(range) {
-  let valid = false;
-  try {
-    new semver.Range(range);
-    valid = true;
-  } catch (err) {}
-  return valid;
 }
 
 function isVersionPrerelease(version) {
