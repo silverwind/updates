@@ -414,7 +414,7 @@ function updateRange(range, version) {
 function isValidSemverRange(range) {
   let valid = false;
   try {
-    semver.Range(range);
+    new semver.Range(range);
     valid = true;
   } catch (err) {}
   return valid;

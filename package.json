@@ -34,7 +34,7 @@
     "minimist": "1.2.0",
     "rc": "1.2.8",
     "registry-auth-token": "4.0.0",
-    "semver": "6.3.0",
+    "semver": "7.0.0",
     "string-width": "4.2.0",
     "text-table": "0.2.0"
   },
@@ -42,6 +42,6 @@
     "eslint": "6.7.2",
     "eslint-config-silverwind": "5.0.3",
     "execa": "3.4.0",
-    "versions": "7.0.3"
+    "versions": "7.0.4"
   }
 }
