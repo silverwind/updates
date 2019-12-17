@@ -86,7 +86,7 @@ async function main() {
         },
         "html-webpack-plugin": {
           old: "4.0.0-alpha.2",
-          new: "4.0.0-beta.11",
+          new: "4.0.0-alpha",
           info: "https://github.com/jantimon/html-webpack-plugin",
         },
         "noty": {
@@ -101,7 +101,7 @@ async function main() {
         },
         "styled-components": {
           old: "2.5.0-1",
-          new: "5.0.0-rc.2",
+          new: "5.0.0-0.canary-sheet",
           info: "https://github.com/styled-components/styled-components",
         },
         "@babel/preset-env": {
@@ -135,12 +135,12 @@ async function main() {
         },
         "svgstore": {
           old: "^3.0.0",
-          new: "^3.0.0-2",
+          new: "^3.0.0-0",
           info: "https://github.com/svgstore/svgstore",
         },
         "html-webpack-plugin": {
           old: "4.0.0-alpha.2",
-          new: "4.0.0-beta.11",
+          new: "4.0.0-alpha",
           info: "https://github.com/jantimon/html-webpack-plugin",
         },
         "noty": {
@@ -155,7 +155,7 @@ async function main() {
         },
         "styled-components": {
           old: "2.5.0-1",
-          new: "5.0.0-rc.2",
+          new: "5.0.0-0.canary-sheet",
           info: "https://github.com/styled-components/styled-components",
         },
         "@babel/preset-env": {

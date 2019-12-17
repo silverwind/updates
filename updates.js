@@ -380,7 +380,7 @@ function formatDeps() {
   const arr = [["NAME", "OLD", "NEW", "INFO"]];
 
   for (const [key, data] of Object.entries(deps)) {
-    const [_type, name] = key.split(sep);
+    const [, name] = key.split(sep);
     arr.push([
       name,
       highlightDiff(data.oldPrint || data.old, data.newPrint || data.new, false),
@@ -399,7 +399,7 @@ function updatePackageJson() {
   let newPkgStr = pkgStr;
 
   for (const key of Object.keys(deps)) {
-    const [_type, name] = key.split(sep);
+    const [, name] = key.split(sep);
     const re = new RegExp(`"${esc(name)}": +"${esc(deps[key].old)}"`, "g");
     newPkgStr = newPkgStr.replace(re, `"${name}": "${deps[key].new}"`);
   }
@@ -530,7 +530,7 @@ function findNewVersion(data, opts) {
 
 async function checkUrlDep([key, dep], {useGreatest} = {}) {
   const stripped = dep.old.replace(stripRe, "");
-  const [_, user, repo, oldRef] = partsRe.exec(stripped) || [];
+  const [, user, repo, oldRef] = partsRe.exec(stripped) || [];
   if (!user || !repo || !oldRef) return;
 
   if (hashRe.test(oldRef)) {
@@ -634,7 +634,7 @@ async function main() {
 
   if (Object.keys(maybeUrlDeps).length) {
     let results = await Promise.all(Object.entries(maybeUrlDeps).map(([key, dep]) => {
-      const [_, name] = key.split(sep);
+      const [, name] = key.split(sep);
       const useGreatest = typeof greatest === "boolean" ? greatest : greatest.includes(name);
       return checkUrlDep([key, dep], {useGreatest});
     }));
