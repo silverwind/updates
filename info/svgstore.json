@@ -1,0 +1,688 @@
+{
+  "_id": "svgstore",
+  "_rev": "14-5f646a9496caeee910226d7dfc2fd445",
+  "name": "svgstore",
+  "description": "Combines mulitple svg files into one.",
+  "dist-tags": { "latest": "3.0.0-2", "next": "3.0.0-0" },
+  "versions": {
+    "1.0.0": {
+      "name": "svgstore",
+      "version": "1.0.0",
+      "description": "Combines mulitple svg files into one.",
+      "main": "src/svgstore.js",
+      "scripts": {
+        "coveralls": "nyc report -r text-lcov | coveralls",
+        "pretest": "xo src/*.js test/*.js",
+        "test": "nyc ava -v",
+        "posttest": "nyc report -r lcov",
+        "watch": "chokidar '{src,test}/**/*.js' -c 'npm test'"
+      },
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/shannonmoeller/svgstore.git"
+      },
+      "keywords": [
+        "concat",
+        "join",
+        "merge",
+        "pack",
+        "path",
+        "sprite",
+        "svg",
+        "svgs",
+        "svgstore",
+        "symbol",
+        "symbols"
+      ],
+      "author": {
+        "name": "Shannon Moeller",
+        "email": "me@shannonmoeller.com",
+        "url": "http://shannonmoeller.com"
+      },
+      "license": "MIT",
+      "bugs": { "url": "https://github.com/shannonmoeller/svgstore/issues" },
+      "homepage": "https://github.com/shannonmoeller/svgstore",
+      "dependencies": { "cheerio": "^0.20.0" },
+      "devDependencies": {
+        "ava": "^0.12.0",
+        "chokidar-cli": "^1.2.0",
+        "coveralls": "^2.11.6",
+        "nyc": "^6.0.0",
+        "xo": "^0.12.1"
+      },
+      "engines": { "node": ">= 0.12" },
+      "gitHead": "23ad86240e00ba80d3ddbc2607ead4916978450a",
+      "_id": "svgstore@1.0.0",
+      "_shasum": "92dd8bd140a80e457a642305297e0ab73f1fd5f3",
+      "_from": ".",
+      "_npmVersion": "3.6.0",
+      "_nodeVersion": "5.6.0",
+      "_npmUser": {
+        "name": "shannonmoeller",
+        "email": "me@shannonmoeller.com"
+      },
+      "dist": {
+        "shasum": "92dd8bd140a80e457a642305297e0ab73f1fd5f3",
+        "tarball": "https://registry.npmjs.org/svgstore/-/svgstore-1.0.0.tgz"
+      },
+      "maintainers": [
+        { "name": "shannonmoeller", "email": "me@shannonmoeller.com" }
+      ],
+      "_npmOperationalInternal": {
+        "host": "packages-12-west.internal.npmjs.com",
+        "tmp": "tmp/svgstore-1.0.0.tgz_1457558098823_0.10486977710388601"
+      },
+      "directories": {}
+    },
+    "1.1.0": {
+      "name": "svgstore",
+      "version": "1.1.0",
+      "description": "Combines mulitple svg files into one.",
+      "main": "src/svgstore.js",
+      "scripts": {
+        "coveralls": "nyc report -r text-lcov | coveralls",
+        "test": "xo src/*.js test/*.js; nyc ava -v",
+        "posttest": "nyc report -r lcov",
+        "watch": "chokidar '{src,test}/**/*.js' -c 'npm test'"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/shannonmoeller/svgstore.git"
+      },
+      "keywords": [
+        "concat",
+        "join",
+        "merge",
+        "pack",
+        "path",
+        "sprite",
+        "svg",
+        "svgs",
+        "svgstore",
+        "symbol",
+        "symbols"
+      ],
+      "author": {
+        "name": "Shannon Moeller",
+        "email": "me@shannonmoeller.com",
+        "url": "http://shannonmoeller.com"
+      },
+      "license": "MIT",
+      "bugs": { "url": "https://github.com/shannonmoeller/svgstore/issues" },
+      "homepage": "https://github.com/shannonmoeller/svgstore",
+      "dependencies": { "cheerio": "^0.20.0", "object-assign": "^4.1.0" },
+      "devDependencies": {
+        "ava": "0.15.2",
+        "chokidar-cli": "^1.2.0",
+        "coveralls": "^2.11.6",
+        "nyc": "^7.0.0",
+        "xo": "^0.16"
+      },
+      "engines": { "node": ">= 0.12" },
+      "gitHead": "7d5bc7cef614b698d57279a5a0b3a33a58bfb264",
+      "_id": "svgstore@1.1.0",
+      "_shasum": "a3fb5d731bcc24a70a0bb5303e34dad40500044e",
+      "_from": ".",
+      "_npmVersion": "3.10.3",
+      "_nodeVersion": "6.3.1",
+      "_npmUser": {
+        "name": "shannonmoeller",
+        "email": "me@shannonmoeller.com"
+      },
+      "dist": {
+        "shasum": "a3fb5d731bcc24a70a0bb5303e34dad40500044e",
+        "tarball": "https://registry.npmjs.org/svgstore/-/svgstore-1.1.0.tgz"
+      },
+      "maintainers": [
+        { "name": "bsipple", "email": "bsipple57@gmail.com" },
+        { "name": "shannonmoeller", "email": "me@shannonmoeller.com" }
+      ],
+      "_npmOperationalInternal": {
+        "host": "packages-12-west.internal.npmjs.com",
+        "tmp": "tmp/svgstore-1.1.0.tgz_1470660692409_0.16017176560126245"
+      },
+      "directories": {}
+    },
+    "2.0.0": {
+      "name": "svgstore",
+      "version": "2.0.0",
+      "description": "Combines mulitple svg files into one.",
+      "main": "src/svgstore.js",
+      "scripts": {
+        "coveralls": "nyc report -r text-lcov | coveralls",
+        "pretest": "xo src/*.js test/*.js",
+        "test": "nyc ava -v",
+        "posttest": "nyc report -r lcov",
+        "watch": "chokidar '{src,test}/**/*.js' -d 1000 -c 'npm test'"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/svgstore/svgstore.git"
+      },
+      "keywords": [
+        "concat",
+        "join",
+        "merge",
+        "pack",
+        "path",
+        "sprite",
+        "svg",
+        "svgs",
+        "svgstore",
+        "symbol",
+        "symbols"
+      ],
+      "author": {
+        "name": "Shannon Moeller",
+        "email": "me@shannonmoeller.com",
+        "url": "http://shannonmoeller.com"
+      },
+      "maintainers": [
+        { "name": "bsipple", "email": "bsipple57@gmail.com" },
+        { "name": "shannonmoeller", "email": "me@shannonmoeller.com" }
+      ],
+      "license": "MIT",
+      "bugs": { "url": "https://github.com/svgstore/svgstore/issues" },
+      "homepage": "https://github.com/svgstore/svgstore",
+      "dependencies": { "cheerio": "^0.22.0", "object-assign": "^4.1.0" },
+      "devDependencies": {
+        "ava": "0.16.0",
+        "chokidar-cli": "^1.2.0",
+        "coveralls": "^2.11.12",
+        "nyc": "^8.1.0",
+        "xo": "^0.16"
+      },
+      "engines": { "node": ">= 0.12" },
+      "gitHead": "be4bc5189764deefb77f9db3e98e65ff2ff1eecd",
+      "_id": "svgstore@2.0.0",
+      "_shasum": "72d96baf74389a9eb41937fd037f6d18e9c8a395",
+      "_from": ".",
+      "_npmVersion": "3.10.8",
+      "_nodeVersion": "6.9.1",
+      "_npmUser": {
+        "name": "shannonmoeller",
+        "email": "me@shannonmoeller.com"
+      },
+      "dist": {
+        "shasum": "72d96baf74389a9eb41937fd037f6d18e9c8a395",
+        "tarball": "https://registry.npmjs.org/svgstore/-/svgstore-2.0.0.tgz"
+      },
+      "_npmOperationalInternal": {
+        "host": "packages-12-west.internal.npmjs.com",
+        "tmp": "tmp/svgstore-2.0.0.tgz_1481291505877_0.01739357877522707"
+      },
+      "directories": {}
+    },
+    "2.0.1": {
+      "name": "svgstore",
+      "version": "2.0.1",
+      "description": "Combines mulitple svg files into one.",
+      "main": "src/svgstore.js",
+      "scripts": {
+        "coveralls": "nyc report -r text-lcov | coveralls",
+        "pretest": "xo src/*.js test/*.js",
+        "test": "nyc ava -v",
+        "posttest": "nyc report -r lcov",
+        "watch": "chokidar '{src,test}/**/*.js' -d 1000 -c 'npm test'"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/svgstore/svgstore.git"
+      },
+      "keywords": [
+        "concat",
+        "join",
+        "merge",
+        "pack",
+        "path",
+        "sprite",
+        "svg",
+        "svgs",
+        "svgstore",
+        "symbol",
+        "symbols"
+      ],
+      "author": {
+        "name": "Shannon Moeller",
+        "email": "me@shannonmoeller.com",
+        "url": "http://shannonmoeller.com"
+      },
+      "maintainers": [
+        { "name": "bsipple", "email": "bsipple57@gmail.com" },
+        { "name": "shannonmoeller", "email": "me@shannonmoeller.com" }
+      ],
+      "license": "MIT",
+      "bugs": { "url": "https://github.com/svgstore/svgstore/issues" },
+      "homepage": "https://github.com/svgstore/svgstore",
+      "dependencies": { "cheerio": "^0.22.0", "object-assign": "^4.1.0" },
+      "devDependencies": {
+        "ava": "0.16.0",
+        "chokidar-cli": "^1.2.0",
+        "coveralls": "^2.11.12",
+        "nyc": "^8.1.0",
+        "xo": "^0.16"
+      },
+      "engines": { "node": ">= 0.12" },
+      "gitHead": "2173923027049d4c12f0e09c2458c1798c1686b9",
+      "_id": "svgstore@2.0.1",
+      "_shasum": "610bc9aaf00e44b8087907e7b626feb2d1291575",
+      "_from": ".",
+      "_npmVersion": "3.10.8",
+      "_nodeVersion": "6.9.1",
+      "_npmUser": {
+        "name": "shannonmoeller",
+        "email": "me@shannonmoeller.com"
+      },
+      "dist": {
+        "shasum": "610bc9aaf00e44b8087907e7b626feb2d1291575",
+        "tarball": "https://registry.npmjs.org/svgstore/-/svgstore-2.0.1.tgz"
+      },
+      "_npmOperationalInternal": {
+        "host": "packages-18-east.internal.npmjs.com",
+        "tmp": "tmp/svgstore-2.0.1.tgz_1481292207125_0.2159856262151152"
+      },
+      "directories": {}
+    },
+    "2.0.2": {
+      "name": "svgstore",
+      "version": "2.0.2",
+      "description": "Combines mulitple svg files into one.",
+      "main": "src/svgstore.js",
+      "scripts": {
+        "coveralls": "nyc report -r text-lcov | coveralls",
+        "pretest": "xo src/*.js test/*.js",
+        "test": "nyc ava -v",
+        "posttest": "nyc report -r lcov",
+        "watch": "chokidar '{src,test}/**/*.js' -d 1000 -c 'npm test'"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/svgstore/svgstore.git"
+      },
+      "keywords": [
+        "concat",
+        "join",
+        "merge",
+        "pack",
+        "path",
+        "sprite",
+        "svg",
+        "svgs",
+        "svgstore",
+        "symbol",
+        "symbols"
+      ],
+      "author": {
+        "name": "Shannon Moeller",
+        "email": "me@shannonmoeller.com",
+        "url": "http://shannonmoeller.com"
+      },
+      "maintainers": [
+        { "name": "bsipple", "email": "bsipple57@gmail.com" },
+        { "name": "shannonmoeller", "email": "me@shannonmoeller.com" }
+      ],
+      "license": "MIT",
+      "bugs": { "url": "https://github.com/svgstore/svgstore/issues" },
+      "homepage": "https://github.com/svgstore/svgstore",
+      "dependencies": { "cheerio": "^0.22.0", "object-assign": "^4.1.0" },
+      "devDependencies": {
+        "ava": "0.16.0",
+        "chokidar-cli": "^1.2.0",
+        "coveralls": "^2.11.12",
+        "nyc": "^8.1.0",
+        "xo": "^0.16"
+      },
+      "engines": { "node": ">= 0.12" },
+      "gitHead": "eb87eefe81e6fad000ac717b31e1f4fe2aaac6a3",
+      "_id": "svgstore@2.0.2",
+      "_shasum": "18954ed1e571c389061ecdd3738baa41e4016cac",
+      "_from": ".",
+      "_npmVersion": "3.10.8",
+      "_nodeVersion": "6.9.1",
+      "_npmUser": {
+        "name": "shannonmoeller",
+        "email": "me@shannonmoeller.com"
+      },
+      "dist": {
+        "shasum": "18954ed1e571c389061ecdd3738baa41e4016cac",
+        "tarball": "https://registry.npmjs.org/svgstore/-/svgstore-2.0.2.tgz"
+      },
+      "_npmOperationalInternal": {
+        "host": "packages-12-west.internal.npmjs.com",
+        "tmp": "tmp/svgstore-2.0.2.tgz_1481307664151_0.29293247195892036"
+      },
+      "directories": {}
+    },
+    "2.0.3": {
+      "name": "svgstore",
+      "version": "2.0.3",
+      "description": "Combines mulitple svg files into one.",
+      "main": "src/svgstore.js",
+      "scripts": {
+        "coveralls": "nyc report -r text-lcov | coveralls",
+        "pretest": "xo src/*.js test/*.js",
+        "test": "nyc ava -v",
+        "posttest": "nyc report -r lcov",
+        "watch": "chokidar '{src,test}/**/*.js' -d 1000 -c 'npm test'"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/svgstore/svgstore.git"
+      },
+      "keywords": [
+        "concat",
+        "join",
+        "merge",
+        "pack",
+        "path",
+        "sprite",
+        "svg",
+        "svgs",
+        "svgstore",
+        "symbol",
+        "symbols"
+      ],
+      "author": {
+        "name": "Shannon Moeller",
+        "email": "me@shannonmoeller.com",
+        "url": "http://shannonmoeller.com"
+      },
+      "maintainers": [
+        { "name": "bsipple", "email": "bsipple57@gmail.com" },
+        { "name": "shannonmoeller", "email": "me@shannonmoeller.com" }
+      ],
+      "license": "MIT",
+      "bugs": { "url": "https://github.com/svgstore/svgstore/issues" },
+      "homepage": "https://github.com/svgstore/svgstore",
+      "dependencies": { "cheerio": "^0.22.0", "object-assign": "^4.1.0" },
+      "devDependencies": {
+        "ava": "0.16.0",
+        "chokidar-cli": "^1.2.0",
+        "coveralls": "^2.11.12",
+        "nyc": "^8.1.0",
+        "xo": "^0.16"
+      },
+      "engines": { "node": ">= 0.12" },
+      "gitHead": "5bfed8ae5f90b51be29673a90e3a4846b39b3400",
+      "_id": "svgstore@2.0.3",
+      "_npmVersion": "5.6.0",
+      "_nodeVersion": "8.9.4",
+      "_npmUser": {
+        "name": "shannonmoeller",
+        "email": "me@shannonmoeller.com"
+      },
+      "dist": {
+        "integrity": "sha512-K5GcfdH/lZbLyQv2Vi9pDAKUXBLZAn7eRoPGCzV+7gk7Fv/LOB1gLsNfevNSrcapX/q45M8x0XMct9ZjWRFImQ==",
+        "shasum": "63b3945c02062c3f7710f98ca17a3ea37a5f0e1d",
+        "tarball": "https://registry.npmjs.org/svgstore/-/svgstore-2.0.3.tgz"
+      },
+      "_npmOperationalInternal": {
+        "host": "s3://npm-registry-packages",
+        "tmp": "tmp/svgstore-2.0.3.tgz_1517247314326_0.7908548447303474"
+      },
+      "directories": {}
+    },
+    "3.0.0-0": {
+      "name": "svgstore",
+      "version": "3.0.0-0",
+      "description": "Combines mulitple svg files into one.",
+      "main": "src/svgstore.js",
+      "scripts": {
+        "coveralls": "nyc report -r text-lcov | coveralls",
+        "pretest": "xo src/*.js test/*.js",
+        "test": "nyc ava -v",
+        "posttest": "nyc report -r lcov",
+        "watch": "chokidar '{src,test}/**/*.js' -d 1000 -c 'npm test'"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/svgstore/svgstore.git"
+      },
+      "keywords": [
+        "concat",
+        "join",
+        "merge",
+        "pack",
+        "path",
+        "sprite",
+        "svg",
+        "svgs",
+        "svgstore",
+        "symbol",
+        "symbols"
+      ],
+      "author": {
+        "name": "Shannon Moeller",
+        "email": "me@shannonmoeller.com",
+        "url": "http://shannonmoeller.com"
+      },
+      "maintainers": [
+        { "name": "bsipple", "email": "bsipple57@gmail.com" },
+        { "name": "shannonmoeller", "email": "me@shannonmoeller.com" }
+      ],
+      "license": "MIT",
+      "bugs": { "url": "https://github.com/svgstore/svgstore/issues" },
+      "homepage": "https://github.com/svgstore/svgstore",
+      "dependencies": { "cheerio": "^0.22.0", "object-assign": "^4.1.0" },
+      "devDependencies": {
+        "ava": "0.16.0",
+        "chokidar-cli": "^1.2.0",
+        "coveralls": "^2.11.12",
+        "nyc": "^8.1.0",
+        "xo": "^0.16"
+      },
+      "engines": { "node": ">= 0.12" },
+      "readme": "# svgstore\n\n[![NPM version][npm-img]][npm-url] [![Downloads][downloads-img]][npm-url] [![Build Status][travis-img]][travis-url] [![Coverage Status][coveralls-img]][coveralls-url]\n\nCombines multiple SVG files into one using `<symbol>` elements which you may [`<use>` in your markup](https://css-tricks.com/svg-sprites-use-better-icon-fonts/). Heavily inspired by [`grunt-svgstore`](https://github.com/FWeinb/grunt-svgstore) and [`gulp-svgstore`](https://github.com/w0rm/gulp-svgstore), this is a standalone module that may be [used in any asset pipeline](#future-goals).\n\n## Install\n\n    $ npm install --save svgstore\n\n## Usage\n\n```js\nvar svgstore = require('svgstore');\nvar fs = require('fs');\n\nvar sprites = svgstore()\n    .add('unicorn', fs.readFileSync('./unicorn.svg', 'utf8'))\n    .add('rainbow', fs.readFileSync('./rainbow.svg', 'utf8'));\n\nfs.writeFileSync('./sprites.svg', sprites);\n```\n\nThe resulting file may be consumed in markup as external content.\n\n```html\n<body>\n    <svg role=\"img\"><use xlink:href=\"./sprites.svg#unicorn\"/></svg>\n    <svg role=\"img\"><use xlink:href=\"./sprites.svg#rainbow\"/></svg>\n</body>\n```\n\nSee the [examples directory](https://github.com/shannonmoeller/svgstore/tree/master/docs/examples) for more detail.\n\n## API\n\n### svgstore([options]): SvgStore\n\n- `options` `{Object}`: [Options for converting SVGs to symbols](#svgstore-options)\n\nCreates a container SVG sprites document.\n\n### .element\n\nThe current [cheerio](https://github.com/cheeriojs/cheerio) instance.\n\n### .add(id, svg [, options]): SvgStore\n\n- `id` `{String}` Unique `id` for this SVG file.\n- `svg` `{String}` Raw source of the SVG file.\n- `options` `{Object}` Same as the [options of `svgstore()`](#svgstore-options), but will only apply to this SVG file's `<symbol>`.\n\nAppends a file to the sprite with the given `id`.\n\n### .toString([options]): String\n\n- `options` `{Object}`\n  - `inline` `{Boolean}` (default: `false`) Don't output `<?xml ?>`, `DOCTYPE`, and the `xmlns` attribute.\n\nOutputs sprite as a string of XML.\n\n## <a name=\"svgstore-options\"></a>Options\n\n- `cleanDefs` `{Boolean|Array}` (default: `false`) Remove `style` attributes from SVG definitions, or a list of attributes to remove.\n- `cleanSymbols` `{Boolean|Array}` (default: `false`) Remove `style` attributes from SVG objects, or a list of attributes to remove.\n- `svgAttrs` `{Boolean|Object}` (default: `false`) A map of attributes to set on the root `<svg>` element. If you set an attribute's value to null, you remove that attribute. Values may be functions like jQuery.\n- `symbolAttrs` `{Boolean|Object}` (default: `false`) A map of attributes to set on each `<symbol>` element. If you set an attribute's value to null, you remove that attribute. Values may be functions like jQuery.\n- `copyAttrs` `{Boolean|Array}` (default: `false`) Attributes to have `svgstore` attempt to copy to the newly created `<symbol>` tag from it's source `<svg>` tag. The `viewBox`, `aria-labelledby`, and `role` attributes are always copied.\n- `renameDefs` `{Boolean}` (default: `false`) Rename `defs` content ids to make them inherit files' names so that it would help to avoid defs with same ids in the output file.\n\n## Contributing\n\nStandards for this project, including tests, code coverage, and semantics are enforced with a build tool. Pull requests must include passing tests with 100% code coverage and no linting errors.\n\n### Test\n\n    $ npm test\n\n## Future Goals\n\nThe svgstore organization began after it was noticed that the common [build task of converting an `<svg>` into a `<symbol>` tag](https://css-tricks.com/svg-symbol-good-choice-icons/) was being implemented in a similar manner by many different projects across the JavaScript ecosystem.\n\nThe long-term goal for this project, in particular, is to provide a single standalone module that can be plugged in to any asset pipeline, thus allowing pipeline tools to focus on providing clean APIs and interfaces related to their build process integration, rather than implementing/duplicating SVG conversion logic directly.\n\n#### Current build tools using `svgstore`:\n\n* [broccoli-svgstore][broccoli-svgstore]\n* [svgstore-cli][svgstore-cli]\n\n----\n\nMIT © [Shannon Moeller](http://shannonmoeller.com)\n\n[coveralls-img]: http://img.shields.io/coveralls/svgstore/svgstore/master.svg?style=flat-square\n[coveralls-url]: https://coveralls.io/r/svgstore/svgstore\n[downloads-img]: http://img.shields.io/npm/dm/svgstore.svg?style=flat-square\n[npm-img]:       http://img.shields.io/npm/v/svgstore.svg?style=flat-square\n[npm-url]:       https://npmjs.org/package/svgstore\n[travis-img]:    http://img.shields.io/travis/svgstore/svgstore.svg?style=flat-square\n[travis-url]:    https://travis-ci.org/svgstore/svgstore\n[broccoli-svgstore]: https://github.com/svgstore/broccoli-svgstore\n[svgstore-cli]: https://github.com/svgstore/svgstore-cli\n",
+      "readmeFilename": "readme.md",
+      "gitHead": "2d02e7b12efd2d709d9e33451695f90444c2dddc",
+      "_id": "svgstore@3.0.0-0",
+      "_npmVersion": "5.6.0",
+      "_nodeVersion": "8.11.4",
+      "_npmUser": {
+        "name": "shannonmoeller",
+        "email": "me@shannonmoeller.com"
+      },
+      "dist": {
+        "integrity": "sha512-hr0V7ZdfvseD+tu66ZB6X5h+eY+5LKMP1lFDR7dVEAnQbgEYBUh/4nM/uN6mIFjzZARsjpq5YsP7bTHIc2H3+w==",
+        "shasum": "a84965d425ebdf95daf1c52c11407b7018fc79d7",
+        "tarball": "https://registry.npmjs.org/svgstore/-/svgstore-3.0.0-0.tgz",
+        "fileCount": 19,
+        "unpackedSize": 37628,
+        "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJbrOQKCRA9TVsSAnZWagAAm/QP/ijk4YOr37u/faH1SqPD\nFKfHYmWSzc7bsQolAdiEp8Cvaj/IlZi9xMaFV0w1uVhQJVqUT3RRYnI8DnTu\nhiqtQWpDXI/BqLOVsLZORSfYjSLe26iXxZ2r9NbACzoiisGk5N+vpkZCmRo/\ndOf/D9mnr+RVUo8OYvF2RHdLsG7XUkIiEMZxBHzCkinD6H5b5JQi4Zy8Bp4R\nRZxIL0uLhvCXuyMfkjTpWy2sK8Wdq3zhrvRcBWxt4/x+6brpbZUrswWqH+Cw\nuuJ23VJ1tJ0/5u3I8kGDSCGJUIqZ6za0UoD7I5zfepPCVgURSehukDn6bQJ1\nZbEg4D8AEe8uFrogiQ87Bhk1GNhXkS40c7/6Ml9RB6WD8RsWAmM1EBiEB7hh\n4xZtF52WU65H0NMQ8U+jCmw4HYkKGEDJLQ01nJFDNoD/gVmUqUrhpMkrgXsM\nm70KFGOfAzCK6Tnip9HejWAcMQ7YBSNNawpnMUgKsHfVEFqKrLKT0EAer0DY\nzUyfrthg8ea4jDOHUivccMbDH1JS2OYBBCTtpl7TGHFXaUxvs8/QHnYxi64U\nS8TX7/JQQLr2xCDUanceGOG5H9gyF0XWLZW44BKqxO9Vg7g1Rhff/KUaXRBn\nJNHNFbdpR8EwMCIWS1d66gEBMLED5GbzunbBly430v8/DxNGFK6ppwDVaTaO\nOaws\r\n=JGm8\r\n-----END PGP SIGNATURE-----\r\n"
+      },
+      "directories": {},
+      "_npmOperationalInternal": {
+        "host": "s3://npm-registry-packages",
+        "tmp": "tmp/svgstore_3.0.0-0_1538057225624_0.3026307519576523"
+      },
+      "_hasShrinkwrap": false
+    },
+    "3.0.0-1": {
+      "name": "svgstore",
+      "version": "3.0.0-1",
+      "description": "Combines mulitple svg files into one.",
+      "main": "src/svgstore.js",
+      "scripts": {
+        "coveralls": "nyc report -r text-lcov | coveralls",
+        "test": "nyc ava -v",
+        "posttest": "nyc report -r lcov",
+        "watch": "chokidar '{src,test}/**/*.js' -d 1000 -c 'npm test'"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/svgstore/svgstore.git"
+      },
+      "keywords": [
+        "concat",
+        "join",
+        "merge",
+        "pack",
+        "path",
+        "sprite",
+        "svg",
+        "svgs",
+        "svgstore",
+        "symbol",
+        "symbols"
+      ],
+      "author": {
+        "name": "Shannon Moeller",
+        "email": "me@shannonmoeller.com",
+        "url": "http://shannonmoeller.com"
+      },
+      "maintainers": [
+        { "name": "bsipple", "email": "bsipple57@gmail.com" },
+        { "name": "shannonmoeller", "email": "me@shannonmoeller.com" }
+      ],
+      "license": "MIT",
+      "bugs": { "url": "https://github.com/svgstore/svgstore/issues" },
+      "homepage": "https://github.com/svgstore/svgstore",
+      "dependencies": { "cheerio": "^0.22.0", "object-assign": "^4.1.1" },
+      "devDependencies": {
+        "ava": "0.25.0",
+        "chokidar-cli": "^1.2.1",
+        "coveralls": "^3.0.2",
+        "nyc": "^13.0.1"
+      },
+      "engines": { "node": ">= 0.12" },
+      "gitHead": "58af91df39d24ded147232684d41ec5ce7a9b7a4",
+      "_id": "svgstore@3.0.0-1",
+      "_npmVersion": "5.6.0",
+      "_nodeVersion": "8.11.4",
+      "_npmUser": {
+        "name": "shannonmoeller",
+        "email": "me@shannonmoeller.com"
+      },
+      "dist": {
+        "integrity": "sha512-8Xic3EybQ8GaTXu7sH4MA7t1MEYuFASwFRMuz9amYf/BoVhCV+r8eCw/+ttWemFPIYEJJC8ZuJkEP7YU4J8ZZQ==",
+        "shasum": "9a138f8b7ae768157e5fb359da7dcdf8495b713d",
+        "tarball": "https://registry.npmjs.org/svgstore/-/svgstore-3.0.0-1.tgz",
+        "fileCount": 19,
+        "unpackedSize": 37568,
+        "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJbrOVVCRA9TVsSAnZWagAAl5QP/RqVImxD4JQ/V8SpsQF3\nMxZCVKK0J1DIbgDD1v152BiNbwFi9y/sfABn0S9Nf+fQpLwnZ9Jiw+88r7V1\nGtEG1+QBjOc+f+Ni4kwBNnF7udu4jZc/KzaN/u0fmlxjCtqxtw/Mh9Z7t8Ym\n4MF8LPDv79T9pB5JKNKTErGOXvje6G+8DWVxsFjP3SG4I95Be6GBBc6EUntp\nOhGyh+ahsbqS0hzGUTFdLtanv8RHFsXOIBt2O4x8NiMsYj4g51KS3T3v8kXQ\nSgBnAPUuFizT7ds2Gji2NgZrDMXHXaXE8/JeaEGRbxaOVebgTpULJYhDqniX\nqL/otFkPmpS9llPz3d06Or1r8yYf1ughs47M58pSX+5qh3vsmM0yoUPbyPGH\n9ymxYaukDlSLz8J4TOabp12N6Em5E1mrUjg2itjf7MbPTtLnGos2YHCXrSo8\nb7qv8VcyYWV3WNjb1+cMnIh2HoFFp5X4HXLLHroYYQbAWrg7qtB9B0fkXfiJ\n7JKWo/MqpVacO2RQqpwlJ+Q+f6h/SeI60Y99A8eW/e+Jp6b3rVviirXtIjWe\npusWSugYAz8oYR9eAXCeo76qEeurfjIyOUIsOrmuSfQ/2dJ2L6QaU4cm3GOK\nIz96RgFLraMCvprSU6Z8QNcEFTZ3osuB7O7dddnwMR8cdo8WXUOqCxJ8jLNA\nCx9J\r\n=LgUh\r\n-----END PGP SIGNATURE-----\r\n"
+      },
+      "directories": {},
+      "_npmOperationalInternal": {
+        "host": "s3://npm-registry-packages",
+        "tmp": "tmp/svgstore_3.0.0-1_1538057557028_0.6947879244514266"
+      },
+      "_hasShrinkwrap": false
+    },
+    "3.0.0-2": {
+      "name": "svgstore",
+      "version": "3.0.0-2",
+      "description": "Combines mulitple svg files into one.",
+      "main": "src/svgstore.js",
+      "scripts": {
+        "coveralls": "nyc report -r text-lcov | coveralls",
+        "test": "nyc ava -v",
+        "posttest": "nyc report -r lcov",
+        "watch": "chokidar '{src,test}/**/*.js' -d 1000 -c 'npm test'"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/svgstore/svgstore.git"
+      },
+      "keywords": [
+        "concat",
+        "join",
+        "merge",
+        "pack",
+        "path",
+        "sprite",
+        "svg",
+        "svgs",
+        "svgstore",
+        "symbol",
+        "symbols"
+      ],
+      "author": {
+        "name": "Shannon Moeller",
+        "email": "me@shannonmoeller.com",
+        "url": "http://shannonmoeller.com"
+      },
+      "maintainers": [
+        { "name": "bsipple", "email": "bsipple57@gmail.com" },
+        { "name": "shannonmoeller", "email": "me@shannonmoeller.com" }
+      ],
+      "license": "MIT",
+      "bugs": { "url": "https://github.com/svgstore/svgstore/issues" },
+      "homepage": "https://github.com/svgstore/svgstore",
+      "dependencies": { "cheerio": "^0.22.0", "object-assign": "^4.1.1" },
+      "devDependencies": {
+        "ava": "0.25.0",
+        "chokidar-cli": "^1.2.1",
+        "coveralls": "^3.0.2",
+        "nyc": "^13.0.1"
+      },
+      "engines": { "node": ">= 0.12" },
+      "gitHead": "8505ce5966bc33f5de8d966b0003ad48816534e2",
+      "_id": "svgstore@3.0.0-2",
+      "_npmVersion": "5.6.0",
+      "_nodeVersion": "8.11.4",
+      "_npmUser": {
+        "name": "shannonmoeller",
+        "email": "me@shannonmoeller.com"
+      },
+      "dist": {
+        "integrity": "sha512-qiR9MvGgCWLuuspa9wFkafE1BrwrtsoFwhsWHt6zFK7vq3TcYKPCKFOVDBa0rAflF7/GI3SFIE+h38l8vFCFgQ==",
+        "shasum": "0b936d60c5205d5b68efba673a4589f1384620ef",
+        "tarball": "https://registry.npmjs.org/svgstore/-/svgstore-3.0.0-2.tgz",
+        "fileCount": 19,
+        "unpackedSize": 37568,
+        "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJbrOXECRA9TVsSAnZWagAAobkP/jjXmWcjGP6E3nr4RA8h\nCQMW08EwphlBVo073uWi/2xTIkq7dB+Ml2ssf4a3Kd9A1EBxQhCmajMu4vhB\nfDZsw/3T5R47FFrksmJ3axKrs5RmN2ymHRGIBXJAV91GJJAeDq+02iZHisq6\nXhjeF3GHXjacWbRcx+TdKQru4ZhRjJctRGyVevAiwLF1QdDnGUOIVuSbb4/z\nnU9YjurvdPMykvtyKFZ+IRlFyTEr9rbj76rH81O0hnfAwi1+Kttvm1sfh9kO\n0AJfKx92zCHAMxZGZ+jW7JTapY+xkgTJw2nDP2O3FLQPqUBG06WDIcAakdfP\ntVCbQrrZ8TqEoS7ze6hXXiMrRxBBBgv0/0v1ctoafqc0wGvAvXHq3PXMuf6K\nx5L0D+kiv3xud//1NBB/w2DDwnyTnwCblX7A7BZ0qJDYm/YNERXoZZdIGlnp\nY8VTfCHE0ChrOEli0ZeduMYun7/fDkdIj2iBSVDJ01qs6mY04+WmpJvRt4Ih\n3DL3u1nTIaYjkq4PBa3TOh8htxNb4vZJVLEXQmDkJQI1RJ+tE4BLzgq4b3NZ\n7E/4fiucZZfWWXmYrxE5DrWKeqeXX6yfBdn6dBWvtlTU8M3Xd9FNcxNPq1ep\nRE4mK5SIZ9sWYDaX6D2yns1c276TAcxj2sRHsGe5cV70z5At1AF67zyoJvGs\naf87\r\n=1Wn5\r\n-----END PGP SIGNATURE-----\r\n"
+      },
+      "directories": {},
+      "_npmOperationalInternal": {
+        "host": "s3://npm-registry-packages",
+        "tmp": "tmp/svgstore_3.0.0-2_1538057667386_0.4167043390452414"
+      },
+      "_hasShrinkwrap": false
+    }
+  },
+  "readme": "# svgstore\n\n[![NPM version][npm-img]][npm-url] [![Downloads][downloads-img]][npm-url] [![Build Status][travis-img]][travis-url] [![Coverage Status][coveralls-img]][coveralls-url]\n\nCombines multiple SVG files into one using `<symbol>` elements which you may [`<use>` in your markup](https://css-tricks.com/svg-sprites-use-better-icon-fonts/). Heavily inspired by [`grunt-svgstore`](https://github.com/FWeinb/grunt-svgstore) and [`gulp-svgstore`](https://github.com/w0rm/gulp-svgstore), this is a standalone module that may be [used in any asset pipeline](#future-goals).\n\n## Install\n\n    $ npm install --save svgstore\n\n## Usage\n\n```js\nvar svgstore = require('svgstore');\nvar fs = require('fs');\n\nvar sprites = svgstore()\n    .add('unicorn', fs.readFileSync('./unicorn.svg', 'utf8'))\n    .add('rainbow', fs.readFileSync('./rainbow.svg', 'utf8'));\n\nfs.writeFileSync('./sprites.svg', sprites);\n```\n\nThe resulting file may be consumed in markup as external content.\n\n```html\n<body>\n    <svg role=\"img\"><use xlink:href=\"./sprites.svg#unicorn\"/></svg>\n    <svg role=\"img\"><use xlink:href=\"./sprites.svg#rainbow\"/></svg>\n</body>\n```\n\nSee the [examples directory](https://github.com/shannonmoeller/svgstore/tree/master/docs/examples) for more detail.\n\n## API\n\n### svgstore([options]): SvgStore\n\n- `options` `{Object}`: [Options for converting SVGs to symbols](#svgstore-options)\n\nCreates a container SVG sprites document.\n\n### .element\n\nThe current [cheerio](https://github.com/cheeriojs/cheerio) instance.\n\n### .add(id, svg [, options]): SvgStore\n\n- `id` `{String}` Unique `id` for this SVG file.\n- `svg` `{String}` Raw source of the SVG file.\n- `options` `{Object}` Same as the [options of `svgstore()`](#svgstore-options), but will only apply to this SVG file's `<symbol>`.\n\nAppends a file to the sprite with the given `id`.\n\n### .toString([options]): String\n\n- `options` `{Object}`\n  - `inline` `{Boolean}` (default: `false`) Don't output `<?xml ?>`, `DOCTYPE`, and the `xmlns` attribute.\n\nOutputs sprite as a string of XML.\n\n## <a name=\"svgstore-options\"></a>Options\n\n- `cleanDefs` `{Boolean|Array}` (default: `false`) Remove `style` attributes from SVG definitions, or a list of attributes to remove.\n- `cleanSymbols` `{Boolean|Array}` (default: `false`) Remove `style` attributes from SVG objects, or a list of attributes to remove.\n- `svgAttrs` `{Boolean|Object}` (default: `false`) A map of attributes to set on the root `<svg>` element. If you set an attribute's value to null, you remove that attribute. Values may be functions like jQuery.\n- `symbolAttrs` `{Boolean|Object}` (default: `false`) A map of attributes to set on each `<symbol>` element. If you set an attribute's value to null, you remove that attribute. Values may be functions like jQuery.\n- `copyAttrs` `{Boolean|Array}` (default: `false`) Attributes to have `svgstore` attempt to copy to the newly created `<symbol>` tag from it's source `<svg>` tag. The `viewBox`, `aria-labelledby`, and `role` attributes are always copied.\n- `renameDefs` `{Boolean}` (default: `false`) Rename `defs` content ids to make them inherit files' names so that it would help to avoid defs with same ids in the output file.\n\n## Contributing\n\nStandards for this project, including tests, code coverage, and semantics are enforced with a build tool. Pull requests must include passing tests with 100% code coverage and no linting errors.\n\n### Test\n\n    $ npm test\n\n## Future Goals\n\nThe svgstore organization began after it was noticed that the common [build task of converting an `<svg>` into a `<symbol>` tag](https://css-tricks.com/svg-symbol-good-choice-icons/) was being implemented in a similar manner by many different projects across the JavaScript ecosystem.\n\nThe long-term goal for this project, in particular, is to provide a single standalone module that can be plugged in to any asset pipeline, thus allowing pipeline tools to focus on providing clean APIs and interfaces related to their build process integration, rather than implementing/duplicating SVG conversion logic directly.\n\n#### Current build tools using `svgstore`:\n\n* [broccoli-svgstore][broccoli-svgstore]\n* [svgstore-cli][svgstore-cli]\n\n----\n\nMIT © [Shannon Moeller](http://shannonmoeller.com)\n\n[coveralls-img]: http://img.shields.io/coveralls/svgstore/svgstore/master.svg?style=flat-square\n[coveralls-url]: https://coveralls.io/r/svgstore/svgstore\n[downloads-img]: http://img.shields.io/npm/dm/svgstore.svg?style=flat-square\n[npm-img]:       http://img.shields.io/npm/v/svgstore.svg?style=flat-square\n[npm-url]:       https://npmjs.org/package/svgstore\n[travis-img]:    http://img.shields.io/travis/svgstore/svgstore.svg?style=flat-square\n[travis-url]:    https://travis-ci.org/svgstore/svgstore\n[broccoli-svgstore]: https://github.com/svgstore/broccoli-svgstore\n[svgstore-cli]: https://github.com/svgstore/svgstore-cli\n",
+  "maintainers": [
+    { "name": "bsipple", "email": "bsipple57@gmail.com" },
+    { "name": "shannonmoeller", "email": "me@shannonmoeller.com" }
+  ],
+  "time": {
+    "modified": "2019-01-05T14:14:17.113Z",
+    "created": "2016-03-09T21:15:01.151Z",
+    "1.0.0": "2016-03-09T21:15:01.151Z",
+    "1.1.0": "2016-08-08T12:51:33.960Z",
+    "2.0.0": "2016-12-09T13:51:48.339Z",
+    "2.0.1": "2016-12-09T14:03:27.815Z",
+    "2.0.2": "2016-12-09T18:21:06.150Z",
+    "2.0.3": "2018-01-29T17:35:15.538Z",
+    "3.0.0-0": "2018-09-27T14:07:05.725Z",
+    "3.0.0-1": "2018-09-27T14:12:37.242Z",
+    "3.0.0-2": "2018-09-27T14:14:27.548Z"
+  },
+  "homepage": "https://github.com/svgstore/svgstore",
+  "keywords": [
+    "concat",
+    "join",
+    "merge",
+    "pack",
+    "path",
+    "sprite",
+    "svg",
+    "svgs",
+    "svgstore",
+    "symbol",
+    "symbols"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/svgstore/svgstore.git"
+  },
+  "author": {
+    "name": "Shannon Moeller",
+    "email": "me@shannonmoeller.com",
+    "url": "http://shannonmoeller.com"
+  },
+  "bugs": { "url": "https://github.com/svgstore/svgstore/issues" },
+  "license": "MIT",
+  "readmeFilename": "readme.md",
+  "users": { "revlis": true, "shanewholloway": true }
+}

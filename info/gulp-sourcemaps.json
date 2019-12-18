@@ -1,0 +1,4553 @@
+{
+  "_id": "gulp-sourcemaps",
+  "_rev": "503-0bf97b994e71bce5e5837bfc11381fd2",
+  "name": "gulp-sourcemaps",
+  "description": "Source map support for Gulp.js",
+  "dist-tags": { "latest": "2.6.5", "legacy": "1.12.1" },
+  "versions": {
+    "0.2.0": {
+      "name": "gulp-sourcemaps",
+      "version": "0.2.0",
+      "description": "Writes sourcemaps",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/floridoo/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": { "test": "echo \"Error: no test specified\" && exit 1" },
+      "keywords": ["gulp", "sourcemap"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "gulp-util": "^2.2.14",
+        "through2": "^0.4.1",
+        "source-map": "^0.1.33"
+      },
+      "bugs": { "url": "https://github.com/floridoo/gulp-sourcemaps/issues" },
+      "_id": "gulp-sourcemaps@0.2.0",
+      "dist": {
+        "shasum": "d0e878ca238d8cd6aab72724df90710e2de736d1",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-0.2.0.tgz"
+      },
+      "_from": ".",
+      "_npmVersion": "1.4.3",
+      "_npmUser": { "name": "floridoo", "email": "florian.reiterer@gmail.com" },
+      "maintainers": [
+        { "name": "floridoo", "email": "florian.reiterer@gmail.com" }
+      ],
+      "directories": {}
+    },
+    "0.2.1": {
+      "name": "gulp-sourcemaps",
+      "version": "0.2.1",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/floridoo/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": { "test": "echo \"Error: no test specified\" && exit 1" },
+      "keywords": ["gulp", "sourcemap"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "gulp-util": "^2.2.14",
+        "through2": "^0.4.1",
+        "source-map": "^0.1.33"
+      },
+      "bugs": { "url": "https://github.com/floridoo/gulp-sourcemaps/issues" },
+      "_id": "gulp-sourcemaps@0.2.1",
+      "dist": {
+        "shasum": "278b28ced6d6c73ec17124613f67be8500def160",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-0.2.1.tgz"
+      },
+      "_from": ".",
+      "_npmVersion": "1.4.3",
+      "_npmUser": { "name": "floridoo", "email": "florian.reiterer@gmail.com" },
+      "maintainers": [
+        { "name": "floridoo", "email": "florian.reiterer@gmail.com" }
+      ],
+      "directories": {}
+    },
+    "0.3.0": {
+      "name": "gulp-sourcemaps",
+      "version": "0.3.0",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/floridoo/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "test": "jshint *.js test/*.js && faucet test/*.js",
+        "tap": "node node_modules/argg test/*.js",
+        "cover": "istanbul cover --dir reports/coverage node_modules/argg test/*.js"
+      },
+      "keywords": ["gulp", "sourcemap"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": { "through2": "^0.4.1", "vinyl": "^0.2.3" },
+      "devDependencies": {
+        "jshint": "^2.5.0",
+        "tape": "^2.12.3",
+        "argg": "0.0.1",
+        "istanbul": "^0.2.8",
+        "faucet": "0.0.1"
+      },
+      "bugs": { "url": "https://github.com/floridoo/gulp-sourcemaps/issues" },
+      "_id": "gulp-sourcemaps@0.3.0",
+      "dist": {
+        "shasum": "facafcf6b9ea29b09c58437af400d06822bca5c2",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-0.3.0.tgz"
+      },
+      "_from": ".",
+      "_npmVersion": "1.4.3",
+      "_npmUser": { "name": "floridoo", "email": "florian.reiterer@gmail.com" },
+      "maintainers": [
+        { "name": "floridoo", "email": "florian.reiterer@gmail.com" }
+      ],
+      "directories": {}
+    },
+    "0.3.1": {
+      "name": "gulp-sourcemaps",
+      "version": "0.3.1",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/floridoo/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "test": "jshint *.js test/*.js && faucet test/*.js",
+        "tap": "node node_modules/argg test/*.js",
+        "cover": "istanbul cover --dir reports/coverage node_modules/argg test/*.js",
+        "coveralls": "istanbul cover node_modules/argg test/*.js --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage"
+      },
+      "keywords": ["gulp", "sourcemap"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": { "through2": "^0.4.1", "vinyl": "^0.2.3" },
+      "devDependencies": {
+        "jshint": "^2.5.0",
+        "tape": "^2.12.3",
+        "argg": "0.0.1",
+        "istanbul": "^0.2.8",
+        "faucet": "0.0.1",
+        "coveralls": "^2.10.0"
+      },
+      "bugs": { "url": "https://github.com/floridoo/gulp-sourcemaps/issues" },
+      "_id": "gulp-sourcemaps@0.3.1",
+      "dist": {
+        "shasum": "5cfaf311cc04b727e083b7f0a16fdac9c7cdf949",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-0.3.1.tgz"
+      },
+      "_from": ".",
+      "_npmVersion": "1.4.3",
+      "_npmUser": { "name": "floridoo", "email": "florian.reiterer@gmail.com" },
+      "maintainers": [
+        { "name": "floridoo", "email": "florian.reiterer@gmail.com" }
+      ],
+      "directories": {}
+    },
+    "0.4.0": {
+      "name": "gulp-sourcemaps",
+      "version": "0.4.0",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/floridoo/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "test": "jshint *.js test/*.js && faucet test/*.js",
+        "tap": "node node_modules/argg test/*.js",
+        "cover": "istanbul cover --dir reports/coverage node_modules/argg test/*.js",
+        "coveralls": "istanbul cover node_modules/argg test/*.js --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage"
+      },
+      "keywords": ["gulp", "sourcemap"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "through2": "^0.4.1",
+        "vinyl": "^0.2.3",
+        "convert-source-map": "^0.3.3"
+      },
+      "devDependencies": {
+        "jshint": "^2.5.0",
+        "tape": "^2.12.3",
+        "argg": "0.0.1",
+        "istanbul": "^0.2.8",
+        "faucet": "0.0.1",
+        "coveralls": "^2.10.0"
+      },
+      "bugs": { "url": "https://github.com/floridoo/gulp-sourcemaps/issues" },
+      "_id": "gulp-sourcemaps@0.4.0",
+      "dist": {
+        "shasum": "c766bd51143e895a82b2b51d96127e33e2d4cd85",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-0.4.0.tgz"
+      },
+      "_from": ".",
+      "_npmVersion": "1.4.3",
+      "_npmUser": { "name": "floridoo", "email": "florian.reiterer@gmail.com" },
+      "maintainers": [
+        { "name": "floridoo", "email": "florian.reiterer@gmail.com" }
+      ],
+      "directories": {}
+    },
+    "0.4.1": {
+      "name": "gulp-sourcemaps",
+      "version": "0.4.1",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/floridoo/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "test": "jshint *.js test/*.js && faucet test/*.js",
+        "tap": "node node_modules/argg test/*.js",
+        "cover": "istanbul cover --dir reports/coverage node_modules/argg test/*.js",
+        "coveralls": "istanbul cover node_modules/argg test/*.js --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage"
+      },
+      "keywords": ["gulp", "sourcemap"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "through2": "^0.4.1",
+        "vinyl": "^0.2.3",
+        "convert-source-map": "^0.3.3"
+      },
+      "devDependencies": {
+        "jshint": "^2.5.0",
+        "tape": "^2.12.3",
+        "argg": "0.0.1",
+        "istanbul": "^0.2.8",
+        "faucet": "0.0.1",
+        "coveralls": "^2.10.0"
+      },
+      "bugs": { "url": "https://github.com/floridoo/gulp-sourcemaps/issues" },
+      "_id": "gulp-sourcemaps@0.4.1",
+      "dist": {
+        "shasum": "f661f43200c66bfb528945e87d97824807f7fdfa",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-0.4.1.tgz"
+      },
+      "_from": ".",
+      "_npmVersion": "1.4.3",
+      "_npmUser": { "name": "floridoo", "email": "florian.reiterer@gmail.com" },
+      "maintainers": [
+        { "name": "floridoo", "email": "florian.reiterer@gmail.com" }
+      ],
+      "directories": {}
+    },
+    "0.4.2": {
+      "name": "gulp-sourcemaps",
+      "version": "0.4.2",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/floridoo/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "test": "jshint *.js test/*.js && faucet test/*.js",
+        "tap": "node node_modules/argg test/*.js",
+        "cover": "istanbul cover --dir reports/coverage node_modules/argg test/*.js",
+        "coveralls": "istanbul cover node_modules/argg test/*.js --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage"
+      },
+      "keywords": ["gulp", "sourcemap"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "through2": "^0.4.1",
+        "vinyl": "^0.2.3",
+        "convert-source-map": "^0.3.3"
+      },
+      "devDependencies": {
+        "jshint": "^2.5.0",
+        "tape": "^2.12.3",
+        "argg": "0.0.1",
+        "istanbul": "^0.2.8",
+        "faucet": "0.0.1",
+        "coveralls": "^2.10.0"
+      },
+      "gitHead": "c67f61dc6c4b177b4d39949f8c1ff9bf9f0fbd72",
+      "bugs": { "url": "https://github.com/floridoo/gulp-sourcemaps/issues" },
+      "_id": "gulp-sourcemaps@0.4.2",
+      "_shasum": "963352157448b76690e67ca8df770910f7f46245",
+      "_from": ".",
+      "_npmVersion": "1.4.14",
+      "_npmUser": { "name": "floridoo", "email": "florian.reiterer@gmail.com" },
+      "maintainers": [
+        { "name": "floridoo", "email": "florian.reiterer@gmail.com" }
+      ],
+      "dist": {
+        "shasum": "963352157448b76690e67ca8df770910f7f46245",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-0.4.2.tgz"
+      },
+      "directories": {}
+    },
+    "0.4.3": {
+      "name": "gulp-sourcemaps",
+      "version": "0.4.3",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/floridoo/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "test": "jshint *.js test/*.js && faucet test/*.js",
+        "tap": "node node_modules/argg test/*.js",
+        "cover": "istanbul cover --dir reports/coverage node_modules/argg test/*.js",
+        "coveralls": "istanbul cover node_modules/argg test/*.js --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage"
+      },
+      "keywords": ["gulp", "sourcemap"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "through2": "^0.4.1",
+        "vinyl": "^0.2.3",
+        "convert-source-map": "^0.3.3"
+      },
+      "devDependencies": {
+        "jshint": "^2.5.0",
+        "tape": "^2.12.3",
+        "argg": "0.0.1",
+        "istanbul": "^0.2.8",
+        "faucet": "0.0.1",
+        "coveralls": "^2.10.0"
+      },
+      "gitHead": "77c222f6f8b101f4bcb94863349f52b350424936",
+      "bugs": { "url": "https://github.com/floridoo/gulp-sourcemaps/issues" },
+      "_id": "gulp-sourcemaps@0.4.3",
+      "_shasum": "54f9eb186a509911863209a061744ce0da2ee923",
+      "_from": ".",
+      "_npmVersion": "1.4.14",
+      "_npmUser": { "name": "floridoo", "email": "florian.reiterer@gmail.com" },
+      "maintainers": [
+        { "name": "floridoo", "email": "florian.reiterer@gmail.com" }
+      ],
+      "dist": {
+        "shasum": "54f9eb186a509911863209a061744ce0da2ee923",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-0.4.3.tgz"
+      },
+      "directories": {}
+    },
+    "0.4.4": {
+      "name": "gulp-sourcemaps",
+      "version": "0.4.4",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/floridoo/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "test": "jshint *.js test/*.js && faucet test/*.js",
+        "tap": "node node_modules/argg test/*.js",
+        "cover": "istanbul cover --dir reports/coverage node_modules/argg test/*.js",
+        "coveralls": "istanbul cover node_modules/argg test/*.js --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage"
+      },
+      "keywords": ["gulp", "sourcemap"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "through2": "^0.5.1",
+        "vinyl": "^0.2.3",
+        "convert-source-map": "^0.3.3"
+      },
+      "devDependencies": {
+        "jshint": "^2.5.0",
+        "tape": "^2.12.3",
+        "argg": "0.0.1",
+        "istanbul": "^0.2.8",
+        "faucet": "0.0.1",
+        "coveralls": "^2.10.0"
+      },
+      "gitHead": "cedf2c76a98859104943652adfd275179a5448fb",
+      "bugs": { "url": "https://github.com/floridoo/gulp-sourcemaps/issues" },
+      "_id": "gulp-sourcemaps@0.4.4",
+      "_shasum": "1030b932a63632a6cfbd4576d3b9df6198a4090c",
+      "_from": ".",
+      "_npmVersion": "1.4.14",
+      "_npmUser": { "name": "floridoo", "email": "florian.reiterer@gmail.com" },
+      "maintainers": [
+        { "name": "floridoo", "email": "florian.reiterer@gmail.com" }
+      ],
+      "dist": {
+        "shasum": "1030b932a63632a6cfbd4576d3b9df6198a4090c",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-0.4.4.tgz"
+      },
+      "directories": {}
+    },
+    "0.4.5": {
+      "name": "gulp-sourcemaps",
+      "version": "0.4.5",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/floridoo/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "test": "jshint *.js test/*.js && faucet test/*.js",
+        "tap": "node node_modules/argg test/*.js",
+        "cover": "istanbul cover --dir reports/coverage node_modules/argg test/*.js",
+        "coveralls": "istanbul cover node_modules/argg test/*.js --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage"
+      },
+      "keywords": ["gulp", "sourcemap"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "through2": "^0.5.1",
+        "vinyl": "^0.2.3",
+        "convert-source-map": "^0.3.3"
+      },
+      "devDependencies": {
+        "jshint": "^2.5.0",
+        "tape": "^2.12.3",
+        "argg": "0.0.1",
+        "istanbul": "^0.2.8",
+        "faucet": "0.0.1",
+        "coveralls": "^2.10.0"
+      },
+      "gitHead": "933f96339644fa427b025b5abe9858a0f6cd4bdc",
+      "bugs": { "url": "https://github.com/floridoo/gulp-sourcemaps/issues" },
+      "_id": "gulp-sourcemaps@0.4.5",
+      "_shasum": "128bdafdd3f9b00b808d691a6a5995b2bc958ba1",
+      "_from": ".",
+      "_npmVersion": "1.4.14",
+      "_npmUser": { "name": "floridoo", "email": "florian.reiterer@gmail.com" },
+      "maintainers": [
+        { "name": "floridoo", "email": "florian.reiterer@gmail.com" }
+      ],
+      "dist": {
+        "shasum": "128bdafdd3f9b00b808d691a6a5995b2bc958ba1",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-0.4.5.tgz"
+      },
+      "directories": {}
+    },
+    "0.4.6": {
+      "name": "gulp-sourcemaps",
+      "version": "0.4.6",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/floridoo/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "test": "jshint *.js test/*.js && faucet test/*.js",
+        "tap": "node node_modules/argg test/*.js",
+        "cover": "istanbul cover --dir reports/coverage node_modules/argg test/*.js",
+        "coveralls": "istanbul cover node_modules/argg test/*.js --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage"
+      },
+      "keywords": ["gulp", "sourcemap"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "through2": "^0.5.1",
+        "vinyl": "^0.2.3",
+        "convert-source-map": "^0.3.3"
+      },
+      "devDependencies": {
+        "jshint": "^2.5.0",
+        "tape": "^2.12.3",
+        "argg": "0.0.1",
+        "istanbul": "^0.2.8",
+        "faucet": "0.0.1",
+        "coveralls": "^2.10.0"
+      },
+      "bugs": { "url": "https://github.com/floridoo/gulp-sourcemaps/issues" },
+      "_id": "gulp-sourcemaps@0.4.6",
+      "dist": {
+        "shasum": "c00c0e4727f3a0d1b47971129d6be357f8f7ae94",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-0.4.6.tgz"
+      },
+      "_from": ".",
+      "_npmVersion": "1.4.3",
+      "_npmUser": { "name": "floridoo", "email": "florian.reiterer@gmail.com" },
+      "maintainers": [
+        { "name": "floridoo", "email": "florian.reiterer@gmail.com" }
+      ],
+      "directories": {}
+    },
+    "1.0.0": {
+      "name": "gulp-sourcemaps",
+      "version": "1.0.0",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/floridoo/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "test": "jshint *.js test/*.js && faucet test/*.js",
+        "tap": "node node_modules/argg test/*.js",
+        "cover": "istanbul cover --dir reports/coverage node_modules/argg test/*.js",
+        "coveralls": "istanbul cover node_modules/argg test/*.js --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage"
+      },
+      "keywords": ["gulpplugin", "gulp", "source maps", "sourcemaps"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "through2": "^0.5.1",
+        "vinyl": "^0.2.3",
+        "convert-source-map": "^0.3.3"
+      },
+      "devDependencies": {
+        "jshint": "^2.5.2",
+        "tape": "^2.13.3",
+        "argg": "0.0.1",
+        "istanbul": "^0.3.0",
+        "faucet": "0.0.1",
+        "coveralls": "^2.11.1"
+      },
+      "bugs": { "url": "https://github.com/floridoo/gulp-sourcemaps/issues" },
+      "_id": "gulp-sourcemaps@1.0.0",
+      "dist": {
+        "shasum": "e5c64205cb0c9dd533cb63a63a720f958f059506",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-1.0.0.tgz"
+      },
+      "_from": ".",
+      "_npmVersion": "1.4.3",
+      "_npmUser": { "name": "floridoo", "email": "florian.reiterer@gmail.com" },
+      "maintainers": [
+        { "name": "floridoo", "email": "florian.reiterer@gmail.com" }
+      ],
+      "directories": {}
+    },
+    "1.1.0": {
+      "name": "gulp-sourcemaps",
+      "version": "1.1.0",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/floridoo/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "test": "jshint *.js test/*.js && faucet test/*.js",
+        "tap": "node node_modules/argg test/*.js",
+        "cover": "istanbul cover --dir reports/coverage node_modules/argg test/*.js",
+        "coveralls": "istanbul cover node_modules/argg test/*.js --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage"
+      },
+      "keywords": ["gulpplugin", "gulp", "source maps", "sourcemaps"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "through2": "^0.5.1",
+        "vinyl": "^0.2.3",
+        "convert-source-map": "^0.3.3"
+      },
+      "devDependencies": {
+        "jshint": "^2.5.2",
+        "tape": "^2.13.3",
+        "argg": "0.0.1",
+        "istanbul": "^0.3.0",
+        "faucet": "0.0.1",
+        "coveralls": "^2.11.1"
+      },
+      "gitHead": "942ba3d1fd4357bfb2de88dc702336127bc81835",
+      "bugs": { "url": "https://github.com/floridoo/gulp-sourcemaps/issues" },
+      "_id": "gulp-sourcemaps@1.1.0",
+      "_shasum": "f6ff9cb8f31ab023c2d6837b0c56ec5b11b70d3b",
+      "_from": ".",
+      "_npmVersion": "1.4.14",
+      "_npmUser": { "name": "floridoo", "email": "florian.reiterer@gmail.com" },
+      "maintainers": [
+        { "name": "floridoo", "email": "florian.reiterer@gmail.com" }
+      ],
+      "dist": {
+        "shasum": "f6ff9cb8f31ab023c2d6837b0c56ec5b11b70d3b",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-1.1.0.tgz"
+      },
+      "directories": {}
+    },
+    "1.1.1": {
+      "name": "gulp-sourcemaps",
+      "version": "1.1.1",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/floridoo/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "test": "jshint *.js test/*.js && faucet test/*.js",
+        "tap": "node node_modules/argg test/*.js",
+        "cover": "istanbul cover --dir reports/coverage node_modules/argg test/*.js",
+        "coveralls": "istanbul cover node_modules/argg test/*.js --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage"
+      },
+      "keywords": ["gulpplugin", "gulp", "source maps", "sourcemaps"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "through2": "^0.5.1",
+        "vinyl": "^0.2.3",
+        "convert-source-map": "^0.3.3"
+      },
+      "devDependencies": {
+        "jshint": "^2.5.2",
+        "tape": "^2.13.3",
+        "argg": "0.0.1",
+        "istanbul": "^0.3.0",
+        "faucet": "0.0.1",
+        "coveralls": "^2.11.1"
+      },
+      "gitHead": "df9dc98978de444f155967d35d2714dacda11d0e",
+      "bugs": { "url": "https://github.com/floridoo/gulp-sourcemaps/issues" },
+      "_id": "gulp-sourcemaps@1.1.1",
+      "_shasum": "c6e83ae670fa96a7c63f6295637aecc67bd8e7b6",
+      "_from": ".",
+      "_npmVersion": "1.4.14",
+      "_npmUser": { "name": "floridoo", "email": "florian.reiterer@gmail.com" },
+      "maintainers": [
+        { "name": "floridoo", "email": "florian.reiterer@gmail.com" }
+      ],
+      "dist": {
+        "shasum": "c6e83ae670fa96a7c63f6295637aecc67bd8e7b6",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-1.1.1.tgz"
+      },
+      "directories": {}
+    },
+    "1.1.2": {
+      "name": "gulp-sourcemaps",
+      "version": "1.1.2",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/floridoo/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "test": "jshint *.js test/*.js && faucet test/*.js",
+        "tap": "node node_modules/argg test/*.js",
+        "cover": "istanbul cover --dir reports/coverage node_modules/argg test/*.js",
+        "coveralls": "istanbul cover node_modules/argg test/*.js --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage"
+      },
+      "keywords": ["gulpplugin", "gulp", "source maps", "sourcemaps"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "through2": "^0.5.1",
+        "vinyl": "^0.2.3",
+        "convert-source-map": "^0.3.3"
+      },
+      "devDependencies": {
+        "jshint": "^2.5.2",
+        "tape": "^2.13.3",
+        "argg": "0.0.1",
+        "istanbul": "^0.3.0",
+        "faucet": "0.0.1",
+        "coveralls": "^2.11.1"
+      },
+      "bugs": { "url": "https://github.com/floridoo/gulp-sourcemaps/issues" },
+      "_id": "gulp-sourcemaps@1.1.2",
+      "dist": {
+        "shasum": "4392cd069ff04798fac7af0bbc345669b2f6f7d8",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-1.1.2.tgz"
+      },
+      "_from": ".",
+      "_npmVersion": "1.4.3",
+      "_npmUser": { "name": "floridoo", "email": "florian.reiterer@gmail.com" },
+      "maintainers": [
+        { "name": "floridoo", "email": "florian.reiterer@gmail.com" }
+      ],
+      "directories": {}
+    },
+    "1.1.3": {
+      "name": "gulp-sourcemaps",
+      "version": "1.1.3",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/floridoo/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "test": "jshint *.js test/*.js && faucet test/*.js",
+        "tap": "node node_modules/argg test/*.js",
+        "cover": "istanbul cover --dir reports/coverage node_modules/argg test/*.js",
+        "coveralls": "istanbul cover node_modules/argg test/*.js --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage"
+      },
+      "keywords": ["gulpplugin", "gulp", "source maps", "sourcemaps"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "through2": "^0.5.1",
+        "vinyl": "^0.2.3",
+        "convert-source-map": "^0.3.3"
+      },
+      "devDependencies": {
+        "jshint": "^2.5.2",
+        "tape": "^2.13.3",
+        "argg": "0.0.1",
+        "istanbul": "^0.3.0",
+        "faucet": "0.0.1",
+        "coveralls": "^2.11.1"
+      },
+      "bugs": { "url": "https://github.com/floridoo/gulp-sourcemaps/issues" },
+      "_id": "gulp-sourcemaps@1.1.3",
+      "dist": {
+        "shasum": "e5c13475c67d1fd6db11955861a96cd2ddf59740",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-1.1.3.tgz"
+      },
+      "_from": ".",
+      "_npmVersion": "1.4.3",
+      "_npmUser": { "name": "floridoo", "email": "florian.reiterer@gmail.com" },
+      "maintainers": [
+        { "name": "floridoo", "email": "florian.reiterer@gmail.com" }
+      ],
+      "directories": {}
+    },
+    "1.1.4": {
+      "name": "gulp-sourcemaps",
+      "version": "1.1.4",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/floridoo/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "test": "jshint *.js test/*.js && faucet test/*.js",
+        "tap": "node node_modules/argg test/*.js",
+        "cover": "istanbul cover --dir reports/coverage node_modules/argg test/*.js",
+        "coveralls": "istanbul cover node_modules/argg test/*.js --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage"
+      },
+      "keywords": ["gulpplugin", "gulp", "source maps", "sourcemaps"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "through2": "^0.6.1",
+        "vinyl": "^0.4.2",
+        "convert-source-map": "^0.4.1"
+      },
+      "devDependencies": {
+        "jshint": "^2.5.2",
+        "tape": "^2.13.3",
+        "argg": "0.0.1",
+        "istanbul": "^0.3.0",
+        "faucet": "0.0.1",
+        "coveralls": "^2.11.1"
+      },
+      "gitHead": "9aa7e8c2c30d23ae346136d56fe7f44465f3a5d7",
+      "bugs": { "url": "https://github.com/floridoo/gulp-sourcemaps/issues" },
+      "_id": "gulp-sourcemaps@1.1.4",
+      "_shasum": "5d3d2ffe5ea790ea7d32c1bfcf5b687bf6ee9724",
+      "_from": ".",
+      "_npmVersion": "1.4.14",
+      "_npmUser": { "name": "floridoo", "email": "florian.reiterer@gmail.com" },
+      "maintainers": [
+        { "name": "floridoo", "email": "florian.reiterer@gmail.com" }
+      ],
+      "dist": {
+        "shasum": "5d3d2ffe5ea790ea7d32c1bfcf5b687bf6ee9724",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-1.1.4.tgz"
+      },
+      "directories": {}
+    },
+    "1.1.5": {
+      "name": "gulp-sourcemaps",
+      "version": "1.1.5",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/floridoo/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "test": "jshint *.js test/*.js && faucet test/*.js",
+        "tap": "node node_modules/argg test/*.js",
+        "cover": "istanbul cover --dir reports/coverage node_modules/argg test/*.js",
+        "coveralls": "istanbul cover node_modules/argg test/*.js --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage"
+      },
+      "keywords": ["gulpplugin", "gulp", "source maps", "sourcemaps"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "through2": "^0.6.1",
+        "vinyl": "^0.4.2",
+        "convert-source-map": "^0.4.1"
+      },
+      "devDependencies": {
+        "jshint": "^2.5.2",
+        "tape": "^2.13.3",
+        "argg": "0.0.1",
+        "istanbul": "^0.3.0",
+        "faucet": "0.0.1",
+        "coveralls": "^2.11.1"
+      },
+      "gitHead": "810c0f0fe39028f5d11891384674782870efb571",
+      "bugs": { "url": "https://github.com/floridoo/gulp-sourcemaps/issues" },
+      "_id": "gulp-sourcemaps@1.1.5",
+      "_shasum": "b09ff58e2c0afa6aef4126d0de10eb86dd4b4b0d",
+      "_from": ".",
+      "_npmVersion": "1.4.14",
+      "_npmUser": { "name": "floridoo", "email": "florian.reiterer@gmail.com" },
+      "maintainers": [
+        { "name": "floridoo", "email": "florian.reiterer@gmail.com" }
+      ],
+      "dist": {
+        "shasum": "b09ff58e2c0afa6aef4126d0de10eb86dd4b4b0d",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-1.1.5.tgz"
+      },
+      "directories": {}
+    },
+    "1.2.0": {
+      "name": "gulp-sourcemaps",
+      "version": "1.2.0",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/floridoo/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "test": "jshint *.js test/*.js && faucet test/*.js",
+        "tap": "node node_modules/argg test/*.js",
+        "cover": "istanbul cover --dir reports/coverage node_modules/argg test/*.js",
+        "coveralls": "istanbul cover node_modules/argg test/*.js --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage"
+      },
+      "keywords": ["gulpplugin", "gulp", "source maps", "sourcemaps"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "through2": "^0.6.1",
+        "vinyl": "^0.4.2",
+        "convert-source-map": "^0.4.1"
+      },
+      "devDependencies": {
+        "jshint": "^2.5.2",
+        "tape": "^2.13.3",
+        "argg": "0.0.1",
+        "istanbul": "^0.3.0",
+        "faucet": "0.0.1",
+        "coveralls": "^2.11.1"
+      },
+      "bugs": { "url": "https://github.com/floridoo/gulp-sourcemaps/issues" },
+      "_id": "gulp-sourcemaps@1.2.0",
+      "dist": {
+        "shasum": "8a3a95533f78975cee0ff3c1cb77e1eca874e9a1",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-1.2.0.tgz"
+      },
+      "_from": ".",
+      "_npmVersion": "1.4.3",
+      "_npmUser": { "name": "floridoo", "email": "florian.reiterer@gmail.com" },
+      "maintainers": [
+        { "name": "floridoo", "email": "florian.reiterer@gmail.com" }
+      ],
+      "directories": {}
+    },
+    "1.2.1": {
+      "name": "gulp-sourcemaps",
+      "version": "1.2.1",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/floridoo/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "test": "jshint *.js test/*.js && faucet test/*.js",
+        "tap": "node node_modules/argg test/*.js",
+        "cover": "istanbul cover --dir reports/coverage node_modules/argg test/*.js",
+        "coveralls": "istanbul cover node_modules/argg test/*.js --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage"
+      },
+      "keywords": ["gulpplugin", "gulp", "source maps", "sourcemaps"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "through2": "^0.6.1",
+        "vinyl": "^0.4.2",
+        "convert-source-map": "^0.4.1"
+      },
+      "devDependencies": {
+        "jshint": "^2.5.2",
+        "tape": "^2.13.3",
+        "argg": "0.0.1",
+        "istanbul": "^0.3.0",
+        "faucet": "0.0.1",
+        "coveralls": "^2.11.1"
+      },
+      "bugs": { "url": "https://github.com/floridoo/gulp-sourcemaps/issues" },
+      "_id": "gulp-sourcemaps@1.2.1",
+      "dist": {
+        "shasum": "d122e72123f38de0c7b6b879b43805a8e648e50e",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-1.2.1.tgz"
+      },
+      "_from": ".",
+      "_npmVersion": "1.4.3",
+      "_npmUser": { "name": "floridoo", "email": "florian.reiterer@gmail.com" },
+      "maintainers": [
+        { "name": "floridoo", "email": "florian.reiterer@gmail.com" }
+      ],
+      "directories": {}
+    },
+    "1.2.2": {
+      "name": "gulp-sourcemaps",
+      "version": "1.2.2",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/floridoo/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "test": "jshint *.js test/*.js && faucet test/*.js",
+        "tap": "node node_modules/argg test/*.js",
+        "cover": "istanbul cover --dir reports/coverage node_modules/argg test/*.js",
+        "coveralls": "istanbul cover node_modules/argg test/*.js --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage"
+      },
+      "keywords": ["gulpplugin", "gulp", "source maps", "sourcemaps"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "through2": "^0.6.1",
+        "vinyl": "^0.4.2",
+        "convert-source-map": "^0.4.1"
+      },
+      "devDependencies": {
+        "jshint": "^2.5.2",
+        "tape": "^2.13.3",
+        "argg": "0.0.1",
+        "istanbul": "^0.3.0",
+        "faucet": "0.0.1",
+        "coveralls": "^2.11.1"
+      },
+      "gitHead": "58d734c588fe27350272ad95df337a33032f00f7",
+      "bugs": { "url": "https://github.com/floridoo/gulp-sourcemaps/issues" },
+      "_id": "gulp-sourcemaps@1.2.2",
+      "_shasum": "01a088f87f55c5b613dffdb548424dcce8021260",
+      "_from": ".",
+      "_npmVersion": "1.4.27",
+      "_npmUser": { "name": "floridoo", "email": "florian.reiterer@gmail.com" },
+      "maintainers": [
+        { "name": "floridoo", "email": "florian.reiterer@gmail.com" }
+      ],
+      "dist": {
+        "shasum": "01a088f87f55c5b613dffdb548424dcce8021260",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-1.2.2.tgz"
+      },
+      "directories": {}
+    },
+    "1.2.3": {
+      "name": "gulp-sourcemaps",
+      "version": "1.2.3",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/floridoo/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "test": "jshint *.js test/*.js && faucet test/*.js",
+        "tap": "node node_modules/argg test/*.js",
+        "cover": "istanbul cover --dir reports/coverage node_modules/argg test/*.js",
+        "coveralls": "istanbul cover node_modules/argg test/*.js --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage"
+      },
+      "keywords": ["gulpplugin", "gulp", "source maps", "sourcemaps"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "through2": "^0.6.1",
+        "vinyl": "^0.4.2",
+        "convert-source-map": "^0.4.1"
+      },
+      "devDependencies": {
+        "jshint": "^2.5.2",
+        "tape": "^2.13.3",
+        "argg": "0.0.1",
+        "istanbul": "^0.3.0",
+        "faucet": "0.0.1",
+        "coveralls": "^2.11.1"
+      },
+      "gitHead": "aa0df444a71faca72aeef0ed311324535371a5f2",
+      "bugs": { "url": "https://github.com/floridoo/gulp-sourcemaps/issues" },
+      "_id": "gulp-sourcemaps@1.2.3",
+      "_shasum": "01cc934e6ba1f6ecf9da29224d01cacf63921142",
+      "_from": ".",
+      "_npmVersion": "1.4.27",
+      "_npmUser": { "name": "floridoo", "email": "florian.reiterer@gmail.com" },
+      "maintainers": [
+        { "name": "floridoo", "email": "florian.reiterer@gmail.com" }
+      ],
+      "dist": {
+        "shasum": "01cc934e6ba1f6ecf9da29224d01cacf63921142",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-1.2.3.tgz"
+      },
+      "directories": {}
+    },
+    "1.2.4": {
+      "name": "gulp-sourcemaps",
+      "version": "1.2.4",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/floridoo/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "test": "jshint *.js test/*.js && faucet test/*.js",
+        "tap": "node node_modules/argg test/*.js",
+        "cover": "istanbul cover --dir reports/coverage node_modules/argg test/*.js",
+        "coveralls": "istanbul cover node_modules/argg test/*.js --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage"
+      },
+      "keywords": ["gulpplugin", "gulp", "source maps", "sourcemaps"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "through2": "^0.6.1",
+        "vinyl": "^0.4.2",
+        "convert-source-map": "^0.4.1"
+      },
+      "devDependencies": {
+        "jshint": "^2.5.2",
+        "tape": "^2.13.3",
+        "argg": "0.0.1",
+        "istanbul": "^0.3.0",
+        "faucet": "0.0.1",
+        "coveralls": "^2.11.1"
+      },
+      "gitHead": "8910560235e889a995c2702a997669c8bca64644",
+      "bugs": { "url": "https://github.com/floridoo/gulp-sourcemaps/issues" },
+      "_id": "gulp-sourcemaps@1.2.4",
+      "_shasum": "d08a7b1eea7f7c928b4fcf8bb46e65474fe7a88e",
+      "_from": ".",
+      "_npmVersion": "1.4.27",
+      "_npmUser": { "name": "floridoo", "email": "florian.reiterer@gmail.com" },
+      "maintainers": [
+        { "name": "floridoo", "email": "florian.reiterer@gmail.com" }
+      ],
+      "dist": {
+        "shasum": "d08a7b1eea7f7c928b4fcf8bb46e65474fe7a88e",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-1.2.4.tgz"
+      },
+      "directories": {}
+    },
+    "1.2.5": {
+      "name": "gulp-sourcemaps",
+      "version": "1.2.5",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/floridoo/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "test": "jshint *.js test/*.js && faucet test/*.js",
+        "tap": "node node_modules/argg test/*.js",
+        "cover": "istanbul cover --dir reports/coverage node_modules/argg test/*.js",
+        "coveralls": "istanbul cover node_modules/argg test/*.js --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage"
+      },
+      "keywords": ["gulpplugin", "gulp", "source maps", "sourcemaps"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "through2": "^0.6.1",
+        "vinyl": "^0.4.2",
+        "convert-source-map": "^0.4.1"
+      },
+      "devDependencies": {
+        "jshint": "^2.5.2",
+        "tape": "^2.13.3",
+        "argg": "0.0.1",
+        "istanbul": "^0.3.0",
+        "faucet": "0.0.1",
+        "coveralls": "^2.11.1"
+      },
+      "bugs": { "url": "https://github.com/floridoo/gulp-sourcemaps/issues" },
+      "_id": "gulp-sourcemaps@1.2.5",
+      "dist": {
+        "shasum": "97ab80c4155dde534a6385b2be0a4a1341aa608a",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-1.2.5.tgz"
+      },
+      "_from": ".",
+      "_npmVersion": "1.4.3",
+      "_npmUser": { "name": "floridoo", "email": "florian.reiterer@gmail.com" },
+      "maintainers": [
+        { "name": "floridoo", "email": "florian.reiterer@gmail.com" }
+      ],
+      "directories": {}
+    },
+    "1.2.6": {
+      "name": "gulp-sourcemaps",
+      "version": "1.2.6",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/floridoo/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "test": "jshint *.js test/*.js && faucet test/*.js",
+        "tap": "node node_modules/argg test/*.js",
+        "cover": "istanbul cover --dir reports/coverage node_modules/argg test/*.js",
+        "coveralls": "istanbul cover node_modules/argg test/*.js --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage"
+      },
+      "keywords": ["gulpplugin", "gulp", "source maps", "sourcemaps"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "through2": "^0.6.1",
+        "vinyl": "^0.4.2",
+        "convert-source-map": "^0.4.1"
+      },
+      "devDependencies": {
+        "jshint": "^2.5.2",
+        "tape": "^2.13.3",
+        "argg": "0.0.1",
+        "istanbul": "^0.3.0",
+        "faucet": "0.0.1",
+        "coveralls": "^2.11.1"
+      },
+      "bugs": { "url": "https://github.com/floridoo/gulp-sourcemaps/issues" },
+      "_id": "gulp-sourcemaps@1.2.6",
+      "dist": {
+        "shasum": "7bd561b6f53e6a6dfa6bb96e02f8daf19cf7f72e",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-1.2.6.tgz"
+      },
+      "_from": ".",
+      "_npmVersion": "1.4.3",
+      "_npmUser": { "name": "floridoo", "email": "florian.reiterer@gmail.com" },
+      "maintainers": [
+        { "name": "floridoo", "email": "florian.reiterer@gmail.com" }
+      ],
+      "directories": {}
+    },
+    "1.2.7": {
+      "name": "gulp-sourcemaps",
+      "version": "1.2.7",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/floridoo/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "test": "jshint *.js test/*.js && faucet test/*.js",
+        "tap": "node node_modules/argg test/*.js",
+        "cover": "istanbul cover --dir reports/coverage node_modules/argg test/*.js",
+        "coveralls": "istanbul cover node_modules/argg test/*.js --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage"
+      },
+      "keywords": ["gulpplugin", "gulp", "source maps", "sourcemaps"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "through2": "^0.6.1",
+        "vinyl": "^0.4.2",
+        "convert-source-map": "^0.4.1"
+      },
+      "devDependencies": {
+        "jshint": "^2.5.2",
+        "tape": "^2.13.3",
+        "argg": "0.0.1",
+        "istanbul": "^0.3.0",
+        "faucet": "0.0.1",
+        "coveralls": "^2.11.1"
+      },
+      "bugs": { "url": "https://github.com/floridoo/gulp-sourcemaps/issues" },
+      "_id": "gulp-sourcemaps@1.2.7",
+      "dist": {
+        "shasum": "e253ae16a6c8d4c51ad3d2af8bba0bbde74833fc",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-1.2.7.tgz"
+      },
+      "_from": ".",
+      "_npmVersion": "1.4.3",
+      "_npmUser": { "name": "floridoo", "email": "florian.reiterer@gmail.com" },
+      "maintainers": [
+        { "name": "floridoo", "email": "florian.reiterer@gmail.com" }
+      ],
+      "directories": {}
+    },
+    "1.2.8": {
+      "name": "gulp-sourcemaps",
+      "version": "1.2.8",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/floridoo/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "test": "jshint *.js test/*.js && faucet test/*.js",
+        "tap": "node node_modules/argg test/*.js",
+        "cover": "istanbul cover --dir reports/coverage node_modules/argg test/*.js",
+        "coveralls": "istanbul cover node_modules/argg test/*.js --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage"
+      },
+      "keywords": ["gulpplugin", "gulp", "source maps", "sourcemaps"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "through2": "^0.6.1",
+        "vinyl": "^0.4.2",
+        "convert-source-map": "^0.4.1"
+      },
+      "devDependencies": {
+        "jshint": "^2.5.2",
+        "tape": "^2.13.3",
+        "argg": "0.0.1",
+        "istanbul": "^0.3.0",
+        "faucet": "0.0.1",
+        "coveralls": "^2.11.1"
+      },
+      "gitHead": "2b6f467b96f3eede5bfd7b5cf7d5048807a3caca",
+      "bugs": { "url": "https://github.com/floridoo/gulp-sourcemaps/issues" },
+      "_id": "gulp-sourcemaps@1.2.8",
+      "_shasum": "e6d85dc1425eff98cdd4eb427c4e721cb4e1f95c",
+      "_from": ".",
+      "_npmVersion": "1.4.27",
+      "_npmUser": { "name": "floridoo", "email": "florian.reiterer@gmail.com" },
+      "maintainers": [
+        { "name": "floridoo", "email": "florian.reiterer@gmail.com" }
+      ],
+      "dist": {
+        "shasum": "e6d85dc1425eff98cdd4eb427c4e721cb4e1f95c",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-1.2.8.tgz"
+      },
+      "directories": {}
+    },
+    "1.3.0": {
+      "name": "gulp-sourcemaps",
+      "version": "1.3.0",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/floridoo/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "test": "jshint *.js test/*.js && faucet test/*.js",
+        "tap": "node node_modules/argg test/*.js",
+        "cover": "istanbul cover --dir reports/coverage node_modules/argg test/*.js",
+        "coveralls": "istanbul cover node_modules/argg test/*.js --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage"
+      },
+      "keywords": ["gulpplugin", "gulp", "source maps", "sourcemaps"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "through2": "^0.6.1",
+        "vinyl": "^0.4.2",
+        "convert-source-map": "^0.4.1"
+      },
+      "devDependencies": {
+        "jshint": "^2.5.2",
+        "tape": "^2.13.3",
+        "argg": "0.0.1",
+        "istanbul": "^0.3.0",
+        "faucet": "0.0.1",
+        "coveralls": "^2.11.1"
+      },
+      "gitHead": "2a0f222295eb0d2d8ce755ca0652eade7f9af90c",
+      "bugs": { "url": "https://github.com/floridoo/gulp-sourcemaps/issues" },
+      "_id": "gulp-sourcemaps@1.3.0",
+      "_shasum": "f8f72759fc8b1ec68c37365b4714ce239242d054",
+      "_from": ".",
+      "_npmVersion": "1.4.28",
+      "_npmUser": { "name": "floridoo", "email": "florian.reiterer@gmail.com" },
+      "maintainers": [
+        { "name": "floridoo", "email": "florian.reiterer@gmail.com" }
+      ],
+      "dist": {
+        "shasum": "f8f72759fc8b1ec68c37365b4714ce239242d054",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-1.3.0.tgz"
+      },
+      "directories": {}
+    },
+    "1.4.0": {
+      "name": "gulp-sourcemaps",
+      "version": "1.4.0",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/floridoo/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "test": "jshint *.js test/*.js && faucet test/*.js",
+        "tap": "tape test/*.js",
+        "cover": "istanbul cover --dir reports/coverage tape test/*.js",
+        "coveralls": "istanbul cover tape test/*.js --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage"
+      },
+      "keywords": ["gulpplugin", "gulp", "source maps", "sourcemaps"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "convert-source-map": "^0.5.0",
+        "through2": "^0.6.3",
+        "vinyl": "^0.4.6"
+      },
+      "devDependencies": {
+        "jshint": "^2.6.0",
+        "tape": "^3.5.0",
+        "istanbul": "^0.3.6",
+        "faucet": "0.0.1",
+        "coveralls": "^2.11.2"
+      },
+      "files": ["index.js", "package.json", "README.md", "LICENSE.md"],
+      "gitHead": "0ba60f14dec52ba854e3c4dd627c15a57dfdee8a",
+      "bugs": { "url": "https://github.com/floridoo/gulp-sourcemaps/issues" },
+      "_id": "gulp-sourcemaps@1.4.0",
+      "_shasum": "9b229a49e04f352a39953b9811385459d034de29",
+      "_from": ".",
+      "_npmVersion": "1.4.28",
+      "_npmUser": { "name": "floridoo", "email": "florian.reiterer@gmail.com" },
+      "maintainers": [
+        { "name": "floridoo", "email": "florian.reiterer@gmail.com" }
+      ],
+      "dist": {
+        "shasum": "9b229a49e04f352a39953b9811385459d034de29",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-1.4.0.tgz"
+      },
+      "directories": {}
+    },
+    "1.5.0": {
+      "name": "gulp-sourcemaps",
+      "version": "1.5.0",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/floridoo/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "test": "jshint *.js test/*.js && faucet test/*.js",
+        "tap": "tape test/*.js",
+        "cover": "istanbul cover --dir reports/coverage tape test/*.js",
+        "coveralls": "istanbul cover tape test/*.js --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage"
+      },
+      "keywords": ["gulpplugin", "gulp", "source maps", "sourcemaps"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "convert-source-map": "^0.5.0",
+        "graceful-fs": "^3.0.5",
+        "strip-bom": "^1.0.0",
+        "through2": "^0.6.3",
+        "vinyl": "^0.4.6"
+      },
+      "devDependencies": {
+        "jshint": "^2.6.0",
+        "tape": "^3.5.0",
+        "istanbul": "^0.3.6",
+        "faucet": "0.0.1",
+        "coveralls": "^2.11.2"
+      },
+      "files": ["index.js", "package.json", "README.md", "LICENSE.md"],
+      "gitHead": "bd241ea73c37daf9acc3ac9dea67a0aec3302081",
+      "bugs": { "url": "https://github.com/floridoo/gulp-sourcemaps/issues" },
+      "_id": "gulp-sourcemaps@1.5.0",
+      "_shasum": "c6399ad5ce273f0074d1cfa73dd471c62f929f2c",
+      "_from": ".",
+      "_npmVersion": "1.4.28",
+      "_npmUser": { "name": "floridoo", "email": "florian.reiterer@gmail.com" },
+      "maintainers": [
+        { "name": "floridoo", "email": "florian.reiterer@gmail.com" }
+      ],
+      "dist": {
+        "shasum": "c6399ad5ce273f0074d1cfa73dd471c62f929f2c",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-1.5.0.tgz"
+      },
+      "directories": {}
+    },
+    "1.5.1": {
+      "name": "gulp-sourcemaps",
+      "version": "1.5.1",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/floridoo/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "test": "jshint *.js test/*.js && faucet test/*.js",
+        "tap": "tape test/*.js",
+        "cover": "istanbul cover --dir reports/coverage tape test/*.js",
+        "coveralls": "istanbul cover tape test/*.js --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage"
+      },
+      "keywords": ["gulpplugin", "gulp", "source maps", "sourcemaps"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "convert-source-map": "^1.0.0",
+        "graceful-fs": "^3.0.5",
+        "strip-bom": "^1.0.0",
+        "through2": "^0.6.3",
+        "vinyl": "^0.4.6"
+      },
+      "devDependencies": {
+        "jshint": "^2.6.0",
+        "tape": "^3.5.0",
+        "istanbul": "^0.3.6",
+        "faucet": "0.0.1",
+        "coveralls": "^2.11.2"
+      },
+      "files": ["index.js", "package.json", "README.md", "LICENSE.md"],
+      "gitHead": "fb17a22d5e44922909baa157b1bc25a1b65492df",
+      "bugs": { "url": "https://github.com/floridoo/gulp-sourcemaps/issues" },
+      "_id": "gulp-sourcemaps@1.5.1",
+      "_shasum": "bd3b0c58603fcfd4f4707b8ceb511d596bbfc218",
+      "_from": ".",
+      "_npmVersion": "1.4.28",
+      "_npmUser": { "name": "floridoo", "email": "florian.reiterer@gmail.com" },
+      "maintainers": [
+        { "name": "floridoo", "email": "florian.reiterer@gmail.com" }
+      ],
+      "dist": {
+        "shasum": "bd3b0c58603fcfd4f4707b8ceb511d596bbfc218",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-1.5.1.tgz"
+      },
+      "directories": {}
+    },
+    "1.5.2": {
+      "name": "gulp-sourcemaps",
+      "version": "1.5.2",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/floridoo/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "test": "jshint *.js test/*.js && faucet test/*.js",
+        "tap": "tape test/*.js",
+        "cover": "istanbul cover --dir reports/coverage tape test/*.js",
+        "coveralls": "istanbul cover tape test/*.js --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage"
+      },
+      "keywords": ["gulpplugin", "gulp", "source maps", "sourcemaps"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "convert-source-map": "^1.0.0",
+        "graceful-fs": "^3.0.5",
+        "strip-bom": "^1.0.0",
+        "through2": "^0.6.3",
+        "vinyl": "^0.4.6"
+      },
+      "devDependencies": {
+        "jshint": "^2.6.0",
+        "tape": "^3.5.0",
+        "istanbul": "^0.3.6",
+        "faucet": "0.0.1",
+        "coveralls": "^2.11.2"
+      },
+      "files": ["index.js", "package.json", "README.md", "LICENSE.md"],
+      "gitHead": "3ea10a690310e419f5c4d8a926d6dd464aef6dcc",
+      "bugs": { "url": "https://github.com/floridoo/gulp-sourcemaps/issues" },
+      "_id": "gulp-sourcemaps@1.5.2",
+      "_shasum": "796f6ff695a494215f3d3d66aa7ac853d7e73511",
+      "_from": ".",
+      "_npmVersion": "1.4.28",
+      "_npmUser": { "name": "floridoo", "email": "florian.reiterer@gmail.com" },
+      "maintainers": [
+        { "name": "floridoo", "email": "florian.reiterer@gmail.com" }
+      ],
+      "dist": {
+        "shasum": "796f6ff695a494215f3d3d66aa7ac853d7e73511",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-1.5.2.tgz"
+      },
+      "directories": {}
+    },
+    "1.6.0": {
+      "name": "gulp-sourcemaps",
+      "version": "1.6.0",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/floridoo/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "test": "jshint *.js test/*.js && faucet test/*.js",
+        "tap": "tape test/*.js",
+        "cover": "istanbul cover --dir reports/coverage tape \"test/*.js\"",
+        "coveralls": "istanbul cover tape \"test/*.js\" --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage"
+      },
+      "keywords": ["gulpplugin", "gulp", "source maps", "sourcemaps"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "convert-source-map": "^1.1.1",
+        "graceful-fs": "^4.1.2",
+        "strip-bom": "^2.0.0",
+        "through2": "^2.0.0",
+        "vinyl": "^1.0.0"
+      },
+      "devDependencies": {
+        "jshint": "^2.8.0",
+        "tape": "^4.2.0",
+        "istanbul": "^0.3.21",
+        "faucet": "0.0.1",
+        "coveralls": "^2.11.4"
+      },
+      "files": ["index.js", "package.json", "README.md", "LICENSE.md"],
+      "gitHead": "cddce0d57e462b89b7d7f7c1d1864ad2784d17ef",
+      "bugs": { "url": "https://github.com/floridoo/gulp-sourcemaps/issues" },
+      "_id": "gulp-sourcemaps@1.6.0",
+      "_shasum": "b86ff349d801ceb56e1d9e7dc7bbcb4b7dee600c",
+      "_from": ".",
+      "_npmVersion": "3.3.4",
+      "_nodeVersion": "4.1.1",
+      "_npmUser": { "name": "floridoo", "email": "florian.reiterer@gmail.com" },
+      "maintainers": [
+        { "name": "floridoo", "email": "florian.reiterer@gmail.com" }
+      ],
+      "dist": {
+        "shasum": "b86ff349d801ceb56e1d9e7dc7bbcb4b7dee600c",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-1.6.0.tgz"
+      },
+      "directories": {}
+    },
+    "2.0.0-alpha": {
+      "name": "gulp-sourcemaps",
+      "version": "2.0.0-alpha",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/floridoo/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "test": "jshint *.js test/*.js && faucet test/*.js",
+        "tap": "tape test/*.js",
+        "cover": "istanbul cover --dir reports/coverage tape \"test/*.js\"",
+        "coveralls": "istanbul cover tape \"test/*.js\" --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage"
+      },
+      "keywords": ["gulpplugin", "gulp", "source maps", "sourcemaps"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "acorn": "^2.6.4",
+        "convert-source-map": "^1.1.1",
+        "css": "^2.2.1",
+        "detect-newline": "^1.0.3",
+        "graceful-fs": "^4.1.2",
+        "source-map": "^0.5.3",
+        "strip-bom": "^2.0.0",
+        "through2": "^2.0.0",
+        "vinyl": "^1.0.0"
+      },
+      "devDependencies": {
+        "jshint": "^2.8.0",
+        "tape": "^4.2.0",
+        "istanbul": "^0.3.21",
+        "faucet": "0.0.1",
+        "coveralls": "^2.11.4"
+      },
+      "files": ["index.js", "package.json", "README.md", "LICENSE.md"],
+      "gitHead": "f0acd2a31150b0403c14eed53e6234b192704257",
+      "bugs": { "url": "https://github.com/floridoo/gulp-sourcemaps/issues" },
+      "_id": "gulp-sourcemaps@2.0.0-alpha",
+      "_shasum": "f0c7bc0e67ed3f0a0f669562c80a04664a23dadf",
+      "_from": ".",
+      "_npmVersion": "3.6.0",
+      "_nodeVersion": "5.6.0",
+      "_npmUser": { "name": "floridoo", "email": "florian.reiterer@gmail.com" },
+      "maintainers": [
+        { "name": "floridoo", "email": "florian.reiterer@gmail.com" }
+      ],
+      "dist": {
+        "shasum": "f0c7bc0e67ed3f0a0f669562c80a04664a23dadf",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-2.0.0-alpha.tgz"
+      },
+      "_npmOperationalInternal": {
+        "host": "packages-16-east.internal.npmjs.com",
+        "tmp": "tmp/gulp-sourcemaps-2.0.0-alpha.tgz_1461091131653_0.3964899682905525"
+      },
+      "directories": {}
+    },
+    "1.7.1": {
+      "name": "gulp-sourcemaps",
+      "version": "1.7.1",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/floridoo/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "test": "jshint *.js test/*.js && faucet test/*.js",
+        "tap": "tape test/*.js",
+        "cover": "istanbul cover --dir reports/coverage tape \"test/*.js\"",
+        "coveralls": "istanbul cover tape \"test/*.js\" --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage"
+      },
+      "keywords": ["gulpplugin", "gulp", "source maps", "sourcemaps"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "acorn": "4.X",
+        "convert-source-map": "1.X",
+        "css": "2.X",
+        "detect-newline": "2.X",
+        "graceful-fs": "4.X",
+        "source-map": "0.X",
+        "strip-bom": "2.X",
+        "through2": "2.X",
+        "vinyl": "1.X"
+      },
+      "devDependencies": {
+        "jshint": "2.X",
+        "tape": "4.X",
+        "istanbul": "0.X",
+        "faucet": "0.0.X",
+        "coveralls": "2.X"
+      },
+      "files": ["index.js"],
+      "gitHead": "5a351820c4dbb15de075a2ffb3496f8b335742f9",
+      "bugs": { "url": "https://github.com/floridoo/gulp-sourcemaps/issues" },
+      "_id": "gulp-sourcemaps@1.7.1",
+      "_shasum": "2a6aa5fb2d6315f56cdb750d9a90257d752e2fc2",
+      "_from": ".",
+      "_npmVersion": "2.15.11",
+      "_nodeVersion": "4.5.0",
+      "_npmUser": { "name": "nmccready", "email": "nemtcan@gmail.com" },
+      "maintainers": [
+        { "name": "floridoo", "email": "florian.reiterer@gmail.com" },
+        { "name": "nmccready", "email": "nemtcan@gmail.com" },
+        { "name": "zacronos", "email": "joe@ibershoff.com" }
+      ],
+      "dist": {
+        "shasum": "2a6aa5fb2d6315f56cdb750d9a90257d752e2fc2",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-1.7.1.tgz"
+      },
+      "_npmOperationalInternal": {
+        "host": "packages-16-east.internal.npmjs.com",
+        "tmp": "tmp/gulp-sourcemaps-1.7.1.tgz_1476130894137_0.7170090365689248"
+      },
+      "directories": {}
+    },
+    "2.0.0": {
+      "name": "gulp-sourcemaps",
+      "version": "2.0.0",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/floridoo/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "test": "jshint *.js test/*.js && faucet test/*.js",
+        "tap": "tape test/*.js",
+        "cover": "istanbul cover --dir reports/coverage tape \"test/*.js\"",
+        "coveralls": "istanbul cover tape \"test/*.js\" --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage"
+      },
+      "keywords": ["gulpplugin", "gulp", "source maps", "sourcemaps"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "acorn": "4.X",
+        "convert-source-map": "1.X",
+        "css": "2.X",
+        "detect-newline": "2.X",
+        "graceful-fs": "4.X",
+        "source-map": "0.X",
+        "strip-bom": "3.X",
+        "through2": "2.X",
+        "vinyl": "1.X"
+      },
+      "devDependencies": {
+        "jshint": "2.X",
+        "tape": "4.X",
+        "istanbul": "0.X",
+        "faucet": "0.0.X",
+        "coveralls": "2.X"
+      },
+      "files": ["index.js"],
+      "gitHead": "7b5e2697433b33b1ee5742eb036f8b7d512f0f85",
+      "bugs": { "url": "https://github.com/floridoo/gulp-sourcemaps/issues" },
+      "_id": "gulp-sourcemaps@2.0.0",
+      "_shasum": "ec53ecfbb7d706bf2bd398f9208c2a127d8eb3e4",
+      "_from": ".",
+      "_npmVersion": "2.15.11",
+      "_nodeVersion": "4.5.0",
+      "_npmUser": { "name": "nmccready", "email": "nemtcan@gmail.com" },
+      "maintainers": [
+        { "name": "floridoo", "email": "florian.reiterer@gmail.com" },
+        { "name": "nmccready", "email": "nemtcan@gmail.com" },
+        { "name": "zacronos", "email": "joe@ibershoff.com" }
+      ],
+      "dist": {
+        "shasum": "ec53ecfbb7d706bf2bd398f9208c2a127d8eb3e4",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-2.0.0.tgz"
+      },
+      "_npmOperationalInternal": {
+        "host": "packages-12-west.internal.npmjs.com",
+        "tmp": "tmp/gulp-sourcemaps-2.0.0.tgz_1476131869663_0.8919285063166171"
+      },
+      "directories": {}
+    },
+    "2.0.1": {
+      "name": "gulp-sourcemaps",
+      "version": "2.0.1",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/floridoo/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "test": "jshint *.js test/*.js && faucet test/*.js",
+        "tap": "tape test/*.js",
+        "cover": "istanbul cover --dir reports/coverage tape \"test/*.js\"",
+        "coveralls": "istanbul cover tape \"test/*.js\" --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage"
+      },
+      "keywords": ["gulpplugin", "gulp", "source maps", "sourcemaps"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "acorn": "4.X",
+        "convert-source-map": "1.X",
+        "css": "2.X",
+        "debug-fabulous": "0.0.X",
+        "detect-newline": "2.X",
+        "graceful-fs": "4.X",
+        "source-map": "0.X",
+        "strip-bom": "3.X",
+        "through2": "2.X",
+        "vinyl": "1.X"
+      },
+      "devDependencies": {
+        "coveralls": "2.X",
+        "faucet": "0.0.X",
+        "hook-std": "0.2.X",
+        "istanbul": "0.X",
+        "jshint": "2.X",
+        "tape": "4.X"
+      },
+      "files": ["index.js"],
+      "gitHead": "fbaa35634216488a63681da49cdc7faba61b4f30",
+      "bugs": { "url": "https://github.com/floridoo/gulp-sourcemaps/issues" },
+      "_id": "gulp-sourcemaps@2.0.1",
+      "_shasum": "424c1e24901dd122cbaeef5a726c43b916041313",
+      "_from": ".",
+      "_npmVersion": "2.15.11",
+      "_nodeVersion": "4.5.0",
+      "_npmUser": { "name": "nmccready", "email": "nemtcan@gmail.com" },
+      "maintainers": [
+        { "name": "floridoo", "email": "florian.reiterer@gmail.com" },
+        { "name": "nmccready", "email": "nemtcan@gmail.com" },
+        { "name": "zacronos", "email": "joe@ibershoff.com" }
+      ],
+      "dist": {
+        "shasum": "424c1e24901dd122cbaeef5a726c43b916041313",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-2.0.1.tgz"
+      },
+      "_npmOperationalInternal": {
+        "host": "packages-16-east.internal.npmjs.com",
+        "tmp": "tmp/gulp-sourcemaps-2.0.1.tgz_1476237880521_0.34149303613230586"
+      },
+      "directories": {}
+    },
+    "1.7.3": {
+      "name": "gulp-sourcemaps",
+      "version": "1.7.3",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/floridoo/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "test": "jshint *.js test/*.js && faucet test/*.js",
+        "tap": "tape test/*.js",
+        "cover": "istanbul cover --dir reports/coverage tape \"test/*.js\"",
+        "coveralls": "istanbul cover tape \"test/*.js\" --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage"
+      },
+      "keywords": ["gulpplugin", "gulp", "source maps", "sourcemaps"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "acorn": "4.X",
+        "convert-source-map": "1.X",
+        "css": "2.X",
+        "debug-fabulous": "0.0.X",
+        "detect-newline": "2.X",
+        "graceful-fs": "4.X",
+        "source-map": "0.X",
+        "strip-bom": "2.X",
+        "through2": "2.X",
+        "vinyl": "1.X"
+      },
+      "devDependencies": {
+        "coveralls": "2.X",
+        "faucet": "0.0.X",
+        "hook-std": "0.2.X",
+        "istanbul": "0.X",
+        "jshint": "2.X",
+        "tape": "4.X"
+      },
+      "files": ["index.js"],
+      "gitHead": "39e1b3b1ffee13620e6d56fc4c673c04271406ec",
+      "bugs": { "url": "https://github.com/floridoo/gulp-sourcemaps/issues" },
+      "_id": "gulp-sourcemaps@1.7.3",
+      "_shasum": "a468a2801996c969e47476fcc6dcd5a7e2aa53c1",
+      "_from": ".",
+      "_npmVersion": "2.15.1",
+      "_nodeVersion": "0.12.16",
+      "_npmUser": { "name": "nmccready", "email": "nemtcan@gmail.com" },
+      "maintainers": [
+        { "name": "floridoo", "email": "florian.reiterer@gmail.com" },
+        { "name": "nmccready", "email": "nemtcan@gmail.com" },
+        { "name": "zacronos", "email": "joe@ibershoff.com" }
+      ],
+      "dist": {
+        "shasum": "a468a2801996c969e47476fcc6dcd5a7e2aa53c1",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-1.7.3.tgz"
+      },
+      "_npmOperationalInternal": {
+        "host": "packages-16-east.internal.npmjs.com",
+        "tmp": "tmp/gulp-sourcemaps-1.7.3.tgz_1476278081027_0.12119980342686176"
+      },
+      "directories": {}
+    },
+    "1.8.1": {
+      "name": "gulp-sourcemaps",
+      "version": "1.8.1",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/floridoo/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "test": "jshint *.js test/*.js && faucet test/*.js",
+        "tap": "tape test/*.js",
+        "cover": "istanbul cover --dir reports/coverage tape \"test/*.js\"",
+        "coveralls": "istanbul cover tape \"test/*.js\" --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage"
+      },
+      "keywords": ["gulpplugin", "gulp", "source maps", "sourcemaps"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "acorn": "4.X",
+        "convert-source-map": "1.X",
+        "css": "2.X",
+        "debug-fabulous": "0.0.X",
+        "detect-newline": "2.X",
+        "graceful-fs": "4.X",
+        "source-map": "0.X",
+        "strip-bom": "2.X",
+        "through2": "2.X",
+        "vinyl": "1.X"
+      },
+      "devDependencies": {
+        "coveralls": "2.X",
+        "faucet": "0.0.X",
+        "hook-std": "0.2.X",
+        "istanbul": "0.X",
+        "jshint": "2.X",
+        "tape": "4.X"
+      },
+      "files": ["index.js", "src"],
+      "gitHead": "93db5f5fd3a05c580b891c41771dc14c1ca585ea",
+      "bugs": { "url": "https://github.com/floridoo/gulp-sourcemaps/issues" },
+      "_id": "gulp-sourcemaps@1.8.1",
+      "_shasum": "714bb359ac7dfe50f42aa22f4a8fbcce476da22f",
+      "_from": ".",
+      "_npmVersion": "2.15.11",
+      "_nodeVersion": "4.5.0",
+      "_npmUser": { "name": "nmccready", "email": "nemtcan@gmail.com" },
+      "maintainers": [
+        { "name": "floridoo", "email": "florian.reiterer@gmail.com" },
+        { "name": "nmccready", "email": "nemtcan@gmail.com" },
+        { "name": "zacronos", "email": "joe@ibershoff.com" }
+      ],
+      "dist": {
+        "shasum": "714bb359ac7dfe50f42aa22f4a8fbcce476da22f",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-1.8.1.tgz"
+      },
+      "_npmOperationalInternal": {
+        "host": "packages-16-east.internal.npmjs.com",
+        "tmp": "tmp/gulp-sourcemaps-1.8.1.tgz_1476396972024_0.42866950342431664"
+      },
+      "directories": {}
+    },
+    "2.1.1": {
+      "name": "gulp-sourcemaps",
+      "version": "2.1.1",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/floridoo/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "test": "jshint *.js test/*.js && faucet test/*.js",
+        "tap": "tape test/*.js",
+        "cover": "istanbul cover --dir reports/coverage tape \"test/*.js\"",
+        "coveralls": "istanbul cover tape \"test/*.js\" --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage"
+      },
+      "keywords": ["gulpplugin", "gulp", "source maps", "sourcemaps"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "acorn": "4.X",
+        "convert-source-map": "1.X",
+        "css": "2.X",
+        "debug-fabulous": "0.0.X",
+        "detect-newline": "2.X",
+        "graceful-fs": "4.X",
+        "source-map": "0.X",
+        "strip-bom": "3.X",
+        "through2": "2.X",
+        "vinyl": "1.X"
+      },
+      "devDependencies": {
+        "coveralls": "2.X",
+        "faucet": "0.0.X",
+        "hook-std": "0.2.X",
+        "istanbul": "0.X",
+        "jshint": "2.X",
+        "tape": "4.X"
+      },
+      "files": ["index.js", "src"],
+      "gitHead": "48759d9f8c8d0e4b15e47072f8121dc19d327212",
+      "bugs": { "url": "https://github.com/floridoo/gulp-sourcemaps/issues" },
+      "_id": "gulp-sourcemaps@2.1.1",
+      "_shasum": "ddfeabc285b7b6eb82fd13cb1cfb5b50e14797ae",
+      "_from": ".",
+      "_npmVersion": "2.15.11",
+      "_nodeVersion": "4.5.0",
+      "_npmUser": { "name": "nmccready", "email": "nemtcan@gmail.com" },
+      "maintainers": [
+        { "name": "floridoo", "email": "florian.reiterer@gmail.com" },
+        { "name": "nmccready", "email": "nemtcan@gmail.com" },
+        { "name": "zacronos", "email": "joe@ibershoff.com" }
+      ],
+      "dist": {
+        "shasum": "ddfeabc285b7b6eb82fd13cb1cfb5b50e14797ae",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-2.1.1.tgz"
+      },
+      "_npmOperationalInternal": {
+        "host": "packages-16-east.internal.npmjs.com",
+        "tmp": "tmp/gulp-sourcemaps-2.1.1.tgz_1476397030589_0.5358067122288048"
+      },
+      "directories": {}
+    },
+    "1.9.0": {
+      "name": "gulp-sourcemaps",
+      "version": "1.9.0",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/floridoo/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "test": "jshint *.js test/*.js && faucet test/*.js",
+        "tap": "tape test/*.js",
+        "cover": "istanbul cover --dir reports/coverage tape \"test/*.js\"",
+        "coveralls": "istanbul cover tape \"test/*.js\" --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage"
+      },
+      "keywords": ["gulpplugin", "gulp", "source maps", "sourcemaps"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "acorn": "4.X",
+        "convert-source-map": "1.X",
+        "css": "2.X",
+        "debug-fabulous": "0.0.X",
+        "detect-newline": "2.X",
+        "graceful-fs": "4.X",
+        "source-map": "0.X",
+        "strip-bom": "2.X",
+        "through2": "2.X",
+        "vinyl": "1.X"
+      },
+      "devDependencies": {
+        "coveralls": "2.X",
+        "faucet": "0.0.X",
+        "hook-std": "0.2.X",
+        "istanbul": "0.X",
+        "jshint": "2.X",
+        "tape": "4.X"
+      },
+      "files": ["index.js", "src"],
+      "engines": { "node": ">=0.10.0" },
+      "gitHead": "02908271ef2e9c04c2a322f9d629a5264f88c794",
+      "bugs": { "url": "https://github.com/floridoo/gulp-sourcemaps/issues" },
+      "_id": "gulp-sourcemaps@1.9.0",
+      "_shasum": "d85c060aa775ec30e9b9fb8c2f38c4f2d5135385",
+      "_from": ".",
+      "_npmVersion": "2.15.11",
+      "_nodeVersion": "4.5.0",
+      "_npmUser": { "name": "nmccready", "email": "nemtcan@gmail.com" },
+      "maintainers": [
+        { "name": "floridoo", "email": "florian.reiterer@gmail.com" },
+        { "name": "nmccready", "email": "nemtcan@gmail.com" },
+        { "name": "zacronos", "email": "joe@ibershoff.com" }
+      ],
+      "dist": {
+        "shasum": "d85c060aa775ec30e9b9fb8c2f38c4f2d5135385",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-1.9.0.tgz"
+      },
+      "_npmOperationalInternal": {
+        "host": "packages-12-west.internal.npmjs.com",
+        "tmp": "tmp/gulp-sourcemaps-1.9.0.tgz_1477247119285_0.22668661316856742"
+      },
+      "directories": {}
+    },
+    "2.2.0": {
+      "name": "gulp-sourcemaps",
+      "version": "2.2.0",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/floridoo/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "test": "jshint *.js test/*.js && faucet test/*.js",
+        "tap": "tape test/*.js",
+        "cover": "istanbul cover --dir reports/coverage tape \"test/*.js\"",
+        "coveralls": "istanbul cover tape \"test/*.js\" --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage"
+      },
+      "keywords": ["gulpplugin", "gulp", "source maps", "sourcemaps"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "acorn": "4.X",
+        "convert-source-map": "1.X",
+        "css": "2.X",
+        "debug-fabulous": "0.0.X",
+        "detect-newline": "2.X",
+        "graceful-fs": "4.X",
+        "source-map": "0.X",
+        "strip-bom": "3.X",
+        "through2": "2.X",
+        "vinyl": "1.X"
+      },
+      "devDependencies": {
+        "coveralls": "2.X",
+        "faucet": "0.0.X",
+        "hook-std": "0.2.X",
+        "istanbul": "0.X",
+        "jshint": "2.X",
+        "tape": "4.X"
+      },
+      "files": ["index.js", "src"],
+      "engines": { "node": ">=4" },
+      "gitHead": "ec9b51d0bb88746e16f85479f12f8cfbd7ed159a",
+      "bugs": { "url": "https://github.com/floridoo/gulp-sourcemaps/issues" },
+      "_id": "gulp-sourcemaps@2.2.0",
+      "_shasum": "dea8a4dc9aa74630a04ae9cf1871a7a08bc1310d",
+      "_from": ".",
+      "_npmVersion": "2.15.11",
+      "_nodeVersion": "4.5.0",
+      "_npmUser": { "name": "nmccready", "email": "nemtcan@gmail.com" },
+      "maintainers": [
+        { "name": "floridoo", "email": "florian.reiterer@gmail.com" },
+        { "name": "nmccready", "email": "nemtcan@gmail.com" },
+        { "name": "zacronos", "email": "joe@ibershoff.com" }
+      ],
+      "dist": {
+        "shasum": "dea8a4dc9aa74630a04ae9cf1871a7a08bc1310d",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-2.2.0.tgz"
+      },
+      "_npmOperationalInternal": {
+        "host": "packages-12-west.internal.npmjs.com",
+        "tmp": "tmp/gulp-sourcemaps-2.2.0.tgz_1477247197373_0.6371417087502778"
+      },
+      "directories": {}
+    },
+    "1.9.2": {
+      "name": "gulp-sourcemaps",
+      "version": "1.9.2",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/floridoo/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "test": "jshint *.js test/*.js && faucet test/*.js",
+        "tap": "tape test/*.js",
+        "cover": "istanbul cover --dir reports/coverage tape \"test/*.js\"",
+        "coveralls": "istanbul cover tape \"test/*.js\" --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage",
+        "serve": "http-server",
+        "test:int": "rm -rf ./tmp && tape ./test/integration.js"
+      },
+      "keywords": ["gulpplugin", "gulp", "source maps", "sourcemaps"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "acorn": "4.X",
+        "convert-source-map": "1.X",
+        "css": "2.X",
+        "debug-fabulous": "0.0.X",
+        "detect-newline": "2.X",
+        "graceful-fs": "4.X",
+        "source-map": "0.X",
+        "strip-bom": "2.X",
+        "through2": "2.X",
+        "vinyl": "1.X"
+      },
+      "devDependencies": {
+        "coveralls": "2.X",
+        "faucet": "0.0.X",
+        "gulp": "3.X",
+        "gulp-concat": "2.X",
+        "gulp-if": "2.0.2",
+        "gulp-load-plugins": "1.X",
+        "hook-std": "0.2.X",
+        "http-server": "0.9.0",
+        "istanbul": "0.X",
+        "jshint": "2.X",
+        "object-assign": "^4.1.0",
+        "tape": "4.X"
+      },
+      "files": ["index.js", "src"],
+      "engines": { "node": ">=0.10.0" },
+      "gitHead": "b04a2171d8ef37f4590c7c308321d755421a480d",
+      "bugs": { "url": "https://github.com/floridoo/gulp-sourcemaps/issues" },
+      "_id": "gulp-sourcemaps@1.9.2",
+      "_shasum": "1e0b273d3d27e88389233a66ab6d31dc42516e62",
+      "_from": ".",
+      "_npmVersion": "2.15.11",
+      "_nodeVersion": "4.6.2",
+      "_npmUser": { "name": "nmccready", "email": "nemtcan@gmail.com" },
+      "maintainers": [{ "name": "nmccready", "email": "nemtcan@gmail.com" }],
+      "dist": {
+        "shasum": "1e0b273d3d27e88389233a66ab6d31dc42516e62",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-1.9.2.tgz"
+      },
+      "_npmOperationalInternal": {
+        "host": "packages-18-east.internal.npmjs.com",
+        "tmp": "tmp/gulp-sourcemaps-1.9.2.tgz_1483903632191_0.5698138014413416"
+      },
+      "directories": {}
+    },
+    "2.2.2": {
+      "name": "gulp-sourcemaps",
+      "version": "2.2.2",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/floridoo/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "test": "jshint *.js test/*.js && faucet test/*.js",
+        "tap": "tape test/*.js",
+        "cover": "istanbul cover --dir reports/coverage tape \"test/*.js\"",
+        "coveralls": "istanbul cover tape \"test/*.js\" --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage",
+        "serve": "http-server",
+        "test:int": "rm -rf ./tmp && tape ./test/integration.js"
+      },
+      "keywords": ["gulpplugin", "gulp", "source maps", "sourcemaps"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "acorn": "4.X",
+        "convert-source-map": "1.X",
+        "css": "2.X",
+        "debug-fabulous": "0.0.X",
+        "detect-newline": "2.X",
+        "graceful-fs": "4.X",
+        "source-map": "0.X",
+        "strip-bom": "3.X",
+        "through2": "2.X",
+        "vinyl": "1.X"
+      },
+      "devDependencies": {
+        "coveralls": "2.X",
+        "faucet": "0.0.X",
+        "gulp": "3.X",
+        "gulp-concat": "2.X",
+        "gulp-if": "2.0.2",
+        "gulp-load-plugins": "1.X",
+        "hook-std": "0.2.X",
+        "http-server": "0.9.0",
+        "istanbul": "0.X",
+        "jshint": "2.X",
+        "object-assign": "^4.1.0",
+        "tape": "4.X"
+      },
+      "files": ["index.js", "src"],
+      "engines": { "node": ">=4" },
+      "gitHead": "c231b312f14f3e9da7ce8a82a0c5cc5064eb88b1",
+      "bugs": { "url": "https://github.com/floridoo/gulp-sourcemaps/issues" },
+      "_id": "gulp-sourcemaps@2.2.2",
+      "_shasum": "1926df09a5a11aee68aee5f78a0ea89fbb284612",
+      "_from": ".",
+      "_npmVersion": "2.15.11",
+      "_nodeVersion": "4.6.2",
+      "_npmUser": { "name": "nmccready", "email": "nemtcan@gmail.com" },
+      "maintainers": [{ "name": "nmccready", "email": "nemtcan@gmail.com" }],
+      "dist": {
+        "shasum": "1926df09a5a11aee68aee5f78a0ea89fbb284612",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-2.2.2.tgz"
+      },
+      "_npmOperationalInternal": {
+        "host": "packages-18-east.internal.npmjs.com",
+        "tmp": "tmp/gulp-sourcemaps-2.2.2.tgz_1483903812583_0.7120079197920859"
+      },
+      "directories": {}
+    },
+    "1.9.3": {
+      "name": "gulp-sourcemaps",
+      "version": "1.9.3",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/floridoo/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "test": "jshint *.js test/*.js && faucet test/*.js",
+        "tap": "tape test/*.js",
+        "cover": "istanbul cover --dir reports/coverage tape \"test/*.js\"",
+        "coveralls": "istanbul cover tape \"test/*.js\" --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage",
+        "serve": "http-server",
+        "test:int": "rm -rf ./tmp && tape ./test/integration.js"
+      },
+      "keywords": ["gulpplugin", "gulp", "source maps", "sourcemaps"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "acorn": "4.X",
+        "convert-source-map": "1.X",
+        "css": "2.X",
+        "debug-fabulous": "0.0.X",
+        "detect-newline": "2.X",
+        "graceful-fs": "4.X",
+        "source-map": "0.X",
+        "strip-bom": "2.X",
+        "through2": "2.X",
+        "vinyl": "1.X"
+      },
+      "devDependencies": {
+        "bootstrap": "3.3.7",
+        "coveralls": "2.X",
+        "faucet": "0.0.X",
+        "gulp": "3.X",
+        "gulp-concat": "2.X",
+        "gulp-if": "2.0.2",
+        "gulp-less": "3.3.0",
+        "gulp-load-plugins": "1.X",
+        "hook-std": "0.2.X",
+        "http-server": "0.9.0",
+        "istanbul": "0.X",
+        "jshint": "2.X",
+        "object-assign": "^4.1.0",
+        "tape": "4.X"
+      },
+      "files": ["index.js", "src"],
+      "engines": { "node": ">=0.10.0" },
+      "gitHead": "e7c2e96a7f931389023d872ef652d8b32764f68d",
+      "bugs": { "url": "https://github.com/floridoo/gulp-sourcemaps/issues" },
+      "_id": "gulp-sourcemaps@1.9.3",
+      "_shasum": "df37ac54992b220a670dec1a04bf85bf7ae5efb5",
+      "_from": ".",
+      "_npmVersion": "2.15.11",
+      "_nodeVersion": "4.6.2",
+      "_npmUser": { "name": "nmccready", "email": "nemtcan@gmail.com" },
+      "maintainers": [{ "name": "nmccready", "email": "nemtcan@gmail.com" }],
+      "dist": {
+        "shasum": "df37ac54992b220a670dec1a04bf85bf7ae5efb5",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-1.9.3.tgz"
+      },
+      "_npmOperationalInternal": {
+        "host": "packages-18-east.internal.npmjs.com",
+        "tmp": "tmp/gulp-sourcemaps-1.9.3.tgz_1483943162406_0.7535446544643492"
+      },
+      "directories": {}
+    },
+    "2.2.3": {
+      "name": "gulp-sourcemaps",
+      "version": "2.2.3",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/floridoo/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "test": "jshint *.js test/*.js && faucet test/*.js",
+        "tap": "tape test/*.js",
+        "cover": "istanbul cover --dir reports/coverage tape \"test/*.js\"",
+        "coveralls": "istanbul cover tape \"test/*.js\" --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage",
+        "serve": "http-server",
+        "test:int": "rm -rf ./tmp && tape ./test/integration.js"
+      },
+      "keywords": ["gulpplugin", "gulp", "source maps", "sourcemaps"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "acorn": "4.X",
+        "convert-source-map": "1.X",
+        "css": "2.X",
+        "debug-fabulous": "0.0.X",
+        "detect-newline": "2.X",
+        "graceful-fs": "4.X",
+        "source-map": "0.X",
+        "strip-bom": "3.X",
+        "through2": "2.X",
+        "vinyl": "1.X"
+      },
+      "devDependencies": {
+        "bootstrap": "3.3.7",
+        "coveralls": "2.X",
+        "faucet": "0.0.X",
+        "gulp": "3.X",
+        "gulp-concat": "2.X",
+        "gulp-if": "2.0.2",
+        "gulp-less": "3.3.0",
+        "gulp-load-plugins": "1.X",
+        "hook-std": "0.2.X",
+        "http-server": "0.9.0",
+        "istanbul": "0.X",
+        "jshint": "2.X",
+        "object-assign": "^4.1.0",
+        "tape": "4.X"
+      },
+      "files": ["index.js", "src"],
+      "engines": { "node": ">=4" },
+      "gitHead": "23db8370c607191e08925b763d146ae538d4deca",
+      "bugs": { "url": "https://github.com/floridoo/gulp-sourcemaps/issues" },
+      "_id": "gulp-sourcemaps@2.2.3",
+      "_shasum": "af80582de6ec2d0d538132410991bde2ff4d691a",
+      "_from": ".",
+      "_npmVersion": "2.15.11",
+      "_nodeVersion": "4.6.2",
+      "_npmUser": { "name": "nmccready", "email": "nemtcan@gmail.com" },
+      "maintainers": [{ "name": "nmccready", "email": "nemtcan@gmail.com" }],
+      "dist": {
+        "shasum": "af80582de6ec2d0d538132410991bde2ff4d691a",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-2.2.3.tgz"
+      },
+      "_npmOperationalInternal": {
+        "host": "packages-12-west.internal.npmjs.com",
+        "tmp": "tmp/gulp-sourcemaps-2.2.3.tgz_1483943332792_0.24946232559159398"
+      },
+      "directories": {}
+    },
+    "1.10.0": {
+      "name": "gulp-sourcemaps",
+      "version": "1.10.0",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/floridoo/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "lint": "jshint ./src/**/*.js test/*.js",
+        "test": "npm run lint && faucet test/*.js",
+        "tap": "tape test/*.js",
+        "cover": "istanbul cover --dir reports/coverage tape \"test/*.js\"",
+        "coveralls": "istanbul cover tape \"test/*.js\" --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage",
+        "serve": "http-server",
+        "test:int": "rm -rf ./tmp && tape ./test/integration.js"
+      },
+      "keywords": ["gulpplugin", "gulp", "source maps", "sourcemaps"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "acorn": "4.X",
+        "convert-source-map": "1.X",
+        "css": "2.X",
+        "debug-fabulous": "0.0.X",
+        "detect-newline": "2.X",
+        "graceful-fs": "4.X",
+        "source-map": "0.X",
+        "strip-bom": "2.X",
+        "through2": "2.X",
+        "vinyl": "1.X"
+      },
+      "devDependencies": {
+        "bootstrap": "3.3.7",
+        "coveralls": "2.X",
+        "faucet": "0.0.X",
+        "gulp": "3.X",
+        "gulp-concat": "2.X",
+        "gulp-if": "2.0.2",
+        "gulp-less": "3.3.0",
+        "gulp-load-plugins": "1.X",
+        "hook-std": "0.2.X",
+        "http-server": "0.9.0",
+        "istanbul": "0.X",
+        "jshint": "2.X",
+        "object-assign": "^4.1.0",
+        "tape": "4.X"
+      },
+      "files": ["index.js", "src"],
+      "engines": { "node": ">=0.10.0" },
+      "gitHead": "8299abe89caa8f00aef14c2b18bc5475cc873b4e",
+      "bugs": { "url": "https://github.com/floridoo/gulp-sourcemaps/issues" },
+      "_id": "gulp-sourcemaps@1.10.0",
+      "_shasum": "0e74ba3569e4705b1938d81b6354d28c6c940b6a",
+      "_from": ".",
+      "_npmVersion": "2.15.11",
+      "_nodeVersion": "4.6.2",
+      "_npmUser": { "name": "nmccready", "email": "nemtcan@gmail.com" },
+      "maintainers": [{ "name": "nmccready", "email": "nemtcan@gmail.com" }],
+      "dist": {
+        "shasum": "0e74ba3569e4705b1938d81b6354d28c6c940b6a",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-1.10.0.tgz"
+      },
+      "_npmOperationalInternal": {
+        "host": "packages-12-west.internal.npmjs.com",
+        "tmp": "tmp/gulp-sourcemaps-1.10.0.tgz_1484004837469_0.039957444882020354"
+      },
+      "directories": {}
+    },
+    "2.3.0": {
+      "name": "gulp-sourcemaps",
+      "version": "2.3.0",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/floridoo/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "lint": "jshint ./src/**/*.js test/*.js",
+        "test": "npm run lint && faucet test/*.js",
+        "tap": "tape test/*.js",
+        "cover": "istanbul cover --dir reports/coverage tape \"test/*.js\"",
+        "coveralls": "istanbul cover tape \"test/*.js\" --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage",
+        "serve": "http-server",
+        "test:int": "rm -rf ./tmp && tape ./test/integration.js"
+      },
+      "keywords": ["gulpplugin", "gulp", "source maps", "sourcemaps"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "acorn": "4.X",
+        "convert-source-map": "1.X",
+        "css": "2.X",
+        "debug-fabulous": "0.0.X",
+        "detect-newline": "2.X",
+        "graceful-fs": "4.X",
+        "source-map": "0.X",
+        "strip-bom": "3.X",
+        "through2": "2.X",
+        "vinyl": "1.X"
+      },
+      "devDependencies": {
+        "bootstrap": "3.3.7",
+        "coveralls": "2.X",
+        "faucet": "0.0.X",
+        "gulp": "3.X",
+        "gulp-concat": "2.X",
+        "gulp-if": "2.0.2",
+        "gulp-less": "3.3.0",
+        "gulp-load-plugins": "1.X",
+        "hook-std": "0.2.X",
+        "http-server": "0.9.0",
+        "istanbul": "0.X",
+        "jshint": "2.X",
+        "object-assign": "^4.1.0",
+        "tape": "4.X"
+      },
+      "files": ["index.js", "src"],
+      "engines": { "node": ">=4" },
+      "gitHead": "faa06147decbd4825011929a852ecf46404039b1",
+      "bugs": { "url": "https://github.com/floridoo/gulp-sourcemaps/issues" },
+      "_id": "gulp-sourcemaps@2.3.0",
+      "_shasum": "b29cb08c302aa7244e4bd4a47544a2e3fa08f2da",
+      "_from": ".",
+      "_npmVersion": "2.15.11",
+      "_nodeVersion": "4.6.2",
+      "_npmUser": { "name": "nmccready", "email": "nemtcan@gmail.com" },
+      "maintainers": [{ "name": "nmccready", "email": "nemtcan@gmail.com" }],
+      "dist": {
+        "shasum": "b29cb08c302aa7244e4bd4a47544a2e3fa08f2da",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-2.3.0.tgz"
+      },
+      "_npmOperationalInternal": {
+        "host": "packages-18-east.internal.npmjs.com",
+        "tmp": "tmp/gulp-sourcemaps-2.3.0.tgz_1484004982683_0.66282017249614"
+      },
+      "directories": {}
+    },
+    "1.9.1": {
+      "name": "gulp-sourcemaps",
+      "version": "1.9.1",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": "git://github.com/floridoo/gulp-sourcemaps.git",
+      "main": "index.js",
+      "scripts": {
+        "test": "jshint *.js test/*.js && faucet test/*.js",
+        "tap": "tape test/*.js",
+        "cover": "istanbul cover --dir reports/coverage tape \"test/*.js\"",
+        "coveralls": "istanbul cover tape \"test/*.js\" --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage"
+      },
+      "keywords": ["gulpplugin", "gulp", "source maps", "sourcemaps"],
+      "author": "Florian Reiterer <me@florianreiterer.com>",
+      "license": "ISC",
+      "dependencies": {
+        "acorn": "4.X",
+        "convert-source-map": "1.X",
+        "css": "2.X",
+        "debug-fabulous": "0.0.X",
+        "detect-newline": "2.X",
+        "graceful-fs": "4.X",
+        "source-map": "0.X",
+        "strip-bom": "2.X",
+        "through2": "2.X",
+        "vinyl": "1.X"
+      },
+      "devDependencies": {
+        "coveralls": "2.X",
+        "faucet": "0.0.X",
+        "gulp": "3.X",
+        "hook-std": "0.2.X",
+        "istanbul": "0.X",
+        "jshint": "2.X",
+        "object-assign": "^4.1.0",
+        "tape": "4.X"
+      },
+      "files": ["index.js", "src"],
+      "engines": { "node": ">=0.10.0" },
+      "_id": "gulp-sourcemaps@1.9.1",
+      "_shasum": "80ac2d3845d13e68dd962524d8a967a440b0b753",
+      "_from": ".",
+      "_npmVersion": "2.15.11",
+      "_nodeVersion": "4.6.2",
+      "_npmUser": { "name": "nmccready", "email": "nemtcan@gmail.com" },
+      "maintainers": [{ "name": "nmccready", "email": "nemtcan@gmail.com" }],
+      "_npmOperationalInternal": {
+        "host": "packages-18-east.internal.npmjs.com",
+        "tmp": "tmp/gulp-sourcemaps-1.9.1.tgz_1483943162406_0.7535446544643492"
+      },
+      "dist": {
+        "shasum": "80ac2d3845d13e68dd962524d8a967a440b0b753",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-1.9.1.tgz"
+      },
+      "directories": {}
+    },
+    "2.2.1": {
+      "name": "gulp-sourcemaps",
+      "version": "2.2.1",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": "git://github.com/floridoo/gulp-sourcemaps.git",
+      "main": "index.js",
+      "scripts": {
+        "test": "jshint *.js test/*.js && faucet test/*.js",
+        "tap": "tape test/*.js",
+        "cover": "istanbul cover --dir reports/coverage tape \"test/*.js\"",
+        "coveralls": "istanbul cover tape \"test/*.js\" --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage"
+      },
+      "keywords": ["gulpplugin", "gulp", "source maps", "sourcemaps"],
+      "author": "Florian Reiterer <me@florianreiterer.com>",
+      "license": "ISC",
+      "dependencies": {
+        "acorn": "4.X",
+        "convert-source-map": "1.X",
+        "css": "2.X",
+        "debug-fabulous": "0.0.X",
+        "detect-newline": "2.X",
+        "graceful-fs": "4.X",
+        "source-map": "0.X",
+        "strip-bom": "3.X",
+        "through2": "2.X",
+        "vinyl": "1.X"
+      },
+      "devDependencies": {
+        "coveralls": "2.X",
+        "faucet": "0.0.X",
+        "gulp": "3.X",
+        "hook-std": "0.2.X",
+        "istanbul": "0.X",
+        "jshint": "2.X",
+        "object-assign": "^4.1.0",
+        "tape": "4.X"
+      },
+      "files": ["index.js", "src"],
+      "engines": { "node": ">=4" },
+      "_id": "gulp-sourcemaps@2.2.1",
+      "_shasum": "b9c7321526089d022180485a9eba2277d72805a7",
+      "_from": ".",
+      "_npmVersion": "2.15.11",
+      "_nodeVersion": "4.6.2",
+      "_npmUser": { "name": "nmccready", "email": "nemtcan@gmail.com" },
+      "maintainers": [{ "name": "nmccready", "email": "nemtcan@gmail.com" }],
+      "_npmOperationalInternal": {
+        "host": "packages-18-east.internal.npmjs.com",
+        "tmp": "tmp/gulp-sourcemaps-2.2.1.tgz_1483943162406_0.7535446544643492"
+      },
+      "dist": {
+        "shasum": "b9c7321526089d022180485a9eba2277d72805a7",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-2.2.1.tgz"
+      },
+      "directories": {}
+    },
+    "1.10.1": {
+      "name": "gulp-sourcemaps",
+      "version": "1.10.1",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/floridoo/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "lint": "jshint ./src/**/*.js test/*.js",
+        "test": "npm run lint && faucet test/*.js",
+        "tap": "tape test/*.js",
+        "cover": "istanbul cover --dir reports/coverage tape \"test/*.js\"",
+        "coveralls": "istanbul cover tape \"test/*.js\" --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage",
+        "serve": "http-server",
+        "test:int": "rm -rf ./tmp && tape ./test/integration.js"
+      },
+      "keywords": ["gulpplugin", "gulp", "source maps", "sourcemaps"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "acorn": "4.X",
+        "convert-source-map": "1.X",
+        "css": "2.X",
+        "debug-fabulous": "0.0.X",
+        "detect-newline": "2.X",
+        "graceful-fs": "4.X",
+        "source-map": "0.X",
+        "strip-bom": "2.X",
+        "through2": "2.X",
+        "vinyl": "1.X"
+      },
+      "devDependencies": {
+        "bootstrap": "3.3.7",
+        "coveralls": "2.X",
+        "faucet": "0.0.X",
+        "gulp": "3.X",
+        "gulp-concat": "2.X",
+        "gulp-if": "2.0.2",
+        "gulp-less": "3.3.0",
+        "gulp-load-plugins": "1.X",
+        "hook-std": "0.2.X",
+        "http-server": "0.9.0",
+        "istanbul": "0.X",
+        "jshint": "2.X",
+        "lodash": "4.17.4",
+        "object-assign": "^4.1.0",
+        "tape": "4.X"
+      },
+      "files": ["index.js", "src"],
+      "engines": { "node": ">=0.10.0" },
+      "gitHead": "d7c99a762ac8e3cda71c740f75150aa1f168a823",
+      "bugs": { "url": "https://github.com/floridoo/gulp-sourcemaps/issues" },
+      "_id": "gulp-sourcemaps@1.10.1",
+      "_shasum": "e3d1c0ff741d8c133c969390773b50e9fb3c7b5f",
+      "_from": ".",
+      "_npmVersion": "2.15.11",
+      "_nodeVersion": "4.6.2",
+      "_npmUser": { "name": "nmccready", "email": "nemtcan@gmail.com" },
+      "maintainers": [{ "name": "nmccready", "email": "nemtcan@gmail.com" }],
+      "dist": {
+        "shasum": "e3d1c0ff741d8c133c969390773b50e9fb3c7b5f",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-1.10.1.tgz"
+      },
+      "_npmOperationalInternal": {
+        "host": "packages-12-west.internal.npmjs.com",
+        "tmp": "tmp/gulp-sourcemaps-1.10.1.tgz_1484097611302_0.4095518251415342"
+      },
+      "directories": {}
+    },
+    "2.3.1": {
+      "name": "gulp-sourcemaps",
+      "version": "2.3.1",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/floridoo/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "lint": "jshint ./src/**/*.js test/*.js",
+        "test": "npm run lint && faucet test/*.js",
+        "tap": "tape test/*.js",
+        "cover": "istanbul cover --dir reports/coverage tape \"test/*.js\"",
+        "coveralls": "istanbul cover tape \"test/*.js\" --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage",
+        "serve": "http-server",
+        "test:int": "rm -rf ./tmp && tape ./test/integration.js"
+      },
+      "keywords": ["gulpplugin", "gulp", "source maps", "sourcemaps"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "acorn": "4.X",
+        "convert-source-map": "1.X",
+        "css": "2.X",
+        "debug-fabulous": "0.0.X",
+        "detect-newline": "2.X",
+        "graceful-fs": "4.X",
+        "source-map": "0.X",
+        "strip-bom": "3.X",
+        "through2": "2.X",
+        "vinyl": "1.X"
+      },
+      "devDependencies": {
+        "bootstrap": "3.3.7",
+        "coveralls": "2.X",
+        "faucet": "0.0.X",
+        "gulp": "3.X",
+        "gulp-concat": "2.X",
+        "gulp-if": "2.0.2",
+        "gulp-less": "3.3.0",
+        "gulp-load-plugins": "1.X",
+        "hook-std": "0.2.X",
+        "http-server": "0.9.0",
+        "istanbul": "0.X",
+        "jshint": "2.X",
+        "lodash": "4.17.4",
+        "object-assign": "^4.1.0",
+        "tape": "4.X"
+      },
+      "files": ["index.js", "src"],
+      "engines": { "node": ">=4" },
+      "gitHead": "2b2a275b3e6e021419aa61f43ce106ca1b10a4e6",
+      "bugs": { "url": "https://github.com/floridoo/gulp-sourcemaps/issues" },
+      "_id": "gulp-sourcemaps@2.3.1",
+      "_shasum": "e1f1e733b78f378d0238f17990054b6392fbd20b",
+      "_from": ".",
+      "_npmVersion": "2.15.11",
+      "_nodeVersion": "4.6.2",
+      "_npmUser": { "name": "nmccready", "email": "nemtcan@gmail.com" },
+      "maintainers": [{ "name": "nmccready", "email": "nemtcan@gmail.com" }],
+      "dist": {
+        "shasum": "e1f1e733b78f378d0238f17990054b6392fbd20b",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-2.3.1.tgz"
+      },
+      "_npmOperationalInternal": {
+        "host": "packages-12-west.internal.npmjs.com",
+        "tmp": "tmp/gulp-sourcemaps-2.3.1.tgz_1484097743817_0.7484839875251055"
+      },
+      "directories": {}
+    },
+    "1.11.0": {
+      "name": "gulp-sourcemaps",
+      "version": "1.11.0",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/floridoo/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "lint": "jshint ./src/**/*.js test/*.js",
+        "test": "npm run lint && faucet test/*.js $@",
+        "tap": "tape test/*.js",
+        "cover": "istanbul cover --dir reports/coverage tape \"test/*.js\"",
+        "coveralls": "istanbul cover tape \"test/*.js\" --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage",
+        "serve": "http-server",
+        "test:int": "rm -rf ./tmp && tape ./test/integration.js"
+      },
+      "keywords": ["gulpplugin", "gulp", "source maps", "sourcemaps"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "acorn": "4.X",
+        "convert-source-map": "1.X",
+        "css": "2.X",
+        "debug-fabulous": "0.0.X",
+        "detect-newline": "2.X",
+        "graceful-fs": "4.X",
+        "source-map": "0.X",
+        "strip-bom": "2.X",
+        "through2": "2.X",
+        "vinyl": "1.X"
+      },
+      "devDependencies": {
+        "bootstrap": "3.3.7",
+        "coveralls": "2.X",
+        "faucet": "0.0.X",
+        "gulp": "3.X",
+        "gulp-concat": "2.X",
+        "gulp-if": "2.0.2",
+        "gulp-less": "3.3.0",
+        "gulp-load-plugins": "1.X",
+        "hook-std": "0.2.X",
+        "http-server": "0.9.0",
+        "istanbul": "0.X",
+        "jshint": "2.X",
+        "lodash": "4.17.4",
+        "object-assign": "^4.1.0",
+        "tape": "4.X",
+        "yargs": "6.6.0"
+      },
+      "files": ["index.js", "src"],
+      "engines": { "node": ">=0.10.0" },
+      "gitHead": "2b34cebe2fbf609f97063ad5ae332b28a7fdaa76",
+      "bugs": { "url": "https://github.com/floridoo/gulp-sourcemaps/issues" },
+      "_id": "gulp-sourcemaps@1.11.0",
+      "_shasum": "1b249bfe994361c370c168fe2508effc1f1523c9",
+      "_from": ".",
+      "_npmVersion": "2.15.11",
+      "_nodeVersion": "4.6.2",
+      "_npmUser": { "name": "nmccready", "email": "nemtcan@gmail.com" },
+      "maintainers": [{ "name": "nmccready", "email": "nemtcan@gmail.com" }],
+      "dist": {
+        "shasum": "1b249bfe994361c370c168fe2508effc1f1523c9",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-1.11.0.tgz"
+      },
+      "_npmOperationalInternal": {
+        "host": "packages-18-east.internal.npmjs.com",
+        "tmp": "tmp/gulp-sourcemaps-1.11.0.tgz_1484233311099_0.22464979765936732"
+      },
+      "directories": {}
+    },
+    "2.4.0": {
+      "name": "gulp-sourcemaps",
+      "version": "2.4.0",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/floridoo/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "lint": "jshint ./src/**/*.js test/*.js",
+        "test": "npm run lint && faucet test/*.js $@",
+        "tap": "tape test/*.js",
+        "cover": "istanbul cover --dir reports/coverage tape \"test/*.js\"",
+        "coveralls": "istanbul cover tape \"test/*.js\" --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage",
+        "serve": "http-server",
+        "test:int": "rm -rf ./tmp && tape ./test/integration.js"
+      },
+      "keywords": ["gulpplugin", "gulp", "source maps", "sourcemaps"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "acorn": "4.X",
+        "convert-source-map": "1.X",
+        "css": "2.X",
+        "debug-fabulous": "0.0.X",
+        "detect-newline": "2.X",
+        "graceful-fs": "4.X",
+        "source-map": "0.X",
+        "strip-bom": "3.X",
+        "through2": "2.X",
+        "vinyl": "1.X"
+      },
+      "devDependencies": {
+        "bootstrap": "3.3.7",
+        "coveralls": "2.X",
+        "faucet": "0.0.X",
+        "gulp": "3.X",
+        "gulp-concat": "2.X",
+        "gulp-if": "2.0.2",
+        "gulp-less": "3.3.0",
+        "gulp-load-plugins": "1.X",
+        "hook-std": "0.2.X",
+        "http-server": "0.9.0",
+        "istanbul": "0.X",
+        "jshint": "2.X",
+        "lodash": "4.17.4",
+        "object-assign": "^4.1.0",
+        "tape": "4.X",
+        "yargs": "6.6.0"
+      },
+      "files": ["index.js", "src"],
+      "engines": { "node": ">=4" },
+      "gitHead": "2e9f33fc5bece3bf451c94ea7c8592f315c2861e",
+      "bugs": { "url": "https://github.com/floridoo/gulp-sourcemaps/issues" },
+      "_id": "gulp-sourcemaps@2.4.0",
+      "_shasum": "9ce8fcf9ab29769819dff04ca781976072838979",
+      "_from": ".",
+      "_npmVersion": "2.15.11",
+      "_nodeVersion": "4.6.2",
+      "_npmUser": { "name": "nmccready", "email": "nemtcan@gmail.com" },
+      "maintainers": [{ "name": "nmccready", "email": "nemtcan@gmail.com" }],
+      "dist": {
+        "shasum": "9ce8fcf9ab29769819dff04ca781976072838979",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-2.4.0.tgz"
+      },
+      "_npmOperationalInternal": {
+        "host": "packages-12-west.internal.npmjs.com",
+        "tmp": "tmp/gulp-sourcemaps-2.4.0.tgz_1484233395657_0.35230778832919896"
+      },
+      "directories": {}
+    },
+    "1.11.1": {
+      "name": "gulp-sourcemaps",
+      "version": "1.11.1",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/floridoo/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "lint": "jshint ./src/**/*.js test/*.js",
+        "test": "npm run lint && faucet test/*.js $@",
+        "tap": "tape test/*.js",
+        "cover": "istanbul cover --dir reports/coverage tape \"test/*.js\"",
+        "coveralls": "istanbul cover tape \"test/*.js\" --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage",
+        "serve": "http-server",
+        "test:int": "rm -rf ./tmp && tape ./test/integration.js"
+      },
+      "keywords": ["gulpplugin", "gulp", "source maps", "sourcemaps"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "acorn": "4.X",
+        "convert-source-map": "1.X",
+        "css": "2.X",
+        "debug-fabulous": "0.0.X",
+        "detect-newline": "2.X",
+        "graceful-fs": "4.X",
+        "source-map": "0.X",
+        "strip-bom": "2.X",
+        "through2": "2.X",
+        "vinyl": "1.X"
+      },
+      "devDependencies": {
+        "bootstrap": "3.3.7",
+        "coveralls": "2.X",
+        "faucet": "0.0.X",
+        "gulp": "3.X",
+        "gulp-concat": "2.X",
+        "gulp-if": "2.0.2",
+        "gulp-less": "3.3.0",
+        "gulp-load-plugins": "1.X",
+        "hook-std": "0.2.X",
+        "http-server": "0.9.0",
+        "istanbul": "0.X",
+        "jshint": "2.X",
+        "lodash": "4.17.4",
+        "object-assign": "^4.1.0",
+        "tape": "4.X",
+        "yargs": "6.6.0"
+      },
+      "files": ["index.js", "src"],
+      "engines": { "node": ">=0.10.0" },
+      "gitHead": "d5c71b6e9dab627571bcb902edb1a8c22876112f",
+      "bugs": { "url": "https://github.com/floridoo/gulp-sourcemaps/issues" },
+      "_id": "gulp-sourcemaps@1.11.1",
+      "_shasum": "b534376deab49387d406c3aebeb8beaf02ef3548",
+      "_from": ".",
+      "_npmVersion": "2.15.11",
+      "_nodeVersion": "4.6.2",
+      "_npmUser": { "name": "nmccready", "email": "nemtcan@gmail.com" },
+      "maintainers": [{ "name": "nmccready", "email": "nemtcan@gmail.com" }],
+      "dist": {
+        "shasum": "b534376deab49387d406c3aebeb8beaf02ef3548",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-1.11.1.tgz"
+      },
+      "_npmOperationalInternal": {
+        "host": "packages-12-west.internal.npmjs.com",
+        "tmp": "tmp/gulp-sourcemaps-1.11.1.tgz_1486321317602_0.3457214254885912"
+      },
+      "directories": {}
+    },
+    "2.4.1": {
+      "name": "gulp-sourcemaps",
+      "version": "2.4.1",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/floridoo/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "lint": "jshint ./src/**/*.js test/*.js",
+        "test": "npm run lint && faucet test/*.js $@",
+        "tap": "tape test/*.js",
+        "cover": "istanbul cover --dir reports/coverage tape \"test/*.js\"",
+        "coveralls": "istanbul cover tape \"test/*.js\" --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage",
+        "serve": "http-server",
+        "test:int": "rm -rf ./tmp && tape ./test/integration.js"
+      },
+      "keywords": ["gulpplugin", "gulp", "source maps", "sourcemaps"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "acorn": "4.X",
+        "convert-source-map": "1.X",
+        "css": "2.X",
+        "debug-fabulous": "0.0.X",
+        "detect-newline": "2.X",
+        "graceful-fs": "4.X",
+        "source-map": "0.X",
+        "strip-bom": "3.X",
+        "through2": "2.X",
+        "vinyl": "1.X"
+      },
+      "devDependencies": {
+        "bootstrap": "3.3.7",
+        "coveralls": "2.X",
+        "faucet": "0.0.X",
+        "gulp": "3.X",
+        "gulp-concat": "2.X",
+        "gulp-if": "2.0.2",
+        "gulp-less": "3.3.0",
+        "gulp-load-plugins": "1.X",
+        "hook-std": "0.2.X",
+        "http-server": "0.9.0",
+        "istanbul": "0.X",
+        "jshint": "2.X",
+        "lodash": "4.17.4",
+        "object-assign": "^4.1.0",
+        "tape": "4.X",
+        "yargs": "6.6.0"
+      },
+      "files": ["index.js", "src"],
+      "engines": { "node": ">=4" },
+      "gitHead": "8166cbe72fc2c731b0a98242f5e6b1a055fd5ca2",
+      "bugs": { "url": "https://github.com/floridoo/gulp-sourcemaps/issues" },
+      "_id": "gulp-sourcemaps@2.4.1",
+      "_shasum": "8f65dc5c0d07b2fd5c88bc60ec7f13e56716bf74",
+      "_from": ".",
+      "_npmVersion": "2.15.11",
+      "_nodeVersion": "4.6.2",
+      "_npmUser": { "name": "nmccready", "email": "nemtcan@gmail.com" },
+      "maintainers": [{ "name": "nmccready", "email": "nemtcan@gmail.com" }],
+      "dist": {
+        "shasum": "8f65dc5c0d07b2fd5c88bc60ec7f13e56716bf74",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-2.4.1.tgz"
+      },
+      "_npmOperationalInternal": {
+        "host": "packages-18-east.internal.npmjs.com",
+        "tmp": "tmp/gulp-sourcemaps-2.4.1.tgz_1486321328247_0.17057298147119582"
+      },
+      "directories": {}
+    },
+    "1.12.0": {
+      "name": "gulp-sourcemaps",
+      "version": "1.12.0",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/floridoo/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "lint": "jshint ./src/**/*.js test/*.js",
+        "test": "npm run lint && faucet test/*.js $@",
+        "tap": "tape test/*.js",
+        "cover": "istanbul cover --dir reports/coverage tape \"test/*.js\"",
+        "coveralls": "istanbul cover tape \"test/*.js\" --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage",
+        "serve": "http-server",
+        "test:int": "rm -rf ./tmp && tape ./test/integration.js"
+      },
+      "keywords": ["gulpplugin", "gulp", "source maps", "sourcemaps"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "@gulp-sourcemaps/map-sources": "1.X",
+        "acorn": "4.X",
+        "convert-source-map": "1.X",
+        "css": "2.X",
+        "debug-fabulous": "0.0.X",
+        "detect-newline": "2.X",
+        "graceful-fs": "4.X",
+        "source-map": "0.X",
+        "strip-bom": "2.X",
+        "through2": "2.X",
+        "vinyl": "1.X"
+      },
+      "devDependencies": {
+        "bootstrap": "3.3.7",
+        "coveralls": "2.X",
+        "faucet": "0.0.X",
+        "gulp": "3.X",
+        "gulp-concat": "2.X",
+        "gulp-if": "2.0.2",
+        "gulp-less": "3.3.0",
+        "gulp-load-plugins": "1.X",
+        "hook-std": "0.2.X",
+        "http-server": "0.9.0",
+        "istanbul": "0.X",
+        "jshint": "2.X",
+        "lodash": "4.17.4",
+        "mississippi": "^1.3.0",
+        "object-assign": "^4.1.0",
+        "tape": "4.X",
+        "yargs": "6.6.0"
+      },
+      "files": ["index.js", "src"],
+      "engines": { "node": ">=0.10.0" },
+      "gitHead": "260b5cd0b9f351d273cd567c7284368f35cc0368",
+      "bugs": { "url": "https://github.com/floridoo/gulp-sourcemaps/issues" },
+      "_id": "gulp-sourcemaps@1.12.0",
+      "_shasum": "786f97c94a0f968492465d70558e04242c679598",
+      "_from": ".",
+      "_npmVersion": "2.15.2",
+      "_nodeVersion": "0.10.41",
+      "_npmUser": { "name": "phated", "email": "blaine.bublitz@gmail.com" },
+      "maintainers": [
+        { "name": "floridoo", "email": "florian.reiterer@gmail.com" },
+        { "name": "nmccready", "email": "nemtcan@gmail.com" },
+        { "name": "phated", "email": "blaine.bublitz@gmail.com" }
+      ],
+      "dist": {
+        "shasum": "786f97c94a0f968492465d70558e04242c679598",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-1.12.0.tgz"
+      },
+      "_npmOperationalInternal": {
+        "host": "packages-12-west.internal.npmjs.com",
+        "tmp": "tmp/gulp-sourcemaps-1.12.0.tgz_1490741084233_0.33308355789631605"
+      },
+      "directories": {}
+    },
+    "2.5.0": {
+      "name": "gulp-sourcemaps",
+      "version": "2.5.0",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/floridoo/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "lint": "jshint ./src/**/*.js test/*.js",
+        "test": "npm run lint && faucet test/*.js $@",
+        "tap": "tape test/*.js",
+        "cover": "istanbul cover --dir reports/coverage tape \"test/*.js\"",
+        "coveralls": "istanbul cover tape \"test/*.js\" --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage",
+        "serve": "http-server",
+        "test:int": "rm -rf ./tmp && tape ./test/integration.js"
+      },
+      "keywords": ["gulpplugin", "gulp", "source maps", "sourcemaps"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "@gulp-sourcemaps/map-sources": "1.X",
+        "acorn": "4.X",
+        "convert-source-map": "1.X",
+        "css": "2.X",
+        "debug-fabulous": "0.0.X",
+        "detect-newline": "2.X",
+        "graceful-fs": "4.X",
+        "source-map": "0.X",
+        "strip-bom": "3.X",
+        "through2": "2.X",
+        "vinyl": "1.X"
+      },
+      "devDependencies": {
+        "bootstrap": "3.3.7",
+        "coveralls": "2.X",
+        "faucet": "0.0.X",
+        "gulp": "3.X",
+        "gulp-concat": "2.X",
+        "gulp-if": "2.0.2",
+        "gulp-less": "3.3.0",
+        "gulp-load-plugins": "1.X",
+        "hook-std": "0.2.X",
+        "http-server": "0.9.0",
+        "istanbul": "0.X",
+        "jshint": "2.X",
+        "lodash": "4.17.4",
+        "mississippi": "^1.3.0",
+        "object-assign": "^4.1.0",
+        "tape": "4.X",
+        "yargs": "6.6.0"
+      },
+      "files": ["index.js", "src"],
+      "engines": { "node": ">=4" },
+      "gitHead": "4a3b15963d09d70dec0c56ca73fdd4be0ab777ef",
+      "bugs": { "url": "https://github.com/floridoo/gulp-sourcemaps/issues" },
+      "_id": "gulp-sourcemaps@2.5.0",
+      "_shasum": "8270a25148357ac73597bd0c6bd43177e982a3af",
+      "_from": ".",
+      "_npmVersion": "2.15.2",
+      "_nodeVersion": "0.10.41",
+      "_npmUser": { "name": "phated", "email": "blaine.bublitz@gmail.com" },
+      "maintainers": [
+        { "name": "floridoo", "email": "florian.reiterer@gmail.com" },
+        { "name": "nmccready", "email": "nemtcan@gmail.com" },
+        { "name": "phated", "email": "blaine.bublitz@gmail.com" }
+      ],
+      "dist": {
+        "shasum": "8270a25148357ac73597bd0c6bd43177e982a3af",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-2.5.0.tgz"
+      },
+      "_npmOperationalInternal": {
+        "host": "packages-18-east.internal.npmjs.com",
+        "tmp": "tmp/gulp-sourcemaps-2.5.0.tgz_1490741694371_0.43666909798048437"
+      },
+      "directories": {}
+    },
+    "2.5.1": {
+      "name": "gulp-sourcemaps",
+      "version": "2.5.1",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/floridoo/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "lint": "jshint ./src/**/*.js test/*.js",
+        "test": "npm run lint && faucet test/*.js $@",
+        "tap": "tape test/*.js",
+        "cover": "istanbul cover --dir reports/coverage tape \"test/*.js\"",
+        "coveralls": "istanbul cover tape \"test/*.js\" --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage",
+        "serve": "http-server",
+        "test:int": "rm -rf ./tmp && tape ./test/integration.js"
+      },
+      "keywords": ["gulpplugin", "gulp", "source maps", "sourcemaps"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "@gulp-sourcemaps/map-sources": "1.X",
+        "acorn": "4.X",
+        "convert-source-map": "1.X",
+        "css": "2.X",
+        "debug-fabulous": "0.0.X",
+        "detect-newline": "2.X",
+        "graceful-fs": "4.X",
+        "source-map": "0.X",
+        "strip-bom-string": "1.X",
+        "through2": "2.X",
+        "vinyl": "1.X"
+      },
+      "devDependencies": {
+        "bootstrap": "3.3.7",
+        "coveralls": "2.X",
+        "faucet": "0.0.X",
+        "gulp": "3.X",
+        "gulp-concat": "2.X",
+        "gulp-if": "2.0.2",
+        "gulp-less": "3.3.0",
+        "gulp-load-plugins": "1.X",
+        "hook-std": "0.2.X",
+        "http-server": "0.9.0",
+        "istanbul": "0.X",
+        "jshint": "2.X",
+        "lodash": "4.17.4",
+        "mississippi": "^1.3.0",
+        "object-assign": "^4.1.0",
+        "tape": "4.X",
+        "yargs": "6.6.0"
+      },
+      "files": ["index.js", "src"],
+      "engines": { "node": ">=4" },
+      "gitHead": "0765da06671db73075e91b7643d3e4f63d79453f",
+      "bugs": { "url": "https://github.com/floridoo/gulp-sourcemaps/issues" },
+      "_id": "gulp-sourcemaps@2.5.1",
+      "_shasum": "773b6d7c3b25eeff64b3cb34c091681aeb89fea6",
+      "_from": ".",
+      "_npmVersion": "2.15.2",
+      "_nodeVersion": "0.10.41",
+      "_npmUser": { "name": "phated", "email": "blaine.bublitz@gmail.com" },
+      "maintainers": [
+        { "name": "floridoo", "email": "florian.reiterer@gmail.com" },
+        { "name": "nmccready", "email": "nemtcan@gmail.com" },
+        { "name": "phated", "email": "blaine.bublitz@gmail.com" }
+      ],
+      "dist": {
+        "shasum": "773b6d7c3b25eeff64b3cb34c091681aeb89fea6",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-2.5.1.tgz"
+      },
+      "_npmOperationalInternal": {
+        "host": "packages-12-west.internal.npmjs.com",
+        "tmp": "tmp/gulp-sourcemaps-2.5.1.tgz_1491259443083_0.6842682750429958"
+      },
+      "directories": {}
+    },
+    "2.5.2": {
+      "name": "gulp-sourcemaps",
+      "version": "2.5.2",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/gulp-sourcemaps/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/gulp-sourcemaps/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "lint": "jshint ./src/**/*.js test/*.js",
+        "test": "npm run lint && faucet test/*.js $@",
+        "tap": "tape test/*.js",
+        "cover": "istanbul cover --dir reports/coverage tape \"test/*.js\"",
+        "coveralls": "istanbul cover tape \"test/*.js\" --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage",
+        "serve": "http-server",
+        "test:int": "rm -rf ./tmp && tape ./test/integration.js"
+      },
+      "keywords": ["gulpplugin", "gulp", "source maps", "sourcemaps"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "@gulp-sourcemaps/map-sources": "1.X",
+        "acorn": "4.X",
+        "convert-source-map": "1.X",
+        "css": "2.X",
+        "debug-fabulous": "0.1.X",
+        "detect-newline": "2.X",
+        "graceful-fs": "4.X",
+        "source-map": "0.X",
+        "strip-bom-string": "1.X",
+        "through2": "2.X",
+        "vinyl": "1.X"
+      },
+      "devDependencies": {
+        "bootstrap": "3.3.7",
+        "coveralls": "2.X",
+        "faucet": "0.0.X",
+        "gulp": "3.X",
+        "gulp-concat": "2.X",
+        "gulp-if": "2.0.2",
+        "gulp-less": "3.3.0",
+        "gulp-load-plugins": "1.X",
+        "hook-std": "0.2.X",
+        "http-server": "0.9.0",
+        "istanbul": "0.X",
+        "jshint": "2.X",
+        "lodash": "4.17.4",
+        "mississippi": "^1.3.0",
+        "object-assign": "^4.1.0",
+        "tape": "4.X",
+        "yargs": "6.6.0"
+      },
+      "files": ["index.js", "src"],
+      "engines": { "node": ">=4" },
+      "gitHead": "8039c13981e1d620359b45cf5d153decd8c9136a",
+      "bugs": {
+        "url": "https://github.com/gulp-sourcemaps/gulp-sourcemaps/issues"
+      },
+      "_id": "gulp-sourcemaps@2.5.2",
+      "_shasum": "9503cc1250b3e0f7baea0a7efe94d8dcf1abd4ee",
+      "_from": ".",
+      "_npmVersion": "2.15.2",
+      "_nodeVersion": "0.10.41",
+      "_npmUser": { "name": "phated", "email": "blaine.bublitz@gmail.com" },
+      "maintainers": [
+        { "name": "floridoo", "email": "florian.reiterer@gmail.com" },
+        { "name": "nmccready", "email": "nemtcan@gmail.com" },
+        { "name": "phated", "email": "blaine.bublitz@gmail.com" }
+      ],
+      "dist": {
+        "shasum": "9503cc1250b3e0f7baea0a7efe94d8dcf1abd4ee",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-2.5.2.tgz"
+      },
+      "_npmOperationalInternal": {
+        "host": "packages-18-east.internal.npmjs.com",
+        "tmp": "tmp/gulp-sourcemaps-2.5.2.tgz_1491851546107_0.20930497231893241"
+      },
+      "directories": {}
+    },
+    "2.6.0": {
+      "name": "gulp-sourcemaps",
+      "version": "2.6.0",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/gulp-sourcemaps/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/gulp-sourcemaps/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "lint": "jshint ./src/**/*.js test/*.js",
+        "test": "npm run lint && faucet test/*.js $@",
+        "tap": "tape test/*.js",
+        "cover": "istanbul cover --dir reports/coverage tape \"test/*.js\"",
+        "coveralls": "istanbul cover tape \"test/*.js\" --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage",
+        "serve": "http-server",
+        "test:int": "rm -rf ./tmp && tape ./test/integration.js"
+      },
+      "keywords": ["gulpplugin", "gulp", "source maps", "sourcemaps"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "@gulp-sourcemaps/identity-map": "1.X",
+        "@gulp-sourcemaps/map-sources": "1.X",
+        "acorn": "4.X",
+        "convert-source-map": "1.X",
+        "css": "2.X",
+        "debug-fabulous": "0.1.X",
+        "detect-newline": "2.X",
+        "graceful-fs": "4.X",
+        "source-map": "0.X",
+        "strip-bom-string": "1.X",
+        "through2": "2.X",
+        "vinyl": "1.X"
+      },
+      "devDependencies": {
+        "bootstrap": "3.3.7",
+        "coveralls": "2.X",
+        "faucet": "0.0.X",
+        "gulp": "3.X",
+        "gulp-concat": "2.X",
+        "gulp-if": "2.0.2",
+        "gulp-less": "3.3.0",
+        "gulp-load-plugins": "1.X",
+        "hook-std": "0.2.X",
+        "http-server": "0.9.0",
+        "istanbul": "0.X",
+        "jshint": "2.X",
+        "lodash": "4.17.4",
+        "mississippi": "^1.3.0",
+        "object-assign": "^4.1.0",
+        "tape": "4.X",
+        "yargs": "6.6.0"
+      },
+      "files": ["index.js", "src"],
+      "engines": { "node": ">=4" },
+      "gitHead": "65d099a3f318f4f6cfbbf2f087118dd3f68025b7",
+      "bugs": {
+        "url": "https://github.com/gulp-sourcemaps/gulp-sourcemaps/issues"
+      },
+      "_id": "gulp-sourcemaps@2.6.0",
+      "_shasum": "7ccce899a8a3bfca1593a3348d0fbf41dd3f51e5",
+      "_from": ".",
+      "_npmVersion": "2.15.2",
+      "_nodeVersion": "0.10.41",
+      "_npmUser": { "name": "phated", "email": "blaine.bublitz@gmail.com" },
+      "maintainers": [
+        { "name": "floridoo", "email": "florian.reiterer@gmail.com" },
+        { "name": "nmccready", "email": "nemtcan@gmail.com" },
+        { "name": "phated", "email": "blaine.bublitz@gmail.com" }
+      ],
+      "dist": {
+        "shasum": "7ccce899a8a3bfca1593a3348d0fbf41dd3f51e5",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-2.6.0.tgz"
+      },
+      "_npmOperationalInternal": {
+        "host": "packages-12-west.internal.npmjs.com",
+        "tmp": "tmp/gulp-sourcemaps-2.6.0.tgz_1491857055962_0.8718945898581296"
+      },
+      "directories": {}
+    },
+    "2.6.1": {
+      "name": "gulp-sourcemaps",
+      "version": "2.6.1",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/gulp-sourcemaps/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/gulp-sourcemaps/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "lint": "jshint ./src/**/*.js test/*.js",
+        "test": "npm run lint && faucet test/*.js $@",
+        "tape": "tape",
+        "cover": "istanbul cover --dir reports/coverage tape \"test/*.js\"",
+        "coveralls": "istanbul cover tape \"test/*.js\" --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage",
+        "serve": "http-server",
+        "test:int": "rm -rf ./tmp && tape ./test/integration.js"
+      },
+      "keywords": ["gulpplugin", "gulp", "source maps", "sourcemaps"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "@gulp-sourcemaps/identity-map": "1.X",
+        "@gulp-sourcemaps/map-sources": "1.X",
+        "acorn": "4.X",
+        "convert-source-map": "1.X",
+        "css": "2.X",
+        "debug-fabulous": ">=0.1.1",
+        "detect-newline": "2.X",
+        "graceful-fs": "4.X",
+        "source-map": "0.X",
+        "strip-bom-string": "1.X",
+        "through2": "2.X",
+        "vinyl": "1.X"
+      },
+      "devDependencies": {
+        "bootstrap": "3.3.7",
+        "coveralls": "2.X",
+        "faucet": "0.0.X",
+        "gulp": "3.X",
+        "gulp-concat": "2.X",
+        "gulp-if": "2.0.2",
+        "gulp-less": "3.3.0",
+        "gulp-load-plugins": "1.X",
+        "hook-std": "0.2.X",
+        "http-server": "0.9.0",
+        "istanbul": "0.X",
+        "jshint": "2.X",
+        "lodash": "4.17.4",
+        "mississippi": "^1.3.0",
+        "object-assign": "^4.1.0",
+        "tape": "4.X",
+        "yargs": "6.6.0"
+      },
+      "files": ["index.js", "src"],
+      "engines": { "node": ">=4" },
+      "gitHead": "4b723f0253cf089db09d8f209a5a374394c4c185",
+      "bugs": {
+        "url": "https://github.com/gulp-sourcemaps/gulp-sourcemaps/issues"
+      },
+      "_id": "gulp-sourcemaps@2.6.1",
+      "_npmVersion": "5.2.0",
+      "_nodeVersion": "6.10.3",
+      "_npmUser": { "name": "nmccready", "email": "nemtcan@gmail.com" },
+      "dist": {
+        "integrity": "sha512-1qHCI3hdmsMdq/SUotxwUh/L8YzlI6J9zQ5ifNOtx4Y6KV5y5sGuORv1KZzWhuKtz/mXNh5xLESUtwC4EndCjA==",
+        "shasum": "833a4e28f0b8f4661075032cd782417f7cd8fb0b",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-2.6.1.tgz"
+      },
+      "maintainers": [
+        { "name": "floridoo", "email": "florian.reiterer@gmail.com" },
+        { "name": "nmccready", "email": "nemtcan@gmail.com" },
+        { "name": "phated", "email": "blaine.bublitz@gmail.com" }
+      ],
+      "_npmOperationalInternal": {
+        "host": "s3://npm-registry-packages",
+        "tmp": "tmp/gulp-sourcemaps-2.6.1.tgz_1503019113109_0.23238486400805414"
+      },
+      "directories": {}
+    },
+    "2.6.2": {
+      "name": "gulp-sourcemaps",
+      "version": "2.6.2",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/gulp-sourcemaps/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/gulp-sourcemaps/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "lint": "jshint ./src/**/*.js ./test/*.js",
+        "test": "npm run lint && faucet test/*.js $@",
+        "tape": "tape",
+        "cover": "istanbul cover --dir reports/coverage tape \"test/*.js\"",
+        "coveralls": "istanbul cover tape \"test/*.js\" --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage",
+        "serve": "http-server",
+        "test:int": "rm -rf ./tmp && tape ./test/integration.js"
+      },
+      "keywords": ["gulpplugin", "gulp", "source maps", "sourcemaps"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "@gulp-sourcemaps/identity-map": "1.X",
+        "@gulp-sourcemaps/map-sources": "1.X",
+        "acorn": "5.X",
+        "convert-source-map": "1.X",
+        "css": "2.X",
+        "debug-fabulous": "1.X",
+        "detect-newline": "2.X",
+        "graceful-fs": "4.X",
+        "source-map": "0.X",
+        "strip-bom-string": "1.X",
+        "through2": "2.X"
+      },
+      "devDependencies": {
+        "bootstrap": "3.3.7",
+        "coveralls": "2.X",
+        "faucet": "0.0.X",
+        "gulp": "3.X",
+        "gulp-concat": "2.X",
+        "gulp-if": "2.X",
+        "gulp-less": "3.X",
+        "gulp-load-plugins": "1.X",
+        "hook-std": "0.2.X",
+        "http-server": "0.10.X",
+        "istanbul": "0.X",
+        "jshint": "2.X",
+        "lodash": "4.X",
+        "mississippi": "1.X",
+        "object-assign": "4.X",
+        "tape": "4.X",
+        "vinyl": "2.X",
+        "yargs": "7.X"
+      },
+      "files": ["index.js", "src"],
+      "engines": { "node": ">=4" },
+      "gitHead": "e594498086a193dd2aa28adeccedb322a8e5de9b",
+      "bugs": {
+        "url": "https://github.com/gulp-sourcemaps/gulp-sourcemaps/issues"
+      },
+      "_id": "gulp-sourcemaps@2.6.2",
+      "_shasum": "4f41c72b35a7ea06b666d2e3f57917e2c0e71c4e",
+      "_from": ".",
+      "_npmVersion": "2.15.1",
+      "_nodeVersion": "0.10.48",
+      "_npmUser": { "name": "phated", "email": "blaine.bublitz@gmail.com" },
+      "maintainers": [
+        { "name": "floridoo", "email": "florian.reiterer@gmail.com" },
+        { "name": "nmccready", "email": "nemtcan@gmail.com" },
+        { "name": "phated", "email": "blaine.bublitz@gmail.com" }
+      ],
+      "dist": {
+        "shasum": "4f41c72b35a7ea06b666d2e3f57917e2c0e71c4e",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-2.6.2.tgz"
+      },
+      "_npmOperationalInternal": {
+        "host": "s3://npm-registry-packages",
+        "tmp": "tmp/gulp-sourcemaps-2.6.2.tgz_1513962792162_0.5468111771624535"
+      },
+      "directories": {}
+    },
+    "2.6.3": {
+      "name": "gulp-sourcemaps",
+      "version": "2.6.3",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/gulp-sourcemaps/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/gulp-sourcemaps/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "lint": "jshint ./src/**/*.js ./test/*.js",
+        "test": "npm run lint && faucet test/*.js $@",
+        "tape": "tape",
+        "cover": "istanbul cover --dir reports/coverage tape \"test/*.js\"",
+        "coveralls": "istanbul cover tape \"test/*.js\" --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage",
+        "serve": "http-server",
+        "test:int": "rm -rf ./tmp && tape ./test/integration.js"
+      },
+      "keywords": ["gulpplugin", "gulp", "source maps", "sourcemaps"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "@gulp-sourcemaps/identity-map": "1.X",
+        "@gulp-sourcemaps/map-sources": "1.X",
+        "acorn": "5.X",
+        "convert-source-map": "1.X",
+        "css": "2.X",
+        "debug-fabulous": "1.X",
+        "detect-newline": "2.X",
+        "graceful-fs": "4.X",
+        "source-map": "0.X",
+        "strip-bom-string": "1.X",
+        "through2": "2.X"
+      },
+      "devDependencies": {
+        "bootstrap": "3.3.7",
+        "coveralls": "2.X",
+        "faucet": "0.0.X",
+        "gulp": "3.X",
+        "gulp-concat": "2.X",
+        "gulp-if": "2.X",
+        "gulp-less": "3.X",
+        "gulp-load-plugins": "1.X",
+        "hook-std": "0.2.X",
+        "http-server": "0.10.X",
+        "istanbul": "0.X",
+        "jshint": "2.X",
+        "lodash": "4.X",
+        "mississippi": "1.X",
+        "object-assign": "4.X",
+        "tape": "4.X",
+        "vinyl": "2.X",
+        "yargs": "7.X"
+      },
+      "files": ["index.js", "src"],
+      "engines": { "node": ">=4" },
+      "gitHead": "b97fe7764c6fa443eddb64245306c8e1cf40f1a1",
+      "bugs": {
+        "url": "https://github.com/gulp-sourcemaps/gulp-sourcemaps/issues"
+      },
+      "_id": "gulp-sourcemaps@2.6.3",
+      "_shasum": "11b033f759f909e0a5f15b7bdf47ac29cc54efa4",
+      "_from": ".",
+      "_npmVersion": "4.4.4",
+      "_nodeVersion": "6.12.2",
+      "_npmUser": { "name": "nmccready", "email": "nemtcan@gmail.com" },
+      "dist": {
+        "shasum": "11b033f759f909e0a5f15b7bdf47ac29cc54efa4",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-2.6.3.tgz"
+      },
+      "maintainers": [
+        { "name": "floridoo", "email": "florian.reiterer@gmail.com" },
+        { "name": "nmccready", "email": "nemtcan@gmail.com" },
+        { "name": "phated", "email": "blaine.bublitz@gmail.com" }
+      ],
+      "_npmOperationalInternal": {
+        "host": "s3://npm-registry-packages",
+        "tmp": "tmp/gulp-sourcemaps-2.6.3.tgz_1514895405877_0.3727107278537005"
+      },
+      "directories": {}
+    },
+    "2.6.4": {
+      "name": "gulp-sourcemaps",
+      "version": "2.6.4",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/gulp-sourcemaps/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/gulp-sourcemaps/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "lint": "jshint ./src/**/*.js ./test/*.js",
+        "test": "npm run lint && faucet test/*.js $@",
+        "tape": "tape",
+        "cover": "istanbul cover --dir reports/coverage tape \"test/*.js\"",
+        "coveralls": "istanbul cover tape \"test/*.js\" --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage",
+        "serve": "http-server",
+        "test:int": "rm -rf ./tmp && tape ./test/integration.js"
+      },
+      "keywords": ["gulpplugin", "gulp", "source maps", "sourcemaps"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "@gulp-sourcemaps/identity-map": "1.X",
+        "@gulp-sourcemaps/map-sources": "1.X",
+        "acorn": "5.X",
+        "convert-source-map": "1.X",
+        "css": "2.X",
+        "debug-fabulous": "1.X",
+        "detect-newline": "2.X",
+        "graceful-fs": "4.X",
+        "source-map": "~0.6.0",
+        "strip-bom-string": "1.X",
+        "through2": "2.X"
+      },
+      "devDependencies": {
+        "bootstrap": "3.3.7",
+        "coveralls": "2.X",
+        "faucet": "0.0.X",
+        "gulp": "3.X",
+        "gulp-concat": "2.X",
+        "gulp-if": "2.X",
+        "gulp-less": "3.X",
+        "gulp-load-plugins": "1.X",
+        "hook-std": "0.2.X",
+        "http-server": "0.10.X",
+        "istanbul": "0.X",
+        "jshint": "2.X",
+        "lodash": "4.X",
+        "mississippi": "1.X",
+        "object-assign": "4.X",
+        "tape": "4.X",
+        "vinyl": "2.X",
+        "yargs": "7.X"
+      },
+      "files": ["index.js", "src"],
+      "engines": { "node": ">=4" },
+      "gitHead": "492d937ffa0d5aa62a0d5b99ceb7deb2f472c7ad",
+      "bugs": {
+        "url": "https://github.com/gulp-sourcemaps/gulp-sourcemaps/issues"
+      },
+      "_id": "gulp-sourcemaps@2.6.4",
+      "_shasum": "cbb2008450b1bcce6cd23bf98337be751bf6e30a",
+      "_from": ".",
+      "_npmVersion": "4.4.4",
+      "_nodeVersion": "6.12.2",
+      "_npmUser": { "name": "nmccready", "email": "nemtcan@gmail.com" },
+      "dist": {
+        "shasum": "cbb2008450b1bcce6cd23bf98337be751bf6e30a",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-2.6.4.tgz"
+      },
+      "maintainers": [
+        { "name": "floridoo", "email": "florian.reiterer@gmail.com" },
+        { "name": "nmccready", "email": "nemtcan@gmail.com" },
+        { "name": "phated", "email": "blaine.bublitz@gmail.com" }
+      ],
+      "_npmOperationalInternal": {
+        "host": "s3://npm-registry-packages",
+        "tmp": "tmp/gulp-sourcemaps-2.6.4.tgz_1516642065141_0.8249604387674481"
+      },
+      "directories": {}
+    },
+    "1.12.1": {
+      "name": "gulp-sourcemaps",
+      "version": "1.12.1",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/floridoo/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/floridoo/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "lint": "jshint ./src/**/*.js test/*.js",
+        "test": "npm run lint && faucet test/*.js $@",
+        "tap": "tape test/*.js",
+        "cover": "istanbul cover --dir reports/coverage tape \"test/*.js\"",
+        "coveralls": "istanbul cover tape \"test/*.js\" --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage",
+        "serve": "http-server",
+        "test:int": "rm -rf ./tmp && tape ./test/integration.js"
+      },
+      "keywords": ["gulpplugin", "gulp", "source maps", "sourcemaps"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "@gulp-sourcemaps/map-sources": "1.X",
+        "acorn": "4.X",
+        "convert-source-map": "1.X",
+        "css": "2.X",
+        "debug-fabulous": "0.0.X",
+        "detect-newline": "2.X",
+        "graceful-fs": "4.X",
+        "source-map": "~0.6.0",
+        "strip-bom": "2.X",
+        "through2": "2.X",
+        "vinyl": "1.X"
+      },
+      "devDependencies": {
+        "bootstrap": "3.3.7",
+        "coveralls": "2.X",
+        "faucet": "0.0.X",
+        "gulp": "3.X",
+        "gulp-concat": "2.X",
+        "gulp-if": "2.0.2",
+        "gulp-less": "3.3.0",
+        "gulp-load-plugins": "1.X",
+        "hook-std": "0.2.X",
+        "http-server": "0.9.0",
+        "istanbul": "0.X",
+        "jshint": "2.X",
+        "lodash": "4.17.4",
+        "mississippi": "^1.3.0",
+        "object-assign": "^4.1.0",
+        "tape": "4.X",
+        "yargs": "6.6.0"
+      },
+      "files": ["index.js", "src"],
+      "engines": { "node": ">=0.10.0" },
+      "gitHead": "3ce7c6662de0bb7c5427a01872d9902929bae580",
+      "bugs": { "url": "https://github.com/floridoo/gulp-sourcemaps/issues" },
+      "_id": "gulp-sourcemaps@1.12.1",
+      "_shasum": "b437d1f3d980cf26e81184823718ce15ae6597b6",
+      "_from": ".",
+      "_npmVersion": "4.4.4",
+      "_nodeVersion": "6.12.2",
+      "_npmUser": { "name": "nmccready", "email": "nemtcan@gmail.com" },
+      "dist": {
+        "shasum": "b437d1f3d980cf26e81184823718ce15ae6597b6",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-1.12.1.tgz"
+      },
+      "maintainers": [
+        { "name": "floridoo", "email": "florian.reiterer@gmail.com" },
+        { "name": "nmccready", "email": "nemtcan@gmail.com" },
+        { "name": "phated", "email": "blaine.bublitz@gmail.com" }
+      ],
+      "_npmOperationalInternal": {
+        "host": "s3://npm-registry-packages",
+        "tmp": "tmp/gulp-sourcemaps-1.12.1.tgz_1516642477671_0.538768045604229"
+      },
+      "directories": {}
+    },
+    "2.6.5": {
+      "name": "gulp-sourcemaps",
+      "version": "2.6.5",
+      "description": "Source map support for Gulp.js",
+      "homepage": "http://github.com/gulp-sourcemaps/gulp-sourcemaps",
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/gulp-sourcemaps/gulp-sourcemaps.git"
+      },
+      "main": "index.js",
+      "scripts": {
+        "lint": "jshint ./src/**/*.js ./test/*.js",
+        "test": "npm run lint && faucet test/*.js $@",
+        "tape": "tape",
+        "cover": "istanbul cover --dir reports/coverage tape \"test/*.js\"",
+        "coveralls": "istanbul cover tape \"test/*.js\" --report lcovonly && cat ./coverage/lcov.info | coveralls && rm -rf ./coverage",
+        "serve": "http-server",
+        "test:int": "rm -rf ./tmp && tape ./test/integration.js"
+      },
+      "keywords": ["gulpplugin", "gulp", "source maps", "sourcemaps"],
+      "author": {
+        "name": "Florian Reiterer",
+        "email": "me@florianreiterer.com"
+      },
+      "license": "ISC",
+      "dependencies": {
+        "@gulp-sourcemaps/identity-map": "1.X",
+        "@gulp-sourcemaps/map-sources": "1.X",
+        "acorn": "5.X",
+        "convert-source-map": "1.X",
+        "css": "2.X",
+        "debug-fabulous": "1.X",
+        "detect-newline": "2.X",
+        "graceful-fs": "4.X",
+        "source-map": "~0.6.0",
+        "strip-bom-string": "1.X",
+        "through2": "2.X"
+      },
+      "devDependencies": {
+        "bootstrap": "3.3.7",
+        "coveralls": "2.X",
+        "faucet": "0.0.X",
+        "gulp": "3.X",
+        "gulp-concat": "2.X",
+        "gulp-if": "2.X",
+        "gulp-less": "3.X",
+        "gulp-load-plugins": "1.X",
+        "hook-std": "0.2.X",
+        "http-server": "0.10.X",
+        "istanbul": "0.X",
+        "jshint": "2.X",
+        "lodash": "4.X",
+        "mississippi": "1.X",
+        "object-assign": "4.X",
+        "tape": "4.X",
+        "vinyl": "2.X",
+        "yargs": "7.X"
+      },
+      "engines": { "node": ">=4" },
+      "gitHead": "06cf0f0e616d10385499b8028d88f23a09974fd9",
+      "bugs": {
+        "url": "https://github.com/gulp-sourcemaps/gulp-sourcemaps/issues"
+      },
+      "_id": "gulp-sourcemaps@2.6.5",
+      "_npmVersion": "5.6.0",
+      "_nodeVersion": "8.11.4",
+      "_npmUser": { "name": "nmccready", "email": "nemtcan@gmail.com" },
+      "dist": {
+        "integrity": "sha512-SYLBRzPTew8T5Suh2U8jCSDKY+4NARua4aqjj8HOysBh2tSgT9u4jc1FYirAdPx1akUxxDeK++fqw6Jg0LkQRg==",
+        "shasum": "a3f002d87346d2c0f3aec36af7eb873f23de8ae6",
+        "tarball": "https://registry.npmjs.org/gulp-sourcemaps/-/gulp-sourcemaps-2.6.5.tgz",
+        "fileCount": 10,
+        "unpackedSize": 35371,
+        "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJca3wPCRA9TVsSAnZWagAA2TMP/12i9B82qZwCEYjrlVPv\nwUpE9kK1RC4zaqccMy9SKp3TEwZvaekHUFujl0oUgRucrcG4V+Dm2ZB4zcTw\niHQ5NGAIZVxeUAgkQqMn3LKK1wS1t8JwYKSW1YhPek1Rdjm0Yo7859d0hu6U\nGIQwdcFSA/1W8hpf385gLDrLj0wgOHjKlcdXcXgCBNo0A7m+xqbqwok6+wVq\nibUCF7Re+VKHzxFlud496s/OXsRz0k5USbt/3wjtjOBCLr4kS5/uxcfQBahw\nrcy4gtBr7hY++6P+q9a6Cq9nQWgcnZQfXSCF7zfC/1pfXW+85SOoiGxET7D8\nYZpE00SnopX8MbPQHfZppzAChSsSDFNMSN8Cns+PxJvSwlwOTw78zp/kSzBt\n1HuURdE516/x3WhW6rReg8msjst+4jThTp/rcfZE0GCCfs1nhWptoi+Jse4x\nq7YkpFOJIwiZgg1BaA+mlyPfUNpzZsDeNB0oohiTS0Quu6IxU9BgsawDMXN8\nigFU5lJ+EQegp/Hcq4vyAB2IC+GjRnZisR2eTWWONgzHublR5IVmMgcvLt+o\n1P7oFr29yk5ihzUniXAywc4WwtyIIuIW/huJ0k06Fsbmct64yQBqoTu/gIgq\nC1uPFNE1lg64Q2y3A4evcZmb4PL/yR+/jRzk7rYZ897mBwdYjMrax9LQUsIl\nmwoA\r\n=8LPQ\r\n-----END PGP SIGNATURE-----\r\n"
+      },
+      "maintainers": [
+        { "name": "floridoo", "email": "florian.reiterer@gmail.com" },
+        { "name": "nmccready", "email": "nemtcan@gmail.com" },
+        { "name": "phated", "email": "blaine.bublitz@gmail.com" }
+      ],
+      "directories": {},
+      "_npmOperationalInternal": {
+        "host": "s3://npm-registry-packages",
+        "tmp": "tmp/gulp-sourcemaps_2.6.5_1550547982919_0.7995238779892364"
+      },
+      "_hasShrinkwrap": false
+    }
+  },
+  "readme": "## gulp-sourcemaps  [![NPM version][npm-image]][npm-url] [![build status][travis-image]][travis-url] [![Test coverage][coveralls-image]][coveralls-url]\n\n### Branching\n\n__2.X now supports node 0.10+ due to switching out a dependency.__\n\n### Usage\n\n#### Write inline source maps\nInline source maps are embedded in the source file.\n\nExample:\n```javascript\nvar gulp = require('gulp');\nvar plugin1 = require('gulp-plugin1');\nvar plugin2 = require('gulp-plugin2');\nvar sourcemaps = require('gulp-sourcemaps');\n\ngulp.task('javascript', function() {\n  gulp.src('src/**/*.js')\n    .pipe(sourcemaps.init())\n      .pipe(plugin1())\n      .pipe(plugin2())\n    .pipe(sourcemaps.write())\n    .pipe(gulp.dest('dist'));\n});\n```\n\nAll plugins between `sourcemaps.init()` and `sourcemaps.write()` need to have support for `gulp-sourcemaps`. You can find a list of such plugins in the [wiki](https://github.com/gulp-sourcemaps/gulp-sourcemaps/wiki/Plugins-with-gulp-sourcemaps-support).\n\n\n#### Write external source map files\n\nTo write external source map files, pass a path relative to the destination to `sourcemaps.write()`.\n\nExample:\n```javascript\nvar gulp = require('gulp');\nvar plugin1 = require('gulp-plugin1');\nvar plugin2 = require('gulp-plugin2');\nvar sourcemaps = require('gulp-sourcemaps');\n\ngulp.task('javascript', function() {\n  gulp.src('src/**/*.js')\n    .pipe(sourcemaps.init())\n      .pipe(plugin1())\n      .pipe(plugin2())\n    .pipe(sourcemaps.write('../maps'))\n    .pipe(gulp.dest('dist'));\n});\n```\n\n#### Load existing source maps\n\nTo load existing source maps, pass the option `loadMaps: true` to `sourcemaps.init()`.\n\nExample:\n```javascript\nvar gulp = require('gulp');\nvar plugin1 = require('gulp-plugin1');\nvar plugin2 = require('gulp-plugin2');\nvar sourcemaps = require('gulp-sourcemaps');\n\ngulp.task('javascript', function() {\n  gulp.src('src/**/*.js')\n    .pipe(sourcemaps.init({loadMaps: true}))\n      .pipe(plugin1())\n      .pipe(plugin2())\n    .pipe(sourcemaps.write())\n    .pipe(gulp.dest('dist'));\n});\n```\n\n#### Handle large files\n\nTo handle large files, pass the option `largeFile: true` to `sourcemaps.init()`.\n\nExample:\n```javascript\nvar gulp = require('gulp');\nvar plugin1 = require('gulp-plugin1');\nvar plugin2 = require('gulp-plugin2');\nvar sourcemaps = require('gulp-sourcemaps');\n\ngulp.task('javascript', function() {\n  gulp.src('src/**/*.js')\n    .pipe(sourcemaps.init({largeFile: true}))\n      .pipe(plugin1())\n      .pipe(plugin2())\n    .pipe(sourcemaps.write())\n    .pipe(gulp.dest('dist'));\n});\n```\n\n#### Handle source files from different directories\n\nUse the `base` option on `gulp.src` to make sure all files are relative to a common base directory.\n\nExample:\n```javascript\nvar gulp = require('gulp');\nvar plugin1 = require('gulp-plugin1');\nvar plugin2 = require('gulp-plugin2');\nvar sourcemaps = require('gulp-sourcemaps');\n\ngulp.task('javascript', function() {\ngulp.src(['src/test.js', 'src/testdir/test2.js'], { base: 'src' })\n    .pipe(sourcemaps.init())\n      .pipe(plugin1())\n      .pipe(plugin2())\n    .pipe(sourcemaps.write('../maps'))\n    .pipe(gulp.dest('dist'));\n});\n```\n\n#### Alter `sources` property on sourcemaps\n\nThe exported `mapSources` method gives full control over the source paths. It takes a function that is called for every source and receives the default source path as a parameter and the original vinyl file.\n\nExample:\n```javascript\ngulp.task('javascript', function() {\n  var stream = gulp.src('src/**/*.js')\n    .pipe(sourcemaps.init())\n      .pipe(plugin1())\n      .pipe(plugin2())\n      // be careful with the sources returned otherwise contents might not be loaded properly\n      .pipe(sourcemaps.mapSources(function(sourcePath, file) {\n        // source paths are prefixed with '../src/'\n        return '../src/' + sourcePath;\n      }))\n    .pipe(sourcemaps.write('../maps')\n    .pipe(gulp.dest('public/scripts'));\n});\n```\n\n#### Generate Identity Sourcemap\n\nThe exported `identityMap` method allows you to generate a full valid source map encoding no changes (slower, only for Javascript and CSS) instead of the default empty source map (no mappings, fast). __Use this option if you get missing or incorrect mappings, e.g. when debugging.__\n\nExample:\n```javascript\ngulp.task('javascript', function() {\n  var stream = gulp.src('src/**/*.js')\n    .pipe(sourcemaps.init())\n      // An identity sourcemap will be generated at this step\n      .pipe(sourcemaps.identityMap())\n      .pipe(plugin1())\n      .pipe(plugin2())\n    .pipe(sourcemaps.write('../maps')\n    .pipe(gulp.dest('public/scripts'));\n});\n```\n\n\n### Init Options\n\n- `loadMaps`\n\n  Set to true to load existing maps for source files. Supports the following:\n    - inline source maps\n    - source map files referenced by a `sourceMappingURL=` comment\n    - source map files with the same name (plus .map) in the same directory\n\n\n- `identityMap`\n\n  __This option is deprecated. Upgrade to use our [`sourcemap.identityMap`](#generate-identity-sourcemap) API.__\n\n\n### Write Options\n\n- `addComment`\n\n  By default a comment containing / referencing the source map is added. Set this to `false` to disable the comment (e.g. if you want to load the source maps by header).\n\n  Example:\n  ```javascript\n  gulp.task('javascript', function() {\n    var stream = gulp.src('src/**/*.js')\n      .pipe(sourcemaps.init())\n        .pipe(plugin1())\n        .pipe(plugin2())\n      .pipe(sourcemaps.write('../maps', {addComment: false}))\n      .pipe(gulp.dest('dist'));\n  });\n  ```\n\n- `includeContent`\n\n  By default the source maps include the source code. Pass `false` to use the original files.\n\n  Including the content is the recommended way, because it \"just works\". When setting this to `false` you have to host the source files and set the correct `sourceRoot`.\n\n- `sourceRoot`\n\n  Set the location where the source files are hosted (use this when `includeContent` is set to `false`). This is usually a URL (or an absolute URL path), not a local file system path.\n  By default the source root is '' or in case `destPath` is set, the relative path from the source map to the source base directory (this should work for many dev environments).\n  If a relative path is used (empty string or one starting with a `.`), it is interpreted as a path relative to the destination. The plugin rewrites it to a path relative to each source map.\n\n  Example:\n  ```javascript\n  gulp.task('javascript', function() {\n    var stream = gulp.src('src/**/*.js')\n      .pipe(sourcemaps.init())\n        .pipe(plugin1())\n        .pipe(plugin2())\n      .pipe(sourcemaps.write({includeContent: false, sourceRoot: '/src'}))\n      .pipe(gulp.dest('dist'));\n  });\n  ```\n\n  Example (using a function):\n  ```javascript\n  gulp.task('javascript', function() {\n    var stream = gulp.src('src/**/*.js')\n      .pipe(sourcemaps.init())\n        .pipe(plugin1())\n        .pipe(plugin2())\n      .pipe(sourcemaps.write({\n        includeContent: false,\n        sourceRoot: function(file) {\n          return '/src';\n        }\n       }))\n      .pipe(gulp.dest('dist'));\n  });\n  ```\n\n  Example (relative path):\n  ```javascript\n  gulp.task('javascript', function() {\n    var stream = gulp.src('src/**/*.js')\n      .pipe(sourcemaps.init())\n        .pipe(plugin1())\n        .pipe(plugin2())\n      .pipe(sourcemaps.write('.', {includeContent: false, sourceRoot: '../src'}))\n      .pipe(gulp.dest('dist'));\n  });\n  ```\n  In this case for a file written to `dist/subdir/example.js`, the source map is written to `dist/subdir/example.js.map` and the sourceRoot will be `../../src` (resulting in the full source path `../../src/subdir/example.js`).\n\n- `destPath`\n\n  Set the destination path (the same you pass to `gulp.dest()`). If the source map destination path is not a sub path of the destination path, this is needed to get the correct path in the `file` property of the source map.\n  In addition, it allows to automatically set a relative `sourceRoot` if none is set explicitly.\n\n- `sourceMappingURLPrefix`\n\n  Specify a prefix to be prepended onto the source map URL when writing external source maps. Relative paths will have their leading dots stripped.\n\n  Example:\n  ```javascript\n  gulp.task('javascript', function() {\n    var stream = gulp.src('src/**/*.js')\n      .pipe(sourcemaps.init())\n        .pipe(plugin1())\n        .pipe(plugin2())\n      .pipe(sourcemaps.write('../maps', {\n        sourceMappingURLPrefix: 'https://asset-host.example.com/assets'\n      }))\n      .pipe(gulp.dest('public/scripts'));\n  });\n  ```\n\n  This will result in a source mapping URL comment like `sourceMappingURL=https://asset-host.example.com/assets/maps/helloworld.js.map`.\n\n- `sourceMappingURL`\n\n  If you need full control over the source map URL you can pass a function to this option. The output of the function must be the full URL to the source map (in function of the output file).\n\n  Example:\n  ```javascript\n  gulp.task('javascript', function() {\n    var stream = gulp.src('src/**/*.js')\n      .pipe(sourcemaps.init())\n        .pipe(plugin1())\n        .pipe(plugin2())\n      .pipe(sourcemaps.write('../maps', {\n        sourceMappingURL: function(file) {\n          return 'https://asset-host.example.com/' + file.relative + '.map';\n        }\n      }))\n      .pipe(gulp.dest('public/scripts'));\n  });\n  ```\n\n  This will result in a source mapping URL comment like `sourceMappingURL=https://asset-host.example.com/helloworld.js.map`.\n\n- `mapFile`\n\n  This option allows to rename the map file. It takes a function that is called for every map and receives the default map path as a parameter.\n\n  Example:\n  ```javascript\n  gulp.task('javascript', function() {\n    var stream = gulp.src('src/**/*.js')\n      .pipe(sourcemaps.init())\n        .pipe(plugin1())\n        .pipe(plugin2())\n      .pipe(sourcemaps.write('../maps', {\n        mapFile: function(mapFilePath) {\n          // source map files are named *.map instead of *.js.map\n          return mapFilePath.replace('.js.map', '.map');\n        }\n      }))\n      .pipe(gulp.dest('public/scripts'));\n  });\n  ```\n\n- `mapSources`\n\n  __This option is deprecated. Upgrade to use our [`sourcemap.mapSources`](#alter-sources-property-on-sourcemaps) API.__\n\n- `charset`\n\n  Sets the charset for inline source maps. Default: `utf8`\n\n- `clone`\n\n  Clones the original file for creation of the map file. Could be important if file history is important. See [file.clone()](https://github.com/gulpjs/vinyl#filecloneoptions) for possible options. Default: `{deep:false, contents:false}`\n\n### Plugin developers only:\n\n- **How to add source map support to plugins**\n\n  - Generate a source map for the transformation the plugin is applying\n  - **Important**: Make sure the paths in the generated source map (`file` and `sources`) are relative to `file.base` (e.g. use `file.relative`).\n  - Apply this source map to the vinyl `file`. E.g. by using [vinyl-sourcemaps-apply](https://github.com/gulp-sourcemaps/vinyl-sourcemaps-apply).\n    This combines the source map of this plugin with the source maps coming from plugins further up the chain.\n  - Add your plugin to the [wiki page](https://github.com/gulp-sourcemaps/gulp-sourcemaps/wiki/Plugins-with-gulp-sourcemaps-support)\n\n  #### Example:\n\n  ```js\n  var through = require('through2');\n  var applySourceMap = require('vinyl-sourcemaps-apply');\n  var myTransform = require('myTransform');\n\n  module.exports = function(options) {\n\n    function transform(file, encoding, callback) {\n      // generate source maps if plugin source-map present\n      if (file.sourceMap) {\n        options.makeSourceMaps = true;\n      }\n\n      // do normal plugin logic\n      var result = myTransform(file.contents, options);\n      file.contents = new Buffer(result.code);\n\n      // apply source map to the chain\n      if (file.sourceMap) {\n        applySourceMap(file, result.map);\n      }\n\n      this.push(file);\n      callback();\n    }\n\n    return through.obj(transform);\n  };\n  ```\n\n  - **Verify sourcemaps are working**\n\n    See example below or refer to [test/write.js](./test/write.js)\n\n  #### Example:\n  ```js\n  var stream = plugin();\n  var init = sourcemaps.init();\n  var write = sourcemaps.write();\n\n  init.pipe(stream).pipe(write);\n\n  write.on('data', function (file) {\n    assert(...);\n    cb();\n  });\n\n  init.write(new gutil.File(...));\n  init.end();\n  ```\n\n### Debugging\n\nAll debugging output relies on [visionmedia/debug](https://github.com/visionmedia/debug). Follow the directions to set the\nenvironment variable `$DEBUG`.\n\nFor a few examples of debug you could use:\n\n```sh\n  DEBUG='gulp-sourcemaps:*' #everything\n  DEBUG='gulp-sourcemaps:init' #init/index.js\n  DEBUG='gulp-sourcemaps:init:*' #init/index.internals.js\n  DEBUG='gulp-sourcemaps:write:' #write/index.js\n  DEBUG='gulp-sourcemaps:write:*' #write/index.internals.js\n  DEBUG='gulp-sourcemaps:write:,gulp-sourcemaps:init:**' #write/index.internals.js and init/index.internals.js\n```\n\n[npm-image]: https://img.shields.io/npm/v/gulp-sourcemaps.svg\n[npm-url]: https://www.npmjs.com/package/gulp-sourcemaps\n[travis-image]: https://img.shields.io/travis/gulp-sourcemaps/gulp-sourcemaps.svg\n[travis-url]: https://travis-ci.org/gulp-sourcemaps/gulp-sourcemaps\n[coveralls-image]: https://img.shields.io/coveralls/gulp-sourcemaps/gulp-sourcemaps.svg\n[coveralls-url]: https://coveralls.io/r/gulp-sourcemaps/gulp-sourcemaps?branch=master\n",
+  "maintainers": [
+    { "name": "floridoo", "email": "florian.reiterer@gmail.com" },
+    { "name": "nmccready", "email": "nemtcan@gmail.com" },
+    { "name": "phated", "email": "blaine.bublitz@gmail.com" }
+  ],
+  "time": {
+    "modified": "2019-02-19T03:46:25.744Z",
+    "created": "2014-04-18T14:37:59.747Z",
+    "0.2.0": "2014-04-18T14:37:59.747Z",
+    "0.2.1": "2014-04-18T15:14:36.793Z",
+    "0.3.0": "2014-05-11T17:52:16.496Z",
+    "0.3.1": "2014-05-11T20:35:34.962Z",
+    "0.4.0": "2014-06-01T21:32:11.465Z",
+    "0.4.1": "2014-06-16T18:02:35.326Z",
+    "0.4.2": "2014-07-02T09:26:36.154Z",
+    "0.4.3": "2014-07-02T15:13:20.818Z",
+    "0.4.4": "2014-07-02T16:35:32.032Z",
+    "0.4.5": "2014-07-08T09:44:23.120Z",
+    "0.4.6": "2014-07-12T16:34:08.009Z",
+    "1.0.0": "2014-07-12T23:06:49.873Z",
+    "1.1.0": "2014-07-14T13:53:31.862Z",
+    "1.1.1": "2014-08-07T14:32:50.352Z",
+    "1.1.2": "2014-08-27T20:48:59.274Z",
+    "1.1.3": "2014-08-27T21:14:05.675Z",
+    "1.1.4": "2014-09-01T16:56:50.165Z",
+    "1.1.5": "2014-09-10T16:04:14.066Z",
+    "1.2.0": "2014-09-18T20:46:46.131Z",
+    "1.2.1": "2014-09-18T21:47:54.137Z",
+    "1.2.2": "2014-09-19T14:51:51.127Z",
+    "1.2.3": "2014-10-10T14:09:48.693Z",
+    "1.2.4": "2014-10-10T14:22:45.054Z",
+    "1.2.5": "2014-10-30T17:27:37.350Z",
+    "1.2.6": "2014-10-30T18:03:11.637Z",
+    "1.2.7": "2014-10-30T20:41:12.329Z",
+    "1.2.8": "2014-11-06T18:12:19.963Z",
+    "1.3.0": "2014-12-28T18:00:09.650Z",
+    "1.4.0": "2015-02-25T18:45:42.107Z",
+    "1.5.0": "2015-02-26T08:51:37.816Z",
+    "1.5.1": "2015-03-18T08:52:13.134Z",
+    "1.5.2": "2015-04-16T11:40:00.342Z",
+    "1.6.0": "2015-09-28T01:31:07.551Z",
+    "2.0.0-alpha": "2016-04-19T18:38:53.078Z",
+    "1.7.0": "2016-10-10T19:53:21.781Z",
+    "1.7.1": "2016-10-10T20:21:34.797Z",
+    "2.0.0": "2016-10-10T20:37:51.589Z",
+    "1.7.2": "2016-10-12T02:00:21.917Z",
+    "2.0.1": "2016-10-12T02:04:41.331Z",
+    "1.7.3": "2016-10-12T13:14:41.934Z",
+    "1.8.0": "2016-10-13T20:03:25.773Z",
+    "2.1.0": "2016-10-13T20:06:42.320Z",
+    "1.8.1": "2016-10-13T22:16:13.092Z",
+    "2.1.1": "2016-10-13T22:17:11.713Z",
+    "1.9.0": "2016-10-23T18:25:21.378Z",
+    "2.2.0": "2016-10-23T18:26:39.402Z",
+    "2.2.1": "2016-11-21T19:39:06.012Z",
+    "1.9.1": "2016-11-21T19:44:32.494Z",
+    "1.9.2": "2017-01-08T19:27:13.042Z",
+    "2.2.2": "2017-01-08T19:30:13.388Z",
+    "1.9.3": "2017-01-09T06:26:03.032Z",
+    "2.2.3": "2017-01-09T06:28:54.698Z",
+    "1.10.0": "2017-01-09T23:33:59.624Z",
+    "2.3.0": "2017-01-09T23:36:23.417Z",
+    "1.10.1": "2017-01-11T01:20:13.446Z",
+    "2.3.1": "2017-01-11T01:22:26.007Z",
+    "1.11.0": "2017-01-12T15:01:51.846Z",
+    "2.4.0": "2017-01-12T15:03:17.911Z",
+    "1.11.1": "2017-02-05T19:01:59.493Z",
+    "2.4.1": "2017-02-05T19:02:08.893Z",
+    "1.12.0": "2017-03-28T22:44:44.467Z",
+    "2.5.0": "2017-03-28T22:54:56.086Z",
+    "2.5.1": "2017-04-03T22:44:03.422Z",
+    "2.5.2": "2017-04-10T19:12:28.037Z",
+    "2.6.0": "2017-04-10T20:44:16.197Z",
+    "2.6.1": "2017-08-18T01:18:34.131Z",
+    "2.6.2": "2017-12-22T17:13:12.238Z",
+    "2.6.3": "2018-01-02T12:16:46.817Z",
+    "2.6.4": "2018-01-22T17:27:45.290Z",
+    "1.12.1": "2018-01-22T17:34:37.758Z",
+    "2.6.5": "2019-02-19T03:46:23.019Z"
+  },
+  "homepage": "http://github.com/gulp-sourcemaps/gulp-sourcemaps",
+  "keywords": ["gulpplugin", "gulp", "source maps", "sourcemaps"],
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/gulp-sourcemaps/gulp-sourcemaps.git"
+  },
+  "author": { "name": "Florian Reiterer", "email": "me@florianreiterer.com" },
+  "bugs": {
+    "url": "https://github.com/gulp-sourcemaps/gulp-sourcemaps/issues"
+  },
+  "license": "ISC",
+  "readmeFilename": "README.md",
+  "users": {
+    "285858315": true,
+    "unclesowise": true,
+    "cmackay": true,
+    "peterchizzle": true,
+    "delch": true,
+    "rubenlozano": true,
+    "abhisekp": true,
+    "arturmuller": true,
+    "myhonor": true,
+    "codeshrew": true,
+    "lenville": true,
+    "minimit": true,
+    "havvy": true,
+    "johnherohd": true,
+    "danestuckel": true,
+    "edull24": true,
+    "barinbritva": true,
+    "troywarr": true,
+    "alvint": true,
+    "stooboo": true,
+    "finico": true,
+    "goblindegook": true,
+    "ebaranov": true,
+    "gluten": true,
+    "tracker1": true,
+    "stefanb": true,
+    "sunnylost": true,
+    "pythondave": true,
+    "squaresurf": true,
+    "kulakowka": true,
+    "briancrumley": true,
+    "andamira": true,
+    "atriix": true,
+    "ignatovmsu": true,
+    "yodairish": true,
+    "dmarsh": true,
+    "oplopop": true,
+    "christopher.urquidi": true,
+    "logeshpaul": true,
+    "asmolyakov": true,
+    "joaocunha": true,
+    "itonyyo": true,
+    "crowbar": true,
+    "n370": true,
+    "oheard": true,
+    "dominikkucharski": true,
+    "owanturist": true,
+    "danwyand": true,
+    "ghostcode521": true,
+    "oliversalzburg": true,
+    "kai_": true,
+    "beefchimi": true,
+    "tylersclark": true,
+    "piecioshka": true,
+    "simplesessions": true,
+    "jeffersonwilliammachado": true,
+    "drewnull": true,
+    "maskedcoder": true,
+    "yic666kr": true,
+    "gableroux": true,
+    "tzsiga": true,
+    "seanjh": true,
+    "blakecscott": true,
+    "dennykuo": true,
+    "nhutle": true,
+    "lmhs": true,
+    "mohankethees": true,
+    "mezeitamas": true,
+    "ne0": true,
+    "minchnew": true,
+    "gerst20051": true,
+    "martinlancer": true,
+    "lucien144": true,
+    "bsara": true,
+    "levisl176": true,
+    "monkeykode": true,
+    "johnym": true,
+    "t1st3": true,
+    "fotooo": true,
+    "h4des": true,
+    "kalharbi": true,
+    "tonyljl526": true,
+    "stevenjoe": true,
+    "ifeature": true,
+    "nickpfisterer": true,
+    "ehimimaru": true,
+    "pdedkov": true,
+    "jmsherry": true,
+    "webtobesocial": true,
+    "flynntsc": true,
+    "dbuggerx": true,
+    "boterom89": true,
+    "iolo": true,
+    "tcrowe": true,
+    "davidhellmann": true,
+    "nice_body": true,
+    "vilaboim": true,
+    "abdihaikal": true,
+    "tommyzzm": true,
+    "wangnan0610": true,
+    "joxe": true,
+    "erichua23": true,
+    "vwal": true,
+    "gudvinr": true,
+    "runningtalus": true,
+    "hamstercoder": true,
+    "modao": true,
+    "jclo": true,
+    "gor0n": true,
+    "viweei": true,
+    "fdeneux": true,
+    "antixrist": true,
+    "ericwbailey": true,
+    "alnorris": true,
+    "bebaps": true,
+    "fadihania": true,
+    "boluge": true,
+    "mehrdaad": true,
+    "arttse": true,
+    "jonathan.soifer": true,
+    "marcelohmdias": true,
+    "a3.ivanenko": true,
+    "adam1920": true,
+    "dengo": true,
+    "davidnyhuis": true,
+    "joshukraine": true,
+    "parnick": true,
+    "porreh": true,
+    "russiansoon": true,
+    "koutak": true,
+    "rugoals": true,
+    "jtuesday": true,
+    "zlatip": true,
+    "phritolay": true,
+    "highlanderkev": true,
+    "jchrng": true,
+    "zoxon": true,
+    "sgade": true,
+    "dezeloper": true,
+    "jordietyahii": true,
+    "shaddyhm": true,
+    "xiaochao": true,
+    "muzhen": true,
+    "hvilela": true,
+    "clanfei": true,
+    "ramono": true,
+    "vsouhrada": true,
+    "zbreakstone": true,
+    "monjer": true,
+    "vinchik": true,
+    "pennwang": true,
+    "sanketss84": true,
+    "juangotama": true,
+    "raphaelchaib": true,
+    "pines-cheng": true,
+    "kirusha": true,
+    "b4z81": true,
+    "rplittle": true,
+    "patsifist": true,
+    "tikal13": true,
+    "grin_zhou": true,
+    "peunzhang": true,
+    "buiestru": true,
+    "tuomastolppi": true,
+    "miku": true,
+    "freytag": true,
+    "curioussavage": true,
+    "niuca": true,
+    "dennisli87": true,
+    "ichigotenshou": true,
+    "amandavianna": true,
+    "tin-lek": true,
+    "iinteractive": true,
+    "rubiadias": true,
+    "yanlaichang": true,
+    "snarky": true,
+    "sternelee": true,
+    "iprishvin": true,
+    "infomaniac50": true,
+    "narayanats": true,
+    "orlenka": true,
+    "haihepeng": true,
+    "gmarciani": true,
+    "xfloops": true,
+    "kasumi": true,
+    "malitov": true,
+    "chuckreynolds": true,
+    "caijf": true,
+    "jimmylk": true,
+    "abuelwafa": true,
+    "operapreneur": true,
+    "deveroalex": true,
+    "alexdevero": true,
+    "edision": true,
+    "wtower": true,
+    "scokmen": true,
+    "alantsuis": true,
+    "pablo.tavarez": true,
+    "marcobiedermann": true,
+    "magicboy": true,
+    "kimkee": true,
+    "iori20091101": true,
+    "krawster": true,
+    "tower1229": true,
+    "sushiilbharti": true,
+    "cognivator": true,
+    "tdmalone": true,
+    "kermani": true,
+    "fotonmoton": true,
+    "tedyhy": true,
+    "dfsantos": true,
+    "umidjons": true,
+    "nmccready": true,
+    "jonathas": true,
+    "otravers": true,
+    "ognjen.jevremovic": true,
+    "mhaidarh": true,
+    "mutian": true,
+    "tmurngon": true,
+    "shonetow": true,
+    "kelicia": true,
+    "sansgumen": true,
+    "fabrianibrahim": true,
+    "paulnordlund": true,
+    "alexvoloshchenko": true,
+    "olonam": true,
+    "bapinney": true,
+    "smokinhuzi": true,
+    "axelrindle": true,
+    "gwydionismyhero": true,
+    "leohxj": true,
+    "onursimsek": true,
+    "kuzmicheff": true,
+    "vdsabev": true,
+    "sensaetions": true,
+    "binaryjim": true,
+    "giovannipds": true,
+    "griname": true,
+    "mtsplinter": true,
+    "hemen": true,
+    "congnk": true,
+    "o_vigilante": true,
+    "jyyoi": true,
+    "tchcxp": true,
+    "bigglesatlarge": true,
+    "ghe1219": true,
+    "erikvold": true,
+    "olliejt": true,
+    "yikuo": true,
+    "mikebrew": true,
+    "junos": true,
+    "carlosvillademor": true,
+    "johnny_kim": true,
+    "andrej-k": true,
+    "chinawolf_wyp": true,
+    "maalthous": true,
+    "oxyoak": true,
+    "nickkaramoff": true,
+    "karbunkul": true,
+    "hehehai": true,
+    "agplan": true,
+    "brunowm": true,
+    "lorn": true,
+    "heartnett": true,
+    "hz_hualuo": true,
+    "brunoescalona": true,
+    "fabijanski": true,
+    "serge-nikitin": true,
+    "elshahat": true,
+    "bura": true,
+    "maoxiaoke": true,
+    "valeriistefanyk": true,
+    "ham2yagi": true,
+    "frente-fin": true,
+    "morogasper": true,
+    "henrylin": true,
+    "ldq-first": true,
+    "akshymalvia": true,
+    "luffy84217": true,
+    "jedchang": true,
+    "rain-again": true,
+    "mskjp": true,
+    "ccd3v": true,
+    "msq": true,
+    "arugalab": true,
+    "sayful": true,
+    "th3mon": true,
+    "yisen": true,
+    "severen": true,
+    "midascreed": true,
+    "imaginegenesis": true,
+    "jaguar": true,
+    "taylorpzreal": true,
+    "juananto11": true,
+    "irj": true,
+    "sm1215": true,
+    "morderdesign": true,
+    "gpmetheny": true,
+    "juniorcode": true,
+    "kongfupanda": true,
+    "z33": true,
+    "nwservices": true,
+    "onenglar": true,
+    "princetoad": true,
+    "ik_make": true,
+    "d3ck": true,
+    "kokoruz": true,
+    "qoozoo": true
+  }
+}

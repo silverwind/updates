@@ -1,0 +1,711 @@
+{
+  "_id": "jpeg-buffer-orientation",
+  "_rev": "6-951f1bfbf15efe1c07aef84f8148892d",
+  "name": "jpeg-buffer-orientation",
+  "dist-tags": { "latest": "2.0.3" },
+  "versions": {
+    "0.0.0": {
+      "name": "jpeg-buffer-orientation",
+      "version": "0.0.0",
+      "description": "get orientation from a jpeg buffer",
+      "main": "lib/index.js",
+      "module": "lib/index.mjs",
+      "browser": "lib/index.min.js",
+      "unpkg": "lib/index.min.js",
+      "jsdelivr": "lib/index.min.js",
+      "repository": {
+        "type": "git",
+        "url": "git+ssh://git@github.com/fisker/jpeg-buffer-orientation.git"
+      },
+      "author": { "name": "fisker", "email": "lionkay@gmail.com" },
+      "license": "MIT",
+      "scripts": {
+        "build": "npm-run-all build:*",
+        "build:js": "rollup --config",
+        "dist": "npm-run-all dist:*",
+        "dist:npm": "np --yolo --no-yarn",
+        "clean": "rimraf lib",
+        "test-coverage": "jest --coverage",
+        "lint": "npm-run-all lint:*",
+        "lint:js": "eslint src/**/*.js --fix",
+        "release": "run-s clean lint build test dist",
+        "test": "jest"
+      },
+      "config": {
+        "commitizen": {
+          "path": "./node_modules/cz-conventional-changelog-emoji"
+        }
+      },
+      "publishConfig": { "registry": "https://registry.npmjs.org/" },
+      "devDependencies": {
+        "@babel/core": "^7.3.4",
+        "@babel/preset-env": "^7.3.4",
+        "@commitlint/cli": "^7.5.2",
+        "@commitlint/config-conventional": "^7.5.0",
+        "@xwtec/eslint-config": "^3.7.0",
+        "babel-jest": "^24.5.0",
+        "cz-conventional-changelog-emoji": "^0.1.0",
+        "eslint": "^5.15.2",
+        "husky": "^1.3.1",
+        "jest": "^24.5.0",
+        "lint-staged": "^8.1.5",
+        "markdownlint-cli": "^0.14.0",
+        "np": "^4.0.2",
+        "npm-run-all": "^4.1.5",
+        "prettier": "^1.16.4",
+        "rimraf": "^2.6.3",
+        "rollup": "^1.6.0",
+        "rollup-plugin-babel": "^4.3.2",
+        "rollup-plugin-commonjs": "^9.2.1",
+        "rollup-plugin-filesize": "^6.0.1",
+        "rollup-plugin-node-resolve": "^4.0.1",
+        "rollup-plugin-terser": "^4.0.4"
+      },
+      "bugs": {
+        "url": "https://github.com/fisker/jpeg-buffer-orientation/issues"
+      },
+      "homepage": "https://github.com/fisker/jpeg-buffer-orientation#readme",
+      "_id": "jpeg-buffer-orientation@0.0.0",
+      "_npmVersion": "6.4.1",
+      "_nodeVersion": "10.15.1",
+      "_npmUser": { "name": "fisker", "email": "lionkay@gmail.com" },
+      "dist": {
+        "integrity": "sha512-l+K6X8I+7L4PyH3exEjI8eaoJaMVlBSOB0gQCS+9Vb8ZPHO2vek2eDC0GwrVMpMCAtywBRlVvo1IF8Jf8IPrDA==",
+        "shasum": "3361a6c860be95c95fea4488e96f7cd3c47340a9",
+        "tarball": "https://registry.npmjs.org/jpeg-buffer-orientation/-/jpeg-buffer-orientation-0.0.0.tgz",
+        "fileCount": 1,
+        "unpackedSize": 1726,
+        "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJckdAzCRA9TVsSAnZWagAAyhwQAIREmZ0xP7mEd+2r4NN1\n4AlLcuA5Ac6TvDCS5En/RaX2iE9Djcr7lZlOpDt/G1yQcU8x0Q+C9WSxuWCl\nKtpKBdjuMXy7Z9QsnaCfcdv5ogLAr9TAFELTR4Oljzf/CQVyJDX687LVKfNc\nn/HaS83E0Z/lv3RxpzP8XEpNLk265Ogqb8rXQxcjYMfcBNonWs3pSGuhbef7\nRjhB3qq3R9Q1FWalB8NHlF+licXU/g8CJIJrZ/uMK+YsrBS62F1RBoqTxo/2\npNoiBNIp0VSDDpERJittwWi4rlE2s2WQIZGWYop16kvgGhanlucK1aqCFuRn\n64w4ZnO4JcRxxcSTAyXdqogprH4ATOMA2de3IIvMvovsuocNEQOgbn8+J6li\n8Dm4gws+WE4AMACyXFbw6a1UGYd+g/UQGDYykn8xVVPuQ785B3/x9lcAkb83\nmjZ9cVOwWkPuhoyeYd1Ty/LRzJI0wKIEQWvFONdnLXrfbDnMjYC+5uzr5W5r\nxnOSeOKGL1jU5NZPA2k7JHADWekFaP4FE9v4WTeQwjBKIfAK2QoEcwLYyD8i\noUWpxnI4iyvxU8guH8lWL+B0fSQqqAWrSrBoWmcfcPtb2hRheK6kW3KBPZwn\nLsXqGNO2zjBV927rVP7+1mfD4HOBB9cR9jteupOdkrh4lKoAKPWlqR4jxE6Z\now7c\r\n=x3NH\r\n-----END PGP SIGNATURE-----\r\n"
+      },
+      "maintainers": [{ "name": "fisker", "email": "lionkay@gmail.com" }],
+      "directories": {},
+      "_npmOperationalInternal": {
+        "host": "s3://npm-registry-packages",
+        "tmp": "tmp/jpeg-buffer-orientation_0.0.0_1553059891151_0.6286552659517253"
+      },
+      "_hasShrinkwrap": false
+    },
+    "1.0.0": {
+      "name": "jpeg-buffer-orientation",
+      "version": "1.0.0",
+      "description": "get orientation from a jpeg buffer",
+      "main": "lib/index.common.js",
+      "module": "lib/index.min.mjs",
+      "browser": "lib/index.min.js",
+      "unpkg": "lib/index.min.js",
+      "jsdelivr": "lib/index.min.js",
+      "repository": {
+        "type": "git",
+        "url": "git+ssh://git@github.com/fisker/jpeg-buffer-orientation.git"
+      },
+      "author": { "name": "fisker", "email": "lionkay@gmail.com" },
+      "license": "MIT",
+      "scripts": {
+        "build": "npm-run-all build:*",
+        "build:js": "rollup --config",
+        "docs": "npm-run-all docs:*",
+        "docs:js": "cpy lib docs/lib",
+        "docs:image": "cpy __tests__/fixture docs/images",
+        "docs:html": "cpy src/index.html docs",
+        "prettier": "prettier --write",
+        "dist": "npm-run-all dist:*",
+        "dist:npm": "np --yolo --no-yarn",
+        "clean": "rimraf lib docs",
+        "test-coverage": "jest --coverage",
+        "lint": "npm-run-all lint:*",
+        "lint:js": "eslint src/**/*.js --fix",
+        "release": "run-s clean lint build test docs dist",
+        "test": "jest"
+      },
+      "config": {
+        "commitizen": {
+          "path": "./node_modules/cz-conventional-changelog-emoji"
+        }
+      },
+      "publishConfig": { "registry": "https://registry.npmjs.org/" },
+      "devDependencies": {
+        "@babel/core": "^7.3.4",
+        "@babel/preset-env": "^7.3.4",
+        "@commitlint/cli": "^7.5.2",
+        "@commitlint/config-conventional": "^7.5.0",
+        "@xwtec/eslint-config": "^3.7.0",
+        "babel-jest": "^24.5.0",
+        "cpy-cli": "^2.0.0",
+        "cz-conventional-changelog-emoji": "^0.1.0",
+        "eslint": "^5.15.2",
+        "husky": "^1.3.1",
+        "jest": "^24.5.0",
+        "lint-staged": "^8.1.5",
+        "markdownlint-cli": "^0.14.0",
+        "np": "^4.0.2",
+        "npm-run-all": "^4.1.5",
+        "prettier": "^1.16.4",
+        "rimraf": "^2.6.3",
+        "rollup": "^1.6.0",
+        "rollup-plugin-babel": "^4.3.2",
+        "rollup-plugin-filesize": "^6.0.1",
+        "rollup-plugin-prettier": "^0.6.0",
+        "rollup-plugin-terser": "^4.0.4"
+      },
+      "gitHead": "7c8f6029180cfd4ac22ac01f09694456acdedf29",
+      "bugs": {
+        "url": "https://github.com/fisker/jpeg-buffer-orientation/issues"
+      },
+      "homepage": "https://github.com/fisker/jpeg-buffer-orientation#readme",
+      "_id": "jpeg-buffer-orientation@1.0.0",
+      "_npmVersion": "6.4.1",
+      "_nodeVersion": "10.15.1",
+      "_npmUser": { "name": "fisker", "email": "lionkay@gmail.com" },
+      "dist": {
+        "integrity": "sha512-Rtqsi3QzdZ4Z+WaACSlgKwpHqAHCVOlNfPeA8MwBWN40d+AUUGVavBO6GVCpCTfn4HO1548WKOz8+WKK4CzThQ==",
+        "shasum": "644af85e85e1a914c3535701b17e5982b4345882",
+        "tarball": "https://registry.npmjs.org/jpeg-buffer-orientation/-/jpeg-buffer-orientation-1.0.0.tgz",
+        "fileCount": 12,
+        "unpackedSize": 53180,
+        "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJcke1qCRA9TVsSAnZWagAAetgP+wUE+TTsFLLiXh2O49r0\n9eO7K7xCe7jACd8TtGr9KkQlaN52qm8FjySwo+cW/CUpGpMGNrxt3iy/gK8e\nhckhZH6jv+0bsBmXaaZ0i0rApPS+DHnldCOeCcH546cm009kpBIj9sSNk8Y4\nROnpqWt+epggThF7q4ogwv2rVYtDuBUPyVnnmdZQx+DtyAt4lFliDhMcqjDt\nv1A6sC0uX4gNd8IlwKcybIxp2wChgfsMwsojmInEyscIcAcH8n1S+wQptLu2\n4ercNCKhZrqt9C8Zz69p/RMJf8kGAhC23JuW6F/4v1SpfQsxOeGG7v6hupTj\nFHvSRmIXK3mIltWIv8v+G+BMEAARDp1PZF7TURxStVEPjd/zHLP/cvi3sIYw\nGTEbdVbsvxUM5nHUtesVpCKAZgfoA3rl8xoGsC/x9fYYAQHWkYRqqlNlhVxh\n6mH6VogdIG8T3VVVlxlde3dHbM7zmCC5dF00ztMjrJisd6Cx7Pj/y5qg/5KQ\ngeg+Ytcf7YMMB7AQ/9V3RvPgQcoue/gdGng93nsHgib8csbDihUmct7yaFNQ\nFCuoinLU5DR+qZjLGy7bcYSIn7zXM6CN1MCdDbkz52sD2eG3zfz9mJyPBrey\nGCECLoh9rQSu3Zon85M4dfdwKQwtT0qtCxOhHHJH/Lo0nSV0XBEDWkn+qnc1\nqqsY\r\n=HfFE\r\n-----END PGP SIGNATURE-----\r\n"
+      },
+      "maintainers": [{ "name": "fisker", "email": "lionkay@gmail.com" }],
+      "directories": {},
+      "_npmOperationalInternal": {
+        "host": "s3://npm-registry-packages",
+        "tmp": "tmp/jpeg-buffer-orientation_1.0.0_1553067369550_0.22923552775192269"
+      },
+      "_hasShrinkwrap": false
+    },
+    "1.0.1": {
+      "name": "jpeg-buffer-orientation",
+      "version": "1.0.1",
+      "description": "get orientation from a jpeg buffer",
+      "main": "lib/index.common.js",
+      "module": "lib/index.min.mjs",
+      "browser": "lib/index.min.js",
+      "unpkg": "lib/index.min.js",
+      "jsdelivr": "lib/index.min.js",
+      "repository": {
+        "type": "git",
+        "url": "git+ssh://git@github.com/fisker/jpeg-buffer-orientation.git"
+      },
+      "author": {
+        "name": "fisker Cheung",
+        "email": "lionkay@gmail.com",
+        "url": "https://www.fiskercheung.com/"
+      },
+      "license": "MIT",
+      "scripts": {
+        "build": "run-p build:*",
+        "build:js": "rollup --config",
+        "docs": "run-p docs:*",
+        "docs:js": "cpy lib docs/lib",
+        "docs:image": "cpy __tests__/fixture docs/images",
+        "docs:html": "cpy src/index.html docs",
+        "prettier": "prettier **/*.{css,html,js,json,less,md,scss,ts,vue,yaml,yml} --write",
+        "dist": "run-p dist:*",
+        "dist:npm": "np --yolo --no-yarn",
+        "clean": "rimraf lib docs",
+        "test-coverage": "jest --coverage",
+        "lint": "run-p lint:*",
+        "lint:eslint": "eslint **/*.{js,mjs,vue} --fix",
+        "lint:markdown": "markdownlint **/*.md --ignore \"**/node_modules/**\"",
+        "release": "run-s clean lint build test docs dist",
+        "test": "jest"
+      },
+      "config": {
+        "commitizen": {
+          "path": "./node_modules/cz-conventional-changelog-emoji"
+        }
+      },
+      "publishConfig": {
+        "registry": "https://registry.npmjs.org/",
+        "access": "public"
+      },
+      "devDependencies": {
+        "@babel/core": "^7.4.5",
+        "@babel/preset-env": "^7.4.5",
+        "@commitlint/cli": "^7.6.1",
+        "@fisker/commitlint-config": "^1.0.8",
+        "@fisker/eslint-config": "^1.0.14",
+        "@fisker/eslint-config-jest": "^1.0.2",
+        "@fisker/husky-config": "^1.1.0",
+        "@fisker/lint-staged-config": "^1.0.4",
+        "@fisker/prettier-config": "^1.0.17",
+        "babel-jest": "^24.8.0",
+        "cpy-cli": "^2.0.0",
+        "cz-conventional-changelog-emoji": "^0.1.0",
+        "eslint": "^5.16.0",
+        "husky": "^2.3.0",
+        "jest": "^24.8.0",
+        "lint-staged": "^8.1.7",
+        "markdownlint-cli": "^0.16.0",
+        "npm-run-all": "^4.1.5",
+        "prettier": "^1.17.1",
+        "rimraf": "^2.6.3",
+        "rollup": "^1.12.3",
+        "rollup-plugin-babel": "^4.3.2",
+        "rollup-plugin-filesize": "^6.0.1",
+        "rollup-plugin-prettier": "^0.6.0",
+        "rollup-plugin-terser": "^5.0.0"
+      },
+      "sideEffects": false,
+      "gitHead": "ad2936ba2ec94e468607180980184127b6393129",
+      "bugs": {
+        "url": "https://github.com/fisker/jpeg-buffer-orientation/issues"
+      },
+      "homepage": "https://github.com/fisker/jpeg-buffer-orientation#readme",
+      "_id": "jpeg-buffer-orientation@1.0.1",
+      "_npmVersion": "6.4.1",
+      "_nodeVersion": "10.15.3",
+      "_npmUser": { "name": "fisker", "email": "lionkay@gmail.com" },
+      "dist": {
+        "integrity": "sha512-6HqbecO5TQLHn0mS+FcdlAa44T2oC7fNxmFtwCZ4+DHWxvEDbPc2VHajsttxECATCEWmak83rkO5RG18fNke3Q==",
+        "shasum": "b6e2cc85cb16171f7787e68ac8957fde3c4ba7c1",
+        "tarball": "https://registry.npmjs.org/jpeg-buffer-orientation/-/jpeg-buffer-orientation-1.0.1.tgz",
+        "fileCount": 13,
+        "unpackedSize": 58042,
+        "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJc5mHZCRA9TVsSAnZWagAA6CwP/jyig/OowXYAZJ66uThG\nRQjaN6fgCextNJNibjnew5L9jBZuH4g4wfZMpAFWaSOhVvefeiQJlcQeXu6G\nyi/bwaHePlW6zaf/4wZAf82s2DO0TIPWB6NoaK4GuDhk2MP+diw+JoANE+Np\nRENTPq4x7cZjBnhBJXjoR7OOyl+ASgzhn7iMe3ytqyO+LDNWhDOi+ZFr+9+R\nhcInAbZBFGqLdZxp3V43y5Tw1IN020lepWBrPPbXDlHpDstVoq7OlBlvFCXH\nhrKP2ahNNwGXc7d3Ru81026AwVh05wF92+ElCPB6Gftj5UergcEm5ThkBi4B\nX6dRmjSfp5i41y/kbVreenlh2Kvqvbr6JeZz2VKURj3lzrb4aySHh67h5MmX\nISoUJEHZQIn/ZaJZtv+6dKZH+/BT+Z29ZievAvJ2JKuC7JWXynyR48aM48JW\n7NpHQ1d4IviQ52QZeVAKcQ3pV3dg18e2lmm4iOSn+6QvPR0JiEoROc51vptL\ncSR+ttKWF31V6PHaRVs2bWLgWE62SjaGXx2e4A4SPRJR57+HINRvVU0YFiLm\nngrYIADy3vChuE4MKt1aSQd0FW39wFbwG6p1KuvMQnAeFexxO6C9j2fsakQX\nlsvehrW4hIDNE2Uq0NGb1++n/oZKlsT0RoKjz9uq/FScs6myTXE3mVWJi97e\nRvi6\r\n=NA7u\r\n-----END PGP SIGNATURE-----\r\n"
+      },
+      "maintainers": [{ "name": "fisker", "email": "lionkay@gmail.com" }],
+      "directories": {},
+      "_npmOperationalInternal": {
+        "host": "s3://npm-registry-packages",
+        "tmp": "tmp/jpeg-buffer-orientation_1.0.1_1558602201058_0.8499780717859713"
+      },
+      "_hasShrinkwrap": false
+    },
+    "2.0.0": {
+      "name": "jpeg-buffer-orientation",
+      "version": "2.0.0",
+      "description": "get orientation from a jpeg buffer",
+      "main": "lib/index.common.js",
+      "module": "lib/index.min.mjs",
+      "browser": "lib/index.min.js",
+      "unpkg": "lib/index.min.js",
+      "jsdelivr": "lib/index.min.js",
+      "repository": {
+        "type": "git",
+        "url": "git+ssh://git@github.com/fisker/jpeg-buffer-orientation.git"
+      },
+      "author": {
+        "name": "fisker Cheung",
+        "email": "lionkay@gmail.com",
+        "url": "https://www.fiskercheung.com/"
+      },
+      "license": "MIT",
+      "scripts": {
+        "build": "run-p build:*",
+        "build:js": "rollup --config",
+        "docs": "run-p docs:*",
+        "docs:js": "cpy lib docs/lib",
+        "docs:image": "cpy __tests__/fixture docs/images",
+        "docs:html": "cpy src/index.html docs",
+        "dist": "run-p dist:*",
+        "dist:npm": "np --yolo --no-yarn",
+        "clean": "rimraf lib docs",
+        "test-coverage": "jest --coverage",
+        "lint": "run-p lint:*",
+        "lint:eslint": "eslint **/*.{js,mjs,vue}",
+        "lint:markdown": "markdownlint **/*.md --ignore \"**/node_modules/**\"",
+        "release": "run-s clean lint build test docs format dist",
+        "test": "jest",
+        "format": "run-p format:*",
+        "format:eslint": "yarn lint:eslint --fix",
+        "format:prettier": "prettier **/*.{css,html,js,json,less,md,scss,ts,vue,yaml,yml} --write"
+      },
+      "config": {
+        "commitizen": {
+          "path": "./node_modules/cz-conventional-changelog-emoji"
+        }
+      },
+      "publishConfig": {
+        "registry": "https://registry.npmjs.org/",
+        "access": "public"
+      },
+      "devDependencies": {
+        "@babel/core": "^7.4.5",
+        "@babel/preset-env": "^7.4.5",
+        "@commitlint/cli": "^8.0.0",
+        "@fisker/commitlint-config": "^1.1.0",
+        "@fisker/eslint-config": "^1.2.5",
+        "@fisker/eslint-config-jest": "^1.1.0",
+        "@fisker/husky-config": "^1.1.0",
+        "@fisker/lint-staged-config": "^1.0.4",
+        "@fisker/prettier-config": "^1.0.17",
+        "babel-jest": "^24.8.0",
+        "cpy-cli": "^2.0.0",
+        "cz-conventional-changelog-emoji": "^0.1.0",
+        "eslint": "^6.0.1",
+        "husky": "^3.0.0",
+        "jest": "^24.8.0",
+        "lint-staged": "^9.0.2",
+        "markdownlint-cli": "^0.17.0",
+        "npm-run-all": "^4.1.5",
+        "prettier": "^1.18.2",
+        "rimraf": "^2.6.3",
+        "rollup": "^1.16.4",
+        "rollup-plugin-babel": "^4.3.3",
+        "rollup-plugin-filesize": "^6.1.1",
+        "rollup-plugin-prettier": "^0.6.0",
+        "rollup-plugin-terser": "^5.1.0"
+      },
+      "sideEffects": false,
+      "gitHead": "ee58378e15d96ed2acbb5fe134d34ef370c45e2b",
+      "bugs": {
+        "url": "https://github.com/fisker/jpeg-buffer-orientation/issues"
+      },
+      "homepage": "https://github.com/fisker/jpeg-buffer-orientation#readme",
+      "_id": "jpeg-buffer-orientation@2.0.0",
+      "_nodeVersion": "10.16.0",
+      "_npmVersion": "6.9.0",
+      "dist": {
+        "integrity": "sha512-kWcDqvQVMAOiQt0aw4wjm32+YTC+/nsIb3ziBdqtWvuYFKNgw+7InyeI9Zlsb/pzKMwXsDcaOamgCDjD9oX7NA==",
+        "shasum": "7b36f5750a2703db8852a54ec63a79207d41582d",
+        "tarball": "https://registry.npmjs.org/jpeg-buffer-orientation/-/jpeg-buffer-orientation-2.0.0.tgz",
+        "fileCount": 13,
+        "unpackedSize": 57482,
+        "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJdHXQOCRA9TVsSAnZWagAA92kP/AhzAERKOgVvqhJa7/LQ\nqNC1GJuSLB+koagdYSYEnqfVBcDXnIKCXxAM+XucdthphQjIT/YZxyWMpwVO\nnoGTcBYaMIhRVrkNp5u12qwCp/l/waSp8AkpYxR39EgRpJ/iv5T18hDkeAkv\nlyGL5kvkbMmW905Uk09e7QGLLXKgQcwU45Xx/0EddLJLKkAs/3/NtIoMRxWq\nEii/Zx1+1ZhbnE2BVadNWnwOptbgHjPAQtoBGITU5Jd6jdEIzjCZuPmi2LN4\nSTN+s4moqwjqo7H6SMabxsDmcqJVyvrDg5GwEb9pxxL9npVvh016YLjKJxa9\nYRHerNunt886SUA1FdXJGl3s6Xha+CRiqB6BWBMq6Y+yxE2Yf150MQNd10i7\nQDNO723PyunowGYG4Zs/sva38Wl7jIuYJ9vRoG2TCTzrQFbH4Puj5g/F4OPG\nXunL8NRJKyX1o9q1TLxS401GcI1g8eVWleXGcgb7yEn4X6DLy9/xn12sOEOk\nHne9yfDKsWeYXUBSCr1K0nJK3REz05mFEHQ2aVE95DNIPtVOD7WguCiKjkEf\nvPyV/MOfk+QorYoam9fd+yHffjzJQMN+9TLJ9AYRcGRbB32TfIEt8/yADh7L\nF5d19PYbCfXopWrFukQK/WYV44njO96uCet/Uuj/1cN4+VtENVm0zeulJpfH\npmp1\r\n=6riB\r\n-----END PGP SIGNATURE-----\r\n"
+      },
+      "maintainers": [{ "name": "fisker", "email": "lionkay@gmail.com" }],
+      "_npmUser": { "name": "fisker", "email": "lionkay@gmail.com" },
+      "directories": {},
+      "_npmOperationalInternal": {
+        "host": "s3://npm-registry-packages",
+        "tmp": "tmp/jpeg-buffer-orientation_2.0.0_1562211341556_0.6252401222436288"
+      },
+      "_hasShrinkwrap": false
+    },
+    "2.0.1": {
+      "name": "jpeg-buffer-orientation",
+      "version": "2.0.1",
+      "description": "get orientation from a jpeg buffer",
+      "main": "lib/index.common.js",
+      "module": "lib/index.min.mjs",
+      "browser": "lib/index.min.js",
+      "unpkg": "lib/index.min.js",
+      "jsdelivr": "lib/index.min.js",
+      "repository": {
+        "type": "git",
+        "url": "git+ssh://git@github.com/fisker/jpeg-buffer-orientation.git"
+      },
+      "author": {
+        "name": "fisker Cheung",
+        "email": "lionkay@gmail.com",
+        "url": "https://www.fiskercheung.com/"
+      },
+      "license": "MIT",
+      "scripts": {
+        "build": "run-p build:*",
+        "build:js": "rollup --config",
+        "clean": "rimraf lib docs",
+        "dist": "run-p dist:*",
+        "dist:npm": "np --yolo --no-yarn",
+        "docs": "run-p docs:*",
+        "docs:html": "cpy src/index.html docs",
+        "docs:image": "cpy __tests__/fixture docs/images",
+        "docs:js": "cpy lib docs/lib",
+        "format": "run-p format:*",
+        "format:eslint": "yarn lint:eslint --fix",
+        "format:prettier": "prettier \"**/*.{css,html,js,json,less,md,scss,ts,vue,yaml,yml}\" --write",
+        "lint": "run-p lint:*",
+        "lint:eslint": "eslint \"**/*.{js,mjs,vue}\"",
+        "lint:markdown": "markdownlint \"**/*.md\" --ignore \"**/node_modules/**\"",
+        "lint:prettier": "prettier \"**/*.{css,html,js,json,less,md,scss,ts,vue,yaml,yml}\" --check",
+        "release": "run-s clean lint build test docs format dist",
+        "test": "jest",
+        "test-coverage": "jest --coverage"
+      },
+      "config": {
+        "commitizen": { "path": "./node_modules/cz-conventional-changelog" }
+      },
+      "publishConfig": {
+        "registry": "https://registry.npmjs.org/",
+        "access": "public"
+      },
+      "devDependencies": {
+        "@babel/core": "7.5.5",
+        "@babel/preset-env": "7.5.5",
+        "@commitlint/cli": "8.1.0",
+        "@fisker/commitlint-config": "1.1.2",
+        "@fisker/eslint-config": "1.2.8",
+        "@fisker/eslint-config-jest": "1.1.4",
+        "@fisker/husky-config": "1.1.1",
+        "@fisker/lint-staged-config": "1.0.5",
+        "@fisker/prettier-config": "1.0.18",
+        "@fisker/stylelint-config": "1.1.7",
+        "babel-jest": "24.8.0",
+        "cpy-cli": "2.0.0",
+        "cz-conventional-changelog": "3.0.2",
+        "eslint": "6.1.0",
+        "husky": "3.0.2",
+        "jest": "24.8.0",
+        "lint-staged": "9.2.1",
+        "markdownlint-cli": "0.17.0",
+        "npm-run-all": "4.1.5",
+        "prettier": "1.18.2",
+        "rimraf": "2.6.3",
+        "rollup": "1.17.0",
+        "rollup-plugin-babel": "4.3.3",
+        "rollup-plugin-filesize": "6.1.1",
+        "rollup-plugin-prettier": "0.6.0",
+        "rollup-plugin-terser": "5.1.1"
+      },
+      "sideEffects": false,
+      "gitHead": "6e430511b7a3b28193612718723bceca8b0f63bc",
+      "bugs": {
+        "url": "https://github.com/fisker/jpeg-buffer-orientation/issues"
+      },
+      "homepage": "https://github.com/fisker/jpeg-buffer-orientation#readme",
+      "_id": "jpeg-buffer-orientation@2.0.1",
+      "_nodeVersion": "10.16.0",
+      "_npmVersion": "6.9.0",
+      "dist": {
+        "integrity": "sha512-IJnFZo+qTlZPt28gztDoBaLRY+3wcsIHKxki0vNgD3apZLC0Km8OVk8gJE4CtZJv6T7gx2bOWVWK5TkeJpHz6A==",
+        "shasum": "b8f1351ee70754c39b92e3c7179cc90fbb40c741",
+        "tarball": "https://registry.npmjs.org/jpeg-buffer-orientation/-/jpeg-buffer-orientation-2.0.1.tgz",
+        "fileCount": 13,
+        "unpackedSize": 57596,
+        "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJdQXtvCRA9TVsSAnZWagAACB0P/1kUKymbKIvVFm9YvVqZ\nCgIlabOLxEXEflS0i5fAm4vuSlglOc4dv+FEGW28Pf4H6aJ0Er8zg+cDRqCC\nV57zDoNllxmCzwiYCPYR42mVpn3mKttlERZSaaQh9IK+4titHDrtFiDQW6wI\nd7A1eloTVN1GOrjFUZV5mLr8yQHZFNnmvNKyEr4lUhS0lgDcZApnIQpVjA96\nZPORibdoWjjt5jfGKvJOo7YRGHdjUJ3dPOZvC0IMCyop786k9SncRadxu/uV\n/6iNCZ3YI5bGKNMuHh5f3ayxWR4tsSRUyMGYx3+xuAiLTqQoXcdZs+h155yE\n0MbQbRSQwKwKIgnHs64xTAvAfMQlZ/yOvRe2Aq3TZIWxPJMNbouEXWVDvR68\nlB8hmZq1NqwhdiLuKBURFblLWeiknKLWTYuR+e6NMBdbqh6u6Vx+LC+u+zrM\nKsqWJs/GT0vBj0e7AgTrwdLbgL2c9wNernAOLUQ7YDb0RVn5CIiqSyuZD4Wn\nIu983eNQa0RSskYg53UVg3s6nD6O0bF4ceoHntdc+G+Bdt1MkJth5bcPNtY6\nQsxb0v0Yq6Uob9W6WXayxg8eGcYnRG7lU40BuPYrLYbvDF6YxkJd/sUNOThX\nIEdkiiA8ngWAyOMxiEnwquh0bqmYD4OSf9rAnLRhiioVymb6GTVH2IEYsAg8\nru0r\r\n=Q658\r\n-----END PGP SIGNATURE-----\r\n"
+      },
+      "maintainers": [{ "name": "fisker", "email": "lionkay@gmail.com" }],
+      "_npmUser": { "name": "fisker", "email": "lionkay@gmail.com" },
+      "directories": {},
+      "_npmOperationalInternal": {
+        "host": "s3://npm-registry-packages",
+        "tmp": "tmp/jpeg-buffer-orientation_2.0.1_1564572526461_0.7117217355647429"
+      },
+      "_hasShrinkwrap": false
+    },
+    "2.0.2": {
+      "name": "jpeg-buffer-orientation",
+      "version": "2.0.2",
+      "description": "get orientation from a jpeg buffer",
+      "main": "lib/index.common.js",
+      "module": "lib/index.min.mjs",
+      "browser": "lib/index.min.js",
+      "unpkg": "lib/index.min.js",
+      "jsdelivr": "lib/index.min.js",
+      "repository": {
+        "type": "git",
+        "url": "git+ssh://git@github.com/fisker/jpeg-buffer-orientation.git"
+      },
+      "author": {
+        "name": "fisker Cheung",
+        "email": "lionkay@gmail.com",
+        "url": "https://www.fiskercheung.com/"
+      },
+      "license": "MIT",
+      "scripts": {
+        "build": "run-p build:*",
+        "build:js": "rollup --config",
+        "clean": "rimraf lib docs",
+        "dist": "run-p dist:*",
+        "dist:npm": "np --yolo --no-yarn",
+        "docs": "run-p docs:*",
+        "docs:html": "cpy src/index.html docs",
+        "docs:image": "cpy __tests__/fixture docs/images",
+        "docs:js": "cpy lib docs/lib",
+        "format": "run-p format:*",
+        "format:eslint": "yarn lint:eslint --fix",
+        "format:prettier": "prettier \"**/*.{css,html,js,json,less,md,scss,ts,vue,yaml,yml}\" --write",
+        "lint": "run-p lint:*",
+        "lint:eslint": "eslint \"**/*.{js,mjs,vue}\"",
+        "lint:markdown": "markdownlint \"**/*.md\" --ignore \"**/node_modules/**\"",
+        "lint:prettier": "prettier \"**/*.{css,html,js,json,less,md,scss,ts,vue,yaml,yml}\" --check",
+        "release": "run-s clean lint build test docs format dist",
+        "test": "jest",
+        "test-coverage": "jest --coverage"
+      },
+      "config": {
+        "commitizen": { "path": "./node_modules/cz-conventional-changelog" }
+      },
+      "publishConfig": {
+        "registry": "https://registry.npmjs.org/",
+        "access": "public"
+      },
+      "devDependencies": {
+        "@babel/core": "7.6.4",
+        "@babel/preset-env": "7.6.3",
+        "@commitlint/cli": "8.2.0",
+        "@fisker/commitlint-config": "1.1.3",
+        "@fisker/eslint-config": "1.3.4",
+        "@fisker/eslint-config-jest": "1.1.12",
+        "@fisker/husky-config": "1.1.3",
+        "@fisker/lint-staged-config": "1.0.6",
+        "@fisker/prettier-config": "1.0.21",
+        "babel-jest": "24.9.0",
+        "cpy-cli": "2.0.0",
+        "cz-conventional-changelog": "3.0.2",
+        "eslint": "6.5.1",
+        "husky": "3.0.9",
+        "jest": "24.9.0",
+        "lint-staged": "9.4.2",
+        "markdownlint-cli": "0.19.0",
+        "npm-run-all": "4.1.5",
+        "nyc": "14.1.1",
+        "prettier": "1.18.2",
+        "rimraf": "3.0.0",
+        "rollup": "1.25.2",
+        "rollup-plugin-babel": "4.3.3",
+        "rollup-plugin-filesize": "6.2.1",
+        "rollup-plugin-prettier": "0.6.0",
+        "rollup-plugin-terser": "5.1.2"
+      },
+      "sideEffects": false,
+      "gitHead": "906a353d85a51842a2b4b2fde244e0670e61ef94",
+      "bugs": {
+        "url": "https://github.com/fisker/jpeg-buffer-orientation/issues"
+      },
+      "homepage": "https://github.com/fisker/jpeg-buffer-orientation#readme",
+      "_id": "jpeg-buffer-orientation@2.0.2",
+      "_nodeVersion": "10.16.3",
+      "_npmVersion": "6.9.0",
+      "dist": {
+        "integrity": "sha512-ps1FhBCsK16dXNpsFTEbQk359XIYtJ4b66+jhwDSR4+X/Hae1dIPq5337aKo3aasPoV/0m2tOao4Hxeaae8MJA==",
+        "shasum": "28c8baadb3f9dc1ff48fef97753d27443e240294",
+        "tarball": "https://registry.npmjs.org/jpeg-buffer-orientation/-/jpeg-buffer-orientation-2.0.2.tgz",
+        "fileCount": 13,
+        "unpackedSize": 58999,
+        "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJdsBeJCRA9TVsSAnZWagAA9dIP/A8LqjM3aPYseuXrGReU\nSSfvHRjLhLlTqnYsl5Z3oAKJTTtqskFJDWBlp1cGqhiM+GdAxSlrziCZNc6u\n6HRAwrCPFMlzrOGZG8iXCOQGn+KtOoOkxeUTjUIugAm2P3/G/OmhflXoW64C\n71Igqae1gtG1u8cFLXM/gvXxVYLbxcAdBF72H4vB9bPhAxfOaJO2ljk/nW0z\nWmGs1IXqp9cyphyiPUukHvEr1YOxGbjGubHEZOPttaOZ01xA3sRpJqm7B0Bx\nQlIhpC5cfcYGiAFY520MvxJwIyDUqPXWgk1yVT9dpHxEUG1Z0j04A/ZZV9B0\nPJxjRI4hqFCElFjLoqq/zBJmf0UCbwJdFJnZHWxIUzJuitLemfyYuNfwcvuP\nkprGeI5Aa4EyHAOCfxIfhcJRjQu3cA+99Dm5Ql3ywQqqsGmMDx6MkOCHgJmo\n0tD8mPt/pZVjWnvmtV0dOnu6Me6VYNwKamWV/qqV4hYzFVhCvoXQRmk1VQ5w\n/896bJbPs3qksbX2nKIMV2XYirRs9PeQUU2ZHiJJrrRc56W9ee10Z7dbOMku\nYsmJIedeMs0hXpvP4jC4Mgx6O5FX8KmXqI8+hegI5dhBTr9PxKUA5ZdV+IIj\nnEEUQEWoSq2bc4iFz/MFLkT5qw3a2oISaK9hyRW+XTAPWp2Ktm2hC91R0Ny9\nCjSV\r\n=jenZ\r\n-----END PGP SIGNATURE-----\r\n"
+      },
+      "maintainers": [{ "name": "fisker", "email": "lionkay@gmail.com" }],
+      "_npmUser": { "name": "fisker", "email": "lionkay@gmail.com" },
+      "directories": {},
+      "_npmOperationalInternal": {
+        "host": "s3://npm-registry-packages",
+        "tmp": "tmp/jpeg-buffer-orientation_2.0.2_1571821449502_0.004977468991351097"
+      },
+      "_hasShrinkwrap": false
+    },
+    "2.0.3": {
+      "name": "jpeg-buffer-orientation",
+      "version": "2.0.3",
+      "description": "get orientation from a jpeg buffer",
+      "repository": {
+        "type": "git",
+        "url": "git+ssh://git@github.com/fisker/jpeg-buffer-orientation.git"
+      },
+      "license": "MIT",
+      "author": {
+        "name": "fisker Cheung",
+        "email": "lionkay@gmail.com",
+        "url": "https://www.fiskercheung.com/"
+      },
+      "sideEffects": false,
+      "main": "dist/index.common.js",
+      "jsdelivr": "dist/index.min.js",
+      "unpkg": "dist/index.min.js",
+      "module": "dist/index.min.mjs",
+      "browser": "dist/index.min.js",
+      "scripts": {
+        "build": "run-p build:*",
+        "build:js": "rollup --config",
+        "clean": "run-p clean:*",
+        "clean:dist": "del-cli dist docs",
+        "dist": "run-p dist:*",
+        "dist:npm": "np --yolo --no-yarn",
+        "docs": "run-p docs:*",
+        "docs:html": "cpy src/index.html docs",
+        "docs:image": "cpy __tests__/fixture docs/images",
+        "docs:js": "cpy dist docs/dist",
+        "format": "run-p format:*",
+        "format:eslint": "yarn lint:eslint --fix",
+        "format:markdown": "yarn lint:markdown --fix",
+        "format:package-json": "sort-package-json \"package.json\" \"packages/*/package.json\"",
+        "format:prettier": "yarn lint:prettier --write",
+        "lint": "run-p lint:*",
+        "lint:eslint": "eslint \"**/*.{js,mjs,vue}\"",
+        "lint:markdown": "markdownlint \"**/*.md\" --ignore \"**/node_modules/**\"",
+        "lint:package-json": "yarn run format:package-json --check",
+        "lint:prettier": "prettier \"**/*.{css,html,js,json,less,md,scss,ts,vue,yaml,yml}\" --check",
+        "release": "run-s clean lint build test docs format dist",
+        "test": "jest",
+        "test-coverage": "jest --coverage"
+      },
+      "config": {
+        "commitizen": { "path": "./node_modules/cz-conventional-changelog" }
+      },
+      "devDependencies": {
+        "@babel/core": "7.7.4",
+        "@babel/preset-env": "7.7.4",
+        "@commitlint/cli": "8.2.0",
+        "@fisker/commitlint-config": "1.1.4",
+        "@fisker/eslint-config": "1.5.1",
+        "@fisker/eslint-config-jest": "1.2.1",
+        "@fisker/husky-config": "1.1.5",
+        "@fisker/lint-staged-config": "1.0.8",
+        "@fisker/prettier-config": "1.0.24",
+        "babel-jest": "24.9.0",
+        "cpy-cli": "2.0.0",
+        "cz-conventional-changelog": "3.0.2",
+        "del-cli": "3.0.0",
+        "eslint": "6.7.2",
+        "husky": "3.1.0",
+        "jest": "24.9.0",
+        "lint-staged": "9.5.0",
+        "markdownlint-cli": "0.19.0",
+        "npm-run-all": "4.1.5",
+        "nyc": "14.1.1",
+        "prettier": "1.19.1",
+        "rollup": "1.27.8",
+        "rollup-plugin-babel": "4.3.3",
+        "rollup-plugin-filesize": "6.2.1",
+        "rollup-plugin-prettier": "0.6.0",
+        "rollup-plugin-terser": "5.1.2",
+        "sort-package-json": "1.30.0"
+      },
+      "publishConfig": {
+        "access": "public",
+        "registry": "https://registry.npmjs.org/"
+      },
+      "gitHead": "f5819df4eb6ebccc968d371931b31554ade5d436",
+      "bugs": {
+        "url": "https://github.com/fisker/jpeg-buffer-orientation/issues"
+      },
+      "homepage": "https://github.com/fisker/jpeg-buffer-orientation#readme",
+      "_id": "jpeg-buffer-orientation@2.0.3",
+      "_nodeVersion": "10.16.2",
+      "_npmVersion": "6.9.0",
+      "dist": {
+        "integrity": "sha512-lHjA3pL9Z3CcHgwnTMUg10OBNzHLcOuTTn/kro1p8bJLf61Kc0F8eJ47IJvOPWmdo2NgyJK5CoM68LCD3K32Yg==",
+        "shasum": "4af45cbb82dfe0767e9a8d5ac9101e856c3919d5",
+        "tarball": "https://registry.npmjs.org/jpeg-buffer-orientation/-/jpeg-buffer-orientation-2.0.3.tgz",
+        "fileCount": 13,
+        "unpackedSize": 59245,
+        "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v3.0.4\r\nComment: https://openpgpjs.org\r\n\r\nwsFcBAEBCAAQBQJd5pXZCRA9TVsSAnZWagAA32MP+wTg26qr54KeHUJdDPZ4\nO9049lxvIS5cGUpOEW1dKxL965jYISP15K1Jj9WDf2CZWoOMOFDj7Z2fZ9kg\n4j4tPyrHeBsmcOIwBXAgheyepFkyNb7FiTNxAXlvUQzMuI0lNsk7dvuTQ33X\nWz/TcovMlupsENM3mvVRDLYy3ThIdi5wezrjahwqdS6o9MBlXDzVv3Gbu7Wn\nc4w5kI9YgzSRRCbZjbOnBYYM09xMFcgGeER5w/OuUuzDYJA9KzK1S+VnlUq2\nKtcxS8e8mW85rGvg00wTVhsi6zV6Od36N1ajVKB+dStzCyCzydyQuMfSpDIa\ni+X1zeyYRiifKl5BMehIH2c+CQuKwcVGtl1Gz0ZqnRYenz2/qMzJeyc+hIhD\nsZmax5M0A3nUaEsPYG4I6E8RAdtH5CwhasrYJ3JC1rOmTlgSWFNfzEApdKC4\nFBnEXC2uGD91r/z/9RkvRHGD+HB65qpN5RjEGAMT7iElHfMDi10F0UfiZ1Lq\nSERrTy/rV+zq5CDF2ZWRz/dbZw4DH00uFYYBjKzm7Rq9Whq3e8tJvC6vhIvh\nFD4EGrNKmRS8C6IBApm9vWfg91ls5G0lAxz796q11doFFuG5Rz0oAbGM9TKa\ndIdf3OkhCkeuWpzE4eHUNM2R9o8Rb9Cm5pAAIEHHjg2/TOGu528KJKAqHD9O\ni5XC\r\n=BEKD\r\n-----END PGP SIGNATURE-----\r\n"
+      },
+      "maintainers": [{ "name": "fisker", "email": "lionkay@gmail.com" }],
+      "_npmUser": { "name": "fisker", "email": "lionkay@gmail.com" },
+      "directories": {},
+      "_npmOperationalInternal": {
+        "host": "s3://npm-registry-packages",
+        "tmp": "tmp/jpeg-buffer-orientation_2.0.3_1575392728778_0.023808633142333724"
+      },
+      "_hasShrinkwrap": false
+    }
+  },
+  "time": {
+    "created": "2019-03-20T05:31:31.150Z",
+    "0.0.0": "2019-03-20T05:31:31.255Z",
+    "modified": "2019-12-03T17:05:32.836Z",
+    "1.0.0": "2019-03-20T07:36:09.665Z",
+    "1.0.1": "2019-05-23T09:03:21.205Z",
+    "2.0.0": "2019-07-04T03:35:41.727Z",
+    "2.0.1": "2019-07-31T11:28:46.602Z",
+    "2.0.2": "2019-10-23T09:04:09.659Z",
+    "2.0.3": "2019-12-03T17:05:28.947Z"
+  },
+  "maintainers": [{ "name": "fisker", "email": "lionkay@gmail.com" }],
+  "description": "get orientation from a jpeg buffer",
+  "homepage": "https://github.com/fisker/jpeg-buffer-orientation#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/fisker/jpeg-buffer-orientation.git"
+  },
+  "author": {
+    "name": "fisker Cheung",
+    "email": "lionkay@gmail.com",
+    "url": "https://www.fiskercheung.com/"
+  },
+  "bugs": { "url": "https://github.com/fisker/jpeg-buffer-orientation/issues" },
+  "license": "MIT",
+  "readme": "# jpeg-buffer-orientation\n\n[![gzip size](http://img.badgesize.io/https://unpkg.com/jpeg-buffer-orientation/dist/index.min.mjs?compression=gzip&style=flat-square)](http://img.badgesize.io/https://unpkg.com/jpeg-buffer-orientation/dist/index.min.mjs)\n\n[![Travis](https://img.shields.io/travis/fisker/jpeg-buffer-orientation.svg?style=flat-square)](https://travis-ci.org/fisker/jpeg-buffer-orientation)\n[![Codacy Badge](https://api.codacy.com/project/badge/Grade/f1c92423809b450e871e4812581f8fe6)](https://app.codacy.com/app/fisker/jpeg-buffer-orientation?utm_source=github.com&utm_medium=referral&utm_content=fisker/jpeg-buffer-orientation&utm_campaign=Badge_Grade_Settings)\n[![Coveralls github](https://img.shields.io/coveralls/github/fisker/jpeg-buffer-orientation.svg?style=flat-square)](https://coveralls.io/github/fisker/jpeg-buffer-orientation)\n\n[![devDependencies](https://img.shields.io/david/dev/fisker/jpeg-buffer-orientation.svg?style=flat-square)](https://david-dm.org/fisker/jpeg-buffer-orientation)\n[![Issues](http://img.shields.io/github/issues/fisker/jpeg-buffer-orientation.svg?style=flat-square)](https://github.com/fisker/jpeg-buffer-orientation/issues)\n[![Issues](https://img.shields.io/github/issues-pr/fisker/jpeg-buffer-orientation.svg?style=flat-square)](https://github.com/fisker/jpeg-buffer-orientation/pulls)\n[![GitHub last commit](https://img.shields.io/github/last-commit/fisker/jpeg-buffer-orientation.svg?style=flat-square)](https://github.com/fisker/jpeg-buffer-orientation/commits)\n[![GitHub Release Date](https://img.shields.io/github/release-date/fisker/jpeg-buffer-orientation.svg?style=flat-square)](https://github.com/fisker/jpeg-buffer-orientation/releases)\n\n[![styled with prettier](https://img.shields.io/badge/styled_with-prettier-ff69b4.svg?style=flat-square)](https://github.com/prettier/prettier)\n[![MIT license](https://img.shields.io/github/license/fisker/jpeg-buffer-orientation.svg?style=flat-square)](http://opensource.org/licenses/MIT)\n\n> get orientation from a jpeg buffer\n\n## Install\n\n```sh\nyarn add --dev jpeg-buffer-orientation\n```\n\n## Usage\n\nin browser\n\n```html\n<script type=\"module\">\n  import getOrientation from 'https://unpkg.com/jpeg-buffer-orientation?module'\n\n  const myJPEGFile = 'path/to/a/jpeg/file'\n\n  // this time we use fetch to get a ArrayBuffer\n\n  ;(async () => {\n    const reponse = await fetch(myJPEGFile)\n    const buffer = await response.arrayBuffer()\n    const orientation = getOrientation(buffer)\n\n    console.log('orientation', orientation)\n  })()\n</script>\n```\n\n[demo](https://fisker.github.com/jpeg-buffer-orientation)\n\nin browser (legacy)\n\n```html\n<script src=\"https://unpkg.com/jpeg-buffer-orientation\"></script>\n<script>\n  const blob = someJPEGBlob\n\n  // this time we use FileReader to get a ArrayBuffer\n\n  const fileReader = new FileReader()\n  fileReader.readAsArrayBuffer(blob)\n  fileReader.onload = () => {\n    console.log(getOrientation(fileReader.result))\n  }\n</script>\n```\n\nin node\n\n```js\nimport getOrientation from 'jpeg-buffer-orientation'\n\nconst myJPEGFile = 'path/to/a/jpeg/file'\nconst {buffer} = readFileSync(myJPEGFile)\nconst orientation = getOrientation(buffer)\nconsole.log('orientation', orientation)\n```\n\n## API\n\ngetOrientation(buffer)\n\n- buffer\n\n  type: `ArrayBuffer`\n\n- @returns\n\n  type: `Number|undefined`\n\n## FYI\n\nthis package is design for use in browser, not optimized for node.\n\n1. accept `Buffer` instead of `ArrayBuffer` should be easier to use.\n2. instead of reading the whole image, just reading head maybe better.\n\n## License\n\nMIT © [fisker Cheung](https://github.com/fisker)\n",
+  "readmeFilename": "readme.md"
+}
