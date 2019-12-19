@@ -3,22 +3,148 @@
 const assert = require("assert");
 const process = require("process");
 const execa = require("execa");
+const tempy = require("tempy");
+const fs = require("fs");
+const path = require("path");
+const del = require("del");
 
-function exit(err) {
+const testDir = tempy.directory();
+const cli = path.join(__dirname, "./updates.js");
+const oldFixture = {
+  dependencies: {
+    "gulp-sourcemaps": "2.0.0",
+    "prismjs": "1.0.0",
+    "svgstore": "^3.0.0",
+    "html-webpack-plugin": "4.0.0-alpha.2",
+    "noty": "3.1.0",
+    "jpeg-buffer-orientation": "0.0.0",
+    "styled-components": "2.5.0-1",
+    "@babel/preset-env": "7.0.0"
+  },
+  peerDependencies: {
+    "@babel/preset-env": "~6.0.0"
+  }
+};
+
+async function exit(err) {
+  await del(testDir, {force: true});
+
   if (err) {
     console.info(err);
   }
   process.exit(err ? 1 : 0);
 }
 
-async function run(args) {
-  const {stdout} = await execa("./updates.js", args.split(/\s+/));
-  return JSON.parse(stdout);
+async function run({
+  args = [],
+  packageJson,
+  filename = "package.json"
+}) {
+  args.push("--json");
+  fs.writeFileSync(path.join(testDir, filename), JSON.stringify(packageJson));
+  const {stdout} = await execa(cli, args, {cwd: testDir});
+  return JSON.parse(stdout).results;
 }
 
 async function main() {
-  assert.deepStrictEqual(await run("-j -f test.json"), {
-    results: {
+  // Should get latest version
+  assert.deepStrictEqual(
+    await run({
+      packageJson: {
+        dependencies: {
+          updates: "1.0.0",
+        }
+      }
+    }),
+    {
+      dependencies: {
+        updates: {
+          old: "1.0.0",
+          new: "9.3.3",
+          info: "https://github.com/silverwind/updates",
+        }
+      }
+    }
+  );
+
+  // Should support `--file` flag
+  assert.deepStrictEqual(
+    await run({
+      args: ["--file", "test.json"],
+      filename: "test.json",
+      packageJson: {
+        dependencies: {
+          updates: "2.0.0",
+        }
+      },
+    }),
+    {
+      dependencies: {
+        updates: {
+          old: "2.0.0",
+          new: "9.3.3",
+          info: "https://github.com/silverwind/updates",
+        }
+      }
+    }
+  );
+
+  // Should not crash on version of "0.0.0", #23
+  assert.deepStrictEqual(
+    await run({
+      packageJson: {
+        dependencies: {
+          "jpeg-buffer-orientation": "0.0.0",
+        }
+      },
+    }),
+    {
+      dependencies: {
+        "jpeg-buffer-orientation": {
+          old: "0.0.0",
+          new: "2.0.3",
+          info: "https://github.com/fisker/jpeg-buffer-orientation",
+        }
+      }
+    }
+  );
+
+  // Should support multiple version of the same package, #29
+  assert.deepStrictEqual(
+    await run({
+      packageJson: {
+        dependencies: {
+          "@babel/preset-env": "7.0.0"
+        },
+        peerDependencies: {
+          "@babel/preset-env": "~6.0.0"
+        }
+      },
+    }),
+    {
+      dependencies: {
+        "@babel/preset-env": {
+          old: "7.0.0",
+          new: "7.7.7",
+          info: "https://github.com/babel/babel/tree/master/packages/babel-preset-env",
+        }
+      },
+      peerDependencies: {
+        "@babel/preset-env": {
+          old: "~6.0.0",
+          new: "~7.7.7",
+          info: "https://github.com/babel/babel/tree/master/packages/babel-preset-env",
+        }
+      },
+    }
+  );
+
+  // TODO: refactor test cases bellow
+  assert.deepStrictEqual(
+    await run({
+      packageJson: oldFixture
+    }),
+    {
       dependencies: {
         "gulp-sourcemaps": {
           old: "2.0.0",
@@ -68,11 +194,14 @@ async function main() {
           "info": "https://github.com/babel/babel/tree/master/packages/babel-preset-env"
         }
       },
-    }
-  });
+    });
 
-  assert.deepStrictEqual(await run("-j -g -f test.json"), {
-    results: {
+  assert.deepStrictEqual(
+    await run({
+      args: ["--greatest"],
+      packageJson: oldFixture,
+    }),
+    {
       dependencies: {
         "gulp-sourcemaps": {
           old: "2.0.0",
@@ -117,11 +246,14 @@ async function main() {
           "info": "https://github.com/babel/babel/tree/master/packages/babel-preset-env"
         }
       }
-    }
-  });
+    });
 
-  assert.deepStrictEqual(await run("-j -g -p -f test.json"), {
-    results: {
+  assert.deepStrictEqual(
+    await run({
+      args: ["--greatest", "--prerelease"],
+      packageJson: oldFixture,
+    }),
+    {
       dependencies: {
         "gulp-sourcemaps": {
           old: "2.0.0",
@@ -171,11 +303,14 @@ async function main() {
           "info": "https://github.com/babel/babel/tree/master/packages/babel-preset-env"
         }
       },
-    }
-  });
+    });
 
-  assert.deepStrictEqual(await run("-j -R -f test.json"), {
-    results: {
+  assert.deepStrictEqual(
+    await run({
+      args: ["--release"],
+      packageJson: oldFixture,
+    }),
+    {
       dependencies: {
         "gulp-sourcemaps": {
           old: "2.0.0",
@@ -225,11 +360,14 @@ async function main() {
           "info": "https://github.com/babel/babel/tree/master/packages/babel-preset-env"
         }
       },
-    }
-  });
+    });
 
-  assert.deepStrictEqual(await run("-j -P -f test.json"), {
-    results: {
+  assert.deepStrictEqual(
+    await run({
+      args: ["--patch"],
+      packageJson: oldFixture,
+    }),
+    {
       dependencies: {
         "gulp-sourcemaps": {
           old: "2.0.0",
@@ -252,8 +390,7 @@ async function main() {
           info: "https://github.com/needim/noty",
         },
       },
-    }
-  });
+    });
 }
 
 main().then(exit).catch(exit);
