@@ -38,12 +38,8 @@ beforeAll(async () => {
   }
 
   const {sslUrl: registry} = server;
-
-  // Fake registry
-  await writeFile(join(testDir, ".npmrc"), `registry=${registry}`);
-
-  // Copy fixture
-  await writeFile(join(testDir, "package.json"), JSON.stringify(packageJson, null, 2));
+  await writeFile(join(testDir, ".npmrc"), `registry=${registry}`); // Fake registry
+  await writeFile(join(testDir, "package.json"), JSON.stringify(packageJson, null, 2)); // Copy fixture
 });
 
 afterAll(async () => {
@@ -53,12 +49,7 @@ afterAll(async () => {
 
 function makeTest(args, expected) {
   return async () => {
-    const {stdout} = await execa(
-      join(__dirname, "updates.js"),
-      args.split(/\s+/),
-      {cwd: testDir},
-    );
-
+    const {stdout} = await execa(join(__dirname, "updates.js"), args.split(/\s+/), {cwd: testDir});
     const {results} = JSON.parse(stdout);
     for (const dependencyType of dependencyTypes) {
       for (const [dependencyName, data] of Object.entries(expected[dependencyType] || {})) {
