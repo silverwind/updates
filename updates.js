@@ -4,20 +4,21 @@
 const chalk = require("chalk");
 const fetch = require("make-fetch-happen");
 const findUp = require("find-up");
-const gitInfo = memoize(require("hosted-git-info").fromUrl);
 const minimist = require("minimist");
+const rat = require("registry-auth-token");
 const rc = require("rc");
-const registryAuthToken = memoize(require("registry-auth-token"));
-const registryUrl = memoize(require("registry-auth-token/registry-url"));
+const ru = require("registry-auth-token/registry-url");
 const semver = require("semver");
 const stringWidth = require("string-width");
 const textTable = require("text-table");
+const {fromUrl} = require("hosted-git-info");
 const {join} = require("path");
 const {lstatSync, readFileSync, truncateSync, writeFileSync} = require("fs");
 const {platform} = require("os");
 const {version} = require("./package.json");
 
 process.env.NODE_ENV = "production";
+
 const MAX_SOCKETS = 64;
 const sep = "\0";
 
@@ -26,6 +27,16 @@ const sep = "\0";
 const stripRe = /^.*?:\/\/(.*?@)?(github\.com[:/])/i;
 const partsRe = /^([^/]+)\/([^/#]+)?.*?([0-9a-f]+|v?[0-9]+\.[0-9]+\.[0-9]+)$/i;
 const hashRe = /^[0-9a-f]+$/i;
+
+const memoize = (fn) => {
+  const cache = {};
+  return (arg, arg2) => cache[arg] || (cache[arg] = fn(arg, arg2));
+};
+
+const esc = str => str.replace(/[|\\{}()[\]^$+*?.-]/g, "\\$&");
+const gitInfo = memoize(fromUrl);
+const registryAuthToken = memoize(rat);
+const registryUrl = memoize(ru);
 
 const args = minimist(process.argv.slice(2), {
   boolean: [
@@ -211,15 +222,6 @@ if (!Object.keys(deps).length) {
   } else {
     finish(new Error("No packages found"));
   }
-}
-
-function esc(str) {
-  return str.replace(/[|\\{}()[\]^$+*?.-]/g, "\\$&");
-}
-
-function memoize(fn) {
-  const cache = {};
-  return (arg, arg2) => cache[arg] || (cache[arg] = fn(arg, arg2));
 }
 
 function getAuthAndRegistry(name, registry) {
