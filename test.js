@@ -51,6 +51,8 @@ function makeTest(args, expected) {
   return async () => {
     const {stdout} = await execa(join(__dirname, "updates.js"), args.split(/\s+/), {cwd: testDir});
     const {results} = JSON.parse(stdout);
+
+    // Parse results, with custom validation for the dynamic "age" property
     for (const dependencyType of dependencyTypes) {
       for (const [dependencyName, data] of Object.entries(expected[dependencyType] || {})) {
         for (const [key, value] of Object.entries(data || {})) {
