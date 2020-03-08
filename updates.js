@@ -35,7 +35,7 @@ const memoize = fn => {
 };
 
 const esc = str => str.replace(/[|\\{}()[\]^$+*?.-]/g, "\\$&");
-const gitInfo = memoize(fromUrl);
+const hostedGitInfo = memoize(fromUrl);
 const registryAuthToken = memoize(rat);
 const registryUrl = memoize(ru);
 const normalizeRegistryUrl = memoize(url => url.endsWith("/") ? url.substring(0, url.length - 1) : url);
@@ -343,7 +343,7 @@ const getInfoUrl = ({repository, homepage}, registry, name) => {
     return `https://github.com/${name.replace(/^@/, "")}`;
   } else if (repository) {
     const url = typeof repository === "string" ? repository : repository.url;
-    const info = gitInfo(url);
+    const info = hostedGitInfo(url);
     if (info && info.browse) return info.browse();
     if (repository && repository.url && /^https?:/.test(repository.url)) return repository.url;
   }
