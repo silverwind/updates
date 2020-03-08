@@ -38,7 +38,7 @@ const esc = str => str.replace(/[|\\{}()[\]^$+*?.-]/g, "\\$&");
 const hostedGitInfo = memoize(fromUrl);
 const registryAuthToken = memoize(rat);
 const registryUrl = memoize(ru);
-const normalizeRegistryUrl = memoize(url => url.endsWith("/") ? url.substring(0, url.length - 1) : url);
+const normalizeUrl = memoize(url => url.endsWith("/") ? url.substring(0, url.length - 1) : url);
 
 const args = minimist(process.argv.slice(2), {
   boolean: [
@@ -55,6 +55,7 @@ const args = minimist(process.argv.slice(2), {
     "d", "allow-downgrade",
     "f", "file",
     "g", "greatest",
+    "G", "githubapi",
     "m", "minor",
     "P", "patch",
     "p", "prerelease",
@@ -70,6 +71,7 @@ const args = minimist(process.argv.slice(2), {
     e: "exclude",
     f: "file",
     g: "greatest",
+    G: "githubapi",
     h: "help",
     i: "include",
     j: "json",
@@ -142,8 +144,9 @@ const allowDowngrade = parseMixedArg(args["allow-downgrade"]);
 const defaultRegistry = "https://registry.npmjs.org";
 const npmrc = rc("npm", {registry: defaultRegistry});
 const authTokenOpts = {npmrc, recursive: true};
-const registry = normalizeRegistryUrl(args.registry || npmrc.registry);
+const registry = normalizeUrl(args.registry || npmrc.registry);
 const maxSockets = typeof args.sockets === "number" ? args.sockets : MAX_SOCKETS;
+const githubApiUrl = args.githubapi ? normalizeUrl(args.githubapi) : "https://api.github.com";
 
 let packageFile;
 const deps = {};
@@ -271,7 +274,7 @@ function findSync(filename, dir, stopDir) {
   if ((stopDir && path === stopDir) || parent === dir) {
     return null;
   } else {
-    return find(filename, parent, stopDir);
+    return findSync(filename, parent, stopDir);
   }
 }
 
@@ -280,7 +283,7 @@ function getAuthAndRegistry(name, registry) {
     return [registryAuthToken(registry, authTokenOpts), registry];
   } else {
     const scope = (/@[a-z0-9][\w-.]+/.exec(name) || [])[0];
-    const url = normalizeRegistryUrl(registryUrl(scope, npmrc));
+    const url = normalizeUrl(registryUrl(scope, npmrc));
     if (url !== registry) {
       try {
         const newAuth = registryAuthToken(url, authTokenOpts);
@@ -360,6 +363,17 @@ function finish(obj, opts = {}) {
     output.error = obj.stack;
   }
 
+  for (const value of Object.values(deps)) {
+    if ("oldPrint" in value) {
+      value.old = value.oldPrint;
+      delete value.oldPrint;
+    }
+    if ("newPrint" in value) {
+      value.new = value.newPrint;
+      delete value.newPrint;
+    }
+  }
+
   if (args.json) {
     if (!hadError) {
       output.results = {};
@@ -437,8 +451,8 @@ function formatDeps() {
     const [_type, name] = key.split(sep);
     arr.push([
       name,
-      highlightDiff(data.oldPrint || data.old, data.newPrint || data.new, false),
-      highlightDiff(data.newPrint || data.new, data.oldPrint || data.old, true),
+      highlightDiff(data.old, data.new, false),
+      highlightDiff(data.new, data.old, true),
       data.age || "",
       data.info,
     ]);
@@ -590,7 +604,7 @@ async function checkUrlDep([key, dep], {useGreatest} = {}) {
   if (!user || !repo || !oldRef) return;
 
   if (hashRe.test(oldRef)) {
-    const res = await fetch(`https://api.github.com/repos/${user}/${repo}/commits`);
+    const res = await fetch(`${githubApiUrl}/repos/${user}/${repo}/commits`);
     if (!res || !res.ok) return;
     const data = await res.json();
     let {sha: newRef, commit} = data[0];
@@ -609,7 +623,7 @@ async function checkUrlDep([key, dep], {useGreatest} = {}) {
       return {key, newRange, user, repo, oldRef, newRef, newDate};
     }
   } else { // TODO: newDate support
-    const res = await fetch(`https://api.github.com/repos/${user}/${repo}/git/refs/tags`);
+    const res = await fetch(`${githubApiUrl}/repos/${user}/${repo}/git/refs/tags`);
     if (!res || !res.ok) return;
     const data = await res.json();
     const tags = data.map(entry => entry.ref.replace(/^refs\/tags\//, ""));

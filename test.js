@@ -4,13 +4,13 @@ const createTestServer = require("create-test-server");
 const del = require("del");
 const execa = require("execa");
 const tempy = require("tempy");
-const {join} = require("path");
+const {join, resolve} = require("path");
 const {test, expect, beforeAll, afterAll} = global;
 const {writeFile, readFile} = require("fs").promises;
 
 const packageJson = require("./fixtures/test.json");
 const testDir = tempy.directory();
-let server;
+let registryServer, githubServer, githubApiUrl;
 
 const dependencyTypes = [
   "dependencies",
@@ -27,29 +27,42 @@ for (const dependencyType of dependencyTypes) {
 }
 
 beforeAll(async () => {
-  server = await createTestServer();
-
-  // Server response
+  // registry response
+  registryServer = await createTestServer();
   for (const packageName of testPackages) {
     const name = packageName.replace(/\//g, "%2f");
     const path = join(__dirname, "fixtures", "registry-responses", `${name}.json`);
-    const text = await readFile(path, "utf8");
-    server.get(`/${name}`, text);
+    registryServer.get(`/${name}`, await readFile(path, "utf8"));
   }
 
-  const {sslUrl: registry} = server;
-  await writeFile(join(testDir, ".npmrc"), `registry=${registry}`); // Fake registry
+  // registry response
+  githubServer = await createTestServer();
+  githubServer.get(
+    "/repos/silverwind/updates/commits",
+    await readFile(resolve(__dirname, "fixtures/github-responses/updates-commits.json"), "utf8"),
+  );
+  githubServer.get(
+    "/repos/silverwind/updates/git/refs/tags",
+    await readFile(resolve(__dirname, "fixtures/github-responses/updates-tags.json"), "utf8"),
+  );
+
+  githubApiUrl = githubServer.sslUrl;
+  await writeFile(join(testDir, ".npmrc"), `registry=${registryServer.sslUrl}`); // Fake registry
   await writeFile(join(testDir, "package.json"), JSON.stringify(packageJson, null, 2)); // Copy fixture
 });
 
 afterAll(async () => {
-  await del(testDir, {force: true});
-  if (server) await server.close();
+  await Promise.all([
+    del(testDir, {force: true}),
+    registryServer && registryServer.close(),
+    githubServer && githubServer.close(),
+  ]);
 });
 
 function makeTest(args, expected) {
   return async () => {
-    const {stdout} = await execa(join(__dirname, "updates.js"), args.split(/\s+/), {cwd: testDir});
+    const argsArr = [...args.split(/\s+/), "-G", githubApiUrl];
+    const {stdout} = await execa(join(__dirname, "updates.js"), argsArr, {cwd: testDir});
     const {results} = JSON.parse(stdout);
 
     // Parse results, with custom validation for the dynamic "age" property
@@ -110,7 +123,12 @@ test("latest", makeTest("-j", {
       old: "7.0.0",
       new: "7.7.6",
       info: "https://github.com/babel/babel/tree/master/packages/babel-preset-env",
-    }
+    },
+    "updates": {
+      old: "6941e05",
+      new: "537ccb7",
+      info: "https://github.com/silverwind/updates",
+    },
   },
   peerDependencies: {
     "@babel/preset-env": {
@@ -157,7 +175,12 @@ test("greatest", makeTest("-j -g", {
       old: "7.0.0",
       new: "7.7.6",
       info: "https://github.com/babel/babel/tree/master/packages/babel-preset-env",
-    }
+    },
+    "updates": {
+      old: "6941e05",
+      new: "537ccb7",
+      info: "https://github.com/silverwind/updates",
+    },
   },
   peerDependencies: {
     "@babel/preset-env": {
@@ -209,7 +232,12 @@ test("prerelease", makeTest("-j -g -p", {
       old: "7.0.0",
       new: "7.7.6",
       info: "https://github.com/babel/babel/tree/master/packages/babel-preset-env",
-    }
+    },
+    "updates": {
+      old: "6941e05",
+      new: "537ccb7",
+      info: "https://github.com/silverwind/updates",
+    },
   },
   peerDependencies: {
     "@babel/preset-env": {
@@ -261,14 +289,19 @@ test("release", makeTest("-j -R", {
       old: "7.0.0",
       new: "7.7.6",
       info: "https://github.com/babel/babel/tree/master/packages/babel-preset-env",
-    }
+    },
+    "updates": {
+      old: "6941e05",
+      new: "537ccb7",
+      info: "https://github.com/silverwind/updates",
+    },
   },
   peerDependencies: {
     "@babel/preset-env": {
       "old": "~6.0.0",
       "new": "~7.7.6",
       "info": "https://github.com/babel/babel/tree/master/packages/babel-preset-env"
-    }
+    },
   },
 }));
 
@@ -293,6 +326,11 @@ test("patch", makeTest("-j -P", {
       old: "3.1.0",
       new: "3.1.4",
       info: "https://github.com/needim/noty",
+    },
+    "updates": {
+      old: "6941e05",
+      new: "537ccb7",
+      info: "https://github.com/silverwind/updates",
     },
   },
 }));
