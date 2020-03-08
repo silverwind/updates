@@ -8,24 +8,9 @@ const {join} = require("path");
 const {test, expect, beforeAll, afterAll} = global;
 const {writeFile, readFile} = require("fs").promises;
 
+const packageJson = require("./fixtures/test.json");
 const testDir = tempy.directory();
 let server;
-
-const packageJson = {
-  "dependencies": {
-    "gulp-sourcemaps": "2.0.0",
-    "prismjs": "1.0.0",
-    "svgstore": "^3.0.0",
-    "html-webpack-plugin": "4.0.0-alpha.2",
-    "noty": "3.1.0",
-    "jpeg-buffer-orientation": "0.0.0",
-    "styled-components": "2.5.0-1",
-    "@babel/preset-env": "7.0.0"
-  },
-  "peerDependencies": {
-    "@babel/preset-env": "~6.0.0"
-  }
-};
 
 const dependencyTypes = [
   "dependencies",
@@ -69,7 +54,7 @@ afterAll(async () => {
 function makeTest(args, expected) {
   return async () => {
     const {stdout} = await execa(
-      join(__dirname, "./updates.js"),
+      join(__dirname, "updates.js"),
       args.split(/\s+/),
       {cwd: testDir},
     );
