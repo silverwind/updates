@@ -28,7 +28,7 @@ const stripRe = /^.*?:\/\/(.*?@)?(github\.com[:/])/i;
 const partsRe = /^([^/]+)\/([^/#]+)?.*?([0-9a-f]+|v?[0-9]+\.[0-9]+\.[0-9]+)$/i;
 const hashRe = /^[0-9a-f]+$/i;
 
-const memoize = (fn) => {
+const memoize = fn => {
   const cache = {};
   return (arg, arg2) => cache[arg] || (cache[arg] = fn(arg, arg2));
 };
@@ -37,6 +37,7 @@ const esc = str => str.replace(/[|\\{}()[\]^$+*?.-]/g, "\\$&");
 const gitInfo = memoize(fromUrl);
 const registryAuthToken = memoize(rat);
 const registryUrl = memoize(ru);
+const normalizeRegistryUrl = memoize(url => url.endsWith("/") ? url.substring(0, url.length - 1) : url);
 
 const args = minimist(process.argv.slice(2), {
   boolean: [
@@ -165,7 +166,7 @@ if (args.file) {
 } else {
   packageFile = findUp.sync("package.json");
   if (!packageFile) {
-    finish(new Error(`Unable to find package.json in ${process.cwd()} or any of its parent directories`));
+    finish(new Error(`Unable to find package.json in working directory or any of its parents`));
   }
 }
 
@@ -352,10 +353,6 @@ function write(file, content) {
   } else {
     writeFileSync(file, content, {encoding: "utf8"});
   }
-}
-
-function normalizeRegistryUrl(url) {
-  return url.endsWith("/") ? url.substring(0, url.length - 1) : url;
 }
 
 function highlightDiff(a, b, added) {
