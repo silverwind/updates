@@ -4,7 +4,7 @@ const createTestServer = require("create-test-server");
 const del = require("del");
 const execa = require("execa");
 const tempy = require("tempy");
-const {join, resolve} = require("path");
+const {join} = require("path");
 const {test, expect, beforeAll, afterAll} = global;
 const {writeFile, readFile} = require("fs").promises;
 
@@ -32,12 +32,12 @@ beforeAll(async () => {
 
   for (const packageName of testPackages) {
     const name = packageName.replace(/\//g, "%2f");
-    const path = join(__dirname, "fixtures", "registry-responses", `${name}.json`);
+    const path = join(__dirname, `fixtures/registry-responses/${name}.json`);
     registryServer.get(`/${name}`, await readFile(path));
   }
 
-  const commits = await readFile(resolve(__dirname, "fixtures/github-responses/updates-commits.json"));
-  const tags = await readFile(resolve(__dirname, "fixtures/github-responses/updates-tags.json"));
+  const commits = await readFile(join(__dirname, "fixtures/github-responses/updates-commits.json"));
+  const tags = await readFile(join(__dirname, "fixtures/github-responses/updates-tags.json"));
   githubServer.get("/repos/silverwind/updates/commits", commits);
   githubServer.get("/repos/silverwind/updates/git/refs/tags", tags);
 
