@@ -3,7 +3,6 @@
 
 const chalk = require("chalk");
 const fetch = require("make-fetch-happen");
-const findUp = require("find-up");
 const minimist = require("minimist");
 const rat = require("registry-auth-token");
 const rc = require("rc");
@@ -11,9 +10,10 @@ const ru = require("registry-auth-token/registry-url");
 const semver = require("semver");
 const stringWidth = require("string-width");
 const textTable = require("text-table");
+const {cwd: cwdFn} = require("process");
 const {fromUrl} = require("hosted-git-info");
-const {join} = require("path");
-const {lstatSync, readFileSync, truncateSync, writeFileSync} = require("fs");
+const {join, dirname} = require("path");
+const {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync} = require("fs");
 const {platform} = require("os");
 const {version} = require("./package.json");
 
@@ -21,6 +21,7 @@ process.env.NODE_ENV = "production";
 
 const MAX_SOCKETS = 64;
 const sep = "\0";
+const cwd = cwdFn();
 
 // regexes for url dependencies. does only github and only hash or exact semver
 // https://regex101.com/r/gCZzfK/2
@@ -164,9 +165,9 @@ if (args.file) {
     finish(new Error(`${args.file} is neither a file nor directory`));
   }
 } else {
-  packageFile = findUp.sync("package.json");
+  packageFile = findSync("package.json", cwd);
   if (!packageFile) {
-    finish(new Error(`Unable to find package.json in working directory or any of its parents`));
+    finish(new Error(`Unable to find package.json in ${cwd} or any of its parents`));
   }
 }
 
@@ -222,6 +223,22 @@ if (!Object.keys(deps).length) {
     finish(new Error("No packages match the given filters"));
   } else {
     finish(new Error("No packages found"));
+  }
+}
+
+function findSync(filename, dir, stopDir) {
+  const path = join(dir, filename);
+
+  try {
+    accessSync(path);
+    return path;
+  } catch (err) {}
+
+  const parent = dirname(dir);
+  if ((stopDir && path === stopDir) || parent === dir) {
+    return null;
+  } else {
+    return find(filename, parent, stopDir);
   }
 }
 

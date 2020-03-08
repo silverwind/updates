@@ -27,7 +27,6 @@
   ],
   "dependencies": {
     "chalk": "3.0.0",
-    "find-up": "4.1.0",
     "hosted-git-info": "3.0.4",
     "jest": "25.1.0",
     "make-fetch-happen": "8.0.3",
