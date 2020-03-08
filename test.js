@@ -11,16 +11,35 @@ const {writeFile, readFile} = require("fs").promises;
 const testDir = tempy.directory();
 let server;
 
-const testPackages = [
-  "gulp-sourcemaps",
-  "prismjs",
-  "svgstore",
-  "html-webpack-plugin",
-  "noty",
-  "jpeg-buffer-orientation",
-  "styled-components",
-  "@babel/preset-env",
+const packageJson = {
+  "dependencies": {
+    "gulp-sourcemaps": "2.0.0",
+    "prismjs": "1.0.0",
+    "svgstore": "^3.0.0",
+    "html-webpack-plugin": "4.0.0-alpha.2",
+    "noty": "3.1.0",
+    "jpeg-buffer-orientation": "0.0.0",
+    "styled-components": "2.5.0-1",
+    "@babel/preset-env": "7.0.0"
+  },
+  "peerDependencies": {
+    "@babel/preset-env": "~6.0.0"
+  }
+};
+
+const dependencyTypes = [
+  "dependencies",
+  "devDependencies",
+  "peerDependencies",
+  "optionalDependencies",
 ];
+
+const testPackages = [];
+for (const dependencyType of dependencyTypes) {
+  for (const name of Object.keys(packageJson[dependencyType] || [])) {
+    testPackages.push(name);
+  }
+}
 
 beforeAll(async () => {
   server = await createTestServer();
@@ -39,7 +58,7 @@ beforeAll(async () => {
   await writeFile(join(testDir, ".npmrc"), `registry=${registry}`);
 
   // Copy fixture
-  await writeFile(join(testDir, "test.json"), await readFile("test.json", "utf8"));
+  await writeFile(join(testDir, "package.json"), JSON.stringify(packageJson, null, 2));
 });
 
 afterAll(async () => {
@@ -58,7 +77,7 @@ function makeTest(args, expected) {
   };
 }
 
-test("latest", makeTest("-j -f test.json", {
+test("latest", makeTest("-j", {
   dependencies: {
     "gulp-sourcemaps": {
       old: "2.0.0",
@@ -110,7 +129,7 @@ test("latest", makeTest("-j -f test.json", {
   },
 }));
 
-test("greatest", makeTest("-j -g -f test.json", {
+test("greatest", makeTest("-j -g", {
   dependencies: {
     "gulp-sourcemaps": {
       old: "2.0.0",
@@ -157,7 +176,7 @@ test("greatest", makeTest("-j -g -f test.json", {
   }
 }));
 
-test("prerelease", makeTest("-j -g -p -f test.json", {
+test("prerelease", makeTest("-j -g -p", {
   dependencies: {
     "gulp-sourcemaps": {
       old: "2.0.0",
@@ -209,7 +228,7 @@ test("prerelease", makeTest("-j -g -p -f test.json", {
   },
 }));
 
-test("release", makeTest("-j -R -f test.json", {
+test("release", makeTest("-j -R", {
   dependencies: {
     "gulp-sourcemaps": {
       old: "2.0.0",
@@ -261,7 +280,7 @@ test("release", makeTest("-j -R -f test.json", {
   },
 }));
 
-test("patch", makeTest("-j -P -f test.json", {
+test("patch", makeTest("-j -P", {
   dependencies: {
     "gulp-sourcemaps": {
       old: "2.0.0",
