@@ -28,7 +28,6 @@
   "dependencies": {
     "chalk": "3.0.0",
     "hosted-git-info": "3.0.4",
-    "jest": "25.1.0",
     "make-fetch-happen": "8.0.3",
     "minimist": "1.2.0",
     "rc": "1.2.8",
@@ -43,6 +42,7 @@
     "eslint": "6.8.0",
     "eslint-config-silverwind": "10.0.0",
     "execa": "4.0.0",
+    "jest": "25.1.0",
     "tempy": "0.4.0",
     "versions": "8.2.3"
   },
