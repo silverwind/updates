@@ -365,11 +365,11 @@ function highlightDiff(a, b, added) {
       } else {
         res += aParts[i].split("").map(char => {
           return versionPartRe.test(char) ? color(char) : char;
-        }).join("") + color("." + aParts.slice(i + 1).join("."));
+        }).join("") + color(`.${aParts.slice(i + 1).join(".")}`);
       }
       break;
     } else {
-      res += aParts[i] + ".";
+      res += `${aParts[i]}.`;
     }
   }
 
