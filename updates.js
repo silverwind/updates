@@ -238,12 +238,12 @@ const timeData = [
   [Infinity, 31536e12, "year", true],
 ];
 
-function reltime(str) {
-  if (!str) return "";
-  const unix = new Date(str).getTime() * 1e6;
+function getAge(isoDateString) {
+  if (!isoDateString) return "";
+  const unix = new Date(isoDateString).getTime() * 1e6;
   if (Number.isNaN(unix)) return "";
   const diff = (Date.now() * 1e6) - unix;
-  if (diff <= 10e9) return "now";
+  if (diff <= 0) return "none";
 
   let value, suffix;
   for (let i = 0; i <= timeData.length; i++) {
@@ -694,7 +694,7 @@ async function main() {
     } else {
       deps[key].new = newRange;
       deps[key].info = getInfoUrl(data.versions[newVersion] || data, registry, data.name);
-      if (data.time && data.time[newVersion]) deps[key].age = reltime(data.time[newVersion]);
+      if (data.time && data.time[newVersion]) deps[key].age = getAge(data.time[newVersion]);
     }
   }
 
@@ -715,7 +715,7 @@ async function main() {
         info: `https://github.com/${user}/${repo}`,
       };
 
-      if (newDate) deps[key].age = reltime(newDate);
+      if (newDate) deps[key].age = getAge(newDate);
     }
   }
 
