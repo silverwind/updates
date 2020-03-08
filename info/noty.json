@@ -1,0 +1,1459 @@
+{
+  "_id": "noty",
+  "_rev": "43-84020312c20d9b64862d1dcd833d859e",
+  "name": "noty",
+  "description": "Noty is a dependency-free notification library that makes it easy to create alert - success - error - warning - information - confirmation messages as an alternative the standard alert dialog. Each notification is added to a queue. (Optional)",
+  "dist-tags": { "latest": "3.2.0-beta" },
+  "versions": {
+    "2.2.0": {
+      "name": "noty",
+      "version": "2.2.0",
+      "title": "noty - a jquery notification plugin",
+      "description": "noty is a jQuery plugin that makes it easy to create alert - success - error - warning - information - confirmation messages as an alternative the standard alert dialog. Each notification is added to a queue. (Optional)",
+      "homepage": "http://needim.github.com/noty",
+      "author": { "name": "Nedim Arabacı", "url": "http://github.com/needim/" },
+      "licenses": [{ "type": "MIT", "url": "http://noty.mit-license.org/" }],
+      "scripts": { "build": "grunt build" },
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/needim/noty.git"
+      },
+      "dependencies": {},
+      "devDependencies": {
+        "grunt": "~0.4.1",
+        "grunt-contrib-uglify": "~0.2.2",
+        "grunt-contrib-concat": "~0.3.0"
+      },
+      "bugs": { "url": "https://github.com/needim/noty/issues" },
+      "_id": "noty@2.2.0",
+      "dist": {
+        "shasum": "06031050e6a5b0794306545da3ee46a2390e3c0d",
+        "tarball": "https://registry.npmjs.org/noty/-/noty-2.2.0.tgz"
+      },
+      "_from": ".",
+      "_npmVersion": "1.2.25",
+      "_npmUser": { "name": "harishanchu", "email": "harishanchu@gmail.com" },
+      "maintainers": [
+        { "name": "harishanchu", "email": "harishanchu@gmail.com" }
+      ],
+      "directories": {}
+    },
+    "2.2.1": {
+      "name": "noty",
+      "version": "2.2.1",
+      "title": "noty - a jquery notification plugin",
+      "description": "noty is a jQuery plugin that makes it easy to create alert - success - error - warning - information - confirmation messages as an alternative the standard alert dialog. Each notification is added to a queue. (Optional)",
+      "homepage": "http://needim.github.com/noty",
+      "author": { "name": "Nedim Arabacı", "url": "http://github.com/needim/" },
+      "licenses": [{ "type": "MIT", "url": "http://noty.mit-license.org/" }],
+      "scripts": { "build": "grunt build" },
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/needim/noty.git"
+      },
+      "dependencies": {},
+      "devDependencies": {
+        "grunt": "~0.4.1",
+        "grunt-contrib-uglify": "~0.2.2",
+        "grunt-contrib-concat": "~0.3.0"
+      },
+      "bugs": { "url": "https://github.com/needim/noty/issues" },
+      "_id": "noty@2.2.1",
+      "dist": {
+        "shasum": "ba047ebdb28cfa0e7ea15778c42d55c03074d1e3",
+        "tarball": "https://registry.npmjs.org/noty/-/noty-2.2.01.tgz"
+      },
+      "_from": ".",
+      "_npmVersion": "1.2.25",
+      "_npmUser": { "name": "harishanchu", "email": "harishanchu@gmail.com" },
+      "maintainers": [
+        { "name": "harishanchu", "email": "harishanchu@gmail.com" }
+      ],
+      "directories": {}
+    },
+    "2.2.2": {
+      "name": "noty",
+      "version": "2.2.2",
+      "title": "noty - a jquery notification plugin",
+      "description": "noty is a jQuery plugin that makes it easy to create alert - success - error - warning - information - confirmation messages as an alternative the standard alert dialog. Each notification is added to a queue. (Optional)",
+      "homepage": "http://needim.github.com/noty",
+      "author": { "name": "Nedim Arabacı", "url": "http://github.com/needim/" },
+      "licenses": [{ "type": "MIT", "url": "http://noty.mit-license.org/" }],
+      "scripts": { "build": "grunt build" },
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/needim/noty.git"
+      },
+      "dependencies": { "jquery": ">=1.8" },
+      "devDependencies": {
+        "grunt": "~0.4.1",
+        "grunt-contrib-uglify": "~0.2.2",
+        "grunt-contrib-concat": "~0.3.0"
+      },
+      "bugs": { "url": "https://github.com/needim/noty/issues" },
+      "_id": "noty@2.2.2",
+      "dist": {
+        "shasum": "88d326ce3071fe53cb1fb591a013f67ee8c6b02c",
+        "tarball": "https://registry.npmjs.org/noty/-/noty-2.2.02.tgz"
+      },
+      "_from": ".",
+      "_npmVersion": "1.2.25",
+      "_npmUser": { "name": "harishanchu", "email": "harishanchu@gmail.com" },
+      "maintainers": [
+        { "name": "harishanchu", "email": "harishanchu@gmail.com" }
+      ],
+      "directories": {}
+    },
+    "2.2.10": {
+      "name": "noty",
+      "version": "2.2.10",
+      "title": "noty - a jquery notification plugin",
+      "description": "noty is a jQuery plugin that makes it easy to create alert - success - error - warning - information - confirmation messages as an alternative the standard alert dialog. Each notification is added to a queue. (Optional)",
+      "homepage": "http://needim.github.com/noty",
+      "author": { "name": "Nedim Arabacı", "url": "http://github.com/needim/" },
+      "licenses": [{ "type": "MIT", "url": "http://noty.mit-license.org/" }],
+      "scripts": { "build": "grunt build" },
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/needim/noty.git"
+      },
+      "dependencies": {},
+      "devDependencies": {
+        "grunt": "~0.4.5",
+        "grunt-contrib-uglify": "~0.4.0",
+        "grunt-contrib-concat": "~0.4.0",
+        "grunt-bump": "0.0.14",
+        "grunt-wrap": "^0.3.0"
+      },
+      "bugs": { "url": "https://github.com/needim/noty/issues" },
+      "_id": "noty@2.2.10",
+      "dist": {
+        "shasum": "04b71cc554d07afadc809ff4b131ba0ba362df54",
+        "tarball": "https://registry.npmjs.org/noty/-/noty-2.2.10.tgz"
+      },
+      "_from": ".",
+      "_npmVersion": "1.4.3",
+      "_npmUser": { "name": "needim", "email": "nedimarabaci@gmail.com" },
+      "maintainers": [
+        { "name": "harishanchu", "email": "harishanchu@gmail.com" },
+        { "name": "needim", "email": "nedimarabaci@gmail.com" }
+      ],
+      "directories": {}
+    },
+    "2.3.0": {
+      "name": "noty",
+      "version": "2.3.0",
+      "title": "noty - a jquery notification plugin",
+      "description": "noty is a jQuery plugin that makes it easy to create alert - success - error - warning - information - confirmation messages as an alternative the standard alert dialog. Each notification is added to a queue. (Optional)",
+      "homepage": "http://needim.github.com/noty",
+      "author": { "name": "Nedim Arabacı", "url": "http://github.com/needim/" },
+      "licenses": [{ "type": "MIT", "url": "http://noty.mit-license.org/" }],
+      "scripts": { "build": "grunt build" },
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/needim/noty.git"
+      },
+      "dependencies": {},
+      "devDependencies": {
+        "grunt": "~0.4.5",
+        "grunt-contrib-uglify": "~0.4.0",
+        "grunt-contrib-concat": "~0.4.0",
+        "grunt-bump": "0.0.14",
+        "grunt-wrap": "^0.3.0"
+      },
+      "gitHead": "fc67dfbbb78bcf1a8cd6fdeb0ead34ebf9ed24a4",
+      "bugs": { "url": "https://github.com/needim/noty/issues" },
+      "_id": "noty@2.3.0",
+      "_shasum": "0369be1a07afc6a4526a746b1846540a68098ecd",
+      "_from": ".",
+      "_npmVersion": "1.4.28",
+      "_npmUser": { "name": "needim", "email": "nedimarabaci@gmail.com" },
+      "maintainers": [
+        { "name": "harishanchu", "email": "harishanchu@gmail.com" },
+        { "name": "needim", "email": "nedimarabaci@gmail.com" }
+      ],
+      "dist": {
+        "shasum": "0369be1a07afc6a4526a746b1846540a68098ecd",
+        "tarball": "https://registry.npmjs.org/noty/-/noty-2.3.0.tgz"
+      },
+      "directories": {}
+    },
+    "2.3.1": {
+      "name": "noty",
+      "version": "2.3.1",
+      "title": "noty - a jquery notification plugin",
+      "description": "noty is a jQuery plugin that makes it easy to create alert - success - error - warning - information - confirmation messages as an alternative the standard alert dialog. Each notification is added to a queue. (Optional)",
+      "homepage": "http://needim.github.com/noty",
+      "author": { "name": "Nedim Arabacı", "url": "http://github.com/needim/" },
+      "licenses": [{ "type": "MIT", "url": "http://noty.mit-license.org/" }],
+      "scripts": { "build": "grunt build" },
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/needim/noty.git"
+      },
+      "dependencies": {},
+      "devDependencies": {
+        "grunt": "~0.4.5",
+        "grunt-contrib-uglify": "~0.4.0",
+        "grunt-contrib-concat": "~0.4.0",
+        "grunt-bump": "0.0.14",
+        "grunt-wrap": "^0.3.0"
+      },
+      "gitHead": "de923b7e067887767f46af9f89b09a5e52fb1a33",
+      "bugs": { "url": "https://github.com/needim/noty/issues" },
+      "_id": "noty@2.3.1",
+      "_shasum": "149cb86e9cd3420638778c1cf12e21180fd99ce4",
+      "_from": ".",
+      "_npmVersion": "1.4.28",
+      "_npmUser": { "name": "needim", "email": "nedimarabaci@gmail.com" },
+      "maintainers": [
+        { "name": "harishanchu", "email": "harishanchu@gmail.com" },
+        { "name": "needim", "email": "nedimarabaci@gmail.com" }
+      ],
+      "dist": {
+        "shasum": "149cb86e9cd3420638778c1cf12e21180fd99ce4",
+        "tarball": "https://registry.npmjs.org/noty/-/noty-2.3.1.tgz"
+      },
+      "directories": {}
+    },
+    "2.3.2": {
+      "name": "noty",
+      "version": "2.3.2",
+      "title": "noty - a jquery notification plugin",
+      "description": "noty is a jQuery plugin that makes it easy to create alert - success - error - warning - information - confirmation messages as an alternative the standard alert dialog. Each notification is added to a queue. (Optional)",
+      "homepage": "http://needim.github.com/noty",
+      "author": { "name": "Nedim Arabacı", "url": "http://github.com/needim/" },
+      "licenses": [{ "type": "MIT", "url": "http://noty.mit-license.org/" }],
+      "scripts": { "build": "grunt build" },
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/needim/noty.git"
+      },
+      "dependencies": {},
+      "devDependencies": {
+        "grunt": "~0.4.5",
+        "grunt-contrib-uglify": "~0.4.0",
+        "grunt-contrib-concat": "~0.4.0",
+        "grunt-bump": "0.0.14",
+        "grunt-wrap": "^0.3.0"
+      },
+      "gitHead": "76eed489c01943ef2a17d2cb6ef6d5cffb809ad4",
+      "bugs": { "url": "https://github.com/needim/noty/issues" },
+      "_id": "noty@2.3.2",
+      "_shasum": "f7472be690be032496b62c2d2b8e16fd73eb309a",
+      "_from": ".",
+      "_npmVersion": "1.4.28",
+      "_npmUser": { "name": "needim", "email": "nedimarabaci@gmail.com" },
+      "maintainers": [
+        { "name": "harishanchu", "email": "harishanchu@gmail.com" },
+        { "name": "needim", "email": "nedimarabaci@gmail.com" }
+      ],
+      "dist": {
+        "shasum": "f7472be690be032496b62c2d2b8e16fd73eb309a",
+        "tarball": "https://registry.npmjs.org/noty/-/noty-2.3.2.tgz"
+      },
+      "directories": {}
+    },
+    "2.3.3": {
+      "name": "noty",
+      "version": "2.3.3",
+      "title": "noty - a jquery notification plugin",
+      "description": "noty is a jQuery plugin that makes it easy to create alert - success - error - warning - information - confirmation messages as an alternative the standard alert dialog. Each notification is added to a queue. (Optional)",
+      "homepage": "http://needim.github.com/noty",
+      "author": { "name": "Nedim Arabacı", "url": "http://github.com/needim/" },
+      "licenses": [{ "type": "MIT", "url": "http://noty.mit-license.org/" }],
+      "scripts": { "build": "grunt build" },
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/needim/noty.git"
+      },
+      "dependencies": {},
+      "devDependencies": {
+        "grunt": "~0.4.5",
+        "grunt-contrib-uglify": "~0.4.0",
+        "grunt-contrib-concat": "~0.4.0",
+        "grunt-bump": "0.0.14",
+        "grunt-wrap": "^0.3.0"
+      },
+      "gitHead": "c22d1aaf94b8ec4153523cd1d7800931dc8a31be",
+      "bugs": { "url": "https://github.com/needim/noty/issues" },
+      "_id": "noty@2.3.3",
+      "_shasum": "a84779008fdfff1abd296566f87461a1a8c3160e",
+      "_from": ".",
+      "_npmVersion": "1.4.28",
+      "_npmUser": { "name": "needim", "email": "nedimarabaci@gmail.com" },
+      "maintainers": [
+        { "name": "harishanchu", "email": "harishanchu@gmail.com" },
+        { "name": "needim", "email": "nedimarabaci@gmail.com" }
+      ],
+      "dist": {
+        "shasum": "a84779008fdfff1abd296566f87461a1a8c3160e",
+        "tarball": "https://registry.npmjs.org/noty/-/noty-2.3.3.tgz"
+      },
+      "directories": {}
+    },
+    "2.3.4": {
+      "name": "noty",
+      "version": "2.3.4",
+      "title": "noty - a jquery notification plugin",
+      "description": "noty is a jQuery plugin that makes it easy to create alert - success - error - warning - information - confirmation messages as an alternative the standard alert dialog. Each notification is added to a queue. (Optional)",
+      "homepage": "http://needim.github.com/noty",
+      "author": { "name": "Nedim Arabacı", "url": "http://github.com/needim/" },
+      "licenses": [{ "type": "MIT", "url": "http://noty.mit-license.org/" }],
+      "scripts": { "build": "grunt build" },
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/needim/noty.git"
+      },
+      "dependencies": {},
+      "devDependencies": {
+        "grunt": "~0.4.5",
+        "grunt-contrib-uglify": "~0.4.0",
+        "grunt-contrib-concat": "~0.4.0",
+        "grunt-bump": "0.0.14",
+        "grunt-wrap": "^0.3.0"
+      },
+      "gitHead": "d93ecb6ab4558431921cb8f55b12fbaa7bd77c55",
+      "bugs": { "url": "https://github.com/needim/noty/issues" },
+      "_id": "noty@2.3.4",
+      "_shasum": "3dc5ddb69438513eb6dedcfeb29539127178915e",
+      "_from": ".",
+      "_npmVersion": "1.4.28",
+      "_npmUser": { "name": "needim", "email": "nedimarabaci@gmail.com" },
+      "maintainers": [
+        { "name": "harishanchu", "email": "harishanchu@gmail.com" },
+        { "name": "needim", "email": "nedimarabaci@gmail.com" }
+      ],
+      "dist": {
+        "shasum": "3dc5ddb69438513eb6dedcfeb29539127178915e",
+        "tarball": "https://registry.npmjs.org/noty/-/noty-2.3.4.tgz"
+      },
+      "directories": {}
+    },
+    "2.3.5": {
+      "name": "noty",
+      "version": "2.3.5",
+      "title": "noty - a jquery notification plugin",
+      "description": "noty is a jQuery plugin that makes it easy to create alert - success - error - warning - information - confirmation messages as an alternative the standard alert dialog. Each notification is added to a queue. (Optional)",
+      "homepage": "http://needim.github.com/noty",
+      "author": { "name": "Nedim Arabacı", "url": "http://github.com/needim/" },
+      "licenses": [{ "type": "MIT", "url": "http://noty.mit-license.org/" }],
+      "scripts": { "build": "grunt build" },
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/needim/noty.git"
+      },
+      "main": "js/noty/packaged/jquery.noty.packaged.js",
+      "dependencies": {},
+      "devDependencies": {
+        "grunt": "~0.4.5",
+        "grunt-contrib-uglify": "~0.4.0",
+        "grunt-contrib-concat": "~0.4.0",
+        "grunt-bump": "0.0.14",
+        "grunt-wrap": "^0.3.0"
+      },
+      "gitHead": "533a81e41c4383b01a758bcc735099eacebc579f",
+      "bugs": { "url": "https://github.com/needim/noty/issues" },
+      "_id": "noty@2.3.5",
+      "_shasum": "a16c0d8e078b896323b465447500807e9eaca167",
+      "_from": ".",
+      "_npmVersion": "2.7.4",
+      "_nodeVersion": "0.12.0",
+      "_npmUser": { "name": "needim", "email": "nedimarabaci@gmail.com" },
+      "maintainers": [
+        { "name": "harishanchu", "email": "harishanchu@gmail.com" },
+        { "name": "needim", "email": "nedimarabaci@gmail.com" }
+      ],
+      "dist": {
+        "shasum": "a16c0d8e078b896323b465447500807e9eaca167",
+        "tarball": "https://registry.npmjs.org/noty/-/noty-2.3.5.tgz"
+      },
+      "directories": {}
+    },
+    "2.3.6": {
+      "name": "noty",
+      "version": "2.3.6",
+      "title": "noty - a jquery notification plugin",
+      "description": "noty is a jQuery plugin that makes it easy to create alert - success - error - warning - information - confirmation messages as an alternative the standard alert dialog. Each notification is added to a queue. (Optional)",
+      "homepage": "http://needim.github.com/noty",
+      "author": { "name": "Nedim Arabacı", "url": "http://github.com/needim/" },
+      "licenses": [{ "type": "MIT", "url": "http://noty.mit-license.org/" }],
+      "scripts": { "build": "grunt build" },
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/needim/noty.git"
+      },
+      "main": "js/noty/packaged/jquery.noty.packaged.js",
+      "dependencies": {},
+      "devDependencies": {
+        "grunt": "~0.4.5",
+        "grunt-contrib-uglify": "~0.4.0",
+        "grunt-contrib-concat": "~0.4.0",
+        "grunt-bump": "0.0.14",
+        "grunt-wrap": "^0.3.0"
+      },
+      "gitHead": "e3b341ed49e349336f061c40d3ee103924371adb",
+      "bugs": { "url": "https://github.com/needim/noty/issues" },
+      "_id": "noty@2.3.6",
+      "_shasum": "7a6a81eb8fcce46ee9e184036a50a0d87de68e81",
+      "_from": ".",
+      "_npmVersion": "2.7.4",
+      "_nodeVersion": "0.12.0",
+      "_npmUser": { "name": "needim", "email": "nedimarabaci@gmail.com" },
+      "maintainers": [
+        { "name": "harishanchu", "email": "harishanchu@gmail.com" },
+        { "name": "needim", "email": "nedimarabaci@gmail.com" }
+      ],
+      "dist": {
+        "shasum": "7a6a81eb8fcce46ee9e184036a50a0d87de68e81",
+        "tarball": "https://registry.npmjs.org/noty/-/noty-2.3.6.tgz"
+      },
+      "directories": {}
+    },
+    "2.3.7": {
+      "name": "noty",
+      "version": "2.3.7",
+      "title": "noty - a jquery notification plugin",
+      "description": "noty is a jQuery plugin that makes it easy to create alert - success - error - warning - information - confirmation messages as an alternative the standard alert dialog. Each notification is added to a queue. (Optional)",
+      "homepage": "http://needim.github.com/noty",
+      "author": { "name": "Nedim Arabacı", "url": "http://github.com/needim/" },
+      "licenses": [{ "type": "MIT", "url": "http://noty.mit-license.org/" }],
+      "scripts": { "build": "grunt build" },
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/needim/noty.git"
+      },
+      "main": "js/noty/packaged/jquery.noty.packaged.js",
+      "dependencies": {},
+      "devDependencies": {
+        "grunt": "~0.4.5",
+        "grunt-contrib-uglify": "~0.4.0",
+        "grunt-contrib-concat": "~0.4.0",
+        "grunt-bump": "0.0.14",
+        "grunt-wrap": "^0.3.0"
+      },
+      "gitHead": "25f66d6741914b4c0ed2cb6c8d5fe5036420dfea",
+      "bugs": { "url": "https://github.com/needim/noty/issues" },
+      "_id": "noty@2.3.7",
+      "_shasum": "78ae49183c56861c3584904096d07672ab49d116",
+      "_from": ".",
+      "_npmVersion": "2.7.4",
+      "_nodeVersion": "0.12.0",
+      "_npmUser": { "name": "needim", "email": "nedimarabaci@gmail.com" },
+      "maintainers": [
+        { "name": "harishanchu", "email": "harishanchu@gmail.com" },
+        { "name": "needim", "email": "nedimarabaci@gmail.com" }
+      ],
+      "dist": {
+        "shasum": "78ae49183c56861c3584904096d07672ab49d116",
+        "tarball": "https://registry.npmjs.org/noty/-/noty-2.3.7.tgz"
+      },
+      "directories": {}
+    },
+    "2.3.8": {
+      "name": "noty",
+      "version": "2.3.8",
+      "title": "noty - a jquery notification plugin",
+      "description": "noty is a jQuery plugin that makes it easy to create alert - success - error - warning - information - confirmation messages as an alternative the standard alert dialog. Each notification is added to a queue. (Optional)",
+      "homepage": "http://needim.github.com/noty",
+      "author": { "name": "Nedim Arabacı", "url": "http://github.com/needim/" },
+      "licenses": [{ "type": "MIT", "url": "http://noty.mit-license.org/" }],
+      "scripts": { "build": "grunt build" },
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/needim/noty.git"
+      },
+      "main": "js/noty/packaged/jquery.noty.packaged.js",
+      "dependencies": {},
+      "devDependencies": {
+        "grunt": "~0.4.5",
+        "grunt-contrib-uglify": "~0.4.0",
+        "grunt-contrib-concat": "~0.4.0",
+        "grunt-bump": "0.0.14",
+        "grunt-wrap": "^0.3.0"
+      },
+      "gitHead": "6fe2cf81c7b8ecdbdafaa875b82b78cf65e2f100",
+      "bugs": { "url": "https://github.com/needim/noty/issues" },
+      "_id": "noty@2.3.8",
+      "_shasum": "5aeb71878e4ed2ebd58c88319cbfd7fb213b1f08",
+      "_from": ".",
+      "_npmVersion": "3.3.12",
+      "_nodeVersion": "5.4.0",
+      "_npmUser": { "name": "needim", "email": "nedimarabaci@gmail.com" },
+      "dist": {
+        "shasum": "5aeb71878e4ed2ebd58c88319cbfd7fb213b1f08",
+        "tarball": "https://registry.npmjs.org/noty/-/noty-2.3.8.tgz"
+      },
+      "maintainers": [
+        { "name": "harishanchu", "email": "harishanchu@gmail.com" },
+        { "name": "needim", "email": "nedimarabaci@gmail.com" }
+      ],
+      "directories": {}
+    },
+    "2.3.10": {
+      "name": "noty",
+      "version": "2.3.10",
+      "title": "noty - a jquery notification plugin",
+      "description": "noty is a jQuery plugin that makes it easy to create alert - success - error - warning - information - confirmation messages as an alternative the standard alert dialog. Each notification is added to a queue. (Optional)",
+      "homepage": "http://needim.github.com/noty",
+      "author": { "name": "Nedim Arabacı", "url": "http://github.com/needim/" },
+      "licenses": [{ "type": "MIT", "url": "http://noty.mit-license.org/" }],
+      "scripts": { "build": "grunt build" },
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/needim/noty.git"
+      },
+      "main": "js/noty/packaged/jquery.noty.packaged.js",
+      "dependencies": {},
+      "devDependencies": {
+        "grunt": "~1.0.0",
+        "grunt-contrib-uglify": "~1.0.1",
+        "grunt-contrib-concat": "~1.0.1",
+        "grunt-bump": "0.8.0",
+        "grunt-wrap": "^0.3.0"
+      },
+      "gitHead": "0a9ab6f14feeda587251b82c6720e2a004e1eb58",
+      "bugs": { "url": "https://github.com/needim/noty/issues" },
+      "_id": "noty@2.3.10",
+      "_shasum": "b1736246d711e1841948bf818220d077774c982c",
+      "_from": ".",
+      "_npmVersion": "3.3.12",
+      "_nodeVersion": "5.4.0",
+      "_npmUser": { "name": "needim", "email": "nedimarabaci@gmail.com" },
+      "dist": {
+        "shasum": "b1736246d711e1841948bf818220d077774c982c",
+        "tarball": "https://registry.npmjs.org/noty/-/noty-2.3.10.tgz"
+      },
+      "maintainers": [
+        { "name": "harishanchu", "email": "harishanchu@gmail.com" },
+        { "name": "needim", "email": "nedimarabaci@gmail.com" }
+      ],
+      "_npmOperationalInternal": {
+        "host": "packages-18-east.internal.npmjs.com",
+        "tmp": "tmp/noty-2.3.10.tgz_1481597160771_0.20897309388965368"
+      },
+      "directories": {}
+    },
+    "2.3.11": {
+      "name": "noty",
+      "version": "2.3.11",
+      "title": "noty - a jquery notification plugin",
+      "description": "noty is a jQuery plugin that makes it easy to create alert - success - error - warning - information - confirmation messages as an alternative the standard alert dialog. Each notification is added to a queue. (Optional)",
+      "homepage": "http://needim.github.com/noty",
+      "author": { "name": "Nedim Arabacı", "url": "http://github.com/needim/" },
+      "licenses": [{ "type": "MIT", "url": "http://noty.mit-license.org/" }],
+      "scripts": { "build": "grunt build" },
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/needim/noty.git"
+      },
+      "main": "js/noty/packaged/jquery.noty.packaged.js",
+      "dependencies": {},
+      "devDependencies": {
+        "grunt": "~1.0.0",
+        "grunt-contrib-uglify": "~1.0.1",
+        "grunt-contrib-concat": "~1.0.1",
+        "grunt-bump": "0.8.0",
+        "grunt-wrap": "^0.3.0"
+      },
+      "gitHead": "d03d12f3e712253ef06184b85e5629b1aef43acb",
+      "bugs": { "url": "https://github.com/needim/noty/issues" },
+      "_id": "noty@2.3.11",
+      "_shasum": "be0ac8d624de9ba16276dda50a708d893f3d35a8",
+      "_from": ".",
+      "_npmVersion": "3.3.12",
+      "_nodeVersion": "5.4.0",
+      "_npmUser": { "name": "needim", "email": "nedimarabaci@gmail.com" },
+      "dist": {
+        "shasum": "be0ac8d624de9ba16276dda50a708d893f3d35a8",
+        "tarball": "https://registry.npmjs.org/noty/-/noty-2.3.11.tgz"
+      },
+      "maintainers": [
+        { "name": "harishanchu", "email": "harishanchu@gmail.com" },
+        { "name": "needim", "email": "nedimarabaci@gmail.com" }
+      ],
+      "_npmOperationalInternal": {
+        "host": "packages-18-east.internal.npmjs.com",
+        "tmp": "tmp/noty-2.3.11.tgz_1482268327276_0.7256892961449921"
+      },
+      "directories": {}
+    },
+    "2.4.0": {
+      "name": "noty",
+      "version": "2.4.0",
+      "title": "noty - a jquery notification plugin",
+      "description": "noty is a jQuery plugin that makes it easy to create alert - success - error - warning - information - confirmation messages as an alternative the standard alert dialog. Each notification is added to a queue. (Optional)",
+      "homepage": "http://needim.github.com/noty",
+      "author": { "name": "Nedim Arabacı", "url": "http://github.com/needim/" },
+      "licenses": [{ "type": "MIT", "url": "http://noty.mit-license.org/" }],
+      "scripts": { "build": "grunt build" },
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/needim/noty.git"
+      },
+      "main": "js/noty/packaged/jquery.noty.packaged.js",
+      "dependencies": {},
+      "devDependencies": {
+        "grunt": "~1.0.0",
+        "grunt-contrib-uglify": "~1.0.1",
+        "grunt-contrib-concat": "~1.0.1",
+        "grunt-bump": "0.8.0",
+        "grunt-wrap": "^0.3.0"
+      },
+      "gitHead": "5a558f57b2619a9c24063faa11cef07d77d65a78",
+      "bugs": { "url": "https://github.com/needim/noty/issues" },
+      "_id": "noty@2.4.0",
+      "_shasum": "e4eed6afed1661950631b8eed0c7fc23fc02da9a",
+      "_from": ".",
+      "_npmVersion": "3.3.12",
+      "_nodeVersion": "5.4.0",
+      "_npmUser": { "name": "needim", "email": "nedimarabaci@gmail.com" },
+      "dist": {
+        "shasum": "e4eed6afed1661950631b8eed0c7fc23fc02da9a",
+        "tarball": "https://registry.npmjs.org/noty/-/noty-2.4.0.tgz"
+      },
+      "maintainers": [
+        { "name": "harishanchu", "email": "harishanchu@gmail.com" },
+        { "name": "needim", "email": "nedimarabaci@gmail.com" }
+      ],
+      "_npmOperationalInternal": {
+        "host": "packages-18-east.internal.npmjs.com",
+        "tmp": "tmp/noty-2.4.0.tgz_1484630525754_0.9351972101721913"
+      },
+      "directories": {}
+    },
+    "2.4.1": {
+      "name": "noty",
+      "version": "2.4.1",
+      "title": "noty - a jquery notification plugin",
+      "description": "noty is a jQuery plugin that makes it easy to create alert - success - error - warning - information - confirmation messages as an alternative the standard alert dialog. Each notification is added to a queue. (Optional)",
+      "homepage": "http://needim.github.com/noty",
+      "author": { "name": "Nedim Arabacı", "url": "http://github.com/needim/" },
+      "licenses": [{ "type": "MIT", "url": "http://noty.mit-license.org/" }],
+      "scripts": { "build": "grunt build" },
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/needim/noty.git"
+      },
+      "main": "js/noty/packaged/jquery.noty.packaged.js",
+      "dependencies": {},
+      "devDependencies": {
+        "grunt": "~1.0.0",
+        "grunt-contrib-uglify": "~1.0.1",
+        "grunt-contrib-concat": "~1.0.1",
+        "grunt-bump": "0.8.0",
+        "grunt-wrap": "^0.3.0"
+      },
+      "gitHead": "ebb543ef0a3c039cdb7cdae887197ffa43433d52",
+      "bugs": { "url": "https://github.com/needim/noty/issues" },
+      "_id": "noty@2.4.1",
+      "_shasum": "4327fb0985fe93f6aadb929fa6807fa3ccd86a07",
+      "_from": ".",
+      "_npmVersion": "3.3.12",
+      "_nodeVersion": "5.4.0",
+      "_npmUser": { "name": "needim", "email": "nedimarabaci@gmail.com" },
+      "dist": {
+        "shasum": "4327fb0985fe93f6aadb929fa6807fa3ccd86a07",
+        "tarball": "https://registry.npmjs.org/noty/-/noty-2.4.1.tgz"
+      },
+      "maintainers": [
+        { "name": "harishanchu", "email": "harishanchu@gmail.com" },
+        { "name": "needim", "email": "nedimarabaci@gmail.com" }
+      ],
+      "_npmOperationalInternal": {
+        "host": "packages-18-east.internal.npmjs.com",
+        "tmp": "tmp/noty-2.4.1.tgz_1487215744575_0.8737066392786801"
+      },
+      "directories": {}
+    },
+    "3.0.0": {
+      "name": "noty",
+      "version": "3.0.0",
+      "title": "Noty - Notification Plugin",
+      "description": "Noty is a plugin that makes it easy to create alert - success - error - warning - information - confirmation messages as an alternative the standard alert dialog. Each notification is added to a queue. (Optional)",
+      "homepage": "http://ned.im/noty",
+      "main": "lib/noty.js",
+      "keywords": ["noty", "notification", "alert", "confirmation"],
+      "files": ["lib", "src"],
+      "bugs": { "url": "https://github.com/needim/noty/issues" },
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/needim/noty.git"
+      },
+      "author": { "name": "Nedim Arabacı", "url": "http://ned.im" },
+      "licenses": [{ "type": "MIT", "url": "http://noty.mit-license.org/" }],
+      "scripts": {
+        "build": "webpack --env build",
+        "dev": "webpack --progress --colors --watch --env dev",
+        "test": "mocha --compilers js:babel-core/register --colors -r jsdom-global/register ./test/*.spec.js",
+        "test:watch": "mocha --compilers js:babel-core/register --colors -r jsdom-global/register -w ./test/*.spec.js"
+      },
+      "devDependencies": {
+        "autoprefixer": "^6.3.6",
+        "babel": "6.5.2",
+        "babel-core": "6.22.1",
+        "babel-eslint": "7.1.1",
+        "babel-loader": "6.2.10",
+        "babel-plugin-add-module-exports": "0.1.2",
+        "babel-preset-es2015": "6.22.0",
+        "chai": "3.4.1",
+        "css-loader": "^0.26.0",
+        "eslint": "1.7.2",
+        "eslint-loader": "1.6.1",
+        "extract-text-webpack-plugin": "^2.0.0-beta",
+        "jsdom": "9.12.0",
+        "jsdom-global": "2.1.1",
+        "mocha": "2.3.4",
+        "node-sass": "^4.1.0",
+        "postcss-loader": "^1.0.0",
+        "sass-loader": "^4.0.1",
+        "style-loader": "^0.13.1",
+        "webpack": "2.2.1",
+        "yargs": "6.6.0"
+      },
+      "gitHead": "97d312232ffdc4266234a727a3784772644deab3",
+      "_id": "noty@3.0.0",
+      "_shasum": "e68aef31739f39e0775ac96022d3b8f4fb95820a",
+      "_from": ".",
+      "_npmVersion": "3.3.12",
+      "_nodeVersion": "5.4.0",
+      "_npmUser": { "name": "needim", "email": "nedimarabaci@gmail.com" },
+      "dist": {
+        "shasum": "e68aef31739f39e0775ac96022d3b8f4fb95820a",
+        "tarball": "https://registry.npmjs.org/noty/-/noty-3.0.0.tgz"
+      },
+      "maintainers": [
+        { "name": "harishanchu", "email": "harishanchu@gmail.com" },
+        { "name": "needim", "email": "nedimarabaci@gmail.com" }
+      ],
+      "_npmOperationalInternal": {
+        "host": "packages-12-west.internal.npmjs.com",
+        "tmp": "tmp/noty-3.0.0.tgz_1491978528475_0.4670623380225152"
+      },
+      "directories": {}
+    },
+    "3.0.1": {
+      "name": "noty",
+      "version": "3.0.1",
+      "title": "Noty - Notification Plugin",
+      "description": "Noty is a plugin that makes it easy to create alert - success - error - warning - information - confirmation messages as an alternative the standard alert dialog. Each notification is added to a queue. (Optional)",
+      "homepage": "http://ned.im/noty",
+      "main": "lib/noty.js",
+      "keywords": ["noty", "notification", "alert", "confirmation"],
+      "files": ["lib", "src"],
+      "bugs": { "url": "https://github.com/needim/noty/issues" },
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/needim/noty.git"
+      },
+      "author": { "name": "Nedim Arabacı", "url": "http://ned.im" },
+      "licenses": [{ "type": "MIT", "url": "http://noty.mit-license.org/" }],
+      "scripts": {
+        "build": "webpack --env build",
+        "dev": "webpack --progress --colors --watch --env dev",
+        "test": "ava",
+        "test:watch": "ava --watch"
+      },
+      "ava": {
+        "files": ["./test/*.test.js"],
+        "concurrency": 10,
+        "failFast": false,
+        "verbose": true
+      },
+      "devDependencies": {
+        "autoprefixer": "^6.3.6",
+        "ava": "^0.19.1",
+        "babel": "6.5.2",
+        "babel-core": "6.22.1",
+        "babel-eslint": "7.1.1",
+        "babel-loader": "6.2.10",
+        "babel-plugin-add-module-exports": "0.1.2",
+        "babel-preset-es2015": "6.22.0",
+        "browser-env": "^2.0.30",
+        "css-loader": "^0.26.0",
+        "eslint": "^1.7.2",
+        "eslint-loader": "1.6.1",
+        "extract-text-webpack-plugin": "^2.0.0-beta",
+        "jsdom": "9.12.0",
+        "jsdom-global": "2.1.1",
+        "node-sass": "^4.1.0",
+        "postcss-loader": "^1.0.0",
+        "sass-loader": "^4.0.1",
+        "style-loader": "^0.13.1",
+        "webpack": "2.2.1",
+        "yargs": "6.6.0"
+      },
+      "gitHead": "d118db6db4177565db8c1fef2fb61960ae024573",
+      "_id": "noty@3.0.1",
+      "_shasum": "a8b3399681435e2fa02fd088eb8cbae78aa14aa4",
+      "_from": ".",
+      "_npmVersion": "4.5.0",
+      "_nodeVersion": "7.9.0",
+      "_npmUser": { "name": "needim", "email": "nedimarabaci@gmail.com" },
+      "dist": {
+        "shasum": "a8b3399681435e2fa02fd088eb8cbae78aa14aa4",
+        "tarball": "https://registry.npmjs.org/noty/-/noty-3.0.1.tgz"
+      },
+      "maintainers": [
+        { "name": "harishanchu", "email": "harishanchu@gmail.com" },
+        { "name": "needim", "email": "nedimarabaci@gmail.com" }
+      ],
+      "_npmOperationalInternal": {
+        "host": "packages-18-east.internal.npmjs.com",
+        "tmp": "tmp/noty-3.0.1.tgz_1492097407991_0.19763419753871858"
+      },
+      "directories": {}
+    },
+    "3.1.0-beta": {
+      "name": "noty",
+      "version": "3.1.0-beta",
+      "title": "Noty - Notification library",
+      "description": "Noty is a library that makes it easy to create alert - success - error - warning - information - confirmation messages as an alternative the standard alert dialog. Each notification is added to a queue. (Optional)",
+      "homepage": "http://ned.im/noty",
+      "main": "lib/noty.js",
+      "keywords": ["noty", "notification", "alert", "confirmation"],
+      "files": ["lib", "src"],
+      "bugs": { "url": "https://github.com/needim/noty/issues" },
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/needim/noty.git"
+      },
+      "author": { "name": "Nedim Arabacı", "url": "http://ned.im" },
+      "license": "MIT",
+      "scripts": {
+        "build": "webpack --env build",
+        "dev": "webpack --progress --colors --watch --env dev",
+        "format": "prettier-standard 'src/**/*.js'",
+        "test": "npm run format && standard && grunt test",
+        "precommit-msg": "echo 'Pre-commit checks...' && exit 0"
+      },
+      "pre-commit": ["precommit-msg", "test"],
+      "standard": {
+        "ignore": ["demo/**/*", "lib/**", "test/**"],
+        "parser": "babel-eslint"
+      },
+      "devDependencies": {
+        "autoprefixer": "^6.3.6",
+        "babel-core": "6.24.1",
+        "babel-eslint": "7.2.2",
+        "babel-loader": "6.4.1",
+        "babel-plugin-add-module-exports": "0.2.1",
+        "babel-polyfill": "^6.23.0",
+        "babel-preset-es2015": "6.24.1",
+        "css-loader": "^0.26.0",
+        "eslint": "^3.19.0",
+        "eslint-loader": "1.7.1",
+        "extract-text-webpack-plugin": "2.1.0",
+        "grunt": "^1.0.1",
+        "grunt-contrib-connect": "^1.0.2",
+        "grunt-contrib-qunit": "^2.0.0",
+        "grunt-exec": "^2.0.0",
+        "grunt-saucelabs": "^9.0.0",
+        "load-grunt-tasks": "^3.5.2",
+        "node-sass": "^4.1.0",
+        "postcss-loader": "^1.0.0",
+        "pre-commit": "^1.2.2",
+        "prettier-standard": "^3.0.1",
+        "sass-loader": "^4.0.1",
+        "standard": "^10.0.2",
+        "standard-loader": "^6.0.1",
+        "style-loader": "^0.13.1",
+        "web-push": "^3.2.2",
+        "webpack": "2.4.1",
+        "yargs": "7.0.2"
+      },
+      "gitHead": "812a0967473aa878d83854920892799ec713cc3f",
+      "_id": "noty@3.1.0-beta",
+      "_shasum": "07636ff71cc2185953e699c287bcc90c657c79b7",
+      "_from": ".",
+      "_npmVersion": "4.5.0",
+      "_nodeVersion": "7.9.0",
+      "_npmUser": { "name": "needim", "email": "nedimarabaci@gmail.com" },
+      "dist": {
+        "shasum": "07636ff71cc2185953e699c287bcc90c657c79b7",
+        "tarball": "https://registry.npmjs.org/noty/-/noty-3.1.0-beta.tgz"
+      },
+      "maintainers": [
+        { "name": "harishanchu", "email": "harishanchu@gmail.com" },
+        { "name": "needim", "email": "nedimarabaci@gmail.com" }
+      ],
+      "_npmOperationalInternal": {
+        "host": "packages-12-west.internal.npmjs.com",
+        "tmp": "tmp/noty-3.1.0-beta.tgz_1492546784424_0.7885107286274433"
+      },
+      "directories": {}
+    },
+    "3.1.0": {
+      "name": "noty",
+      "version": "3.1.0",
+      "title": "Noty - Notification library",
+      "description": "Noty is a library that makes it easy to create alert - success - error - warning - information - confirmation messages as an alternative the standard alert dialog. Each notification is added to a queue. (Optional)",
+      "homepage": "http://ned.im/noty",
+      "main": "lib/noty.js",
+      "keywords": ["noty", "notification", "alert", "confirmation"],
+      "files": ["lib", "src"],
+      "bugs": { "url": "https://github.com/needim/noty/issues" },
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/needim/noty.git"
+      },
+      "author": { "name": "Nedim Arabacı", "url": "http://ned.im" },
+      "license": "MIT",
+      "scripts": {
+        "build": "webpack --env build",
+        "dev": "webpack --progress --colors --watch --env dev",
+        "format": "prettier-standard 'src/**/*.js'",
+        "test": "npm run format && standard && grunt test",
+        "precommit-msg": "echo 'Pre-commit checks...' && exit 0"
+      },
+      "pre-commit": ["precommit-msg", "test"],
+      "standard": {
+        "ignore": ["demo/**/*", "lib/**", "test/**"],
+        "parser": "babel-eslint"
+      },
+      "devDependencies": {
+        "autoprefixer": "^6.3.6",
+        "babel-core": "6.24.1",
+        "babel-eslint": "7.2.2",
+        "babel-loader": "6.4.1",
+        "babel-plugin-add-module-exports": "0.2.1",
+        "babel-preset-es2015": "6.24.1",
+        "css-loader": "^0.26.0",
+        "es6-promise": "^4.1.0",
+        "eslint": "^3.19.0",
+        "eslint-loader": "1.7.1",
+        "extract-text-webpack-plugin": "2.1.0",
+        "grunt": "^1.0.1",
+        "grunt-contrib-connect": "^1.0.2",
+        "grunt-contrib-qunit": "^2.0.0",
+        "grunt-exec": "^2.0.0",
+        "grunt-saucelabs": "^9.0.0",
+        "load-grunt-tasks": "^3.5.2",
+        "node-sass": "^4.1.0",
+        "postcss-loader": "^1.0.0",
+        "pre-commit": "^1.2.2",
+        "prettier-standard": "^3.0.1",
+        "sass-loader": "^4.0.1",
+        "standard": "^10.0.2",
+        "standard-loader": "^6.0.1",
+        "style-loader": "^0.13.1",
+        "web-push": "^3.2.2",
+        "webpack": "2.4.1",
+        "yargs": "7.0.2"
+      },
+      "gitHead": "846c376471e26ee9a2cf3ff223ca3600d987d2e4",
+      "_id": "noty@3.1.0",
+      "_shasum": "f407ae9c03d880cac4b5e8b7fd465f99866a0db2",
+      "_from": ".",
+      "_npmVersion": "4.5.0",
+      "_nodeVersion": "7.9.0",
+      "_npmUser": { "name": "needim", "email": "nedimarabaci@gmail.com" },
+      "dist": {
+        "shasum": "f407ae9c03d880cac4b5e8b7fd465f99866a0db2",
+        "tarball": "https://registry.npmjs.org/noty/-/noty-3.1.0.tgz"
+      },
+      "maintainers": [
+        { "name": "harishanchu", "email": "harishanchu@gmail.com" },
+        { "name": "needim", "email": "nedimarabaci@gmail.com" }
+      ],
+      "_npmOperationalInternal": {
+        "host": "packages-18-east.internal.npmjs.com",
+        "tmp": "tmp/noty-3.1.0.tgz_1493183686170_0.6040649767965078"
+      },
+      "directories": {}
+    },
+    "3.1.1": {
+      "name": "noty",
+      "version": "3.1.1",
+      "title": "Noty - Notification library",
+      "description": "Noty is a library that makes it easy to create alert - success - error - warning - information - confirmation messages as an alternative the standard alert dialog. Each notification is added to a queue. (Optional)",
+      "homepage": "http://ned.im/noty",
+      "main": "lib/noty.js",
+      "types": "index.d.ts",
+      "keywords": ["noty", "notification", "alert", "confirmation"],
+      "files": ["lib", "src", "index.d.ts"],
+      "bugs": { "url": "https://github.com/needim/noty/issues" },
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/needim/noty.git"
+      },
+      "author": { "name": "Nedim Arabacı", "url": "http://ned.im" },
+      "license": "MIT",
+      "scripts": {
+        "build": "webpack --env build && grunt banner",
+        "dev": "webpack --progress --colors --watch --env dev",
+        "format": "prettier-standard 'src/**/*.js'",
+        "test": "npm run format && standard && grunt test",
+        "precommit-msg": "echo 'Pre-commit checks...' && exit 0"
+      },
+      "pre-commit": ["precommit-msg", "test"],
+      "standard": {
+        "ignore": ["demo/**/*", "lib/**", "test/**"],
+        "parser": "babel-eslint"
+      },
+      "devDependencies": {
+        "autoprefixer": "^6.3.6",
+        "babel-core": "6.24.1",
+        "babel-eslint": "7.2.2",
+        "babel-loader": "6.4.1",
+        "babel-plugin-add-module-exports": "0.2.1",
+        "babel-preset-es2015": "6.24.1",
+        "css-loader": "^0.26.0",
+        "es6-promise": "^4.1.0",
+        "eslint": "^3.19.0",
+        "eslint-loader": "1.7.1",
+        "extract-text-webpack-plugin": "2.1.0",
+        "grunt": "^1.0.1",
+        "grunt-banner": "^0.6.0",
+        "grunt-contrib-connect": "^1.0.2",
+        "grunt-contrib-qunit": "^2.0.0",
+        "grunt-exec": "^2.0.0",
+        "grunt-saucelabs": "^9.0.0",
+        "load-grunt-tasks": "^3.5.2",
+        "node-sass": "^4.1.0",
+        "postcss-loader": "^1.0.0",
+        "pre-commit": "^1.2.2",
+        "prettier-standard": "^3.0.1",
+        "sass-loader": "^4.0.1",
+        "standard": "^10.0.2",
+        "standard-loader": "^6.0.1",
+        "style-loader": "^0.13.1",
+        "web-push": "^3.2.2",
+        "webpack": "2.4.1",
+        "yargs": "7.0.2"
+      },
+      "gitHead": "a6cccf802fd94c140558133a8321a7b2bd541fb0",
+      "_id": "noty@3.1.1",
+      "_shasum": "badd92d6857821f03467cd0d3e0a1bc962fb3e19",
+      "_from": ".",
+      "_npmVersion": "4.5.0",
+      "_nodeVersion": "7.9.0",
+      "_npmUser": { "name": "needim", "email": "nedimarabaci@gmail.com" },
+      "dist": {
+        "shasum": "badd92d6857821f03467cd0d3e0a1bc962fb3e19",
+        "tarball": "https://registry.npmjs.org/noty/-/noty-3.1.1.tgz"
+      },
+      "maintainers": [
+        { "name": "harishanchu", "email": "harishanchu@gmail.com" },
+        { "name": "needim", "email": "nedimarabaci@gmail.com" }
+      ],
+      "_npmOperationalInternal": {
+        "host": "s3://npm-registry-packages",
+        "tmp": "tmp/noty-3.1.1.tgz_1499818635110_0.21128156664781272"
+      },
+      "directories": {}
+    },
+    "3.1.2": {
+      "name": "noty",
+      "version": "3.1.2",
+      "title": "Noty - Notification library",
+      "description": "Noty is a library that makes it easy to create alert - success - error - warning - information - confirmation messages as an alternative the standard alert dialog. Each notification is added to a queue. (Optional)",
+      "homepage": "http://ned.im/noty",
+      "main": "lib/noty.js",
+      "types": "index.d.ts",
+      "keywords": ["noty", "notification", "alert", "confirmation"],
+      "files": ["lib", "src", "index.d.ts"],
+      "bugs": { "url": "https://github.com/needim/noty/issues" },
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/needim/noty.git"
+      },
+      "author": { "name": "Nedim Arabacı", "url": "http://ned.im" },
+      "license": "MIT",
+      "scripts": {
+        "build": "webpack --env build && grunt banner",
+        "dev": "webpack --progress --colors --watch --env dev",
+        "format": "prettier-standard 'src/**/*.js'",
+        "test": "npm run format && standard && grunt test",
+        "browserstack": "browserstack-runner",
+        "precommit-msg": "echo 'Pre-commit checks...' && exit 0",
+        "serve-docs": "docsify start ./docs"
+      },
+      "pre-commit": ["precommit-msg", "test"],
+      "standard": {
+        "ignore": ["demo/**/*", "docs/**/*", "lib/**", "test/**"],
+        "parser": "babel-eslint"
+      },
+      "devDependencies": {
+        "autoprefixer": "^6.3.6",
+        "babel-core": "6.24.1",
+        "babel-eslint": "7.2.2",
+        "babel-loader": "6.4.1",
+        "babel-plugin-add-module-exports": "0.2.1",
+        "babel-preset-es2015": "6.24.1",
+        "browserstack-runner": "^0.5.2",
+        "css-loader": "^0.26.0",
+        "docsify-cli": "^4.1.9",
+        "es6-promise": "^4.1.0",
+        "eslint": "^4.3.0",
+        "eslint-loader": "1.9.0",
+        "extract-text-webpack-plugin": "2.1.0",
+        "grunt": "^1.0.1",
+        "grunt-banner": "^0.6.0",
+        "grunt-contrib-connect": "^1.0.2",
+        "grunt-contrib-qunit": "^2.0.0",
+        "grunt-exec": "^2.0.0",
+        "grunt-saucelabs": "^9.0.0",
+        "load-grunt-tasks": "^3.5.2",
+        "node-sass": "^4.1.0",
+        "postcss-loader": "^1.0.0",
+        "pre-commit": "^1.2.2",
+        "prettier-standard": "^3.0.1",
+        "sass-loader": "^4.0.1",
+        "standard": "^10.0.2",
+        "standard-loader": "^6.0.1",
+        "style-loader": "^0.13.1",
+        "web-push": "^3.2.2",
+        "webpack": "2.4.1",
+        "yargs": "7.0.2"
+      },
+      "gitHead": "8cac04259d9fe5e5aa8b83639c9000bc08e94a57",
+      "_id": "noty@3.1.2",
+      "_npmVersion": "5.2.0",
+      "_nodeVersion": "7.9.0",
+      "_npmUser": { "name": "needim", "email": "nedimarabaci@gmail.com" },
+      "dist": {
+        "integrity": "sha512-5Rn8695fMcGTJdn8gIrG0sYXXNIEwc8BFq4EpyHF3rFwoAt7/kgN2lKrIZ0bUxtFZuYFcnfqwU+4uF6vm21bVg==",
+        "shasum": "301903fd8f9dd292ba61a35e15629302f745e4b3",
+        "tarball": "https://registry.npmjs.org/noty/-/noty-3.1.2.tgz"
+      },
+      "maintainers": [
+        { "name": "harishanchu", "email": "harishanchu@gmail.com" },
+        { "name": "needim", "email": "nedimarabaci@gmail.com" }
+      ],
+      "_npmOperationalInternal": {
+        "host": "s3://npm-registry-packages",
+        "tmp": "tmp/noty-3.1.2.tgz_1501177656642_0.13333967584185302"
+      },
+      "directories": {}
+    },
+    "3.1.3": {
+      "name": "noty",
+      "version": "3.1.3",
+      "title": "Noty - Notification library",
+      "description": "Noty is a library that makes it easy to create alert - success - error - warning - information - confirmation messages as an alternative the standard alert dialog. Each notification is added to a queue. (Optional)",
+      "homepage": "http://ned.im/noty",
+      "main": "lib/noty.js",
+      "types": "index.d.ts",
+      "keywords": ["noty", "notification", "alert", "confirmation"],
+      "files": ["lib", "src", "index.d.ts"],
+      "bugs": { "url": "https://github.com/needim/noty/issues" },
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/needim/noty.git"
+      },
+      "author": { "name": "Nedim Arabacı", "url": "http://ned.im" },
+      "license": "MIT",
+      "scripts": {
+        "build": "webpack --env dev && webpack --env build && grunt banner",
+        "dev": "webpack --progress --colors --watch --env dev",
+        "format": "prettier-standard 'src/**/*.js'",
+        "test": "npm run format && standard && grunt test",
+        "browserstack": "browserstack-runner",
+        "precommit-msg": "echo 'Pre-commit checks...' && exit 0",
+        "serve-docs": "docsify start ./docs"
+      },
+      "pre-commit": ["precommit-msg", "test"],
+      "standard": {
+        "ignore": ["demo/**/*", "docs/**/*", "lib/**", "test/**"],
+        "parser": "babel-eslint"
+      },
+      "devDependencies": {
+        "autoprefixer": "^6.3.6",
+        "babel-core": "6.24.1",
+        "babel-eslint": "7.2.2",
+        "babel-loader": "6.4.1",
+        "babel-plugin-add-module-exports": "0.2.1",
+        "babel-preset-es2015": "6.24.1",
+        "browserstack-runner": "^0.5.2",
+        "css-loader": "^0.26.0",
+        "docsify-cli": "^4.1.9",
+        "es6-promise": "^4.1.0",
+        "eslint": "^4.3.0",
+        "eslint-loader": "1.9.0",
+        "extract-text-webpack-plugin": "2.1.0",
+        "grunt": "^1.0.1",
+        "grunt-banner": "^0.6.0",
+        "grunt-contrib-connect": "^1.0.2",
+        "grunt-contrib-qunit": "^2.0.0",
+        "grunt-curl": "^2.2.1",
+        "grunt-exec": "^2.0.0",
+        "grunt-saucelabs": "^9.0.0",
+        "load-grunt-tasks": "^3.5.2",
+        "node-sass": "^4.1.0",
+        "postcss-loader": "^1.0.0",
+        "pre-commit": "^1.2.2",
+        "prettier-standard": "^3.0.1",
+        "sass-loader": "^4.0.1",
+        "standard": "^10.0.2",
+        "standard-loader": "^6.0.1",
+        "style-loader": "^0.13.1",
+        "web-push": "^3.2.2",
+        "webpack": "2.4.1",
+        "yargs": "7.0.2"
+      },
+      "gitHead": "6290b2ac8ca3460632015d1613d0426140a960da",
+      "_id": "noty@3.1.3",
+      "_npmVersion": "5.2.0",
+      "_nodeVersion": "7.9.0",
+      "_npmUser": { "name": "needim", "email": "nedimarabaci@gmail.com" },
+      "dist": {
+        "integrity": "sha512-7FwRr+ufgE0Fh6W9pmeeb1KLbCy1RWMQsIOt1L+ZG67/c7CJotmzo97tPu2p/ee5udazOlFjxpKtUNlN+0yO9A==",
+        "shasum": "4fbc8068b9b6b29386f73c902a9ff84ad612ab14",
+        "tarball": "https://registry.npmjs.org/noty/-/noty-3.1.3.tgz"
+      },
+      "maintainers": [
+        { "name": "harishanchu", "email": "harishanchu@gmail.com" },
+        { "name": "needim", "email": "nedimarabaci@gmail.com" }
+      ],
+      "_npmOperationalInternal": {
+        "host": "s3://npm-registry-packages",
+        "tmp": "tmp/noty-3.1.3.tgz_1505913787006_0.6264578632544726"
+      },
+      "directories": {}
+    },
+    "3.1.4": {
+      "name": "noty",
+      "version": "3.1.4",
+      "title": "Noty - Notification library",
+      "description": "Noty is a library that makes it easy to create alert - success - error - warning - information - confirmation messages as an alternative the standard alert dialog. Each notification is added to a queue. (Optional)",
+      "homepage": "http://ned.im/noty",
+      "main": "lib/noty.js",
+      "types": "index.d.ts",
+      "keywords": ["noty", "notification", "alert", "confirmation"],
+      "files": ["lib", "src", "index.d.ts"],
+      "bugs": { "url": "https://github.com/needim/noty/issues" },
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/needim/noty.git"
+      },
+      "author": { "name": "Nedim Arabacı", "url": "http://ned.im" },
+      "license": "MIT",
+      "scripts": {
+        "build": "webpack --env dev && webpack --env build && grunt banner",
+        "dev": "webpack --progress --colors --watch --env dev",
+        "format": "prettier-standard 'src/**/*.js'",
+        "test": "npm run format && standard && grunt test",
+        "browserstack": "browserstack-runner",
+        "precommit-msg": "echo 'Pre-commit checks...' && exit 0",
+        "serve-docs": "docsify start ./docs"
+      },
+      "pre-commit": ["precommit-msg", "test"],
+      "standard": {
+        "ignore": ["demo/**/*", "docs/**/*", "lib/**", "test/**"],
+        "parser": "babel-eslint"
+      },
+      "devDependencies": {
+        "autoprefixer": "^6.3.6",
+        "babel-core": "6.24.1",
+        "babel-eslint": "7.2.2",
+        "babel-loader": "6.4.1",
+        "babel-plugin-add-module-exports": "0.2.1",
+        "babel-preset-es2015": "6.24.1",
+        "browserstack-runner": "^0.5.2",
+        "css-loader": "^0.26.0",
+        "docsify-cli": "^4.1.9",
+        "es6-promise": "^4.1.0",
+        "eslint": "^4.3.0",
+        "eslint-loader": "1.9.0",
+        "extract-text-webpack-plugin": "2.1.0",
+        "grunt": "^1.0.1",
+        "grunt-banner": "^0.6.0",
+        "grunt-contrib-connect": "^1.0.2",
+        "grunt-contrib-qunit": "^2.0.0",
+        "grunt-curl": "^2.2.1",
+        "grunt-exec": "^2.0.0",
+        "grunt-saucelabs": "^9.0.0",
+        "load-grunt-tasks": "^3.5.2",
+        "node-sass": "^4.1.0",
+        "postcss-loader": "^1.0.0",
+        "pre-commit": "^1.2.2",
+        "prettier-standard": "^3.0.1",
+        "sass-loader": "^4.0.1",
+        "standard": "^10.0.2",
+        "standard-loader": "^6.0.1",
+        "style-loader": "^0.13.1",
+        "web-push": "^3.2.2",
+        "webpack": "2.4.1",
+        "yargs": "7.0.2"
+      },
+      "gitHead": "77268c46b6db6a1eb7a920ed7c859fbc8de17993",
+      "_id": "noty@3.1.4",
+      "_npmVersion": "5.5.1",
+      "_nodeVersion": "9.2.0",
+      "_npmUser": { "name": "needim", "email": "nedimarabaci@gmail.com" },
+      "dist": {
+        "integrity": "sha512-HKOH392eBygTojC6fXVBOFxTqebjnn/e7/AS69zlWSH3Tn6+0RzfT3aDCGx2PY6Ed3xKBPhtz+xeHAHQGEh68Q==",
+        "shasum": "f9eaac9df7883921b270ec6f2869e9aeedd8071b",
+        "tarball": "https://registry.npmjs.org/noty/-/noty-3.1.4.tgz"
+      },
+      "maintainers": [
+        { "name": "harishanchu", "email": "harishanchu@gmail.com" },
+        { "name": "needim", "email": "nedimarabaci@gmail.com" }
+      ],
+      "_npmOperationalInternal": {
+        "host": "s3://npm-registry-packages",
+        "tmp": "tmp/noty-3.1.4.tgz_1513197606031_0.66808613948524"
+      },
+      "directories": {}
+    },
+    "3.2.0-beta": {
+      "name": "noty",
+      "version": "3.2.0-beta",
+      "title": "Noty - Dependency-free notification library",
+      "description": "Noty is a dependency-free notification library that makes it easy to create alert - success - error - warning - information - confirmation messages as an alternative the standard alert dialog. Each notification is added to a queue. (Optional)",
+      "homepage": "https://ned.im/noty",
+      "main": "lib/noty.js",
+      "types": "index.d.ts",
+      "keywords": [
+        "noty",
+        "notification",
+        "alert",
+        "confirm",
+        "confirmation",
+        "success",
+        "error",
+        "warning",
+        "information"
+      ],
+      "files": ["lib", "src", "index.d.ts"],
+      "bugs": { "url": "https://github.com/needim/noty/issues" },
+      "repository": {
+        "type": "git",
+        "url": "git://github.com/needim/noty.git"
+      },
+      "author": { "name": "Nedim Arabacı", "url": "http://ned.im" },
+      "license": "MIT",
+      "scripts": {
+        "build": "grunt themes && webpack --env dev && webpack --env build && grunt banner",
+        "dev": "grunt themes && webpack --progress --colors --watch --env dev",
+        "format": "prettier-standard 'src/**/*.js'",
+        "test": "npm run format && standard && grunt test",
+        "browserstack": "browserstack-runner",
+        "precommit-msg": "echo 'Pre-commit checks...' && exit 0",
+        "serve-docs": "docsify start ./docs"
+      },
+      "pre-commit": ["precommit-msg", "test"],
+      "standard": {
+        "ignore": ["demo/**/*", "docs/**/*", "lib/**", "test/**"],
+        "parser": "babel-eslint"
+      },
+      "devDependencies": {
+        "autoprefixer": "^6.3.6",
+        "babel-core": "6.24.1",
+        "babel-eslint": "7.2.2",
+        "babel-loader": "6.4.1",
+        "babel-plugin-add-module-exports": "0.2.1",
+        "babel-preset-es2015": "6.24.1",
+        "browser-sync": "^2.19.0",
+        "browser-sync-webpack-plugin": "^1.2.0",
+        "browserstack-runner": "^0.5.2",
+        "css-loader": "^0.26.0",
+        "docsify-cli": "^4.1.9",
+        "es6-promise": "^4.1.0",
+        "eslint": "^4.3.0",
+        "eslint-loader": "1.9.0",
+        "extract-text-webpack-plugin": "2.1.0",
+        "grunt": "^1.0.1",
+        "grunt-banner": "^0.6.0",
+        "grunt-contrib-connect": "^1.0.2",
+        "grunt-contrib-qunit": "^2.0.0",
+        "grunt-curl": "^2.2.1",
+        "grunt-exec": "^2.0.0",
+        "grunt-sass": "^2.0.0",
+        "load-grunt-tasks": "^3.5.2",
+        "node-sass": "^4.1.0",
+        "postcss-loader": "^1.0.0",
+        "pre-commit": "^1.2.2",
+        "prettier-standard": "^3.0.1",
+        "sass-loader": "^4.0.1",
+        "standard": "^10.0.2",
+        "standard-loader": "^6.0.1",
+        "style-loader": "^0.13.1",
+        "web-push": "^3.2.2",
+        "webpack": "2.4.1",
+        "yargs": "7.0.2"
+      },
+      "gitHead": "3243ca3e389755a8f64a2df9b199af9624bda762",
+      "_id": "noty@3.2.0-beta",
+      "_npmVersion": "5.5.1",
+      "_nodeVersion": "9.2.0",
+      "_npmUser": { "name": "needim", "email": "nedimarabaci@gmail.com" },
+      "dist": {
+        "integrity": "sha512-a1//Rth1MTQ/GCvGzwBXrZqCwOPyxiIKMdHT1TlcdrDYBYVfb7vzwsU0N4x+j/HeIQTi6/pbP8lRtY9gBz/d3Q==",
+        "shasum": "cd1117277a1b83c9b08dfc78f968c6c5960d3cfa",
+        "tarball": "https://registry.npmjs.org/noty/-/noty-3.2.0-beta.tgz"
+      },
+      "maintainers": [
+        { "name": "harishanchu", "email": "harishanchu@gmail.com" },
+        { "name": "needim", "email": "nedimarabaci@gmail.com" }
+      ],
+      "_npmOperationalInternal": {
+        "host": "s3://npm-registry-packages",
+        "tmp": "tmp/noty-3.2.0-beta.tgz_1513819810252_0.9477455073501915"
+      },
+      "directories": {}
+    }
+  },
+  "readme": "<p align=\"center\">\r\n  <a href=\"http://ned.im/noty?ref=readme\">\r\n    <img src=\"http://ned.im/noty/_media/noty-v3-logo.png\" width=200 height=70>\r\n  </a>\r\n\r\n  <p align=\"center\">\r\n    Dependency-free notification library.\r\n    <br>\r\n    <a href=\"http://ned.im/noty\"><strong>Documentation &raquo;</strong></a>\r\n  </p>\r\n\r\n  <p align=\"center\">\r\n    <a href=\"https://github.com/needim/noty/releases\"><img src=\"https://img.shields.io/github/release/needim/noty.svg\" alt=\"GitHub release\"></a>\r\n    <a href=\"https://bower.io/\"><img src=\"https://img.shields.io/bower/v/noty.svg\" alt=\"Bower version\"></a>\r\n    <a href=\"https://www.npmjs.com/package/noty\"><img src=\"https://img.shields.io/npm/v/noty.svg\" alt=\"NPM version\"></a>\r\n    <a href=\"https://packagist.org/packages/needim/noty\"><img src=\"https://img.shields.io/packagist/v/needim/noty.svg\" alt=\"Packagist version\"></a>\r\n    <a href=\"https://cdnjs.com/libraries/noty\"><img src=\"https://img.shields.io/cdnjs/v/noty.svg\" alt=\"CDNJS version\"></a>\r\n    <br>\r\n    <img src=\"https://img.shields.io/david/needim/noty.svg\" alt=\"Dependencies\">\r\n    <img src=\"https://img.shields.io/david/dev/needim/noty.svg\" alt=\"Dev Dependencies\">\r\n    <br>\r\n    <a href=\"https://travis-ci.org/needim/noty\"><img src=\"https://img.shields.io/travis/needim/noty/master.svg\" alt=\"Travis\"></a>\r\n    <a href=\"https://www.npmjs.com/package/noty\"><img src=\"https://img.shields.io/npm/dm/noty.svg?label=npm%20downloads\" alt=\"NPM Downloads\"></a>\r\n    <a href=\"https://github.com/needim/noty/graphs/contributors\"><img src=\"https://img.shields.io/github/contributors/needim/noty.svg\" alt=\"Contributors\"></a>\r\n  </p>\r\n</p>\r\n\r\n<br>\r\n\r\n\r\n## Hi\r\n\r\n**NOTY** is a notification library that makes it easy to create **alert** - **success** - **error** - **warning** - **information** - **confirmation** messages as an alternative the standard alert dialog.\r\n\r\nThe notifications can be positioned at the;\r\n**top** - **topLeft** - **topCenter** - **topRight** - **center** - **centerLeft** - **centerRight** - **bottom** - **bottomLeft** - **bottomCenter** - **bottomRight**\r\n\r\nThere are lots of other options in the API to customise the text, animation, buttons and much more.\r\n\r\nIt also has various callbacks for the buttons, opening closing the notifications and queue control.\r\n\r\n### Sponsored By\r\n<table>\r\n  <tr>\r\n    <td vlign=\"center\">\r\n      <a target=\"_blank\" href=\"https://pusher.com/?utm_source=needim&utm_medium=paid&utm_campaign=needim\">\r\n        <img src=\"http://ned.im/noty/_media/pusher_logo_dark.png\" width=\"160\" alt=\"\">\r\n      </a>\r\n    </td>\r\n    <td vlign=\"center\">\r\n      <a target=\"_blank\" href=\"https://www.jetbrains.com?ref=notyjs\">\r\n        <img src=\"http://ned.im/noty/_media/logo_JetBrains_4.svg\" width=\"80\" alt=\"\">\r\n      </a>\r\n    </td>\r\n    <td vlign=\"center\">\r\n      <a target=\"_blank\" href=\"https://www.browserstack.com?ref=notyjs\">\r\n        <img src=\"http://ned.im/noty/_media/browserstack.svg\" width=\"220\" alt=\"\">\r\n      </a>\r\n    </td>\r\n  </tr>\r\n</table>\r\n\r\n***\r\n### Features\r\n- [x] Dependency-free\r\n- [x] Web Push Notifications with Service Worker support\r\n- [x] UMD\r\n- [x] Named queue system\r\n- [x] Has 11 layouts, 5 notification styles, 5+ themes\r\n- [x] Custom container (inline notifications)\r\n- [x] Confirm notifications\r\n- [x] TTL\r\n- [x] Progress bar indicator for timed notifications\r\n- [x] Supports css animations, [animate.css](https://github.com/daneden/animate.css), [mojs](https://github.com/legomushroom/mojs), [bounce.js](https://github.com/tictail/bounce.js), [velocity](https://github.com/julianshapiro/velocity) and other animation libraries\r\n- [x] 2 close options: click, button\r\n- [x] API & Callbacks\r\n- [x] Custom templating\r\n- [x] Document visibility control (blur, focus)\r\n\r\n### Documentation\r\nDocumentation and examples are here: <http://ned.im/noty>\r\n\r\n***\r\n\r\n##### Basic Usage\r\n```js\r\nimport Noty from 'noty';\r\n\r\nnew Noty({\r\n    text: 'Notification text'\r\n}).show();\r\n\r\n// or\r\n\r\nconst Noty = require('noty');\r\n\r\nnew Noty({\r\n    text: 'Notification text'\r\n}).show();\r\n\r\n```\r\n\r\n##### Development\r\n```console\r\n$ npm run dev\r\n$ npm test\r\n$ npm run build\r\n$ npm run browserstack\r\n$ npm run serve-docs\r\n```\r\n\r\n##### Development environment\r\n- [x] Standard\r\n- [x] Prettier\r\n- [x] ES6 & Babel & Webpack\r\n- [x] Sass\r\n- [x] Autoprefixer\r\n- [x] QUnit\r\n- [x] BrowserStack\r\n- [x] Pre-commit tests\r\n- [x] Travis CI\r\n\r\n\r\n[![JavaScript Style Guide](https://cdn.rawgit.com/feross/standard/master/badge.svg)](https://github.com/feross/standard)\r\n",
+  "maintainers": [
+    { "name": "harishanchu", "email": "harishanchu@gmail.com" },
+    { "name": "needim", "email": "nedimarabaci@gmail.com" }
+  ],
+  "time": {
+    "modified": "2018-01-15T13:35:52.008Z",
+    "created": "2014-01-10T07:01:03.827Z",
+    "2.2.0": "2014-01-10T07:01:26.559Z",
+    "2.2.1": "2014-01-10T07:14:03.207Z",
+    "2.2.2": "2014-01-10T07:22:36.376Z",
+    "2.2.10": "2014-10-24T06:58:38.354Z",
+    "2.3.0": "2014-11-19T19:54:30.741Z",
+    "2.3.1": "2014-11-20T08:38:55.748Z",
+    "2.3.2": "2014-11-28T18:59:40.003Z",
+    "2.3.3": "2014-12-21T22:06:35.533Z",
+    "2.3.4": "2014-12-29T21:10:15.268Z",
+    "2.3.5": "2015-04-06T12:01:20.691Z",
+    "2.3.6": "2015-08-13T11:01:05.146Z",
+    "2.3.7": "2015-10-08T11:42:33.781Z",
+    "2.3.8": "2016-01-11T13:34:25.823Z",
+    "2.3.10": "2016-12-13T02:46:01.420Z",
+    "2.3.11": "2016-12-20T21:12:07.889Z",
+    "2.4.0": "2017-01-17T05:22:06.381Z",
+    "2.4.1": "2017-02-16T03:29:05.192Z",
+    "3.0.0": "2017-04-12T06:28:50.379Z",
+    "3.0.1": "2017-04-13T15:30:08.739Z",
+    "3.1.0-beta": "2017-04-18T20:19:46.899Z",
+    "3.1.0": "2017-04-26T05:14:47.023Z",
+    "3.1.1": "2017-07-12T00:17:16.304Z",
+    "3.1.2": "2017-07-27T17:47:38.438Z",
+    "3.1.3": "2017-09-20T13:23:08.222Z",
+    "3.1.4": "2017-12-13T20:40:07.323Z",
+    "3.2.0-beta": "2017-12-21T01:30:11.446Z"
+  },
+  "author": { "name": "Nedim Arabacı", "url": "http://ned.im" },
+  "repository": { "type": "git", "url": "git://github.com/needim/noty.git" },
+  "homepage": "https://ned.im/noty",
+  "bugs": { "url": "https://github.com/needim/noty/issues" },
+  "readmeFilename": "README.markdown",
+  "users": {
+    "needim": true,
+    "olehumborstad": true,
+    "jaketone": true,
+    "inviqus": true,
+    "asfrom30": true,
+    "faraoman": true
+  },
+  "keywords": [
+    "noty",
+    "notification",
+    "alert",
+    "confirm",
+    "confirmation",
+    "success",
+    "error",
+    "warning",
+    "information"
+  ],
+  "license": "MIT",
+  "_attachments": {}
+}

@@ -3,8 +3,60 @@
 const assert = require("assert");
 const process = require("process");
 const execa = require("execa");
+const createTestServer = require("create-test-server");
+const tempy = require("tempy");
+const fs = require("fs");
+const path = require("path");
+const del = require("del");
 
-function exit(err) {
+const testDir = tempy.directory();
+
+let server;
+
+async function clean() {
+  await del(testDir, {force: true});
+  if (server) {
+    await server.close();
+  }
+}
+
+async function setup() {
+  server = await createTestServer();
+
+  // Server response
+  for (const packageName of [
+    "gulp-sourcemaps",
+    "prismjs",
+    "svgstore",
+    "html-webpack-plugin",
+    "noty",
+    "jpeg-buffer-orientation",
+    "styled-components",
+    "@babel/preset-env",
+  ]) {
+    const name = packageName.replace(/\//g, "%2f");
+    const text = fs.readFileSync(path.join(__dirname, "info", `${name}.json`), "utf8");
+
+    server.get(
+      `/${name}`,
+      text
+    );
+  }
+
+  const {sslUrl: registry} = server;
+
+  // Fake registry
+  fs.writeFileSync(path.join(testDir, ".npmrc"), `registry=${registry}`);
+
+  // Copy fixture
+  fs.writeFileSync(
+    path.join(testDir, "test.json"),
+    fs.readFileSync("test.json")
+  );
+}
+
+async function exit(err) {
+  await clean();
   if (err) {
     console.info(err);
   }
@@ -12,11 +64,19 @@ function exit(err) {
 }
 
 async function run(args) {
-  const {stdout} = await execa("./updates.js", args.split(/\s+/));
+  const {stdout} = await execa(
+    path.join(process.cwd(), "./updates.js"),
+    args.split(/\s+/),
+    {
+      cwd: testDir
+    }
+  );
   return JSON.parse(stdout);
 }
 
 async function main() {
+  await setup();
+
   assert.deepStrictEqual(await run("-j -f test.json"), {
     results: {
       dependencies: {
