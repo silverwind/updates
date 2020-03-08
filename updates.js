@@ -227,15 +227,15 @@ if (!Object.keys(deps).length) {
 }
 
 const timeData = [
-  [1e3, 1, "ns", false],
-  [1e6, 1e3, "µs", false],
-  [1e9, 1e6, "ms", false],
-  [60e9, 1e9, "sec", true],
-  [3600e9, 60e9, "min", true],
-  [86400e9, 3600e9, "hour", true],
-  [2592e12, 86400e9, "day", true],
-  [31536e12, 2592e12, "month", true],
-  [Infinity, 31536e12, "year", true],
+  [1e3, 1, "ns"],
+  [1e6, 1e3, "µs"],
+  [1e9, 1e6, "ms"],
+  [60e9, 1e9, "sec"],
+  [3600e9, 60e9, "min"],
+  [86400e9, 3600e9, "hour"],
+  [2592e12, 86400e9, "day"],
+  [31536e12, 2592e12, "month"],
+  [Infinity, 31536e12, "year"],
 ];
 
 function getAge(isoDateString) {
@@ -248,11 +248,10 @@ function getAge(isoDateString) {
   let value, suffix;
   for (let i = 0; i <= timeData.length; i++) {
     const entry = timeData[i];
-    const [end, start, unit, addS] = entry || [];
+    const [end, start, unit] = entry || [];
     if (entry && end && diff < end) {
       value = Math.round(diff / start);
-      const s = addS ? (value > 1 ? "s" : "") : "";
-      suffix = `${unit}${s}`;
+      suffix = `${unit}${(value > 1 && !unit.endsWith("s")) ? "s" : ""}`;
       break;
     }
   }
