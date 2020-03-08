@@ -44,7 +44,7 @@
     "execa": "4.0.0",
     "jest": "25.1.0",
     "tempy": "0.4.0",
-    "versions": "8.2.3"
+    "versions": "8.2.4"
   },
   "jest": {
     "verbose": false,
