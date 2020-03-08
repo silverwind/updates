@@ -609,7 +609,7 @@ async function checkUrlDep([key, dep], {useGreatest} = {}) {
       const newRange = dep.old.replace(oldRef, newRef);
       return {key, newRange, user, repo, oldRef, newRef, newDate};
     }
-  } else {
+  } else { // TODO: newDate support
     const res = await fetch(`https://api.github.com/repos/${user}/${repo}/git/refs/tags`);
     if (!res || !res.ok) return;
     const data = await res.json();
