@@ -27,24 +27,19 @@ for (const dependencyType of dependencyTypes) {
 }
 
 beforeAll(async () => {
-  // registry response
-  registryServer = await createTestServer();
+  registryServer = await createTestServer(); // registry response
+  githubServer = await createTestServer(); // github api response
+
   for (const packageName of testPackages) {
     const name = packageName.replace(/\//g, "%2f");
     const path = join(__dirname, "fixtures", "registry-responses", `${name}.json`);
-    registryServer.get(`/${name}`, await readFile(path, "utf8"));
+    registryServer.get(`/${name}`, await readFile(path));
   }
 
-  // registry response
-  githubServer = await createTestServer();
-  githubServer.get(
-    "/repos/silverwind/updates/commits",
-    await readFile(resolve(__dirname, "fixtures/github-responses/updates-commits.json"), "utf8"),
-  );
-  githubServer.get(
-    "/repos/silverwind/updates/git/refs/tags",
-    await readFile(resolve(__dirname, "fixtures/github-responses/updates-tags.json"), "utf8"),
-  );
+  const commits = await readFile(resolve(__dirname, "fixtures/github-responses/updates-commits.json"));
+  const tags = await readFile(resolve(__dirname, "fixtures/github-responses/updates-tags.json"));
+  githubServer.get("/repos/silverwind/updates/commits", commits);
+  githubServer.get("/repos/silverwind/updates/git/refs/tags", tags);
 
   githubApiUrl = githubServer.sslUrl;
   await writeFile(join(testDir, ".npmrc"), `registry=${registryServer.sslUrl}`); // Fake registry
