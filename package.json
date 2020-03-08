@@ -48,6 +48,7 @@
     "versions": "8.2.3"
   },
   "jest": {
-    "verbose": false
+    "verbose": false,
+    "testTimeout": 30000
   }
 }
