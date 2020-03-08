@@ -1,6 +1,6 @@
 test:
-	npx eslint --color --quiet *.js
-	node --trace-deprecation --throw-deprecation test.js
+	yarn -s run eslint --color .
+	yarn -s run jest --color
 
 publish:
 	git push -u --tags origin master
@@ -8,25 +8,22 @@ publish:
 
 deps:
 	rm -rf node_modules
-	npm i
+	yarn
 
 update:
-	node updates.js -cu
+	yarn -s run updates -cu
 	$(MAKE) deps
 
-patch:
-	$(MAKE) test
-	npx versions -C patch
+patch: test
+	yarn -s run versions -C patch
 	$(MAKE) publish
 
-minor:
-	$(MAKE) test
-	npx versions -C minor
+minor: test
+	yarn -s run versions -C minor
 	$(MAKE) publish
 
-major:
-	$(MAKE) test
-	npx versions -C major
+major: test
+	yarn -s run versions -C major
 	$(MAKE) publish
 
 .PHONY: test publish deps update patch minor major

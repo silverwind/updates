@@ -5,13 +5,12 @@
   "author": "silverwind",
   "repository": "silverwind/updates",
   "license": "BSD-2-Clause",
-  "main": "updates.js",
   "bin": "./updates.js",
   "engines": {
-    "node": ">=8"
+    "node": ">=10"
   },
   "scripts": {
-    "test": "npx eslint --color --quiet *.js && node --trace-deprecation --throw-deprecation test.js"
+    "test": "make test"
   },
   "keywords": [
     "dependencies",
@@ -30,6 +29,7 @@
     "chalk": "3.0.0",
     "find-up": "4.1.0",
     "hosted-git-info": "3.0.2",
+    "jest": "25.1.0",
     "make-fetch-happen": "6.1.0",
     "minimist": "1.2.0",
     "rc": "1.2.8",
@@ -46,5 +46,8 @@
     "execa": "3.4.0",
     "tempy": "0.3.0",
     "versions": "7.0.4"
+  },
+  "jest": {
+    "verbose": false
   }
 }
