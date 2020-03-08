@@ -4,9 +4,17 @@
 
 `updates` is a CLI tool which checks for npm dependency updates of the current project and optionally updates `package.json`. It is highly configurable and is typically able to complete in less than a second.
 
-<p align="center">
-  <img src="https://i.imgur.com/tI7rp0g.png"/>
-</p>
+```
+$ updates
+NAME                      OLD    NEW     AGE       INFO
+p-map                     3.0.0  4.0.0   3 days    https://github.com/sindresorhus/p-map
+rrdir                     4.0.0  5.0.0   11 days   https://github.com/silverwind/rrdir
+eslint                    6.7.2  6.8.0   3 months  https://github.com/eslint/eslint
+eslint-config-silverwind  5.1.1  10.0.0  2 days    https://github.com/silverwind/eslint-config-silverwind
+rimraf                    3.0.0  3.0.2   28 days   https://github.com/isaacs/rimraf
+versions                  7.0.5  8.2.3   1 day     https://github.com/silverwind/versions
+iltorb                    2.4.4  2.4.5   1 month   https://github.com/nstepien/iltorb
+```
 
 ## Usage
 

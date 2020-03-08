@@ -58,7 +58,21 @@ function makeTest(args, expected) {
       args.split(/\s+/),
       {cwd: testDir},
     );
-    return expect(JSON.parse(stdout)).toEqual({results: expected});
+
+    const {results} = JSON.parse(stdout);
+    for (const dependencyType of dependencyTypes) {
+      for (const [dependencyName, data] of Object.entries(expected[dependencyType] || {})) {
+        for (const [key, value] of Object.entries(data || {})) {
+          const resultValue = results[dependencyType][dependencyName][key];
+          if (key === "age") {
+            expect(resultValue).toBeInstanceOf(String);
+            expect(resultValue.length > 0).toBeTruthy();
+          } else {
+            expect(resultValue).toEqual(value);
+          }
+        }
+      }
+    }
   };
 }
 

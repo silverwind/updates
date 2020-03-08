@@ -226,6 +226,40 @@ if (!Object.keys(deps).length) {
   }
 }
 
+const timeData = [
+  [1e3, 1, "ns", false],
+  [1e6, 1e3, "µs", false],
+  [1e9, 1e6, "ms", false],
+  [60e9, 1e9, "sec", true],
+  [3600e9, 60e9, "min", true],
+  [86400e9, 3600e9, "hour", true],
+  [2592e12, 86400e9, "day", true],
+  [31536e12, 2592e12, "month", true],
+  [Infinity, 31536e12, "year", true],
+];
+
+function reltime(str) {
+  if (!str) return "";
+  const unix = new Date(str).getTime() * 1e6;
+  if (Number.isNaN(unix)) return "";
+  const diff = (Date.now() * 1e6) - unix;
+  if (diff <= 10e9) return "now";
+
+  let value, suffix;
+  for (let i = 0; i <= timeData.length; i++) {
+    const entry = timeData[i];
+    const [end, start, unit, addS] = entry || [];
+    if (entry && end && diff < end) {
+      value = Math.round(diff / start);
+      const s = addS ? (value > 1 ? "s" : "") : "";
+      suffix = `${unit}${s}`;
+      break;
+    }
+  }
+
+  return `${value} ${suffix}`;
+}
+
 function findSync(filename, dir, stopDir) {
   const path = join(dir, filename);
 
@@ -398,7 +432,7 @@ function highlightDiff(a, b, added) {
 }
 
 function formatDeps() {
-  const arr = [["NAME", "OLD", "NEW", "INFO"]];
+  const arr = [["NAME", "OLD", "NEW", "AGE", "INFO"]];
 
   for (const [key, data] of Object.entries(deps)) {
     const [_type, name] = key.split(sep);
@@ -406,6 +440,7 @@ function formatDeps() {
       name,
       highlightDiff(data.oldPrint || data.old, data.newPrint || data.new, false),
       highlightDiff(data.newPrint || data.new, data.oldPrint || data.old, true),
+      data.age || "",
       data.info,
     ]);
   }
@@ -549,6 +584,7 @@ function findNewVersion(data, opts) {
   }
 }
 
+// TODO: refactor this mess
 async function checkUrlDep([key, dep], {useGreatest} = {}) {
   const stripped = dep.old.replace(stripRe, "");
   const [_, user, repo, oldRef] = partsRe.exec(stripped) || [];
@@ -558,12 +594,20 @@ async function checkUrlDep([key, dep], {useGreatest} = {}) {
     const res = await fetch(`https://api.github.com/repos/${user}/${repo}/commits`);
     if (!res || !res.ok) return;
     const data = await res.json();
-    let newRef = data.map(entry => entry.sha)[0];
+    let {sha: newRef, commit} = data[0];
     if (!newRef || !newRef.length) return;
+
+    let newDate;
+    if (commit && commit.committer && commit.committer.date) {
+      newDate = commit.committer.date;
+    } else if (commit && commit.auhor && commit.author.date) {
+      newDate = commit.author.date;
+    }
+
     newRef = newRef.substring(0, oldRef.length);
     if (oldRef !== newRef) {
       const newRange = dep.old.replace(oldRef, newRef);
-      return {key, newRange, user, repo, oldRef, newRef};
+      return {key, newRange, user, repo, oldRef, newRef, newDate};
     }
   } else {
     const res = await fetch(`https://api.github.com/repos/${user}/${repo}/git/refs/tags`);
@@ -650,6 +694,7 @@ async function main() {
     } else {
       deps[key].new = newRange;
       deps[key].info = getInfoUrl(data.versions[newVersion] || data, registry, data.name);
+      if (data.time && data.time[newVersion]) deps[key].age = reltime(data.time[newVersion]);
     }
   }
 
@@ -661,7 +706,7 @@ async function main() {
     }));
     results = results.filter(r => !!r);
     for (const res of results || []) {
-      const {key, newRange, user, repo, oldRef, newRef} = res;
+      const {key, newRange, user, repo, oldRef, newRef, newDate} = res;
       deps[key] = {
         old: maybeUrlDeps[key].old,
         new: newRange,
@@ -669,6 +714,8 @@ async function main() {
         newPrint: hashRe.test(newRef) ? newRef.substring(0, 7) : newRef,
         info: `https://github.com/${user}/${repo}`,
       };
+
+      if (newDate) deps[key].age = reltime(newDate);
     }
   }
 
