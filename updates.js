@@ -1,6 +1,22 @@
 #!/usr/bin/env node
 "use strict";
 
+const chalk = require("chalk");
+const fetch = require("make-fetch-happen");
+const findUp = require("find-up");
+const gitInfo = memoize(require("hosted-git-info").fromUrl);
+const minimist = require("minimist");
+const rc = require("rc");
+const registryAuthToken = memoize(require("registry-auth-token"));
+const registryUrl = memoize(require("registry-auth-token/registry-url"));
+const semver = require("semver");
+const stringWidth = require("string-width");
+const textTable = require("text-table");
+const {join} = require("path");
+const {lstatSync, readFileSync, truncateSync, writeFileSync} = require("fs");
+const {platform} = require("os");
+const {version} = require("./package.json");
+
 process.env.NODE_ENV = "production";
 const MAX_SOCKETS = 64;
 const sep = "\0";
@@ -11,7 +27,7 @@ const stripRe = /^.*?:\/\/(.*?@)?(github\.com[:/])/i;
 const partsRe = /^([^/]+)\/([^/#]+)?.*?([0-9a-f]+|v?[0-9]+\.[0-9]+\.[0-9]+)$/i;
 const hashRe = /^[0-9a-f]+$/i;
 
-const args = require("minimist")(process.argv.slice(2), {
+const args = minimist(process.argv.slice(2), {
   boolean: [
     "c", "color",
     "E", "error-on-outdated",
@@ -92,10 +108,8 @@ if (args.help) {
   process.exit(0);
 }
 
-const path = require("path");
-
 if (args.version) {
-  console.info(require(path.join(__dirname, "package.json")).version);
+  console.info(version);
   process.exit(0);
 }
 
@@ -112,9 +126,8 @@ const patch = parseMixedArg(args.patch);
 const minor = parseMixedArg(args.minor);
 const allowDowngrade = parseMixedArg(args["allow-downgrade"]);
 
-const chalk = require("chalk");
 const defaultRegistry = "https://registry.npmjs.org";
-const npmrc = require("rc")("npm", {registry: defaultRegistry});
+const npmrc = rc("npm", {registry: defaultRegistry});
 const authTokenOpts = {npmrc, recursive: true};
 const registry = normalizeRegistryUrl(args.registry || npmrc.registry);
 const maxSockets = typeof args.sockets === "number" ? args.sockets : MAX_SOCKETS;
@@ -126,7 +139,7 @@ const maybeUrlDeps = {};
 if (args.file) {
   let stat;
   try {
-    stat = require("fs").lstatSync(args.file);
+    stat = lstatSync(args.file);
   } catch (err) {
     finish(new Error(`Unable to open ${args.file}: ${err.message}`));
   }
@@ -134,12 +147,12 @@ if (args.file) {
   if (stat && stat.isFile()) {
     packageFile = args.file;
   } else if (stat && stat.isDirectory()) {
-    packageFile = path.join(args.file, "package.json");
+    packageFile = join(args.file, "package.json");
   } else {
     finish(new Error(`${args.file} is neither a file nor directory`));
   }
 } else {
-  packageFile = require("find-up").sync("package.json");
+  packageFile = findUp.sync("package.json");
   if (!packageFile) {
     finish(new Error(`Unable to find package.json in ${process.cwd()} or any of its parent directories`));
   }
@@ -157,11 +170,10 @@ if (args.types) {
   ];
 }
 
-const fs = require("fs");
 let pkg, pkgStr;
 
 try {
-  pkgStr = fs.readFileSync(packageFile, "utf8");
+  pkgStr = readFileSync(packageFile, "utf8");
 } catch (err) {
   finish(new Error(`Unable to open package.json: ${err.message}`));
 }
@@ -171,8 +183,6 @@ try {
 } catch (err) {
   finish(new Error(`Error parsing package.json: ${err.message}`));
 }
-
-const semver = require("semver");
 
 let include, exclude;
 if (args.include && args.include !== true) include = args.include.split(",");
@@ -202,11 +212,6 @@ if (!Object.keys(deps).length) {
     finish(new Error("No packages found"));
   }
 }
-
-const fetch = require("make-fetch-happen");
-const gitInfo = memoize(require("hosted-git-info").fromUrl);
-const registryAuthToken = memoize(require("registry-auth-token"));
-const registryUrl = memoize(require("registry-auth-token/registry-url"));
 
 function esc(str) {
   return str.replace(/[|\\{}()[\]^$+*?.-]/g, "\\$&");
@@ -338,12 +343,12 @@ function finish(obj, opts = {}) {
 }
 
 function write(file, content) {
-  if (require("os").platform() === "win32") {
+  if (platform() === "win32") {
     // truncate and append on windows to preserve file metadata
-    fs.truncateSync(file, 0);
-    fs.writeFileSync(file, content, {encoding: "utf8", flag: "r+"});
+    truncateSync(file, 0);
+    writeFileSync(file, content, {encoding: "utf8", flag: "r+"});
   } else {
-    fs.writeFileSync(file, content, {encoding: "utf8"});
+    writeFileSync(file, content, {encoding: "utf8"});
   }
 }
 
@@ -389,9 +394,9 @@ function formatDeps() {
     ]);
   }
 
-  return require("text-table")(arr, {
+  return textTable(arr, {
     hsep: " ".repeat(2),
-    stringLength: require("string-width"),
+    stringLength: stringWidth,
   });
 }
 
