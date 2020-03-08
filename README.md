@@ -18,7 +18,7 @@ iltorb    2.4.4  2.4.5   1 month   https://github.com/nstepien/iltorb
 ## Usage
 
 ```console
-$ npm i --save-dev updates
+$ npm i -D updates
 ```
 
 Then, check for new updates:
