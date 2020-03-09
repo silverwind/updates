@@ -1,4 +1,7 @@
+const {platform} = require("os");
 const {name} = require("./package.json");
+
+const isWindows = platform() === "win32";
 
 module.exports = {
   input: `${name}.js`,
@@ -16,7 +19,7 @@ module.exports = {
       customResolveOptions: {
         packageFilter: (pkg) => {
           if (pkg.name === "cacache") {
-            return {main: "/dev/null"};
+            return {main: isWindows ? "nul" : "/dev/null"};
           }
           return pkg;
         }
