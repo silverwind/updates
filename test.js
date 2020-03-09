@@ -329,3 +329,23 @@ test("patch", makeTest("-j -P", {
     },
   },
 }));
+
+test("include version deps", makeTest("-j -i noty", {
+  dependencies: {
+    "noty": {
+      old: "3.1.0",
+      new: "3.2.0-beta",
+      info: "https://github.com/needim/noty",
+    },
+  },
+}));
+
+test("exclude version deps", makeTest("-j -e gulp-sourcemaps,prismjs,svgstore,html-webpack-plugin,noty,jpeg-buffer-orientation,styled-components,@babel/preset-env", {
+  dependencies: {
+    "updates": {
+      old: "6941e05",
+      new: "537ccb7",
+      info: "https://github.com/silverwind/updates",
+    },
+  },
+}));

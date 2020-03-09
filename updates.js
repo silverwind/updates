@@ -149,9 +149,6 @@ const maxSockets = typeof args.sockets === "number" ? args.sockets : MAX_SOCKETS
 const githubApiUrl = args.githubapi ? normalizeUrl(args.githubapi) : "https://api.github.com";
 
 let packageFile;
-const deps = {};
-const maybeUrlDeps = {};
-
 if (args.file) {
   let stat;
   try {
@@ -201,27 +198,27 @@ try {
 }
 
 let include, exclude;
-if (args.include && args.include !== true) include = args.include.split(",");
-if (args.exclude && args.exclude !== true) exclude = args.exclude.split(",");
+if (args.include && args.include !== true) include = new Set(args.include.split(","));
+if (args.exclude && args.exclude !== true) exclude = new Set(args.exclude.split(","));
 
-for (const key of dependencyTypes) {
-  if (pkg[key]) {
-    const names = Object.keys(pkg[key])
-      .filter(name => !include ? true : include.includes(name))
-      .filter(name => !exclude ? true : !exclude.includes(name));
+function canInclude(name) {
+  if (exclude && exclude.has(name)) return false;
+  if (include && !include.has(name)) return false;
+  return true;
+}
 
-    for (const name of names) {
-      const old = pkg[key][name];
-      if (semver.validRange(old)) {
-        deps[`${key}${sep}${name}`] = {old};
-      } else {
-        maybeUrlDeps[`${key}${sep}${name}`] = {old};
-      }
+const deps = {}, maybeUrlDeps = {};
+for (const depType of dependencyTypes) {
+  for (const [name, value] of Object.entries(pkg[depType] || {})) {
+    if (semver.validRange(value) && canInclude(name)) {
+      deps[`${depType}${sep}${name}`] = {old: value};
+    } else if (canInclude(name)) {
+      maybeUrlDeps[`${depType}${sep}${name}`] = {old: value};
     }
   }
 }
 
-if (!Object.keys(deps).length) {
+if (!Object.keys(deps).length && !Object.keys(maybeUrlDeps).length) {
   if (include || exclude) {
     finish(new Error("No packages match the given filters"));
   } else {
