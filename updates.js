@@ -11,7 +11,6 @@ const stringWidth = require("string-width");
 const textTable = require("text-table");
 const {cwd: cwdFn} = require("process");
 const {fromUrl} = require("hosted-git-info");
-const {gray, green, red} = require("colorette");
 const {join, dirname} = require("path");
 const {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync} = require("fs");
 const {platform} = require("os");
@@ -129,10 +128,11 @@ if (args.version) {
 }
 
 if (args["no-color"]) {
-  process.env.FORCE_COLOR = "0";
+  process.env.NO_COLOR = "0";
 } else if (args["color"] || process.stdout.isTTY === undefined) { // winpty compat
   process.env.FORCE_COLOR = "1";
 }
+const {gray, green, red} = require("colorette");
 
 const greatest = parseMixedArg(args.greatest);
 const prerelease = parseMixedArg(args.prerelease);
