@@ -1,7 +1,6 @@
-const {platform} = require("os");
+const {writeSync} = require("tempy");
 const {name} = require("./package.json");
-
-const isWindows = platform() === "win32";
+const tempFile = writeSync("module.exports = null");
 
 module.exports = {
   input: `${name}.js`,
@@ -15,11 +14,10 @@ module.exports = {
     require("@rollup/plugin-json")(),
     require("@rollup/plugin-node-resolve")({
       preferBuiltins: true,
-      jail: __dirname,
       customResolveOptions: {
         packageFilter: (pkg) => {
           if (pkg.name === "cacache") {
-            return {main: isWindows ? "nul" : "/dev/null"};
+            return {main: tempFile};
           }
           return pkg;
         }
