@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 "use strict";
 
-const chalk = require("chalk");
 const fetch = require("make-fetch-happen");
 const minimist = require("minimist");
 const rat = require("registry-auth-token");
@@ -12,6 +11,7 @@ const stringWidth = require("string-width");
 const textTable = require("text-table");
 const {cwd: cwdFn} = require("process");
 const {fromUrl} = require("hosted-git-info");
+const {gray, green, red} = require("colorette");
 const {join, dirname} = require("path");
 const {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync} = require("fs");
 const {platform} = require("os");
@@ -394,7 +394,7 @@ function finish(obj, opts = {}) {
       } else if (output.error) {
         const lines = output.error.split(/\r?\n/);
         for (const [index, line] of Object.entries(lines)) {
-          console.info(chalk[index === "0" ? "red" : "grey"](line));
+          console.info((index === "0" ? red : gray)(line));
         }
       }
     }
@@ -422,7 +422,7 @@ function write(file, content) {
 function highlightDiff(a, b, added) {
   const aParts = a.split(/\./);
   const bParts = b.split(/\./);
-  const color = chalk[added ? "green" : "red"];
+  const color = added ? green : red;
   const versionPartRe = /^[0-9a-zA-Z-.]+$/;
   let res = "";
 
@@ -746,7 +746,7 @@ async function main() {
     finish(new Error(`Error writing ${packageFile}: ${err.message}`));
   }
 
-  finish(chalk.green(`
+  finish(green(`
  ╭────────────────────────╮
  │  package.json updated  │
  ╰────────────────────────╯`.substring(1)));
