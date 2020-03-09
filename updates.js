@@ -15,7 +15,6 @@ const {gray, green, red} = require("colorette");
 const {join, dirname} = require("path");
 const {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync} = require("fs");
 const {platform} = require("os");
-const {version} = require("./package.json");
 
 process.env.NODE_ENV = "production";
 
@@ -124,7 +123,7 @@ if (args.help) {
 }
 
 if (args.version) {
-  console.info(version);
+  console.info(require("./package.json").version);
   process.exit(0);
 }
 
