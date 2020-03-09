@@ -62,6 +62,7 @@ usage: updates [options]
     -E, --error-on-outdated            Exit with code 2 when updates are available and code 0 when not
     -U, --error-on-unchanged           Exit with code 0 when updates are available and code 2 when not
     -r, --registry <url>               Override npm registry URL
+    -G, --githubapi <url>              Override Github API URL
     -f, --file <path>                  Use given package.json file or module directory
     -S, --sockets <num>                Maximum number of parallel HTTP sockets opened. Default: 64
     -j, --json                         Output a JSON object
