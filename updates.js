@@ -297,7 +297,12 @@ function getAuthAndRegistry(name, registry) {
 }
 
 function fetchFromRegistry(name, registry, auth) {
-  const opts = {maxSockets};
+  const opts = {
+    maxSockets,
+    cacheManager: null,
+    retry: 5,
+  };
+
   if (auth && auth.token) {
     opts.headers = {Authorization: `${auth.type} ${auth.token}`};
   }

@@ -1,6 +1,9 @@
-test:
+test: rollup
 	yarn -s run eslint --color .
 	yarn -s run jest --color
+
+rollup:
+	yarn -s run rollup --silent --compact -c rollup.config.js
 
 publish:
 	git push -u --tags origin master
@@ -26,4 +29,4 @@ major: test
 	yarn -s run versions -C major
 	$(MAKE) publish
 
-.PHONY: test publish deps update patch minor major
+.PHONY: test rollup publish deps update patch minor major

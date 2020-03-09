@@ -7,10 +7,10 @@ const tempy = require("tempy");
 const {join} = require("path");
 const {test, expect, beforeAll, afterAll} = global;
 const {writeFile, readFile} = require("fs").promises;
+const {bin} = require("./package.json");
 
 const packageJson = require("./fixtures/test.json");
 const testDir = tempy.directory();
-let npmServer, githubServer, githubApiUrl;
 
 const dependencyTypes = [
   "dependencies",
@@ -26,9 +26,16 @@ for (const dependencyType of dependencyTypes) {
   }
 }
 
+let npmServer, githubServer, githubApiUrl;
 beforeAll(async () => {
-  npmServer = await createTestServer(); // npm api response
-  githubServer = await createTestServer(); // github api response
+  let commits, tags;
+
+  [npmServer, githubServer, commits, tags] = await Promise.all([
+    createTestServer(),
+    createTestServer(),
+    readFile(join(__dirname, "fixtures/github/updates-commits.json")),
+    readFile(join(__dirname, "fixtures/github/updates-tags.json"))
+  ]);
 
   for (const packageName of testPackages) {
     const name = packageName.replace(/\//g, "%2f");
@@ -36,8 +43,6 @@ beforeAll(async () => {
     npmServer.get(`/${name}`, await readFile(path));
   }
 
-  const commits = await readFile(join(__dirname, "fixtures/github/updates-commits.json"));
-  const tags = await readFile(join(__dirname, "fixtures/github/updates-tags.json"));
   githubServer.get("/repos/silverwind/updates/commits", commits);
   githubServer.get("/repos/silverwind/updates/git/refs/tags", tags);
 
@@ -57,7 +62,7 @@ afterAll(async () => {
 function makeTest(args, expected) {
   return async () => {
     const argsArr = [...args.split(/\s+/), "-G", githubApiUrl];
-    const {stdout} = await execa(join(__dirname, "updates.js"), argsArr, {cwd: testDir});
+    const {stdout} = await execa(join(__dirname, bin), argsArr, {cwd: testDir});
     const {results} = JSON.parse(stdout);
 
     // Parse results, with custom validation for the dynamic "age" property

@@ -1,2 +1,5 @@
 root: true
 extends: silverwind
+
+ignorePatterns:
+ - /updates
