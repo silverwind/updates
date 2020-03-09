@@ -127,9 +127,9 @@ test("latest", makeTest("-j", {
   },
   peerDependencies: {
     "@babel/preset-env": {
-      "old": "~6.0.0",
-      "new": "~7.7.6",
-      "info": "https://github.com/babel/babel/tree/master/packages/babel-preset-env"
+      old: "~6.0.0",
+      new: "~7.7.6",
+      info: "https://github.com/babel/babel/tree/master/packages/babel-preset-env"
     }
   },
 }));
@@ -179,9 +179,9 @@ test("greatest", makeTest("-j -g", {
   },
   peerDependencies: {
     "@babel/preset-env": {
-      "old": "~6.0.0",
-      "new": "~7.7.6",
-      "info": "https://github.com/babel/babel/tree/master/packages/babel-preset-env"
+      old: "~6.0.0",
+      new: "~7.7.6",
+      info: "https://github.com/babel/babel/tree/master/packages/babel-preset-env"
     }
   }
 }));
@@ -236,9 +236,9 @@ test("prerelease", makeTest("-j -g -p", {
   },
   peerDependencies: {
     "@babel/preset-env": {
-      "old": "~6.0.0",
-      "new": "~7.7.6",
-      "info": "https://github.com/babel/babel/tree/master/packages/babel-preset-env"
+      old: "~6.0.0",
+      new: "~7.7.6",
+      info: "https://github.com/babel/babel/tree/master/packages/babel-preset-env"
     }
   },
 }));
@@ -293,9 +293,9 @@ test("release", makeTest("-j -R", {
   },
   peerDependencies: {
     "@babel/preset-env": {
-      "old": "~6.0.0",
-      "new": "~7.7.6",
-      "info": "https://github.com/babel/babel/tree/master/packages/babel-preset-env"
+      old: "~6.0.0",
+      new: "~7.7.6",
+      info: "https://github.com/babel/babel/tree/master/packages/babel-preset-env"
     },
   },
 }));
