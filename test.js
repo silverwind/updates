@@ -10,7 +10,7 @@ const {writeFile, readFile} = require("fs").promises;
 
 const packageJson = require("./fixtures/test.json");
 const testDir = tempy.directory();
-let registryServer, githubServer, githubApiUrl;
+let npmServer, githubServer, githubApiUrl;
 
 const dependencyTypes = [
   "dependencies",
@@ -27,29 +27,29 @@ for (const dependencyType of dependencyTypes) {
 }
 
 beforeAll(async () => {
-  registryServer = await createTestServer(); // registry response
+  npmServer = await createTestServer(); // npm api response
   githubServer = await createTestServer(); // github api response
 
   for (const packageName of testPackages) {
     const name = packageName.replace(/\//g, "%2f");
-    const path = join(__dirname, `fixtures/registry-responses/${name}.json`);
-    registryServer.get(`/${name}`, await readFile(path));
+    const path = join(__dirname, `fixtures/npm/${name}.json`);
+    npmServer.get(`/${name}`, await readFile(path));
   }
 
-  const commits = await readFile(join(__dirname, "fixtures/github-responses/updates-commits.json"));
-  const tags = await readFile(join(__dirname, "fixtures/github-responses/updates-tags.json"));
+  const commits = await readFile(join(__dirname, "fixtures/github/updates-commits.json"));
+  const tags = await readFile(join(__dirname, "fixtures/github/updates-tags.json"));
   githubServer.get("/repos/silverwind/updates/commits", commits);
   githubServer.get("/repos/silverwind/updates/git/refs/tags", tags);
 
   githubApiUrl = githubServer.sslUrl;
-  await writeFile(join(testDir, ".npmrc"), `registry=${registryServer.sslUrl}`); // Fake registry
+  await writeFile(join(testDir, ".npmrc"), `registry=${npmServer.sslUrl}`); // Fake registry
   await writeFile(join(testDir, "package.json"), JSON.stringify(packageJson, null, 2)); // Copy fixture
 });
 
 afterAll(async () => {
   await Promise.all([
     del(testDir, {force: true}),
-    registryServer && registryServer.close(),
+    npmServer && npmServer.close(),
     githubServer && githubServer.close(),
   ]);
 });
