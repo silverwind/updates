@@ -17,7 +17,7 @@ const {platform} = require("os");
 
 process.env.NODE_ENV = "production";
 
-const MAX_SOCKETS = 64;
+const MAX_SOCKETS = 96;
 const sep = "\0";
 const cwd = cwdFn();
 
@@ -300,42 +300,24 @@ function getAuthAndRegistry(name, registry) {
 }
 
 function fetchFromRegistry(name, registry, auth) {
-  // on scoped packages replace "/" with "%2f"
-  if (/@[a-z0-9][\w-.]+\/[a-z0-9][\w-.]*/gi.test(name)) {
-    name = name.replace(/\//g, "%2f");
-  }
-
   const opts = {maxSockets};
   if (auth && auth.token) {
     opts.headers = {Authorization: `${auth.type} ${auth.token}`};
   }
-
-  return fetch(`${registry}/${name}`, opts);
+  return fetch(`${registry}/${name.replace(/\//g, "%2f")}`, opts);
 }
 
 const get = async (name, type, originalRegistry) => {
   const [auth, registry] = getAuthAndRegistry(name, originalRegistry);
 
-  let res;
-  try {
-    res = await fetchFromRegistry(name, registry, auth);
-  } catch (err) {
-    if (registry === defaultRegistry) throw err;
-  }
+  const res = await fetchFromRegistry(name, registry, auth);
   if (res && res.ok) {
     return [await res.json(), type, registry];
-  } else if (res && res.status && res.statusText && registry === defaultRegistry) {
-    throw new Error(`Received ${res.status} ${res.statusText} for ${name}`);
-  }
-
-  // retry on default registry if custom registry fails
-  // TODO: evaluate if this retrying can be dropped
-  if (registry !== defaultRegistry) {
-    res = await fetchFromRegistry(name, defaultRegistry);
-    if (res && res.ok) {
-      return [await res.json(), type, registry];
-    } else if (res && res.status && res.statusText) {
-      throw new Error(`Received ${res.status} ${res.statusText} for ${name}`);
+  } else {
+    if (res && res.status && res.statusText) {
+      throw new Error(`Received ${res.status} ${res.statusText} for ${name} from ${registry}`);
+    } else {
+      throw new Error(`Unable to fetch ${name} from ${registry}`);
     }
   }
 };
@@ -662,7 +644,9 @@ async function checkUrlDep([key, dep], {useGreatest} = {}) {
 }
 
 function parseMixedArg(arg) {
-  if (arg === "") {
+  if (arg === undefined) {
+    return false;
+  } else if (arg === "") {
     return true;
   } else if (typeof arg === "string") {
     return arg.includes(",") ? arg.split(",") : [arg];
