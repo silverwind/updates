@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 "use strict";
 
+const dns = require("dns");
 const ansiRegex = require("ansi-regex")();
 const fetch = require("make-fetch-happen");
 const minimist = require("minimist");
@@ -37,6 +38,30 @@ const hostedGitInfo = memoize(fromUrl);
 const registryAuthToken = memoize(rat);
 const registryUrl = memoize(ru);
 const normalizeUrl = memoize(url => url.endsWith("/") ? url.substring(0, url.length - 1) : url);
+
+// dns cache
+const cache = {};
+const waiting = {};
+const originalLookup = dns.lookup;
+dns.lookup = (hostname, opts, callback) => {
+  if (!callback) {
+    callback = opts;
+    opts = undefined;
+  }
+  if (cache[hostname]) {
+    callback(...cache[hostname]);
+  } else {
+    if (!waiting[hostname]) {
+      waiting[hostname] = [callback];
+      originalLookup(hostname, opts, (...args) => {
+        if (!cache[hostname]) cache[hostname] = args;
+        waiting[hostname].forEach(callback => callback(...args));
+      });
+    } else {
+      waiting[hostname].push(callback);
+    }
+  }
+};
 
 const args = minimist(process.argv.slice(2), {
   boolean: [
