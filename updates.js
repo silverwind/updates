@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 "use strict";
 
+const ansiRegex = require("ansi-regex")();
 const fetch = require("make-fetch-happen");
 const minimist = require("minimist");
 const rat = require("registry-auth-token");
 const rc = require("rc");
 const ru = require("registry-auth-token/registry-url");
 const semver = require("semver");
-const stringWidth = require("string-width");
 const textTable = require("text-table");
 const {cwd: cwdFn} = require("process");
 const {fromUrl} = require("hosted-git-info");
@@ -300,6 +300,7 @@ function fetchFromRegistry(name, registry, auth) {
   const opts = {
     maxSockets,
     cacheManager: null,
+    integrity: null,
     retry: 5,
   };
 
@@ -443,8 +444,8 @@ function formatDeps() {
   }
 
   return textTable(arr, {
-    hsep: " ".repeat(2),
-    stringLength: stringWidth,
+    hsep: "  ",
+    stringLength: str => str.replace(ansiRegex, "").length,
   });
 }
 
