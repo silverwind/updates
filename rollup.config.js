@@ -1,3 +1,4 @@
+const {unlinkSync} = require("fs");
 const {writeSync} = require("tempy");
 const {name} = require("./package.json");
 
@@ -46,3 +47,8 @@ module.exports = {
     }),
   ],
 };
+
+process.on("exit", () => {
+  unlinkSync(nullTemp);
+  unlinkSync(fnTemp);
+});
