@@ -174,6 +174,9 @@ const maxSockets = typeof args.sockets === "number" ? args.sockets : MAX_SOCKETS
 const githubApiUrl = args.githubapi ? normalizeUrl(args.githubapi) : "https://api.github.com";
 
 let packageFile;
+const deps = {};
+const maybeUrlDeps = {};
+
 if (args.file) {
   let stat;
   try {
@@ -232,7 +235,6 @@ function canInclude(name) {
   return true;
 }
 
-const deps = {}, maybeUrlDeps = {};
 for (const depType of dependencyTypes) {
   for (const [name, value] of Object.entries(pkg[depType] || {})) {
     if (semver.validRange(value) && canInclude(name)) {
