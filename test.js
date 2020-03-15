@@ -1,13 +1,14 @@
 "use strict";
 
-const createTestServer = require("create-test-server");
 const del = require("del");
 const execa = require("execa");
+const fastify = require("fastify");
 const tempy = require("tempy");
+const {bin} = require("./package.json");
 const {join} = require("path");
 const {test, expect, beforeAll, afterAll} = global;
 const {writeFile, readFile} = require("fs").promises;
-const {bin} = require("./package.json");
+const {promisify} = require("util");
 
 const packageJson = require("./fixtures/test.json");
 const testDir = tempy.directory();
@@ -19,20 +20,20 @@ const dependencyTypes = [
   "optionalDependencies",
 ];
 
-const testPackages = [];
+const testPackages = new Set();
 for (const dependencyType of dependencyTypes) {
   for (const name of Object.keys(packageJson[dependencyType] || [])) {
-    testPackages.push(name);
+    testPackages.add(name);
   }
 }
 
-let npmServer, githubServer, githubApiUrl;
+let npmServer, githubServer, githubUrl, npmUrl;
 beforeAll(async () => {
   let commits, tags;
 
   [npmServer, githubServer, commits, tags] = await Promise.all([
-    createTestServer(),
-    createTestServer(),
+    fastify(),
+    fastify(),
     readFile(join(__dirname, "fixtures/github/updates-commits.json")),
     readFile(join(__dirname, "fixtures/github/updates-tags.json"))
   ]);
@@ -40,14 +41,18 @@ beforeAll(async () => {
   for (const packageName of testPackages) {
     const name = packageName.replace(/\//g, "%2f");
     const path = join(__dirname, `fixtures/npm/${name}.json`);
-    npmServer.get(`/${name}`, await readFile(path));
+    npmServer.get(`/${name}`, async (_, res) => res.send(await readFile(path)));
   }
 
-  githubServer.get("/repos/silverwind/updates/commits", commits);
-  githubServer.get("/repos/silverwind/updates/git/refs/tags", tags);
+  githubServer.get("/repos/silverwind/updates/commits", (_, res) => res.send(commits));
+  githubServer.get("/repos/silverwind/updates/git/refs/tags", (_, res) => res.send(tags));
 
-  githubApiUrl = githubServer.sslUrl;
-  await writeFile(join(testDir, ".npmrc"), `registry=${npmServer.sslUrl}`); // Fake registry
+  [githubUrl, npmUrl] = await Promise.all([
+    promisify(githubServer.listen).bind(githubServer)(0),
+    promisify(npmServer.listen).bind(npmServer)(0),
+  ]);
+
+  await writeFile(join(testDir, ".npmrc"), `registry=${npmUrl}`); // Fake registry
   await writeFile(join(testDir, "package.json"), JSON.stringify(packageJson, null, 2)); // Copy fixture
 });
 
@@ -61,7 +66,7 @@ afterAll(async () => {
 
 function makeTest(args, expected) {
   return async () => {
-    const argsArr = [...args.split(/\s+/), "-G", githubApiUrl];
+    const argsArr = [...args.split(/\s+/), "-G", githubUrl];
     const {stdout} = await execa(join(__dirname, bin), argsArr, {cwd: testDir});
     const {results} = JSON.parse(stdout);
 
