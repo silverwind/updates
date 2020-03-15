@@ -511,29 +511,29 @@ function rangeToVersion(range) {
   }
 }
 
-function findVersion(data, versions, opts) {
-  let tempVersion = rangeToVersion(opts.range);
+function findVersion(data, versions, {range, semvers, usePre, useRel, useGreatest} = {}) {
+  let tempVersion = rangeToVersion(range);
   let tempDate = 0;
 
-  const semvers = opts.semvers.slice();
-  const usePre = isRangePrerelease(opts.range) || opts.usePre;
+  semvers = new Set(semvers);
+  usePre = isRangePrerelease(range) || usePre;
 
   if (usePre) {
-    semvers.push("prerelease");
-    if (semvers.includes("patch")) semvers.push("prepatch");
-    if (semvers.includes("minor")) semvers.push("preminor");
-    if (semvers.includes("major")) semvers.push("premajor");
+    semvers.add("prerelease");
+    if (semvers.has("patch")) semvers.add("prepatch");
+    if (semvers.has("minor")) semvers.add("preminor");
+    if (semvers.has("major")) semvers.add("premajor");
   }
 
   for (const version of versions) {
     const parsed = semver.parse(version);
-    if (parsed.prerelease.length && (!usePre || opts.useRel)) continue;
+    if (parsed.prerelease.length && (!usePre || useRel)) continue;
 
     const diff = semver.diff(tempVersion, parsed.version);
-    if (!diff || !semvers.includes(diff)) continue;
+    if (!diff || !semvers.has(diff)) continue;
 
     // some registries like github don't have data.time available, fall back to greatest on them
-    if (opts.useGreatest || !("time" in data)) {
+    if (useGreatest || !("time" in data)) {
       if (semver.gte(semver.coerce(parsed.version).version, tempVersion)) {
         tempVersion = parsed.version;
       }
@@ -586,7 +586,7 @@ function findNewVersion(data, opts) {
 
     // check if latestTag is allowed by semvers
     const diff = semver.diff(oldVersion, latestTag);
-    if (diff && diff !== "prerelease" && !opts.semvers.includes(diff.replace(/^pre/, ""))) {
+    if (diff && diff !== "prerelease" && !opts.semvers.has(diff.replace(/^pre/, ""))) {
       return version;
     }
 
@@ -704,11 +704,11 @@ async function main() {
 
     let semvers;
     if (patch === true || Array.isArray(patch) && patch.includes(data.name)) {
-      semvers = ["patch"];
+      semvers = new Set(["patch"]);
     } else if (minor === true || Array.isArray(minor) && minor.includes(data.name)) {
-      semvers = ["patch", "minor"];
+      semvers = new Set(["patch", "minor"]);
     } else {
-      semvers = ["patch", "minor", "major"];
+      semvers = new Set(["patch", "minor", "major"]);
     }
 
     const key = `${type}${sep}${data.name}`;
