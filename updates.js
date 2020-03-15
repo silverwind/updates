@@ -597,7 +597,7 @@ function findNewVersion(data, opts) {
 
     // prevent downgrade to older version except with --allow-downgrade
     if (semver.lt(latestTag, oldVersion) && !latestIsPre) {
-      if (allowDowngrade === true || (Array.isArray(allowDowngrade) && allowDowngrade.includes(data.name))) {
+      if (allowDowngrade === true || (Array.isArray(allowDowngrade) && allowDowngrade.has(data.name))) {
         return latestTag;
       } else {
         return null;
@@ -679,9 +679,9 @@ function parseMixedArg(arg) {
   } else if (arg === "") {
     return true;
   } else if (typeof arg === "string") {
-    return arg.includes(",") ? arg.split(",") : [arg];
+    return arg.includes(",") ? new Set(arg.split(",")) : new Set([arg]);
   } else if (Array.isArray(arg)) {
-    return arg;
+    return new Set(arg);
   } else {
     return false;
   }
@@ -698,14 +698,14 @@ async function main() {
       throw new Error(data.error);
     }
 
-    const useGreatest = typeof greatest === "boolean" ? greatest : greatest.includes(data.name);
-    const usePre = typeof prerelease === "boolean" ? prerelease : prerelease.includes(data.name);
-    const useRel = typeof release === "boolean" ? release : release.includes(data.name);
+    const useGreatest = typeof greatest === "boolean" ? greatest : greatest.has(data.name);
+    const usePre = typeof prerelease === "boolean" ? prerelease : prerelease.has(data.name);
+    const useRel = typeof release === "boolean" ? release : release.has(data.name);
 
     let semvers;
-    if (patch === true || Array.isArray(patch) && patch.includes(data.name)) {
+    if (patch === true || Array.isArray(patch) && patch.has(data.name)) {
       semvers = new Set(["patch"]);
-    } else if (minor === true || Array.isArray(minor) && minor.includes(data.name)) {
+    } else if (minor === true || Array.isArray(minor) && minor.has(data.name)) {
       semvers = new Set(["patch", "minor"]);
     } else {
       semvers = new Set(["patch", "minor", "major"]);
@@ -728,7 +728,7 @@ async function main() {
   if (Object.keys(maybeUrlDeps).length) {
     let results = await Promise.all(Object.entries(maybeUrlDeps).map(([key, dep]) => {
       const [_, name] = key.split(sep);
-      const useGreatest = typeof greatest === "boolean" ? greatest : greatest.includes(name);
+      const useGreatest = typeof greatest === "boolean" ? greatest : greatest.has(name);
       return checkUrlDep([key, dep], {useGreatest});
     }));
     results = results.filter(r => !!r);
