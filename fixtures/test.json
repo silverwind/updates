@@ -10,6 +10,9 @@
     "@babel/preset-env": "7.0.0",
     "updates": "https://github.com/silverwind/updates/tarball/6941e05"
   },
+  "devDependencies": {
+    "updates": "file:."
+  },
   "peerDependencies": {
     "@babel/preset-env": "~6.0.0"
   }

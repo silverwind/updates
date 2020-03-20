@@ -14,7 +14,7 @@ deps:
 	yarn
 
 update:
-	node updates.js -cu
+	yarn -s run updates -cu
 	$(MAKE) deps
 
 patch: test
