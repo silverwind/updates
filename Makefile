@@ -1,5 +1,6 @@
-test: rollup
+test:
 	yarn -s run eslint --color .
+	$(MAKE) rollup
 	yarn -s run jest --color
 
 rollup:
