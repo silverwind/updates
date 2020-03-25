@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 "use strict";
 
-const dns = require("dns");
 const ansiRegex = require("ansi-regex")();
+const dns = require("dns");
 const fetch = require("make-fetch-happen");
 const minimist = require("minimist");
 const rat = require("registry-auth-token");
@@ -10,13 +10,13 @@ const rc = require("rc");
 const ru = require("registry-auth-token/registry-url");
 const semver = require("semver");
 const textTable = require("text-table");
-const {cwd: cwdFn} = require("process");
+const {cwd: cwdFn, stdout, argv, env, exit} = require("process");
 const {fromUrl} = require("hosted-git-info");
 const {join, dirname} = require("path");
 const {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync} = require("fs");
 const {platform} = require("os");
 
-process.env.NODE_ENV = "production";
+env.NODE_ENV = "production";
 
 const MAX_SOCKETS = 96;
 const sep = "\0";
@@ -63,7 +63,7 @@ dns.lookup = (hostname, opts, callback) => {
   }
 };
 
-const args = minimist(process.argv.slice(2), {
+const args = minimist(argv.slice(2), {
   boolean: [
     "c", "color",
     "E", "error-on-outdated",
@@ -113,7 +113,7 @@ const args = minimist(process.argv.slice(2), {
 });
 
 if (args.help) {
-  process.stdout.write(`usage: updates [options]
+  stdout.write(`usage: updates [options]
 
   Options:
     -u, --update                       Update versions and write package.json
@@ -144,18 +144,18 @@ if (args.help) {
     $ updates -u -m -e eslint
     $ updates -u -U && rm -rf node_modules && npm i
 `);
-  process.exit(0);
+  exit(0);
 }
 
 if (args.version) {
   console.info(require("./package.json").version);
-  process.exit(0);
+  exit(0);
 }
 
 if (args["no-color"]) {
-  process.env.NO_COLOR = "0";
-} else if (args["color"] || process.stdout.isTTY === undefined) { // winpty compat
-  process.env.FORCE_COLOR = "1";
+  env.NO_COLOR = "0";
+} else if (args["color"] || stdout.isTTY === undefined) { // winpty compat
+  env.FORCE_COLOR = "1";
 }
 const {gray, green, red} = require("colorette");
 
@@ -292,7 +292,7 @@ function findSync(filename, dir, stopDir) {
   try {
     accessSync(path);
     return path;
-  } catch (err) {}
+  } catch {}
 
   const parent = dirname(dir);
   if ((stopDir && path === stopDir) || parent === dir) {
@@ -314,7 +314,7 @@ function getAuthAndRegistry(name, registry) {
         if (newAuth && newAuth.token) {
           return [newAuth, url];
         }
-      } catch (err) {
+      } catch {
         return [registryAuthToken(registry, authTokenOpts), registry];
       }
     } else {
@@ -413,22 +413,19 @@ function finish(obj, opts = {}) {
   }
 
   if (args["error-on-outdated"]) {
-    process.exit(Object.keys(deps).length ? 2 : 0);
+    exit(Object.keys(deps).length ? 2 : 0);
   } else if (args["error-on-unchanged"]) {
-    process.exit(Object.keys(deps).length ? 0 : 2);
+    exit(Object.keys(deps).length ? 0 : 2);
   } else {
-    process.exit(opts.exitCode || (output.error ? 1 : 0));
+    exit(opts.exitCode || (output.error ? 1 : 0));
   }
 }
 
+// preserve file metadata on windows
 function write(file, content) {
-  if (platform() === "win32") {
-    // truncate and append on windows to preserve file metadata
-    truncateSync(file, 0);
-    writeFileSync(file, content, {encoding: "utf8", flag: "r+"});
-  } else {
-    writeFileSync(file, content, {encoding: "utf8"});
-  }
+  const isWindows = platform() === "win32";
+  if (isWindows) truncateSync(file, 0);
+  writeFileSync(file, content, isWindows ? {flag: "r+"} : undefined);
 }
 
 function highlightDiff(a, b, added) {
@@ -506,7 +503,7 @@ function isRangePrerelease(range) {
 function rangeToVersion(range) {
   try {
     return semver.coerce(range).version;
-  } catch (err) {
+  } catch {
     return null;
   }
 }
