@@ -17,28 +17,28 @@ updates   6941e05  815cc8b  16 hours  https://github.com/silverwind/updates
 
 ## Usage
 
-```console
-$ npm i -D updates
+```bash
+npm i -D updates
 ```
 
 Then, check for new updates:
-```console
-$ npx updates
+```bash
+npx updates
 ```
 
 When changes are satisfactory, update `package.json` and reinstall modules:
-```console
-$ npx updates -u && rm -rf node_modules && npm i
+```bash
+npx updates -u && rm -rf node_modules && npm i
 ```
 
 To only reinstall modules when updates are available:
-```console
-$ npx updates -uU && rm -rf node_modules && npm i
+```bash
+npx updates -uU && rm -rf node_modules && npm i
 ```
 
 On a CI, it might be desireable to fail a build when updates are available:
-```console
-$ npx updates -E
+```bash
+npx updates -E
 ```
 
 ## Options
