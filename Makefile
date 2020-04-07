@@ -14,8 +14,8 @@ deps:
 	rm -rf node_modules
 	yarn
 
-update:
-	yarn -s run updates -cu
+update: rollup
+	node updates -cu
 	$(MAKE) deps
 
 patch: test
