@@ -59,12 +59,12 @@ usage: updates [options]
     -P, --patch [<pkg,...>]            Consider only up to semver-patch
     -m, --minor [<pkg,...>]            Consider only up to semver-minor
     -d, --allow-downgrade [<pkg,...>]  Allow version downgrades when using latest version
-    -E, --error-on-outdated            Exit with code 2 when updates are available and code 0 when not
-    -U, --error-on-unchanged           Exit with code 0 when updates are available and code 2 when not
+    -E, --error-on-outdated            Exit with code 2 when updates are available and 0 when not
+    -U, --error-on-unchanged           Exit with code 0 when updates are available and 2 when not
     -r, --registry <url>               Override npm registry URL
     -G, --githubapi <url>              Override Github API URL
     -f, --file <path>                  Use given package.json file or module directory
-    -S, --sockets <num>                Maximum number of parallel HTTP sockets opened. Default: 64
+    -S, --sockets <num>                Maximum number of parallel HTTP sockets opened. Default: 96
     -j, --json                         Output a JSON object
     -c, --color                        Force-enable color output
     -n, --no-color                     Disable color output
