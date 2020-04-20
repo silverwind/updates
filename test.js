@@ -359,6 +359,16 @@ test("include version deps", makeTest("-j -i noty", {
   },
 }));
 
+test("include version deps #2", makeTest("-j -i noty -i noty,noty", {
+  dependencies: {
+    "noty": {
+      old: "3.1.0",
+      new: "3.2.0-beta",
+      info: "https://github.com/needim/noty",
+    },
+  },
+}));
+
 test("exclude version deps", makeTest("-j -e gulp-sourcemaps,prismjs,svgstore,html-webpack-plugin,noty,jpeg-buffer-orientation,styled-components,@babel/preset-env", {
   dependencies: {
     "updates": {

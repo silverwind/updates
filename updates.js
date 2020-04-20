@@ -226,8 +226,8 @@ try {
 }
 
 let include, exclude;
-if (args.include && args.include !== true) include = new Set(args.include.split(","));
-if (args.exclude && args.exclude !== true) exclude = new Set(args.exclude.split(","));
+if (args.include && args.include !== true) include = new Set((Array.isArray(args.include) ? args.include : [args.include]).map(item => item.split(",")).flat());
+if (args.exclude && args.exclude !== true) exclude = new Set((Array.isArray(args.exclude) ? args.exclude : [args.exclude]).map(item => item.split(",")).flat());
 
 function canInclude(name) {
   if (exclude && exclude.has(name)) return false;
