@@ -8,7 +8,8 @@
     "jpeg-buffer-orientation": "0.0.0",
     "styled-components": "2.5.0-1",
     "@babel/preset-env": "7.0.0",
-    "updates": "https://github.com/silverwind/updates/tarball/6941e05"
+    "updates": "https://github.com/silverwind/updates/tarball/6941e05",
+    "ipaddr.js": "https://github.com/silverwind/ipaddr.js/tarball/ipv6_cidrs_take2"
   },
   "devDependencies": {
     "updates": "file:."

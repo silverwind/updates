@@ -25,8 +25,8 @@ const cwd = cwdFn();
 // regexes for url dependencies. does only github and only hash or exact semver
 // https://regex101.com/r/gCZzfK/2
 const stripRe = /^.*?:\/\/(.*?@)?(github\.com[:/])/i;
-const partsRe = /^([^/]+)\/([^/#]+)?.*?([0-9a-f]+|v?[0-9]+\.[0-9]+\.[0-9]+)$/i;
-const hashRe = /^[0-9a-f]+$/i;
+const partsRe = /^([^/]+)\/([^/#]+)?.*?\/([0-9a-f]+|v?[0-9]+\.[0-9]+\.[0-9]+)$/i;
+const hashRe = /^[0-9a-f]{7,}$/i;
 
 const memoize = fn => {
   const cache = {};
