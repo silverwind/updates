@@ -30,7 +30,7 @@ module.exports = {
       indent: "",
       preferConst: true,
     }),
-    require("@rollup/plugin-node-resolve")({
+    require("@rollup/plugin-node-resolve").default({
       customResolveOptions: {
         packageFilter: pkg => {
           if (nullRouted.has(pkg.name)) return {main: nullTemp, type: "module"};
