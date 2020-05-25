@@ -81,14 +81,14 @@ function makeTest(args, expected) {
 
     // Parse results, with custom validation for the dynamic "age" property
     for (const dependencyType of dependencyTypes) {
-      for (const [dependencyName, data] of Object.entries(expected[dependencyType] || {})) {
-        for (const [key, value] of Object.entries(data || {})) {
-          const resultValue = results[dependencyType][dependencyName][key];
+      for (const [dependencyName, actual] of Object.entries(results[dependencyType] || {})) {
+        for (const [key, actualValue] of Object.entries(actual || {})) {
+          const expectedValue = expected[dependencyType][dependencyName][key];
           if (key === "age") {
-            expect(resultValue).toBeInstanceOf(String);
-            expect(resultValue.length > 0).toBeTruthy();
+            expect(typeof actualValue).toEqual("string");
+            expect(actualValue.length > 0).toBeTruthy();
           } else {
-            expect(resultValue).toEqual(value);
+            expect(expectedValue).toEqual(actualValue);
           }
         }
       }

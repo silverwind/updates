@@ -551,7 +551,8 @@ function findVersion(data, versions, {range, semvers, usePre, useRel, useGreates
 }
 
 function findNewVersion(data, opts) {
-  if (opts.range === "*") return "*";
+  if (opts.range === "*") return null; // ignore wildcard
+  if (opts.range.includes("||")) return null; // ignore or-chains
   const versions = Object.keys(data.versions).filter(version => semver.valid(version));
   const version = findVersion(data, versions, opts);
 
