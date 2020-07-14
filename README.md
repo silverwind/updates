@@ -76,7 +76,7 @@ usage: updates [options]
 
 The JSON output is an object with possible properties `results`, `message` and `error`:
 
-```console
+```json
 updates -j | jq
 {
   "results": {
