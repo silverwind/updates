@@ -11,7 +11,7 @@
 # install globally
 npm i -g updates
 
-# or install locally as a devDependency and run via `npx updates` or `yarn run updates`
+# or install locally as a devDependency and run via `npx updates`
 npm i -D updates
 ```
 
