@@ -2,6 +2,8 @@
 [![](https://img.shields.io/npm/v/updates.svg?style=flat)](https://www.npmjs.org/package/updates) [![](https://img.shields.io/npm/dm/updates.svg)](https://www.npmjs.org/package/updates)
 > Flexible npm dependency update tool
 
+![](./screenshot.png)
+
 `updates` is a CLI tool which checks for npm dependency updates of the current project and optionally updates `package.json`. It is highly configurable and is typically able to complete in less than a second.
 
 ```
