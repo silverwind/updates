@@ -1,6 +1,5 @@
 # updates
 [![](https://img.shields.io/npm/v/updates.svg?style=flat)](https://www.npmjs.org/package/updates) [![](https://img.shields.io/npm/dm/updates.svg)](https://www.npmjs.org/package/updates)
-> Flexible npm dependency update tool
 
 ![](./screenshot.png)
 
