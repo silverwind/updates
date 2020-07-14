@@ -10,8 +10,10 @@ const {test, expect, beforeAll, afterAll} = global;
 const {writeFile, readFile} = require("fs").promises;
 const {isIPv6} = require("net");
 
-const packageJson = require("./fixtures/test.json");
+const testFile = "./fixtures/test.json";
+const testPkg = require(testFile);
 const testDir = tempy.directory();
+const script = join(__dirname, bin);
 
 const dependencyTypes = [
   "dependencies",
@@ -22,7 +24,7 @@ const dependencyTypes = [
 
 const testPackages = new Set();
 for (const dependencyType of dependencyTypes) {
-  for (const name of Object.keys(packageJson[dependencyType] || [])) {
+  for (const name of Object.keys(testPkg[dependencyType] || [])) {
     testPackages.add(name);
   }
 }
@@ -62,7 +64,7 @@ beforeAll(async () => {
   npmUrl = makeUrl(npmServer);
 
   await writeFile(join(testDir, ".npmrc"), `registry=${npmUrl}`); // Fake registry
-  await writeFile(join(testDir, "package.json"), JSON.stringify(packageJson, null, 2)); // Copy fixture
+  await writeFile(join(testDir, "package.json"), JSON.stringify(testPkg, null, 2)); // Copy fixture
 });
 
 afterAll(async () => {
@@ -75,8 +77,8 @@ afterAll(async () => {
 
 function makeTest(args, expected) {
   return async () => {
-    const argsArr = [...args.split(/\s+/), "-G", githubUrl];
-    const {stdout} = await execa(join(__dirname, bin), argsArr, {cwd: testDir});
+    const argsArr = [...args.split(/\s+/), "-c", "-G", githubUrl];
+    const {stdout} = await execa(script, argsArr, {cwd: testDir});
     const {results} = JSON.parse(stdout);
 
     // Parse results, with custom validation for the dynamic "age" property
@@ -95,6 +97,14 @@ function makeTest(args, expected) {
     }
   };
 }
+
+test("simple", async () => {
+  const {stdout, stderr, exitCode} = await execa(script, ["-C", "-f", testFile]);
+  expect(stderr).toEqual("");
+  expect(stdout).toInclude("prismjs");
+  expect(stdout).toInclude("https://github.com/silverwind/updates");
+  expect(exitCode).toEqual(0);
+});
 
 test("latest", makeTest("-j", {
   dependencies: {

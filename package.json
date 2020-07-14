@@ -37,6 +37,7 @@
     "execa": "4.0.3",
     "hosted-git-info": "3.0.5",
     "jest": "26.1.0",
+    "jest-extended": "0.11.5",
     "make-fetch-happen": "8.0.8",
     "minimist": "1.2.5",
     "node-fetch": "2.6.0",
@@ -53,6 +54,9 @@
   },
   "jest": {
     "verbose": false,
-    "testTimeout": 10000
+    "testTimeout": 10000,
+    "setupFilesAfterEnv": [
+      "jest-extended"
+    ]
   }
 }
