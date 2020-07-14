@@ -8,27 +8,31 @@
 ## Usage
 
 ```bash
+# install globally
+npm i -g updates
+
+# or install locally as a devDependency and run via `npx updates` or `yarn run updates`
 npm i -D updates
 ```
 
 Then, check for new updates:
 ```bash
-npx updates
+updates
 ```
 
 When changes are satisfactory, update `package.json` and reinstall modules:
 ```bash
-npx updates -u && rm -rf node_modules && npm i
+updates -u && npm i
 ```
 
 To only reinstall modules when updates are available:
 ```bash
-npx updates -uU && rm -rf node_modules && npm i
+updates -uU && npm i
 ```
 
 On a CI, it might be desireable to fail a build when updates are available:
 ```bash
-npx updates -E
+updates -E
 ```
 
 ## Options
@@ -73,7 +77,7 @@ usage: updates [options]
 The JSON output is an object with possible properties `results`, `message` and `error`:
 
 ```console
-$ updates -j | jq
+updates -j | jq
 {
   "results": {
     "dependencies": {
