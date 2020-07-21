@@ -57,14 +57,8 @@ beforeAll(async () => {
     npmServer.get(`/${name}`, async (_, res) => res.send(await readFile(path)));
   }
 
-  githubServer.get("/repos/silverwind/updates/commits", (req, res) => {
-    console.info(req.url, commits);
-    res.send(commits);
-  });
-  githubServer.get("/repos/silverwind/updates/git/refs/tags", (req, res) => {
-    console.info(req.url, tags);
-    res.send(tags);
-  });
+  githubServer.get("/repos/silverwind/updates/commits", (_, res) => res.send(commits));
+  githubServer.get("/repos/silverwind/updates/git/refs/tags", (_, res) => res.send(tags));
 
   [githubServer, npmServer] = await Promise.all([
     githubServer.start(0),
@@ -110,7 +104,7 @@ function makeTest(args, expected) {
 }
 
 test("simple", async () => {
-  const {stdout, stderr, exitCode} = await execa(script, ["-C", "-f", testFile]);
+  const {stdout, stderr, exitCode} = await execa(script, ["-C", "-G", githubUrl, "-f", testFile]);
   expect(stderr).toEqual("");
   expect(stdout).toInclude("prismjs");
   expect(stdout).toInclude("https://github.com/silverwind/updates");
