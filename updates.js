@@ -1,6 +1,4 @@
 #!/usr/bin/env node
-"use strict";
-
 import ansiRegex from "ansi-regex";
 import dns from "dns";
 import fetch from "make-fetch-happen";
