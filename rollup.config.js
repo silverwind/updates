@@ -42,9 +42,9 @@ module.exports = {
     require("@rollup/plugin-commonjs")({
       sourceMap: false,
     }),
-    // require("rollup-plugin-terser").terser({
-    //   output: {comments: false},
-    // }),
+    require("rollup-plugin-terser").terser({
+      output: {comments: false},
+    }),
   ],
 };
 
