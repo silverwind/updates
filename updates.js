@@ -13,6 +13,11 @@ import {fromUrl} from "hosted-git-info";
 import {join, dirname} from "path";
 import {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync} from "fs";
 import {platform} from "os";
+import {version} from "./package.json";
+
+const red = str => `\x1b[31m${str}\x1b[0m`;
+const green = str => `\x1b[32m${str}\x1b[0m`;
+const gray = str => `\x1b[90m${str}\x1b[0m`;
 
 env.NODE_ENV = "production";
 
@@ -146,7 +151,7 @@ if (args.help) {
 }
 
 if (args.version) {
-  console.info(require("./package.json").version);
+  console.info(version);
   exit(0);
 }
 
@@ -155,7 +160,6 @@ if (args["no-color"]) {
 } else if (args["color"] || stdout.isTTY === undefined) { // winpty compat
   env.FORCE_COLOR = "1";
 }
-const {gray, green, red} = require("colorette");
 
 const greatest = parseMixedArg(args.greatest);
 const prerelease = parseMixedArg(args.prerelease);
