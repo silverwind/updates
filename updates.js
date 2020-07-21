@@ -1,20 +1,20 @@
 #!/usr/bin/env node
 "use strict";
 
-const ansiRegex = require("ansi-regex")();
-const dns = require("dns");
-const fetch = require("make-fetch-happen");
-const minimist = require("minimist");
-const rat = require("registry-auth-token");
-const rc = require("rc");
-const ru = require("registry-auth-token/registry-url");
-const semver = require("semver");
-const textTable = require("text-table");
-const {cwd: cwdFn, stdout, argv, env, exit} = require("process");
-const {fromUrl} = require("hosted-git-info");
-const {join, dirname} = require("path");
-const {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync} = require("fs");
-const {platform} = require("os");
+import ansiRegex from "ansi-regex";
+import dns from "dns";
+import fetch from "make-fetch-happen";
+import minimist from "minimist";
+import rat from "registry-auth-token";
+import rc from "rc";
+import ru from "registry-auth-token/registry-url";
+import semver from "semver";
+import textTable from "text-table";
+import {cwd as cwdFn, stdout, argv, env, exit} from "process";
+import {fromUrl} from "hosted-git-info";
+import {join, dirname} from "path";
+import {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync} from "fs";
+import {platform} from "os";
 
 env.NODE_ENV = "production";
 
@@ -471,9 +471,11 @@ function formatDeps() {
     ]);
   }
 
+  const ansiRe = ansiRegex();
+
   return textTable(arr, {
     hsep: "  ",
-    stringLength: str => str.replace(ansiRegex, "").length,
+    stringLength: str => str.replace(ansiRe, "").length,
   });
 }
 
