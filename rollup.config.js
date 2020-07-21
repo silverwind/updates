@@ -35,6 +35,11 @@ module.exports = {
         packageFilter: pkg => {
           if (nullRouted.has(pkg.name)) return {main: nullTemp, type: "module"};
           if (fnRouted.has(pkg.name)) return {main: fnTemp, type: "module"};
+
+          // fake esm resolution for specific modules
+          // https://github.com/browserify/resolve/issues/222
+          if (pkg.name === "colorette") return {main: pkg.exports["."].import, type: "module"};
+
           return pkg;
         },
       }

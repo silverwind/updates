@@ -13,18 +13,8 @@ import {fromUrl} from "hosted-git-info";
 import {join, dirname} from "path";
 import {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync} from "fs";
 import {platform} from "os";
+import {red, green, gray} from "colorette";
 import {version} from "./package.json";
-
-let red, green, gray;
-if (!("NO_COLOR" in process.env) && ("FORCE_COLOR" in process.env || process.platform === "win32" || (stdout !== null && stdout.isTTY && env.TERM && env.TERM !== "dumb"))) {
-  red = str => `\x1b[31m${str}\x1b[0m`;
-  green = str => `\x1b[32m${str}\x1b[0m`;
-  gray = str => `\x1b[90m${str}\x1b[0m`;
-} else {
-  red = str => str;
-  green = str => str;
-  gray = str => str;
-}
 
 env.NODE_ENV = "production";
 
