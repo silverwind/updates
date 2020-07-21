@@ -111,6 +111,17 @@ test("simple", async () => {
   expect(exitCode).toEqual(0);
 });
 
+if (process.env.CI) {
+  test("global", async () => {
+    await execa("npm", ["i", "-g", "."]);
+    const {stdout, stderr, exitCode} = await execa("updates", ["-C", "-G", githubUrl, "-f", testFile]);
+    expect(stderr).toEqual("");
+    expect(stdout).toInclude("prismjs");
+    expect(stdout).toInclude("https://github.com/silverwind/updates");
+    expect(exitCode).toEqual(0);
+  });
+}
+
 test("latest", makeTest("-j", {
   dependencies: {
     "gulp-sourcemaps": {
