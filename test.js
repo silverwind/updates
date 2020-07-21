@@ -35,13 +35,18 @@ function makeUrl(server) {
   return Object.assign(new URL("http://x"), {hostname, port}).toString();
 }
 
+function defaultRoute(req, res) {
+  console.error(`default handler hit for ${req.url}`);
+  res.send(404);
+}
+
 let npmServer, githubServer, githubUrl, npmUrl;
 beforeAll(async () => {
   let commits, tags;
 
   [npmServer, githubServer, commits, tags] = await Promise.all([
-    restana(),
-    restana(),
+    restana({defaultRoute}),
+    restana({defaultRoute}),
     readFile(join(__dirname, "fixtures/github/updates-commits.json")),
     readFile(join(__dirname, "fixtures/github/updates-tags.json"))
   ]);
