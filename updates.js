@@ -39,6 +39,10 @@ const registryAuthToken = memoize(rat);
 const registryUrl = memoize(ru);
 const normalizeUrl = memoize(url => url.endsWith("/") ? url.substring(0, url.length - 1) : url);
 
+const patchSemvers = new Set(["patch"]);
+const minorSemvers = new Set(["patch", "minor"]);
+const majorSemvers = new Set(["patch", "minor", "major"]);
+
 // dns cache
 const cache = {};
 const waiting = {};
@@ -707,11 +711,11 @@ async function main() {
 
     let semvers;
     if (patch === true || Array.isArray(patch) && patch.has(data.name)) {
-      semvers = new Set(["patch"]);
+      semvers = patchSemvers;
     } else if (minor === true || Array.isArray(minor) && minor.has(data.name)) {
-      semvers = new Set(["patch", "minor"]);
+      semvers = minorSemvers;
     } else {
-      semvers = new Set(["patch", "minor", "major"]);
+      semvers = majorSemvers;
     }
 
     const key = `${type}${sep}${data.name}`;
