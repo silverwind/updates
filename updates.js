@@ -13,7 +13,6 @@ import {fromUrl} from "hosted-git-info";
 import {join, dirname} from "path";
 import {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync} from "fs";
 import {platform} from "os";
-import {red, green, gray} from "colorette";
 import {version} from "./package.json";
 
 env.NODE_ENV = "production";
@@ -115,6 +114,15 @@ const args = minimist(argv.slice(2), {
     v: "version",
   },
 });
+
+let red, green, gray;
+if (!args["no-color"]) {
+  red = str => `\x1b[31m${str}\x1b[0m`;
+  green = str => `\x1b[32m${str}\x1b[0m`;
+  gray = str => `\x1b[90m${str}\x1b[0m`;
+} else {
+  red = green = gray = str => str;
+}
 
 if (args.help) {
   stdout.write(`usage: updates [options]
