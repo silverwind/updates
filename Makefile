@@ -4,8 +4,7 @@ test:
 	yarn -s run jest --color
 
 bundle:
-	yarn -s run ncc build updates.js -q -m -o . -e cacache -e socks-proxy-agent -e ssri -e stripJsonComments -e encoding -e depd -e debug --no-source-map-register
-	@mv index.js updates
+	yarn -s run rollup --silent --compact -c rollup.config.js
 
 publish:
 	git push -u --tags origin master

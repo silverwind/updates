@@ -26,9 +26,11 @@
     "updates"
   ],
   "devDependencies": {
+    "@rollup/plugin-commonjs": "15.0.0",
+    "@rollup/plugin-json": "4.1.0",
+    "@rollup/plugin-node-resolve": "9.0.0",
     "@vercel/ncc": "0.23.0",
     "ansi-regex": "5.0.0",
-    "colorette": "1.2.1",
     "del": "5.1.0",
     "eslint": "7.6.0",
     "eslint-config-silverwind": "18.0.2",
@@ -42,6 +44,9 @@
     "rc": "1.2.8",
     "registry-auth-token": "4.2.0",
     "restana": "4.7.2",
+    "rollup": "2.26.3",
+    "rollup-plugin-hashbang": "2.2.2",
+    "rollup-plugin-terser": "7.0.0",
     "semver": "7.3.2",
     "tempy": "0.6.0",
     "text-table": "0.2.0",

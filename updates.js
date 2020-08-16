@@ -1,20 +1,19 @@
 #!/usr/bin/env node
-import ansiRegex from "ansi-regex";
-import dns from "dns";
-import fetch from "make-fetch-happen";
-import minimist from "minimist";
-import rat from "registry-auth-token";
-import rc from "rc";
-import ru from "registry-auth-token/registry-url";
-import semver from "semver";
-import textTable from "text-table";
-import {cwd as cwdFn, stdout, argv, env, exit} from "process";
-import {fromUrl} from "hosted-git-info";
-import {join, dirname} from "path";
-import {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync} from "fs";
-import {platform} from "os";
-import {options, red, green, gray} from "colorette";
-import {version} from "./package.json";
+const ansiRegex = require("ansi-regex");
+const dns = require("dns");
+const fetch = require("make-fetch-happen");
+const minimist = require("minimist");
+const rat = require("registry-auth-token");
+const rc = require("rc");
+const ru = require("registry-auth-token/registry-url");
+const semver = require("semver");
+const textTable = require("text-table");
+const {cwd: cwdFn, stdout, argv, env, exit} = require("process");
+const {fromUrl} = require("hosted-git-info");
+const {join, dirname} = require("path");
+const {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync} = require("fs");
+const {platform} = require("os");
+const {version} = require("./package.json");
 
 env.NODE_ENV = "production";
 
@@ -116,10 +115,16 @@ const args = minimist(argv.slice(2), {
   },
 });
 
-if (args["no-color"]) {
-  options.enabled = false;
-} else if (args.color) {
-  options.enabled = true;
+const colorDisabled = args["no-color"] || "NO_COLOR" in process.env || process.env.TERM === "dumb";
+const colorEnabled = args.color || "FORCE_COLOR" in process.env;
+
+let red, green, gray;
+if (!colorDisabled || colorEnabled) {
+  red = str => `\x1b[31m${str}\x1b[0m`;
+  green = str => `\x1b[32m${str}\x1b[0m`;
+  gray = str => `\x1b[90m${str}\x1b[0m`;
+} else {
+  red = green = gray = str => str;
 }
 
 if (args.help) {
