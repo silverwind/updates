@@ -1,9 +1,13 @@
-test:
+lint:
 	yarn -s run eslint --color .
-	@$(MAKE) --no-print-directory bundle
+
+test: lint build
 	yarn -s run jest --color
 
-bundle:
+unittest:
+	yarn -s run jest --color --watchAll
+
+build:
 	yarn -s run rollup --silent --compact -c rollup.config.js
 
 publish:
@@ -14,20 +18,20 @@ deps:
 	rm -rf node_modules
 	yarn
 
-update: bundle
+update: build
 	node updates -cu
 	@$(MAKE) --no-print-directory deps
 
 patch: test
-	yarn -s run versions -Cc 'make bundle' patch
+	yarn -s run versions -Cc 'make build' patch
 	@$(MAKE) --no-print-directory publish
 
 minor: test
-	yarn -s run versions -Cc 'make bundle' minor
+	yarn -s run versions -Cc 'make build' minor
 	@$(MAKE) --no-print-directory publish
 
 major: test
-	yarn -s run versions -Cc 'make bundle' major
+	yarn -s run versions -Cc 'make build' major
 	@$(MAKE) --no-print-directory publish
 
-.PHONY: test bundle publish deps update patch minor major
+.PHONY: lint test unittest build publish deps update patch minor major

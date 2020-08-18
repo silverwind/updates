@@ -6,7 +6,6 @@ const restana = require("restana");
 const tempy = require("tempy");
 const {bin} = require("./package.json");
 const {join} = require("path");
-const {test, expect, beforeAll, afterAll} = global;
 const {writeFile, readFile} = require("fs").promises;
 const {isIPv6} = require("net");
 
