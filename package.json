@@ -39,7 +39,7 @@
     "jest-extended": "0.11.5",
     "make-fetch-happen": "8.0.9",
     "minimist": "1.2.5",
-    "node-fetch": "2.6.0",
+    "node-fetch": "2.6.1",
     "rc": "1.2.8",
     "registry-auth-token": "4.2.0",
     "restana": "4.7.3",
