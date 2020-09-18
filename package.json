@@ -7,7 +7,7 @@
   "license": "BSD-2-Clause",
   "bin": "./updates",
   "engines": {
-    "node": ">=10"
+    "node": ">=12"
   },
   "scripts": {
     "test": "make test"
