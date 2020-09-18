@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 const ansiRegex = require("ansi-regex");
 const dns = require("dns");
-const fetch = require("make-fetch-happen");
+const fetchEnhanced = require("fetch-enhanced");
 const minimist = require("minimist");
+const nodeFetch = require("node-fetch");
 const rat = require("registry-auth-token");
 const rc = require("rc");
 const ru = require("registry-auth-token/registry-url");
@@ -14,6 +15,8 @@ const {join, dirname} = require("path");
 const {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync} = require("fs");
 const {platform} = require("os");
 const {version} = require("./package.json");
+
+const fetch = fetchEnhanced(nodeFetch);
 
 env.NODE_ENV = "production";
 
@@ -184,8 +187,11 @@ const defaultRegistry = "https://registry.npmjs.org";
 const npmrc = rc("npm", {registry: defaultRegistry});
 const authTokenOpts = {npmrc, recursive: true};
 const registry = normalizeUrl(args.registry || npmrc.registry);
-const maxSockets = typeof args.sockets === "number" ? args.sockets : MAX_SOCKETS;
 const githubApiUrl = args.githubapi ? normalizeUrl(args.githubapi) : "https://api.github.com";
+
+const fetchOpts = {
+  maxSockets: typeof args.sockets === "number" ? args.sockets : MAX_SOCKETS,
+};
 
 let packageFile;
 const deps = {};
@@ -342,13 +348,7 @@ function getAuthAndRegistry(name, registry) {
 }
 
 function fetchFromRegistry(name, registry, auth) {
-  const opts = {
-    maxSockets,
-    cacheManager: null,
-    integrity: null,
-    retry: 5,
-  };
-
+  const opts = {...fetchOpts};
   if (auth && auth.token) {
     opts.headers = {Authorization: `${auth.type} ${auth.token}`};
   }

@@ -8,7 +8,8 @@ unittest:
 	yarn -s run jest --color --watchAll
 
 build:
-	yarn -s run rollup --silent --compact -c rollup.config.js
+	yarn -s run ncc build updates.js -q -m -o .
+	@mv index.js updates
 
 publish:
 	git push -u --tags origin master
