@@ -188,10 +188,7 @@ const npmrc = rc("npm", {registry: defaultRegistry});
 const authTokenOpts = {npmrc, recursive: true};
 const registry = normalizeUrl(args.registry || npmrc.registry);
 const githubApiUrl = args.githubapi ? normalizeUrl(args.githubapi) : "https://api.github.com";
-
-const fetchOpts = {
-  maxSockets: typeof args.sockets === "number" ? args.sockets : MAX_SOCKETS,
-};
+const maxSockets = typeof args.sockets === "number" ? args.sockets : MAX_SOCKETS;
 
 let packageFile;
 const deps = {};
@@ -347,18 +344,15 @@ function getAuthAndRegistry(name, registry) {
   }
 }
 
-function fetchFromRegistry(name, registry, auth) {
-  const opts = {...fetchOpts};
+async function fetchInfo(name, type, originalRegistry) {
+  const [auth, registry] = getAuthAndRegistry(name, originalRegistry);
+
+  const opts = {maxSockets};
   if (auth && auth.token) {
     opts.headers = {Authorization: `${auth.type} ${auth.token}`};
   }
-  return fetch(`${registry}/${name.replace(/\//g, "%2f")}`, opts);
-}
 
-const get = async (name, type, originalRegistry) => {
-  const [auth, registry] = getAuthAndRegistry(name, originalRegistry);
-
-  const res = await fetchFromRegistry(name, registry, auth);
+  const res = await fetch(`${registry}/${name.replace(/\//g, "%2f")}`, opts);
   if (res && res.ok) {
     return [await res.json(), type, registry];
   } else {
@@ -368,9 +362,9 @@ const get = async (name, type, originalRegistry) => {
       throw new Error(`Unable to fetch ${name} from ${registry}`);
     }
   }
-};
+}
 
-const getInfoUrl = ({repository, homepage}, registry, name) => {
+function getInfoUrl({repository, homepage}, registry, name) {
   if (registry === "https://npm.pkg.github.com") {
     return `https://github.com/${name.replace(/^@/, "")}`;
   } else if (repository) {
@@ -381,7 +375,7 @@ const getInfoUrl = ({repository, homepage}, registry, name) => {
   }
 
   return homepage || "";
-};
+}
 
 function finish(obj, opts = {}) {
   const output = {};
@@ -706,12 +700,12 @@ function parseMixedArg(arg) {
 }
 
 async function main() {
-  const dati = await Promise.all(Object.keys(deps).map(key => {
+  const entries = await Promise.all(Object.keys(deps).map(key => {
     const [type, name] = key.split(sep);
-    return get(name, type, registry);
+    return fetchInfo(name, type, registry);
   }));
 
-  for (const [data, type, registry] of dati) {
+  for (const [data, type, registry] of entries) {
     if (data && data.error) {
       throw new Error(data.error);
     }
