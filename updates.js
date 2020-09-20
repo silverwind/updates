@@ -424,6 +424,8 @@ function finish(obj, opts = {}) {
     }
   }
 
+  fetchEnhanced.destroyAgents();
+
   if (args["error-on-outdated"]) {
     exit(Object.keys(deps).length ? 2 : 0);
   } else if (args["error-on-unchanged"]) {
