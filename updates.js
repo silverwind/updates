@@ -364,8 +364,6 @@ async function fetchInfo(name, type, originalRegistry) {
   }
 }
 
-// https://github.com/babel/babel/tree/master/packages/babel-preset-env
-
 function getInfoUrl({repository, homepage}, registry, name) {
   let infoUrl;
 
