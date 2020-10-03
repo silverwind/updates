@@ -364,17 +364,43 @@ async function fetchInfo(name, type, originalRegistry) {
   }
 }
 
+// https://github.com/babel/babel/tree/master/packages/babel-preset-env
+
 function getInfoUrl({repository, homepage}, registry, name) {
+  let infoUrl;
+
   if (registry === "https://npm.pkg.github.com") {
     return `https://github.com/${name.replace(/^@/, "")}`;
   } else if (repository) {
     const url = typeof repository === "string" ? repository : repository.url;
+
     const info = hostedGitInfo(url);
-    if (info && info.browse) return info.browse();
-    if (repository && repository.url && /^https?:/.test(repository.url)) return repository.url;
+    if (info && info.browse) {
+      // https://github.com/babel/babel
+      infoUrl = info.browse();
+    }
+
+    if (infoUrl && repository.directory && info.treepath) {
+      // https://github.com/babel/babel/tree/HEAD/packages/babel-cli
+      infoUrl = `${infoUrl}/${info.treepath}/HEAD/${repository.directory}`;
+    }
+
+    if (!infoUrl && repository && repository.url && /^https?:/.test(repository.url)) {
+      infoUrl = repository.url;
+    }
+  }
+  let url = infoUrl || homepage || "";
+
+  // force https for github.com
+  if (url) {
+    const u = new URL(url);
+    if (u.hostname === "github.com" && u.protocol === "http:") {
+      u.protocol = "https:";
+      url = String(u);
+    }
   }
 
-  return homepage || "";
+  return url;
 }
 
 function finish(obj, opts = {}) {

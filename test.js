@@ -160,8 +160,8 @@ test("latest", makeTest("-j", {
     },
     "@babel/preset-env": {
       old: "7.0.0",
-      new: "7.7.6",
-      info: "https://github.com/babel/babel/tree/master/packages/babel-preset-env",
+      new: "7.11.5",
+      info: "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
     },
     "updates": {
       old: "6941e05",
@@ -172,8 +172,8 @@ test("latest", makeTest("-j", {
   peerDependencies: {
     "@babel/preset-env": {
       old: "~6.0.0",
-      new: "~7.7.6",
-      info: "https://github.com/babel/babel/tree/master/packages/babel-preset-env"
+      new: "~7.11.5",
+      info: "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env"
     }
   },
 }));
@@ -212,8 +212,8 @@ test("greatest", makeTest("-j -g", {
     },
     "@babel/preset-env": {
       old: "7.0.0",
-      new: "7.7.6",
-      info: "https://github.com/babel/babel/tree/master/packages/babel-preset-env",
+      new: "7.11.5",
+      info: "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
     },
     "updates": {
       old: "6941e05",
@@ -224,8 +224,8 @@ test("greatest", makeTest("-j -g", {
   peerDependencies: {
     "@babel/preset-env": {
       old: "~6.0.0",
-      new: "~7.7.6",
-      info: "https://github.com/babel/babel/tree/master/packages/babel-preset-env"
+      new: "~7.11.5",
+      info: "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env"
     }
   }
 }));
@@ -269,8 +269,8 @@ test("prerelease", makeTest("-j -g -p", {
     },
     "@babel/preset-env": {
       old: "7.0.0",
-      new: "7.7.6",
-      info: "https://github.com/babel/babel/tree/master/packages/babel-preset-env",
+      new: "7.11.5",
+      info: "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
     },
     "updates": {
       old: "6941e05",
@@ -281,8 +281,8 @@ test("prerelease", makeTest("-j -g -p", {
   peerDependencies: {
     "@babel/preset-env": {
       old: "~6.0.0",
-      new: "~7.7.6",
-      info: "https://github.com/babel/babel/tree/master/packages/babel-preset-env"
+      new: "~7.11.5",
+      info: "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env"
     }
   },
 }));
@@ -326,8 +326,8 @@ test("release", makeTest("-j -R", {
     },
     "@babel/preset-env": {
       old: "7.0.0",
-      new: "7.7.6",
-      info: "https://github.com/babel/babel/tree/master/packages/babel-preset-env",
+      new: "7.11.5",
+      info: "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
     },
     "updates": {
       old: "6941e05",
@@ -338,8 +338,8 @@ test("release", makeTest("-j -R", {
   peerDependencies: {
     "@babel/preset-env": {
       old: "~6.0.0",
-      new: "~7.7.6",
-      info: "https://github.com/babel/babel/tree/master/packages/babel-preset-env"
+      new: "~7.11.5",
+      info: "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env"
     },
   },
 }));
