@@ -31,8 +31,8 @@ const partsRe = /^([^/]+)\/([^/#]+)?.*?\/([0-9a-f]+|v?[0-9]+\.[0-9]+\.[0-9]+)$/i
 const hashRe = /^[0-9a-f]{7,}$/i;
 
 const memoize = fn => {
-  const cache = {};
-  return (arg, arg2) => cache[arg] || (cache[arg] = fn(arg, arg2));
+  const cache = Object.create(null);
+  return (arg, arg2) => arg in cache ? cache[arg] : cache[arg] = fn(arg, arg2);
 };
 
 const esc = str => str.replace(/[|\\{}()[\]^$+*?.-]/g, "\\$&");
@@ -46,21 +46,21 @@ const minorSemvers = new Set(["patch", "minor"]);
 const majorSemvers = new Set(["patch", "minor", "major"]);
 
 // dns cache
-const cache = {};
-const waiting = {};
+const cache = Object.create(null);
+const waiting = Object.create(null);
 const originalLookup = dns.lookup;
 dns.lookup = (hostname, opts, callback) => {
   if (!callback) {
     callback = opts;
     opts = undefined;
   }
-  if (cache[hostname]) {
+  if (hostname in cache) {
     callback(...cache[hostname]);
   } else {
-    if (!waiting[hostname]) {
+    if (!(hostname in waiting)) {
       waiting[hostname] = [callback];
       originalLookup(hostname, opts, (...args) => {
-        if (!cache[hostname]) cache[hostname] = args;
+        if (!(hostname in cache)) cache[hostname] = args;
         waiting[hostname].forEach(callback => callback(...args));
       });
     } else {
