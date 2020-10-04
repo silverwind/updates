@@ -380,6 +380,8 @@ function getInfoUrl({repository, homepage}, registry, name) {
 
     if (infoUrl && repository.directory && info.treepath) {
       // https://github.com/babel/babel/tree/HEAD/packages/babel-cli
+      // HEAD seems to always go to the default branch on GitHub but ideally
+      // package.json should have a field for source branch
       infoUrl = `${infoUrl}/${info.treepath}/HEAD/${repository.directory}`;
     }
 
