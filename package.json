@@ -1,6 +1,6 @@
 {
   "name": "updates",
-  "version": "11.2.0",
+  "version": "11.2.1",
   "description": "Flexible npm dependency update tool",
   "author": "silverwind",
   "repository": "silverwind/updates",
@@ -32,7 +32,7 @@
     "eslint": "7.10.0",
     "eslint-config-silverwind": "20.0.0",
     "execa": "4.0.3",
-    "fetch-enhanced": "4.0.4",
+    "fetch-enhanced": "4.0.5",
     "hosted-git-info": "3.0.5",
     "jest": "26.4.2",
     "jest-extended": "0.11.5",
