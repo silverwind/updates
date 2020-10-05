@@ -332,7 +332,7 @@
     jest-util "^26.5.0"
     slash "^3.0.0"
 
-"@jest/core@^26.4.2", "@jest/core@^26.5.0":
+"@jest/core@^26.5.0":
   version "26.5.0"
   resolved "https://registry.yarnpkg.com/@jest/core/-/core-26.5.0.tgz#32d7caf46a49d4a14cbbd3a2eb3ef39f149e984d"
   integrity sha512-hDtgfzYxnrQn54+0JlbqpXM4+bqDfK0ooMlNE4Nn3VBsB4RbmytAn4/kVVIcMa+aYwRr/fwzWuGJwBETVg1sDw==
@@ -1532,10 +1532,10 @@ eslint-ast-utils@^1.1.0:
     lodash.get "^4.4.2"
     lodash.zip "^4.2.0"
 
-eslint-config-silverwind@20.0.0:
-  version "20.0.0"
-  resolved "https://registry.yarnpkg.com/eslint-config-silverwind/-/eslint-config-silverwind-20.0.0.tgz#48545d21ed17a52f0848c39df028dda6390d1e2a"
-  integrity sha512-DSNmd0jY5mRF6apRrG8tBD49HF9n+kBu9FHlEYJPx6U+sy8ajAEBgR/cXCC79hV1h3ahyrkzepOCCuKS6mrBPA==
+eslint-config-silverwind@21.0.0:
+  version "21.0.0"
+  resolved "https://registry.yarnpkg.com/eslint-config-silverwind/-/eslint-config-silverwind-21.0.0.tgz#66ff26f05e7fe710268bd8593190dfecd91e80c7"
+  integrity sha512-Grtu2CQ8mc/dRO2RZQJjkqpz1qQ76Ognz8CqX1pR6sDEzW2wk81t3ux8EJ9KUyGj1TelbZ14dk8eq7iXuPV4mQ==
   dependencies:
     eslint-plugin-import "^2.22.1"
     eslint-plugin-unicorn "^22.0.0"
@@ -2551,7 +2551,7 @@ jest-changed-files@^26.5.0:
     execa "^4.0.0"
     throat "^5.0.0"
 
-jest-cli@^26.4.2:
+jest-cli@^26.5.0:
   version "26.5.0"
   resolved "https://registry.yarnpkg.com/jest-cli/-/jest-cli-26.5.0.tgz#4404fb5cbdfb250946160374d5e3fc9655f9b57f"
   integrity sha512-bI0h6GQGbyN0SSZu3nPilwrkrZ8dBC93erwTiEoJ+kGjtNuXsB183hTZ0HCiHLzf88oE0SQB1hYp8RgyytH+Bg==
@@ -2971,14 +2971,14 @@ jest-worker@^26.5.0:
     merge-stream "^2.0.0"
     supports-color "^7.0.0"
 
-jest@26.4.2:
-  version "26.4.2"
-  resolved "https://registry.yarnpkg.com/jest/-/jest-26.4.2.tgz#7e8bfb348ec33f5459adeaffc1a25d5752d9d312"
-  integrity sha512-LLCjPrUh98Ik8CzW8LLVnSCfLaiY+wbK53U7VxnFSX7Q+kWC4noVeDvGWIFw0Amfq1lq2VfGm7YHWSLBV62MJw==
+jest@26.5.0:
+  version "26.5.0"
+  resolved "https://registry.yarnpkg.com/jest/-/jest-26.5.0.tgz#d973c13a3843587b89b02dab1fbcd1f3bf111f09"
+  integrity sha512-yW1QTkdpxVWTV2M5cOwVdEww8dRGqL5bb7FOG3YQoMtf7oReCEawmU0+tOKkZUSfcOymbXmCfdBQLzuwOLCx0w==
   dependencies:
-    "@jest/core" "^26.4.2"
+    "@jest/core" "^26.5.0"
     import-local "^3.0.2"
-    jest-cli "^26.4.2"
+    jest-cli "^26.5.0"
 
 js-tokens@^4.0.0:
   version "4.0.0"

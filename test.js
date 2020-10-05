@@ -4,15 +4,13 @@ const del = require("del");
 const execa = require("execa");
 const restana = require("restana");
 const tempy = require("tempy");
-const {bin} = require("./package.json");
 const {join} = require("path");
 const {writeFile, readFile} = require("fs").promises;
-const {isIPv6} = require("net");
 
 const testFile = "./fixtures/test.json";
 const testPkg = require(testFile);
 const testDir = tempy.directory();
-const script = join(__dirname, bin);
+const script = join(__dirname, "updates");
 
 const dependencyTypes = [
   "dependencies",
@@ -29,8 +27,8 @@ for (const dependencyType of dependencyTypes) {
 }
 
 function makeUrl(server) {
-  const {address, port} = server.address();
-  const hostname = isIPv6(address) ? `[${address}]` : address;
+  const {port} = server.address();
+  const hostname = "localhost";
   return Object.assign(new URL("http://x"), {hostname, port}).toString();
 }
 

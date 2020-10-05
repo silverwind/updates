@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 const ansiRegex = require("ansi-regex");
 const dns = require("dns");
-const fetchEnhanced = require("fetch-enhanced");
+const fetchEnhanced = require("../fetch-enhanced");
 const minimist = require("minimist");
 const nodeFetch = require("node-fetch");
 const rat = require("registry-auth-token");
