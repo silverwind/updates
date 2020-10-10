@@ -450,7 +450,7 @@ function finish(obj, opts = {}) {
     }
   }
 
-  fetchEnhanced.destroyAgents();
+  fetch.clearCache();
 
   if (args["error-on-outdated"]) {
     exit(Object.keys(deps).length ? 2 : 0);
