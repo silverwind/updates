@@ -42,6 +42,7 @@
     "registry-auth-token": "4.2.0",
     "restana": "4.7.4",
     "semver": "7.3.2",
+    "server-destroy": "1.0.1",
     "tempy": "0.7.1",
     "text-table": "0.2.0",
     "versions": "8.4.3"

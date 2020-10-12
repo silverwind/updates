@@ -6,6 +6,7 @@ const restana = require("restana");
 const tempy = require("tempy");
 const {join} = require("path");
 const {writeFile, readFile} = require("fs").promises;
+const enableDestroy = require("server-destroy");
 
 const testFile = "./fixtures/test.json";
 const testPkg = require(testFile);
@@ -62,6 +63,9 @@ beforeAll(async () => {
     npmServer.start(0),
   ]);
 
+  enableDestroy(npmServer);
+  enableDestroy(githubServer);
+
   githubUrl = makeUrl(githubServer);
   npmUrl = makeUrl(npmServer);
 
@@ -72,8 +76,8 @@ beforeAll(async () => {
 afterAll(async () => {
   await Promise.all([
     del(testDir, {force: true}),
-    npmServer && npmServer.close(),
-    githubServer && githubServer.close(),
+    npmServer && npmServer.destroy(),
+    githubServer && githubServer.destroy(),
   ]);
 });
 
