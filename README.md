@@ -63,6 +63,7 @@ usage: updates [options]
     -c, --color                        Force-enable color output
     -n, --no-color                     Disable color output
     -v, --version                      Print the version
+    -V, --verbose                      Print verbose output to stderr
     -h, --help                         Print this help
 
   Examples:

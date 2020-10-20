@@ -79,6 +79,7 @@ const args = minimist(argv.slice(2), {
     "n", "no-color",
     "u", "update",
     "v", "version",
+    "V", "verbose",
   ],
   string: [
     "d", "allow-downgrade",
@@ -115,19 +116,21 @@ const args = minimist(argv.slice(2), {
     t: "types",
     u: "update",
     v: "version",
+    V: "verbose",
   },
 });
 
 const colorDisabled = args["no-color"] || "NO_COLOR" in process.env || process.env.TERM === "dumb";
 const colorEnabled = args.color || "FORCE_COLOR" in process.env;
 
-let red, green, gray;
+let magenta, red, green, gray;
 if (!colorDisabled || colorEnabled) {
+  magenta = str => `\x1b[35m${str}\x1b[0m`;
   red = str => `\x1b[31m${str}\x1b[0m`;
   green = str => `\x1b[32m${str}\x1b[0m`;
   gray = str => `\x1b[90m${str}\x1b[0m`;
 } else {
-  red = green = gray = str => str;
+  magenta = red = green = gray = str => str;
 }
 
 if (args.help) {
@@ -154,6 +157,7 @@ if (args.help) {
     -c, --color                        Force-enable color output
     -n, --no-color                     Disable color output
     -v, --version                      Print the version
+    -V, --verbose                      Print verbose output to stderr
     -h, --help                         Print this help
 
   Examples:
@@ -352,8 +356,12 @@ async function fetchInfo(name, type, originalRegistry) {
     opts.headers = {Authorization: `${auth.type} ${auth.token}`};
   }
 
-  const res = await fetch(`${registry}/${name.replace(/\//g, "%2f")}`, opts);
+  const url = `${registry}/${name.replace(/\//g, "%2f")}`;
+  if (args.verbose) console.error(`${magenta("fetch")} ${url}`);
+
+  const res = await fetch(url, opts);
   if (res && res.ok) {
+    if (args.verbose) console.error(`${green("done")} ${url}`);
     return [await res.json(), type, registry];
   } else {
     if (res && res.status && res.statusText) {
