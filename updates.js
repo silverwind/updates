@@ -227,8 +227,9 @@ if (args.types) {
   dependencyTypes = [
     "dependencies",
     "devDependencies",
-    "peerDependencies",
     "optionalDependencies",
+    "peerDependencies",
+    "resolutions",
   ];
 }
 
@@ -356,13 +357,16 @@ async function fetchInfo(name, type, originalRegistry) {
     opts.headers = {Authorization: `${auth.type} ${auth.token}`};
   }
 
-  const url = `${registry}/${name.replace(/\//g, "%2f")}`;
+  const packageName = type === "resolutions" ? resolutionsBasePackage(name) : name;
+  const urlName = packageName.replace(/\//g, "%2f");
+
+  const url = `${registry}/${urlName}`;
   if (args.verbose) console.error(`${magenta("fetch")} ${url}`);
 
   const res = await fetch(url, opts);
   if (res && res.ok) {
     if (args.verbose) console.error(`${green("done")} ${url}`);
-    return [await res.json(), type, registry];
+    return [await res.json(), type, registry, name];
   } else {
     if (res && res.status && res.statusText) {
       throw new Error(`Received ${res.status} ${res.statusText} for ${name} from ${registry}`);
@@ -721,6 +725,11 @@ async function checkUrlDep([key, dep], {useGreatest} = {}) {
   }
 }
 
+function resolutionsBasePackage(name) {
+  const packages = name.match(/(@[^/]+\/)?([^/]+)/g) || [];
+  return packages[packages.length - 1];
+}
+
 function parseMixedArg(arg) {
   if (arg === undefined) {
     return false;
@@ -741,7 +750,7 @@ async function main() {
     return fetchInfo(name, type, registry);
   }));
 
-  for (const [data, type, registry] of entries) {
+  for (const [data, type, registry, name] of entries) {
     if (data && data.error) {
       throw new Error(data.error);
     }
@@ -759,7 +768,7 @@ async function main() {
       semvers = majorSemvers;
     }
 
-    const key = `${type}${sep}${data.name}`;
+    const key = `${type}${sep}${name}`;
     const oldRange = deps[key].old;
     const newVersion = findNewVersion(data, {usePre, useRel, useGreatest, semvers, range: oldRange});
     const newRange = updateRange(oldRange, newVersion);

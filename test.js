@@ -18,6 +18,7 @@ const dependencyTypes = [
   "devDependencies",
   "peerDependencies",
   "optionalDependencies",
+  "resolutions",
 ];
 
 const testPackages = new Set();
@@ -29,13 +30,17 @@ for (const dependencyType of dependencyTypes) {
 
 function makeUrl(server) {
   const {port} = server.address();
-  const hostname = "localhost";
-  return Object.assign(new URL("http://x"), {hostname, port}).toString();
+  return Object.assign(new URL("http://localhost"), {port}).toString();
 }
 
 function defaultRoute(req, res) {
   console.error(`default handler hit for ${req.url}`);
   res.send(404);
+}
+
+function resolutionsBasePackage(name) {
+  const packages = name.match(/(@[^/]+\/)?([^/]+)/g) || [];
+  return packages[packages.length - 1];
 }
 
 let npmServer, githubServer, githubUrl, npmUrl;
@@ -49,10 +54,11 @@ beforeAll(async () => {
     readFile(join(__dirname, "fixtures/github/updates-tags.json"))
   ]);
 
-  for (const packageName of testPackages) {
-    const name = packageName.replace(/\//g, "%2f");
-    const path = join(__dirname, `fixtures/npm/${name}.json`);
-    npmServer.get(`/${name}`, async (_, res) => res.send(await readFile(path)));
+  for (const pkgName of testPackages) {
+    const name = testPkg.resolutions[pkgName] ? resolutionsBasePackage(pkgName) : pkgName;
+    const urlName = name.replace(/\//g, "%2f");
+    const path = join(__dirname, `fixtures/npm/${urlName}.json`);
+    npmServer.get(`/${urlName}`, async (_, res) => res.send(await readFile(path)));
   }
 
   githubServer.get("/repos/silverwind/updates/commits", (_, res) => res.send(commits));
@@ -89,9 +95,9 @@ function makeTest(args, expected) {
 
     // Parse results, with custom validation for the dynamic "age" property
     for (const dependencyType of dependencyTypes) {
-      for (const [dependencyName, actual] of Object.entries(results[dependencyType] || {})) {
+      for (const [name, actual] of Object.entries(results[dependencyType] || {})) {
         for (const [key, actualValue] of Object.entries(actual || {})) {
-          const expectedValue = expected[dependencyType][dependencyName][key];
+          const expectedValue = expected[dependencyType][name][key];
           if (key === "age") {
             expect(typeof actualValue).toEqual("string");
             expect(actualValue.length > 0).toBeTruthy();
@@ -175,8 +181,15 @@ test("latest", makeTest("-j", {
     "@babel/preset-env": {
       old: "~6.0.0",
       new: "~7.11.5",
-      info: "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env"
-    }
+      info: "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
+    },
+  },
+  resolutions: {
+    "versions/updates": {
+      old: "^1.0.0",
+      new: "^10.0.0",
+      info: "https://github.com/silverwind/updates",
+    },
   },
 }));
 
@@ -227,9 +240,16 @@ test("greatest", makeTest("-j -g", {
     "@babel/preset-env": {
       old: "~6.0.0",
       new: "~7.11.5",
-      info: "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env"
-    }
-  }
+      info: "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
+    },
+  },
+  resolutions: {
+    "versions/updates": {
+      old: "^1.0.0",
+      new: "^10.0.0",
+      info: "https://github.com/silverwind/updates",
+    },
+  },
 }));
 
 test("prerelease", makeTest("-j -g -p", {
@@ -284,8 +304,15 @@ test("prerelease", makeTest("-j -g -p", {
     "@babel/preset-env": {
       old: "~6.0.0",
       new: "~7.11.5",
-      info: "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env"
-    }
+      info: "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
+    },
+  },
+  resolutions: {
+    "versions/updates": {
+      old: "^1.0.0",
+      new: "^10.0.0",
+      info: "https://github.com/silverwind/updates",
+    },
   },
 }));
 
@@ -341,7 +368,14 @@ test("release", makeTest("-j -R", {
     "@babel/preset-env": {
       old: "~6.0.0",
       new: "~7.11.5",
-      info: "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env"
+      info: "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
+    },
+  },
+  resolutions: {
+    "versions/updates": {
+      old: "^1.0.0",
+      new: "^10.0.0",
+      info: "https://github.com/silverwind/updates",
     },
   },
 }));
@@ -374,6 +408,13 @@ test("patch", makeTest("-j -P", {
       info: "https://github.com/silverwind/updates",
     },
   },
+  resolutions: {
+    "versions/updates": {
+      old: "^1.0.0",
+      new: "^1.0.6",
+      info: "https://github.com/silverwind/updates",
+    },
+  },
 }));
 
 test("include version deps", makeTest("-j -i noty", {
@@ -396,7 +437,7 @@ test("include version deps #2", makeTest("-j -i noty -i noty,noty", {
   },
 }));
 
-test("exclude version deps", makeTest("-j -e gulp-sourcemaps,prismjs,svgstore,html-webpack-plugin,noty,jpeg-buffer-orientation,styled-components,@babel/preset-env", {
+test("exclude version deps", makeTest("-j -e gulp-sourcemaps,prismjs,svgstore,html-webpack-plugin,noty,jpeg-buffer-orientation,styled-components,@babel/preset-env,versions/updates", {
   dependencies: {
     "updates": {
       old: "6941e05",
