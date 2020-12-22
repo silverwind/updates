@@ -23,8 +23,9 @@ publish: node_modules
 
 update: node_modules build
 	node updates -cu
-	@touch yarn.lock
-	@$(MAKE) --no-print-directory deps
+	@rm yarn.lock
+	@yarn -s
+	@touch node_modules
 
 patch: node_modules test
 	yarn -s run versions -Cc 'make build' patch
