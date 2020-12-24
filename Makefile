@@ -14,7 +14,7 @@ unittest: node_modules
 	yarn -s run jest --color --watchAll
 
 build: node_modules
-	yarn -s run ncc build updates.js -q -o .
+	yarn -s run ncc build updates.js -q -m -o .
 	@mv index.js updates
 
 publish: node_modules
