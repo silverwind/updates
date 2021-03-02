@@ -61,7 +61,9 @@ dns.lookup = (hostname, opts, callback) => {
       waiting[hostname] = [callback];
       originalLookup(hostname, opts, (...args) => {
         if (!(hostname in cache)) cache[hostname] = args;
-        waiting[hostname].forEach(callback => callback(...args));
+        for (const callback of waiting[hostname]) {
+          callback(...args);
+        }
       });
     } else {
       waiting[hostname].push(callback);

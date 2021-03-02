@@ -26,14 +26,14 @@
     "updates"
   ],
   "devDependencies": {
-    "@vercel/ncc": "0.26.1",
+    "@vercel/ncc": "0.27.0",
     "ansi-regex": "5.0.0",
     "del": "6.0.0",
-    "eslint": "7.16.0",
-    "eslint-config-silverwind": "27.0.0",
+    "eslint": "7.21.0",
+    "eslint-config-silverwind": "29.0.0",
     "execa": "5.0.0",
     "fetch-enhanced": "5.0.1",
-    "hosted-git-info": "3.0.7",
+    "hosted-git-info": "3.0.8",
     "jest": "26.6.3",
     "jest-extended": "0.11.5",
     "minimist": "1.2.5",
@@ -45,7 +45,7 @@
     "server-destroy": "1.0.1",
     "tempy": "1.0.0",
     "text-table": "0.2.0",
-    "versions": "8.4.3"
+    "versions": "8.4.4"
   },
   "jest": {
     "verbose": false,
