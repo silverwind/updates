@@ -48,11 +48,5 @@
     "tempy": "1.0.1",
     "text-table": "0.2.0",
     "versions": "8.4.5"
-  },
-  "jest": {
-    "setupFilesAfterEnv": ["jest-extended"],
-    "testTimeout": 60000,
-    "transform": {},
-    "verbose": false
   }
 }
