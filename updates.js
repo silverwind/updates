@@ -12,7 +12,7 @@ import semver from "semver";
 import textTable from "text-table";
 import {cwd as cwdFn, stdout, argv, env, exit} from "process";
 import {fromUrl} from "hosted-git-info";
-import {join, dirname, resolve} from "path";
+import {join, dirname} from "path";
 import {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync} from "fs";
 import {platform} from "os";
 import {fileURLToPath} from "url";
@@ -173,7 +173,9 @@ if (args.help) {
 }
 
 if (args.version) {
-  const {version} = JSON.parse(readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), "package.json"), "utf8"));
+  const dir = dirname(fileURLToPath(import.meta.url));
+  const pkgJson = join(dir, "./package.json"); // resolve acts weirdly here in compiled file
+  const {version} = JSON.parse(readFileSync(pkgJson, "utf8"));
   console.info(version);
   exit(0);
 }

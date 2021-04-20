@@ -14,17 +14,17 @@ unittest: node_modules
 	NODE_OPTIONS="--experimental-vm-modules --no-warnings" yarn -s run jest --color --watchAll
 
 build: node_modules
-	yarn -s run ncc build updates.js -q -m -o dist
-	@mv dist/index.js dist/updates.cjs
-	@rm -rf dist/updates
-	@chmod +x dist/updates.cjs
+	yarn -s run ncc build updates.js -q -m -o .
+	@mv index.js updates.cjs
+	@rm -rf updates
+	@chmod +x updates.cjs
 
 publish: node_modules
 	git push -u --tags origin master
 	npm publish
 
 update: node_modules build
-	node dist/updates.cjs -cu
+	node updates.cjs -cu
 	@rm yarn.lock
 	@yarn -s
 	@touch node_modules

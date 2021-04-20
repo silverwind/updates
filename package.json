@@ -5,7 +5,7 @@
   "author": "silverwind",
   "repository": "silverwind/updates",
   "license": "BSD-2-Clause",
-  "bin": "./dist/updates.cjs",
+  "bin": "./updates.cjs",
   "type": "module",
   "engines": {
     "node": ">= 12.20.0"
@@ -24,7 +24,7 @@
     "packages"
   ],
   "files": [
-    "dist"
+    "updates.cjs"
   ],
   "devDependencies": {
     "@babel/core": "7.13.16",

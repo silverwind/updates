@@ -12,7 +12,7 @@ const {writeFile, readFile} = fs.promises;
 const testFile = resolve(__dirname, "fixtures/test.json");
 const testPkg = JSON.parse(readFileSync(testFile, "utf8"));
 const testDir = tempy.directory();
-const script = join(__dirname, "dist/updates.cjs");
+const script = join(__dirname, "updates.cjs");
 
 const dependencyTypes = [
   "dependencies",
@@ -116,6 +116,13 @@ test("simple", async () => {
   expect(stderr).toEqual("");
   expect(stdout).toInclude("prismjs");
   expect(stdout).toInclude("https://github.com/silverwind/updates");
+  expect(exitCode).toEqual(0);
+});
+
+test("version", async () => {
+  const {stdout, stderr, exitCode} = await execa(script, ["-v"]);
+  expect(stderr).toEqual("");
+  expect(stdout).toMatch(/^[0-9]+\.[0-9]+\.[0-9]+$/);
   expect(exitCode).toEqual(0);
 });
 
