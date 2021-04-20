@@ -15,7 +15,6 @@ import {fromUrl} from "hosted-git-info";
 import {join, dirname} from "path";
 import {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync} from "fs";
 import {platform} from "os";
-import {fileURLToPath} from "url";
 
 const fetch = fetchEnhanced(nodeFetch);
 
@@ -173,9 +172,8 @@ if (args.help) {
 }
 
 if (args.version) {
-  const dir = dirname(fileURLToPath(import.meta.url));
-  const pkgJson = join(dir, "./package.json"); // resolve acts weirdly here in compiled file
-  const {version} = JSON.parse(readFileSync(pkgJson, "utf8"));
+  const path = new URL("./package.json", import.meta.url);
+  const {version} = JSON.parse(readFileSync(path, "utf8"));
   console.info(version);
   exit(0);
 }
