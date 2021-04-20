@@ -1,5 +1,3 @@
-NODE_OPTIONS=--experimental-vm-modules --no-warnings
-
 node_modules: yarn.lock
 	@yarn -s --pure-lockfile
 	@touch node_modules
@@ -10,10 +8,10 @@ lint: node_modules
 	yarn -s run eslint --color .
 
 test: node_modules lint build
-	yarn -s run jest --color
+	NODE_OPTIONS="--experimental-vm-modules --no-warnings" yarn -s run jest --color
 
 unittest: node_modules
-	yarn -s run jest --color --watchAll
+	NODE_OPTIONS="--experimental-vm-modules --no-warnings" yarn -s run jest --color --watchAll
 
 build: node_modules
 	yarn -s run ncc build updates.js -q -m -o dist
