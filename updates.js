@@ -1,20 +1,21 @@
 #!/usr/bin/env node
-const ansiRegex = require("ansi-regex");
-const dns = require("dns");
-const fetchEnhanced = require("fetch-enhanced");
-const minimist = require("minimist");
-const nodeFetch = require("node-fetch");
-const rat = require("registry-auth-token");
-const rc = require("rc");
-const ru = require("registry-auth-token/registry-url");
-const semver = require("semver");
-const textTable = require("text-table");
-const {cwd: cwdFn, stdout, argv, env, exit} = require("process");
-const {fromUrl} = require("hosted-git-info");
-const {join, dirname} = require("path");
-const {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync} = require("fs");
-const {platform} = require("os");
-const {version} = require("./package.json");
+
+import ansiRegex from "ansi-regex";
+import dns from "dns";
+import fetchEnhanced from "fetch-enhanced";
+import minimist from "minimist";
+import nodeFetch from "node-fetch";
+import rat from "registry-auth-token";
+import rc from "rc";
+import ru from "registry-auth-token/registry-url.js";
+import semver from "semver";
+import textTable from "text-table";
+import {cwd as cwdFn, stdout, argv, env, exit} from "process";
+import {fromUrl} from "hosted-git-info";
+import {join, dirname, resolve} from "path";
+import {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync} from "fs";
+import {platform} from "os";
+import {fileURLToPath} from "url";
 
 const fetch = fetchEnhanced(nodeFetch);
 
@@ -172,6 +173,7 @@ if (args.help) {
 }
 
 if (args.version) {
+  const {version} = JSON.parse(readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), "package.json"), "utf8"));
   console.info(version);
   exit(0);
 }
@@ -249,13 +251,9 @@ try {
   finish(new Error(`Error parsing package.json: ${err.message}`));
 }
 
-function flat(arr) {
-  return [].concat(...arr);
-}
-
 let include, exclude;
-if (args.include && args.include !== true) include = new Set(flat((Array.isArray(args.include) ? args.include : [args.include]).map(item => item.split(","))));
-if (args.exclude && args.exclude !== true) exclude = new Set(flat((Array.isArray(args.exclude) ? args.exclude : [args.exclude]).map(item => item.split(","))));
+if (args.include && args.include !== true) include = new Set(((Array.isArray(args.include) ? args.include : [args.include]).map(item => item.split(","))).flat());
+if (args.exclude && args.exclude !== true) exclude = new Set(((Array.isArray(args.exclude) ? args.exclude : [args.exclude]).map(item => item.split(","))).flat());
 
 function canInclude(name) {
   if (exclude && exclude.has(name)) return false;

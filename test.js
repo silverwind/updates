@@ -1,17 +1,18 @@
-"use strict";
+import del from "del";
+import execa from "execa";
+import restana from "restana";
+import tempy from "tempy";
+import {join, resolve, dirname} from "path";
+import fs, {readFileSync} from "fs";
+import enableDestroy from "server-destroy";
+import {fileURLToPath} from "url";
 
-const del = require("del");
-const execa = require("execa");
-const restana = require("restana");
-const tempy = require("tempy");
-const {join} = require("path");
-const {writeFile, readFile} = require("fs").promises;
-const enableDestroy = require("server-destroy");
-
-const testFile = "./fixtures/test.json";
-const testPkg = require(testFile);
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const {writeFile, readFile} = fs.promises;
+const testFile = resolve(__dirname, "fixtures/test.json");
+const testPkg = JSON.parse(readFileSync(testFile, "utf8"));
 const testDir = tempy.directory();
-const script = join(__dirname, "updates");
+const script = join(__dirname, "dist/updates.cjs");
 
 const dependencyTypes = [
   "dependencies",

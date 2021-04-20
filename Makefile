@@ -1,3 +1,5 @@
+NODE_OPTIONS=--experimental-vm-modules --no-warnings
+
 node_modules: yarn.lock
 	@yarn -s --pure-lockfile
 	@touch node_modules
@@ -14,15 +16,17 @@ unittest: node_modules
 	yarn -s run jest --color --watchAll
 
 build: node_modules
-	yarn -s run ncc build updates.js -q -m -o .
-	@mv index.js updates
+	yarn -s run ncc build updates.js -q -m -o dist
+	@mv dist/index.js dist/updates.cjs
+	@rm -rf dist/updates
+	@chmod +x dist/updates.cjs
 
 publish: node_modules
 	git push -u --tags origin master
 	npm publish
 
 update: node_modules build
-	node updates -cu
+	node dist/updates.cjs -cu
 	@rm yarn.lock
 	@yarn -s
 	@touch node_modules

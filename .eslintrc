@@ -2,4 +2,4 @@ root: true
 extends: silverwind
 
 ignorePatterns:
- - /updates
+ - /dist/**/*

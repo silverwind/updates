@@ -5,9 +5,10 @@
   "author": "silverwind",
   "repository": "silverwind/updates",
   "license": "BSD-2-Clause",
-  "bin": "./updates",
+  "bin": "./dist/updates.js",
+  "type": "module",
   "engines": {
-    "node": ">=10"
+    "node": ">= 12.20.0"
   },
   "scripts": {
     "test": "make test"
@@ -23,35 +24,35 @@
     "packages"
   ],
   "files": [
-    "updates"
+    "dist"
   ],
   "devDependencies": {
-    "@vercel/ncc": "0.27.0",
-    "ansi-regex": "5.0.0",
+    "@babel/core": "7.13.16",
+    "@vercel/ncc": "0.28.3",
+    "ansi-regex": "6.0.0",
     "del": "6.0.0",
-    "eslint": "7.21.0",
-    "eslint-config-silverwind": "29.0.0",
+    "eslint": "7.24.0",
+    "eslint-config-silverwind": "32.2.1",
     "execa": "5.0.0",
-    "fetch-enhanced": "5.0.1",
-    "hosted-git-info": "3.0.8",
-    "jest": "26.6.3",
+    "fetch-enhanced": "6.0.0",
+    "hosted-git-info": "4.0.2",
+    "jest": "27.0.0-next.8",
     "jest-extended": "0.11.5",
     "minimist": "1.2.5",
     "node-fetch": "2.6.1",
     "rc": "1.2.8",
     "registry-auth-token": "4.2.1",
     "restana": "4.8.1",
-    "semver": "7.3.4",
+    "semver": "7.3.5",
     "server-destroy": "1.0.1",
-    "tempy": "1.0.0",
+    "tempy": "1.0.1",
     "text-table": "0.2.0",
-    "versions": "8.4.4"
+    "versions": "8.4.5"
   },
   "jest": {
-    "verbose": false,
+    "setupFilesAfterEnv": ["jest-extended"],
     "testTimeout": 60000,
-    "setupFilesAfterEnv": [
-      "jest-extended"
-    ]
+    "transform": {},
+    "verbose": false
   }
 }
