@@ -15,10 +15,11 @@ import {fromUrl} from "hosted-git-info";
 import {join, dirname} from "path";
 import {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync} from "fs";
 import {platform} from "os";
-
-const fetch = fetchEnhanced(nodeFetch);
+import {rootCertificates} from "tls";
 
 env.NODE_ENV = "production";
+
+const fetch = fetchEnhanced(nodeFetch);
 
 const MAX_SOCKETS = 96;
 const sep = "\0";
@@ -191,16 +192,30 @@ const patch = parseMixedArg(args.patch);
 const minor = parseMixedArg(args.minor);
 const allowDowngrade = parseMixedArg(args["allow-downgrade"]);
 
+const agentOpts = {};
 const defaultRegistry = "https://registry.npmjs.org";
 const npmrc = rc("npm", {registry: defaultRegistry});
 const authTokenOpts = {npmrc, recursive: true};
 const registry = normalizeUrl(args.registry || npmrc.registry);
 const githubApiUrl = args.githubapi ? normalizeUrl(args.githubapi) : "https://api.github.com";
 const maxSockets = typeof args.sockets === "number" ? args.sockets : MAX_SOCKETS;
+const extractCerts = str => [...str.matchAll(/(----BEGIN[^]+?CERTIFICATE----)/g)].map(m => m[0]);
 
 let packageFile;
 const deps = {};
 const maybeUrlDeps = {};
+
+if (npmrc["strict-ssl"] === false) {
+  agentOpts.rejectUnauthorized = false;
+} else {
+  if ("cafile" in npmrc) {
+    agentOpts.ca = rootCertificates.concat(extractCerts(readFileSync(npmrc.cafile, "utf8")));
+  }
+  if ("ca" in npmrc) {
+    const cas = Array.isArray(npmrc.ca) ? npmrc.ca : [npmrc.ca];
+    agentOpts.ca = rootCertificates.concat(cas.map(ca => extractCerts(ca)));
+  }
+}
 
 if (args.file) {
   let stat;
@@ -353,6 +368,9 @@ async function fetchInfo(name, type, originalRegistry) {
   const [auth, registry] = getAuthAndRegistry(name, originalRegistry);
 
   const opts = {maxSockets};
+  if (Object.keys(agentOpts).length) {
+    opts.agentOpts = agentOpts;
+  }
   if (auth && auth.token) {
     opts.headers = {Authorization: `${auth.type} ${auth.token}`};
   }
