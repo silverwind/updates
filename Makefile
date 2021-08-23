@@ -1,20 +1,20 @@
-node_modules: yarn.lock
-	@yarn -s --pure-lockfile
+node_modules: package-lock.json
+	npm install --no-save
 	@touch node_modules
 
 deps: node_modules
 
 lint: node_modules
-	yarn -s run eslint --color .
+	npx eslint --color .
 
 test: node_modules lint build
-	NODE_OPTIONS="--experimental-vm-modules --no-warnings" yarn -s run jest --color
+	NODE_OPTIONS="--experimental-vm-modules --no-warnings" npx jest --color
 
 unittest: node_modules
-	NODE_OPTIONS="--experimental-vm-modules --no-warnings" yarn -s run jest --color --watchAll
+	NODE_OPTIONS="--experimental-vm-modules --no-warnings" npx jest --color --watchAll
 
 build: node_modules
-	yarn -s run ncc build updates.js -q -m -o .
+	npx ncc build updates.js -q -m -o .
 	@mv index.js updates.cjs
 	@rm -rf updates
 	@chmod +x updates.cjs
@@ -25,20 +25,20 @@ publish: node_modules
 
 update: node_modules build
 	node updates.cjs -cu
-	@rm yarn.lock
-	@yarn -s
+	rm package-lock.json
+	npm install
 	@touch node_modules
 
 patch: node_modules test
-	yarn -s run versions -Cc 'make build' patch
+	npx versions -Cc 'make build' patch
 	@$(MAKE) --no-print-directory publish
 
 minor: node_modules test
-	yarn -s run versions -Cc 'make build' minor
+	npx versions -Cc 'make build' minor
 	@$(MAKE) --no-print-directory publish
 
 major: node_modules test
-	yarn -s run versions -Cc 'make build' major
+	npx versions -Cc 'make build' major
 	@$(MAKE) --no-print-directory publish
 
 .PHONY: lint test unittest build publish deps update patch minor major

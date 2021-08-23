@@ -50,7 +50,9 @@
     "versions": "8.4.7"
   },
   "jest": {
-    "setupFilesAfterEnv": ["jest-extended"],
+    "setupFilesAfterEnv": [
+      "jest-extended"
+    ],
     "testTimeout": 60000,
     "transform": {},
     "verbose": false
