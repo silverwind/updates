@@ -10,9 +10,6 @@
   "engines": {
     "node": ">= 12.20.0"
   },
-  "scripts": {
-    "test": "make test"
-  },
   "keywords": [
     "dependencies",
     "update",
@@ -48,13 +45,5 @@
     "tempy": "1.0.1",
     "text-table": "0.2.0",
     "versions": "8.4.7"
-  },
-  "jest": {
-    "setupFilesAfterEnv": [
-      "jest-extended"
-    ],
-    "testTimeout": 60000,
-    "transform": {},
-    "verbose": false
   }
 }
