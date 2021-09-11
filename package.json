@@ -5,7 +5,7 @@
   "author": "silverwind",
   "repository": "silverwind/updates",
   "license": "BSD-2-Clause",
-  "bin": "./updates.cjs",
+  "bin": "./bin/updates.js",
   "type": "module",
   "engines": {
     "node": ">= 12.20.0"
@@ -21,28 +21,29 @@
     "packages"
   ],
   "files": [
-    "updates.cjs"
+    "./bin/updates.js",
+    "./bin/package.json"
   ],
   "devDependencies": {
-    "@babel/core": "7.14.0",
-    "@vercel/ncc": "0.28.5",
-    "ansi-regex": "6.0.0",
+    "@babel/core": "7.15.5",
+    "@vercel/ncc": "0.31.0",
+    "ansi-regex": "6.0.1",
     "del": "6.0.0",
-    "eslint": "7.25.0",
-    "eslint-config-silverwind": "32.3.3",
-    "execa": "5.0.0",
-    "fetch-enhanced": "6.0.0",
+    "eslint": "7.32.0",
+    "eslint-config-silverwind": "40.0.3",
+    "execa": "5.1.1",
+    "fetch-enhanced": "7.0.1",
     "hosted-git-info": "4.0.2",
-    "jest": "27.0.0-next.9",
+    "jest": "27.1.1",
     "jest-extended": "0.11.5",
     "minimist": "1.2.5",
-    "node-fetch": "2.6.1",
+    "node-fetch": "3.0.0",
     "rc": "1.2.8",
     "registry-auth-token": "4.2.1",
     "restana": "4.9.1",
     "semver": "7.3.5",
     "server-destroy": "1.0.1",
-    "tempy": "1.0.1",
+    "tempy": "2.0.0",
     "text-table": "0.2.0",
     "versions": "8.4.7"
   }

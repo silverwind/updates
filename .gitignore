@@ -1,6 +1,6 @@
 /.vscode
+/bin
 /node_modules
 /npm-debug.log*
-/updates.cjs
 /yarn-error.log
 /yarn.lock

@@ -12,7 +12,7 @@ const {writeFile, readFile} = fs.promises;
 const testFile = resolve(__dirname, "fixtures/test.json");
 const testPkg = JSON.parse(readFileSync(testFile, "utf8"));
 const testDir = tempy.directory();
-const script = join(__dirname, "updates.cjs");
+const script = join(__dirname, "bin/updates.js");
 
 const dependencyTypes = [
   "dependencies",

@@ -14,17 +14,16 @@ unittest: node_modules
 	NODE_OPTIONS="--experimental-vm-modules --no-warnings" npx jest --color --watchAll
 
 build: node_modules
-	npx ncc build updates.js -q -m -o .
-	@mv index.js updates.cjs
-	@rm -rf updates
-	@chmod +x updates.cjs
+	npx ncc build updates.js -q -m -o bin
+	mv bin/index.js bin/updates.js
+	chmod +x bin/updates.js
 
 publish: node_modules
 	git push -u --tags origin master
 	npm publish
 
 update: node_modules build
-	node updates.cjs -cu
+	node bin/updates.mjs -cu
 	rm package-lock.json
 	npm install
 	@touch node_modules
