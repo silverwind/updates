@@ -23,7 +23,7 @@ publish: node_modules
 	npm publish
 
 update: node_modules build
-	node bin/updates.mjs -cu
+	node bin/updates.js -cu
 	rm package-lock.json
 	npm install
 	@touch node_modules
