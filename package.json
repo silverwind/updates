@@ -28,13 +28,13 @@
     "@vercel/ncc": "0.31.1",
     "ansi-regex": "6.0.1",
     "del": "6.0.0",
-    "eslint": "7.32.0",
-    "eslint-config-silverwind": "40.0.3",
+    "eslint": "8.0.1",
+    "eslint-config-silverwind": "42.0.1",
     "execa": "5.1.1",
     "fetch-enhanced": "7.0.1",
     "hosted-git-info": "4.0.2",
-    "jest": "27.2.1",
-    "jest-extended": "0.11.5",
+    "jest": "27.2.5",
+    "jest-extended": "1.0.0",
     "minimist": "1.2.5",
     "node-fetch": "3.0.0",
     "rc": "1.2.8",
@@ -44,6 +44,6 @@
     "server-destroy": "1.0.1",
     "tempy": "2.0.0",
     "text-table": "0.2.0",
-    "versions": "9.0.1"
+    "versions": "9.1.0"
   }
 }
