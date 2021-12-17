@@ -1,5 +1,5 @@
 import del from "del";
-import execa from "execa";
+import {execa} from "execa";
 import restana from "restana";
 import tempy from "tempy";
 import {join, resolve, dirname} from "path";
