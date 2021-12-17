@@ -8,7 +8,7 @@
   "bin": "./bin/updates.js",
   "type": "module",
   "engines": {
-    "node": ">= 12.20.0"
+    "node": ">= 14"
   },
   "keywords": [
     "dependencies",
