@@ -25,25 +25,25 @@
     "./bin/package.json"
   ],
   "devDependencies": {
-    "@vercel/ncc": "0.33.0",
+    "@vercel/ncc": "0.33.3",
     "ansi-regex": "6.0.1",
     "del": "6.0.0",
-    "eslint": "8.4.1",
-    "eslint-config-silverwind": "47.1.0",
-    "execa": "6.0.0",
+    "eslint": "8.9.0",
+    "eslint-config-silverwind": "48.1.0",
+    "execa": "6.1.0",
     "fetch-enhanced": "8.0.2",
-    "hosted-git-info": "4.0.2",
-    "jest": "27.4.5",
-    "jest-extended": "1.2.0",
+    "hosted-git-info": "4.1.0",
+    "jest": "27.5.1",
+    "jest-extended": "2.0.0",
     "minimist": "1.2.5",
-    "node-fetch": "3.1.0",
+    "node-fetch": "3.2.0",
     "rc": "1.2.8",
     "registry-auth-token": "4.2.1",
-    "restana": "4.9.2",
+    "restana": "4.9.3",
     "semver": "7.3.5",
     "server-destroy": "1.0.1",
     "tempy": "2.0.0",
     "text-table": "0.2.0",
-    "versions": "9.1.0"
+    "versions": "9.2.1"
   }
 }

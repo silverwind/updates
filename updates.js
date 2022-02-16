@@ -173,7 +173,7 @@ if (args.help) {
 }
 
 if (args.version) {
-  const path = new URL("./package.json", import.meta.url);
+  const path = new URL("package.json", import.meta.url);
   const {version} = JSON.parse(readFileSync(path, "utf8"));
   console.info(version);
   exit(0);
