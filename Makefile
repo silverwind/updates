@@ -16,6 +16,7 @@ unittest: node_modules
 build: node_modules
 	npx ncc build updates.js -q -m -o bin
 	mv bin/index.js bin/updates.js
+	perl -0777 -p -i -e 's#\n?\/\*![\s\S]*?\*\/\n?##g' bin/updates.js
 	chmod +x bin/updates.js
 
 publish: node_modules
