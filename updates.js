@@ -180,19 +180,14 @@ const patch = parseMixedArg(args.patch);
 const minor = parseMixedArg(args.minor);
 const allowDowngrade = parseMixedArg(args["allow-downgrade"]);
 
-const agentOpts = {};
-const defaultRegistry = "https://registry.npmjs.org";
-const npmrc = rc("npm", {registry: defaultRegistry});
+const npmrc = rc("npm", {registry: "https://registry.npmjs.org"});
 const authTokenOpts = {npmrc, recursive: true};
 const registry = normalizeUrl(args.registry || npmrc.registry);
 const githubApiUrl = args.githubapi ? normalizeUrl(args.githubapi) : "https://api.github.com";
 const maxSockets = typeof args.sockets === "number" ? args.sockets : MAX_SOCKETS;
 const extractCerts = str => Array.from(str.matchAll(/(----BEGIN CERT[^]+?IFICATE----)/g)).map(m => m[0]);
 
-let packageFile;
-const deps = {};
-const maybeUrlDeps = {};
-
+const agentOpts = {};
 if (npmrc["strict-ssl"] === false) {
   agentOpts.rejectUnauthorized = false;
 } else {
@@ -205,6 +200,7 @@ if (npmrc["strict-ssl"] === false) {
   }
 }
 
+let packageFile;
 if (args.file) {
   let stat;
   try {
@@ -264,6 +260,7 @@ function canInclude(name) {
   return true;
 }
 
+const deps = {}, maybeUrlDeps = {};
 for (const depType of dependencyTypes) {
   for (const [name, value] of Object.entries(pkg[depType] || {})) {
     if (semver.validRange(value) && canInclude(name)) {
@@ -275,11 +272,7 @@ for (const depType of dependencyTypes) {
 }
 
 if (!Object.keys(deps).length && !Object.keys(maybeUrlDeps).length) {
-  if (include || exclude) {
-    finish(new Error("No packages match the given filters"));
-  } else {
-    finish(new Error("No packages found"));
-  }
+  finish(new Error(`No packages ${include || exclude ? "match the given filters" : "found"}`));
 }
 
 const timeData = [
