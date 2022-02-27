@@ -20,7 +20,6 @@ import {rootCertificates} from "tls";
 env.NODE_ENV = "production";
 
 const fetch = fetchEnhanced(nodeFetch);
-
 const MAX_SOCKETS = 96;
 const sep = "\0";
 const cwd = cwdFn();
@@ -41,7 +40,6 @@ const hostedGitInfo = memoize(fromUrl);
 const registryAuthToken = memoize(rat);
 const registryUrl = memoize(ru);
 const normalizeUrl = memoize(url => url.endsWith("/") ? url.substring(0, url.length - 1) : url);
-
 const patchSemvers = new Set(["patch"]);
 const minorSemvers = new Set(["patch", "minor"]);
 const majorSemvers = new Set(["patch", "minor", "major"]);
@@ -74,7 +72,6 @@ dns.lookup = (hostname, opts, callback) => {
 
 const args = minimist(argv.slice(2), {
   boolean: [
-    "c", "color",
     "E", "error-on-outdated",
     "U", "error-on-unchanged",
     "h", "help",
@@ -97,7 +94,6 @@ const args = minimist(argv.slice(2), {
     "t", "types",
   ],
   alias: {
-    c: "color",
     d: "allow-downgrade",
     E: "error-on-outdated",
     U: "error-on-unchanged",
@@ -123,17 +119,16 @@ const args = minimist(argv.slice(2), {
   },
 });
 
-const colorDisabled = args["no-color"] || "NO_COLOR" in process.env || process.env.TERM === "dumb";
-const colorEnabled = args.color || "FORCE_COLOR" in process.env;
+if (args.color === false) env.NO_COLOR = "1";
 
 let magenta, red, green, gray;
-if (!colorDisabled || colorEnabled) {
+if ("NO_COLOR" in env || env.TERM === "dumb") {
+  magenta = red = green = gray = str => str;
+} else {
   magenta = str => `\x1b[35m${str}\x1b[0m`;
   red = str => `\x1b[31m${str}\x1b[0m`;
   green = str => `\x1b[32m${str}\x1b[0m`;
   gray = str => `\x1b[90m${str}\x1b[0m`;
-} else {
-  magenta = red = green = gray = str => str;
 }
 
 if (args.help) {
@@ -157,7 +152,6 @@ if (args.help) {
     -f, --file <path>                  Use given package.json file or module directory
     -S, --sockets <num>                Maximum number of parallel HTTP sockets opened. Default: ${MAX_SOCKETS}
     -j, --json                         Output a JSON object
-    -c, --color                        Force-enable color output
     -n, --no-color                     Disable color output
     -v, --version                      Print the version
     -V, --verbose                      Print verbose output to stderr
@@ -177,12 +171,6 @@ if (args.version) {
   const {version} = JSON.parse(readFileSync(path, "utf8"));
   console.info(version);
   exit(0);
-}
-
-if (args["no-color"]) {
-  env.NO_COLOR = "0";
-} else if (args["color"] || stdout.isTTY === undefined) { // winpty compat
-  env.FORCE_COLOR = "1";
 }
 
 const greatest = parseMixedArg(args.greatest);
