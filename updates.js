@@ -184,7 +184,7 @@ const npmrc = rc("npm", {registry: "https://registry.npmjs.org"});
 const authTokenOpts = {npmrc, recursive: true};
 const registry = normalizeUrl(args.registry || npmrc.registry);
 const githubApiUrl = args.githubapi ? normalizeUrl(args.githubapi) : "https://api.github.com";
-const maxSockets = typeof args.sockets === "number" ? args.sockets : MAX_SOCKETS;
+const maxSockets = typeof args.sockets === "number" ? parseInt(args.sockets) : MAX_SOCKETS;
 const extractCerts = str => Array.from(str.matchAll(/(----BEGIN CERT[^]+?IFICATE----)/g)).map(m => m[0]);
 
 const agentOpts = {};
