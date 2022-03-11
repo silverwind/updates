@@ -70,6 +70,11 @@ dns.lookup = (hostname, opts, callback) => {
   }
 };
 
+// workaround for https://github.com/nodejs/node/issues/6379
+for (const stream of [process.stdout, process.stderr]) {
+  stream?._handle?.setBlocking?.(true);
+}
+
 const args = minimist(argv.slice(2), {
   boolean: [
     "E", "error-on-outdated",
