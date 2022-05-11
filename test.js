@@ -1,7 +1,7 @@
 import del from "del";
 import {execa} from "execa";
 import restana from "restana";
-import tempy from "tempy";
+import {temporaryDirectory} from "tempy";
 import {join, resolve, dirname} from "path";
 import fs, {readFileSync} from "fs";
 import enableDestroy from "server-destroy";
@@ -11,7 +11,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const {writeFile, readFile} = fs.promises;
 const testFile = resolve(__dirname, "fixtures/test.json");
 const testPkg = JSON.parse(readFileSync(testFile, "utf8"));
-const testDir = tempy.directory();
+const testDir = temporaryDirectory();
 const script = join(__dirname, "bin/updates.js");
 
 const dependencyTypes = [
