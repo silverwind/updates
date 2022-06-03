@@ -16,8 +16,6 @@ import {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync} from "
 import {platform} from "os";
 import {rootCertificates} from "tls";
 
-env.NODE_ENV = "production";
-
 const fetch = fetchEnhanced(nodeFetch);
 const MAX_SOCKETS = 96;
 const sep = "\0";
@@ -314,7 +312,6 @@ function getAge(isoDateString) {
 
 function findSync(filename, dir, stopDir) {
   const path = join(dir, filename);
-
   try {
     accessSync(path);
     return path;
@@ -381,7 +378,6 @@ async function fetchInfo(name, type, originalRegistry) {
 
 function getInfoUrl({repository, homepage}, registry, name) {
   let infoUrl;
-
   if (registry === "https://npm.pkg.github.com") {
     return `https://github.com/${name.replace(/^@/, "")}`;
   } else if (repository) {
@@ -404,8 +400,8 @@ function getInfoUrl({repository, homepage}, registry, name) {
       infoUrl = repository.url;
     }
   }
-  let url = infoUrl || homepage || "";
 
+  let url = infoUrl || homepage || "";
   // force https for github.com
   if (url) {
     const u = new URL(url);
@@ -414,7 +410,6 @@ function getInfoUrl({repository, homepage}, registry, name) {
       url = String(u);
     }
   }
-
   return url;
 }
 
