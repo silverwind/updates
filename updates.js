@@ -526,7 +526,7 @@ function formatDeps() {
   const ansiRe = ansiRegex();
 
   return textTable(arr, {
-    hsep: "  ",
+    hsep: " ",
     stringLength: str => str.replace(ansiRe, "").length,
   });
 }
