@@ -9,7 +9,7 @@ import rc from "rc";
 import ru from "registry-auth-token/registry-url.js";
 import semver from "semver";
 import textTable from "text-table";
-import {cwd as cwdFn, stdout, argv, env, exit} from "process";
+import {cwd, stdout, argv, env, exit} from "process";
 import {fromUrl} from "hosted-git-info";
 import {join, dirname} from "path";
 import {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync} from "fs";
@@ -21,7 +21,7 @@ env.NODE_ENV = "production";
 const fetch = fetchEnhanced(nodeFetch);
 const MAX_SOCKETS = 96;
 const sep = "\0";
-const cwd = cwdFn();
+const pwd = cwd();
 
 // regexes for url dependencies. does only github and only hash or exact semver
 // https://regex101.com/r/gCZzfK/2
@@ -221,9 +221,9 @@ if (args.file) {
     finish(new Error(`${args.file} is neither a file nor directory`));
   }
 } else {
-  packageFile = findSync("package.json", cwd);
+  packageFile = findSync("package.json", pwd);
   if (!packageFile) {
-    finish(new Error(`Unable to find package.json in ${cwd} or any of its parents`));
+    finish(new Error(`Unable to find package.json in ${pwd} or any of its parents`));
   }
 }
 
@@ -488,8 +488,8 @@ function highlightDiff(a, b, added) {
   const bParts = b.split(/\./);
   const color = added ? green : red;
   const versionPartRe = /^[0-9a-zA-Z-.]+$/;
-  let res = "";
 
+  let res = "";
   for (let i = 0; i < aParts.length; i++) {
     if (aParts[i] !== bParts[i]) {
       if (versionPartRe.test(aParts[i])) {
@@ -504,7 +504,6 @@ function highlightDiff(a, b, added) {
       res += `${aParts[i]}.`;
     }
   }
-
   return res;
 }
 
@@ -522,23 +521,19 @@ function formatDeps() {
     ]);
   }
 
-  const ansiRe = ansiRegex();
-
   return textTable(arr, {
     hsep: " ",
-    stringLength: str => str.replace(ansiRe, "").length,
+    stringLength: str => str.replace(ansiRegex(), "").length,
   });
 }
 
 function updatePackageJson() {
   let newPkgStr = pkgStr;
-
   for (const key of Object.keys(deps)) {
     const [_type, name] = key.split(sep);
     const re = new RegExp(`"${esc(name)}": +"${esc(deps[key].old)}"`, "g");
     newPkgStr = newPkgStr.replace(re, `"${name}": "${deps[key].new}"`);
   }
-
   return newPkgStr;
 }
 
@@ -677,13 +672,7 @@ async function checkUrlDep([key, dep], {useGreatest} = {}) {
     let {sha: newRef, commit} = data[0];
     if (!newRef || !newRef.length) return;
 
-    let newDate;
-    if (commit?.committer?.date) {
-      newDate = commit.committer.date;
-    } else if (commit?.author?.date) {
-      newDate = commit.author.date;
-    }
-
+    const newDate = commit?.committer?.date ?? commit?.author?.date;
     newRef = newRef.substring(0, oldRef.length);
     if (oldRef !== newRef) {
       const newRange = dep.old.replace(oldRef, newRef);
@@ -800,9 +789,8 @@ async function main() {
         oldPrint: hashRe.test(oldRef) ? oldRef.substring(0, 7) : oldRef,
         newPrint: hashRe.test(newRef) ? newRef.substring(0, 7) : newRef,
         info: `https://github.com/${user}/${repo}`,
+        ...(newDate ? {age: getAge(newDate)} : {}),
       };
-
-      if (newDate) deps[key].age = getAge(newDate);
     }
   }
 
