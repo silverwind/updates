@@ -26,12 +26,6 @@ const pwd = cwd();
 const stripRe = /^.*?:\/\/(.*?@)?(github\.com[:/])/i;
 const partsRe = /^([^/]+)\/([^/#]+)?.*?\/([0-9a-f]+|v?[0-9]+\.[0-9]+\.[0-9]+)$/i;
 const hashRe = /^[0-9a-f]{7,}$/i;
-
-const memoize = fn => {
-  const cache = Object.create(null);
-  return (arg, arg2) => arg in cache ? cache[arg] : cache[arg] = fn(arg, arg2);
-};
-
 const esc = str => str.replace(/[|\\{}()[\]^$+*?.-]/g, "\\$&");
 const hostedGitInfo = memoize(fromUrl);
 const registryAuthToken = memoize(rat);
@@ -308,6 +302,11 @@ function getAge(isoDateString) {
   }
 
   return `${value} ${suffix}`;
+}
+
+function memoize(fn) {
+  const cache = Object.create(null);
+  return (arg, arg2) => arg in cache ? cache[arg] : cache[arg] = fn(arg, arg2);
 }
 
 function findSync(filename, dir, stopDir) {
