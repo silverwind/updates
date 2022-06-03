@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-
 import ansiRegex from "ansi-regex";
 import dns from "dns";
 import fetchEnhanced from "fetch-enhanced";
@@ -821,10 +820,7 @@ async function main() {
     finish(new Error(`Error writing ${packageFile}: ${err.message}`));
   }
 
-  finish(green(`
- ╭────────────────────────╮
- │  package.json updated  │
- ╰────────────────────────╯`.substring(1)));
+  finish(green(`package.json updated.`));
 }
 
 main().catch(finish);
