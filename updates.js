@@ -214,9 +214,9 @@ if (args.file) {
     finish(new Error(`Unable to open ${args.file}: ${err.message}`));
   }
 
-  if (stat && stat.isFile()) {
+  if (stat?.isFile()) {
     packageFile = args.file;
-  } else if (stat && stat.isDirectory()) {
+  } else if (stat?.isDirectory()) {
     packageFile = join(args.file, "package.json");
   } else {
     finish(new Error(`${args.file} is neither a file nor directory`));
@@ -260,8 +260,8 @@ if (args.include && args.include !== true) include = new Set(((Array.isArray(arg
 if (args.exclude && args.exclude !== true) exclude = new Set(((Array.isArray(args.exclude) ? args.exclude : [args.exclude]).flatMap(item => item.split(","))));
 
 function canInclude(name) {
-  if (exclude && exclude.has(name)) return false;
-  if (include && !include.has(name)) return false;
+  if (exclude?.has?.(name) === true) return false;
+  if (include?.has?.(name) === false) return false;
   return true;
 }
 
@@ -338,7 +338,7 @@ function getAuthAndRegistry(name, registry) {
     if (url !== registry) {
       try {
         const newAuth = registryAuthToken(url, authTokenOpts);
-        if (newAuth && newAuth.token) {
+        if (newAuth?.token) {
           return [newAuth, url];
         }
       } catch {
@@ -357,7 +357,7 @@ async function fetchInfo(name, type, originalRegistry) {
   if (Object.keys(agentOpts).length) {
     opts.agentOpts = agentOpts;
   }
-  if (auth && auth.token) {
+  if (auth?.token) {
     opts.headers = {Authorization: `${auth.type} ${auth.token}`};
   }
 
@@ -368,11 +368,11 @@ async function fetchInfo(name, type, originalRegistry) {
   if (args.verbose) console.error(`${magenta("fetch")} ${url}`);
 
   const res = await fetch(url, opts);
-  if (res && res.ok) {
+  if (res?.ok) {
     if (args.verbose) console.error(`${green("done")} ${url}`);
     return [await res.json(), type, registry, name];
   } else {
-    if (res && res.status && res.statusText) {
+    if (res?.status && res?.statusText) {
       throw new Error(`Received ${res.status} ${res.statusText} for ${name} from ${registry}`);
     } else {
       throw new Error(`Unable to fetch ${name} from ${registry}`);
@@ -389,7 +389,7 @@ function getInfoUrl({repository, homepage}, registry, name) {
     const url = typeof repository === "string" ? repository : repository.url;
 
     const info = hostedGitInfo(url);
-    if (info && info.browse) {
+    if (info?.browse) {
       // https://github.com/babel/babel
       infoUrl = info.browse();
     }
@@ -401,7 +401,7 @@ function getInfoUrl({repository, homepage}, registry, name) {
       infoUrl = `${infoUrl}/${info.treepath}/HEAD/${repository.directory}`;
     }
 
-    if (!infoUrl && repository && repository.url && /^https?:/.test(repository.url)) {
+    if (!infoUrl && repository?.url && /^https?:/.test(repository.url)) {
       infoUrl = repository.url;
     }
   }
@@ -653,7 +653,7 @@ function findNewVersion(data, opts) {
 
     // prevent downgrade to older version except with --allow-downgrade
     if (semver.lt(latestTag, oldVersion) && !latestIsPre) {
-      if (allowDowngrade === true || (Array.isArray(allowDowngrade) && allowDowngrade.has(data.name))) {
+      if (allowDowngrade === true || allowDowngrade?.has?.(data.name)) {
         return latestTag;
       } else {
         return null;
@@ -679,9 +679,9 @@ async function checkUrlDep([key, dep], {useGreatest} = {}) {
     if (!newRef || !newRef.length) return;
 
     let newDate;
-    if (commit && commit.committer && commit.committer.date) {
+    if (commit?.committer?.date) {
       newDate = commit.committer.date;
-    } else if (commit && commit.auhor && commit.author.date) {
+    } else if (commit?.author?.date) {
       newDate = commit.author.date;
     }
 
@@ -755,7 +755,7 @@ async function main() {
   }));
 
   for (const [data, type, registry, name] of entries) {
-    if (data && data.error) {
+    if (data?.error) {
       throw new Error(data.error);
     }
 
@@ -764,9 +764,9 @@ async function main() {
     const useRel = typeof release === "boolean" ? release : release.has(data.name);
 
     let semvers;
-    if (patch === true || Array.isArray(patch) && patch.has(data.name)) {
+    if (patch === true || patch?.has?.(data.name)) {
       semvers = patchSemvers;
-    } else if (minor === true || Array.isArray(minor) && minor.has(data.name)) {
+    } else if (minor === true || minor?.has?.(data.name)) {
       semvers = minorSemvers;
     } else {
       semvers = majorSemvers;
@@ -782,7 +782,7 @@ async function main() {
     } else {
       deps[key].new = newRange;
       deps[key].info = getInfoUrl(data.versions[newVersion] || data, registry, data.name);
-      if (data.time && data.time[newVersion]) deps[key].age = getAge(data.time[newVersion]);
+      if (data.time?.[newVersion]) deps[key].age = getAge(data.time[newVersion]);
     }
   }
 
