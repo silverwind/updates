@@ -30,15 +30,15 @@ update: node_modules build
 	@touch node_modules
 
 patch: node_modules test
-	npx versions -Cc 'make build' patch
+	npx versions -Cc 'make --no-print-directory build' patch
 	@$(MAKE) --no-print-directory publish
 
 minor: node_modules test
-	npx versions -Cc 'make build' minor
+	npx versions -Cc 'make --no-print-directory build' minor
 	@$(MAKE) --no-print-directory publish
 
 major: node_modules test
-	npx versions -Cc 'make build' major
+	npx versions -Cc 'make --no-print-directory build' major
 	@$(MAKE) --no-print-directory publish
 
 .PHONY: lint test unittest build publish deps update patch minor major
