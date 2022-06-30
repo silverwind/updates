@@ -38,7 +38,7 @@
     "minimist": "1.2.6",
     "node-fetch": "3.2.6",
     "rc": "1.2.8",
-    "registry-auth-token": "5.0.1",
+    "registry-auth-token": "4.2.2",
     "restana": "4.9.6",
     "semver": "7.3.7",
     "server-destroy": "1.0.1",
