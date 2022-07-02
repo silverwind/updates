@@ -802,7 +802,7 @@ async function main() {
     finish(new Error(`Error writing ${packageFile}: ${err.message}`));
   }
 
-  finish(green(`🎉 package.json updated`));
+  finish(green(`✨ package.json updated`));
 }
 
 main().catch(finish);
