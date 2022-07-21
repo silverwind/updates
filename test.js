@@ -1,4 +1,4 @@
-import del from "del";
+import {deleteAsync} from "del";
 import {execa} from "execa";
 import restana from "restana";
 import {temporaryDirectory} from "tempy";
@@ -82,7 +82,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await Promise.all([
-    del(testDir, {force: true}),
+    deleteAsync(testDir, {force: true}),
     npmServer && npmServer.destroy(),
     githubServer && githubServer.destroy(),
   ]);
