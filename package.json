@@ -44,6 +44,7 @@
     "server-destroy": "1.0.1",
     "tempy": "3.0.0",
     "text-table": "0.2.0",
+    "timerel": "4.0.0",
     "versions": "9.3.0"
   }
 }

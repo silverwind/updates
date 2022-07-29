@@ -15,6 +15,7 @@ import {join, dirname} from "path";
 import {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync} from "fs";
 import {platform} from "os";
 import {rootCertificates} from "tls";
+import {timerel} from "timerel";
 
 const fetch = fetchEnhanced(nodeFetch);
 const MAX_SOCKETS = 96;
@@ -269,39 +270,6 @@ for (const depType of dependencyTypes) {
 
 if (!Object.keys(deps).length && !Object.keys(maybeUrlDeps).length) {
   finish(new Error(`No packages ${include || exclude ? "match the given filters" : "found"}`));
-}
-
-const timeData = [
-  [1e3, 1, "ns"],
-  [1e6, 1e3, "µs"],
-  [1e9, 1e6, "ms"],
-  [60e9, 1e9, "sec"],
-  [3600e9, 60e9, "min"],
-  [86400e9, 3600e9, "hour"],
-  [2592e12, 86400e9, "day"],
-  [31536e12, 2592e12, "month"],
-  [Infinity, 31536e12, "year"],
-];
-
-function getAge(isoDateString) {
-  if (!isoDateString) return "";
-  const unix = new Date(isoDateString).getTime() * 1e6;
-  if (Number.isNaN(unix)) return "";
-  const diff = (Date.now() * 1e6) - unix;
-  if (diff <= 0) return "none";
-
-  let value, suffix;
-  for (let i = 0; i <= timeData.length; i++) {
-    const entry = timeData[i];
-    const [end, start, unit] = entry || [];
-    if (entry && end && diff < end) {
-      value = Math.round(diff / start);
-      suffix = `${unit}${(value > 1 && !unit.endsWith("s")) ? "s" : ""}`;
-      break;
-    }
-  }
-
-  return `${value} ${suffix}`;
 }
 
 function memoize(fn) {
@@ -764,7 +732,7 @@ async function main() {
     } else {
       deps[key].new = newRange;
       deps[key].info = getInfoUrl(data.versions[newVersion] || data, registry, data.name);
-      if (data.time?.[newVersion]) deps[key].age = getAge(data.time[newVersion]);
+      if (data.time?.[newVersion]) deps[key].age = timerel(data.time[newVersion], {noAffix: true});
     }
   }
 
@@ -783,7 +751,7 @@ async function main() {
         oldPrint: hashRe.test(oldRef) ? oldRef.substring(0, 7) : oldRef,
         newPrint: hashRe.test(newRef) ? newRef.substring(0, 7) : newRef,
         info: `https://github.com/${user}/${repo}`,
-        ...(newDate ? {age: getAge(newDate)} : {}),
+        ...(newDate ? {age: timerel(newDate, {noAffix: true})} : {}),
       };
     }
   }
