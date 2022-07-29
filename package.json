@@ -29,7 +29,7 @@
     "ansi-regex": "6.0.1",
     "del": "7.0.0",
     "eslint": "8.20.0",
-    "eslint-config-silverwind": "50.0.2",
+    "eslint-config-silverwind": "51.0.1",
     "execa": "6.1.0",
     "fetch-enhanced": "8.1.1",
     "hosted-git-info": "5.0.0",

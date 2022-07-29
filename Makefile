@@ -24,7 +24,7 @@ publish: node_modules
 	npm publish
 
 update: node_modules build
-	node bin/updates.js -cu
+	node bin/updates.js -cu -e registry-auth-token
 	rm package-lock.json
 	npm install
 	@touch node_modules
