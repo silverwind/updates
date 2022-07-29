@@ -1,6 +1,6 @@
 {
   "name": "updates",
-  "version": "13.1.2",
+  "version": "13.1.3",
   "description": "Flexible npm dependency update tool",
   "author": "silverwind",
   "repository": "silverwind/updates",
