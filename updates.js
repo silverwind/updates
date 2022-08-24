@@ -234,13 +234,11 @@ if (args.types) {
 }
 
 let pkg, pkgStr;
-
 try {
   pkgStr = readFileSync(packageFile, "utf8");
 } catch (err) {
   finish(new Error(`Unable to open package.json: ${err.message}`));
 }
-
 try {
   pkg = JSON.parse(pkgStr);
 } catch (err) {
@@ -301,9 +299,7 @@ function getAuthAndRegistry(name, registry) {
     if (url !== registry) {
       try {
         const newAuth = registryAuthToken(url, authTokenOpts);
-        if (newAuth?.token) {
-          return [newAuth, url];
-        }
+        if (newAuth?.token) return [newAuth, url];
       } catch {
         return [registryAuthToken(registry, authTokenOpts), registry];
       }
@@ -326,8 +322,8 @@ async function fetchInfo(name, type, originalRegistry) {
 
   const packageName = type === "resolutions" ? resolutionsBasePackage(name) : name;
   const urlName = packageName.replace(/\//g, "%2f");
-
   const url = `${registry}/${urlName}`;
+
   if (args.verbose) console.error(`${magenta("fetch")} ${url}`);
 
   const res = await fetch(url, opts);
@@ -369,10 +365,10 @@ function getInfoUrl({repository, homepage}, registry, name) {
   }
 
   let url = infoUrl || homepage || "";
-  // force https for github.com
   if (url) {
     const u = new URL(url);
-    if (u.hostname === "github.com" && u.protocol === "http:") {
+    // force https for github.com
+    if (u.protocol === "http:" && u.hostname === "github.com") {
       u.protocol = "https:";
       url = String(u);
     }
@@ -426,8 +422,6 @@ function finish(obj, opts = {}) {
       }
     }
   }
-
-  fetch.clearCache();
 
   if (args["error-on-outdated"]) {
     exit(Object.keys(deps).length ? 2 : 0);
@@ -492,7 +486,7 @@ function formatDeps() {
 function updatePackageJson() {
   let newPkgStr = pkgStr;
   for (const key of Object.keys(deps)) {
-    const [_type, name] = key.split(sep);
+    const name = key.split(sep)[1];
     const re = new RegExp(`"${esc(name)}": +"${esc(deps[key].old)}"`, "g");
     newPkgStr = newPkgStr.replace(re, `"${name}": "${deps[key].new}"`);
   }
@@ -654,9 +648,7 @@ async function checkUrlDep([key, dep], {useGreatest} = {}) {
       if (!semver.valid(lastTagBare)) return;
 
       if (semver.neq(oldRefBare, lastTagBare)) {
-        const newRange = lastTag;
-        const newRef = lastTag;
-        return {key, newRange, user, repo, oldRef, newRef};
+        return {key, newRange: lastTag, user, repo, oldRef, newRef: lastTag};
       }
     } else {
       let greatestTag = oldRef;
@@ -671,9 +663,7 @@ async function checkUrlDep([key, dep], {useGreatest} = {}) {
         }
       }
       if (semver.neq(oldRefBare, greatestTagBare)) {
-        const newRange = greatestTag;
-        const newRef = greatestTag;
-        return {key, newRange, user, repo, oldRef, newRef};
+        return {key, newRange: greatestTag, user, repo, oldRef, newRef: greatestTag};
       }
     }
   }
@@ -705,9 +695,7 @@ async function main() {
   }));
 
   for (const [data, type, registry, name] of entries) {
-    if (data?.error) {
-      throw new Error(data.error);
-    }
+    if (data?.error) throw new Error(data.error);
 
     const useGreatest = typeof greatest === "boolean" ? greatest : greatest.has(data.name);
     const usePre = typeof prerelease === "boolean" ? prerelease : prerelease.has(data.name);
@@ -738,7 +726,7 @@ async function main() {
 
   if (Object.keys(maybeUrlDeps).length) {
     let results = await Promise.all(Object.entries(maybeUrlDeps).map(([key, dep]) => {
-      const [_, name] = key.split(sep);
+      const name = key.split(sep)[1];
       const useGreatest = typeof greatest === "boolean" ? greatest : greatest.has(name);
       return checkUrlDep([key, dep], {useGreatest});
     }));
