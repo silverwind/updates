@@ -19,9 +19,8 @@ unittest: node_modules
 
 .PHONY: build
 build: node_modules
-	npx ncc build updates.js -q -m -o bin
-	mv bin/index.js bin/updates.js
-	perl -0777 -p -i -e 's#\n?\/\*![\s\S]*?\*\/\n?##g' bin/updates.js
+	npx esbuild --log-level=warning --platform=node --format=esm --bundle --minify --outdir=bin --legal-comments=none --banner:js="import { createRequire } from 'module';const require = createRequire(import.meta.url);" ./updates.js
+	cat package.json | jq -r tostring > bin/package.json
 	chmod +x bin/updates.js
 
 .PHONY: publish
