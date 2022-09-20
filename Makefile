@@ -21,7 +21,7 @@ unittest: node_modules
 build: node_modules
 # workaround for https://github.com/evanw/esbuild/issues/1921
 	npx esbuild --log-level=warning --platform=node --format=esm --bundle --minify --outdir=bin --legal-comments=none --banner:js="import {createRequire} from 'module';const require = createRequire(import.meta.url);" ./updates.js
-	cat package.json | jq -r tostring > bin/package.json
+	jq -r tostring package.json > bin/package.json
 	chmod +x bin/updates.js
 
 .PHONY: publish
