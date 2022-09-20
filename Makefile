@@ -20,7 +20,7 @@ unittest: node_modules
 .PHONY: build
 build: node_modules
 # workaround for https://github.com/evanw/esbuild/issues/1921
-	npx esbuild --log-level=warning --platform=node --format=esm --bundle --minify --outdir=bin --legal-comments=none --banner:js="import {createRequire} from 'module';const require = createRequire(import.meta.url);" ./updates.js
+	npx esbuild --log-level=warning --platform=node --target=node14 --format=esm --bundle --minify --outdir=bin --legal-comments=none --banner:js="import {createRequire} from 'module';const require = createRequire(import.meta.url);" ./updates.js
 	jq -r tostring package.json > bin/package.json
 	chmod +x bin/updates.js
 
