@@ -730,7 +730,7 @@ async function main() {
       const useGreatest = typeof greatest === "boolean" ? greatest : greatest.has(name);
       return checkUrlDep([key, dep], {useGreatest});
     }));
-    results = results.filter(r => !!r);
+    results = results.filter(Boolean);
     for (const res of results || []) {
       const {key, newRange, user, repo, oldRef, newRef, newDate} = res;
       deps[key] = {
