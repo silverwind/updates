@@ -3,12 +3,12 @@ import {execa} from "execa";
 import restana from "restana";
 import {temporaryDirectory} from "tempy";
 import {join, resolve, dirname} from "path";
-import fs, {readFileSync} from "fs";
+import {readFileSync} from "fs";
+import {writeFile, readFile} from "fs/promises";
 import enableDestroy from "server-destroy";
 import {fileURLToPath} from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const {writeFile, readFile} = fs.promises;
 const testFile = resolve(__dirname, "fixtures/test.json");
 const testPkg = JSON.parse(readFileSync(testFile, "utf8"));
 const testDir = temporaryDirectory();
@@ -110,6 +110,13 @@ function makeTest(args, expected) {
     }
   };
 }
+
+test("version", async () => {
+  const {version: expected} = JSON.parse(readFileSync(new URL("package.json", import.meta.url), "utf8"));
+  const {stdout, exitCode} = await execa("node", [script, "-v"]);
+  expect(stdout).toEqual(expected);
+  expect(exitCode).toEqual(0);
+});
 
 test("simple", async () => {
   const {stdout, stderr, exitCode} = await execa(script, ["-C", "-G", githubUrl, "-f", testFile]);

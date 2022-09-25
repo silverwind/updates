@@ -21,15 +21,14 @@
     "packages"
   ],
   "files": [
-    "./bin/updates.js",
-    "./bin/package.json"
+    "./bin/updates.js"
   ],
   "devDependencies": {
     "ansi-regex": "6.0.1",
     "del": "7.0.0",
     "esbuild": "0.15.9",
     "eslint": "8.24.0",
-    "eslint-config-silverwind": "55.0.0",
+    "eslint-config-silverwind": "55.0.1",
     "execa": "6.1.0",
     "fetch-enhanced": "10.0.2",
     "hosted-git-info": "5.1.0",
@@ -45,6 +44,6 @@
     "tempy": "3.0.0",
     "text-table": "0.2.0",
     "timerel": "5.0.4",
-    "versions": "9.3.2"
+    "versions": "9.3.3"
   }
 }

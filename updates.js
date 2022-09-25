@@ -16,6 +16,7 @@ import {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync} from "
 import {platform} from "os";
 import {rootCertificates} from "tls";
 import {timerel} from "timerel";
+import {version} from "./package.json";
 
 const fetch = fetchEnhanced(nodeFetch);
 const MAX_SOCKETS = 96;
@@ -164,8 +165,6 @@ if (args.help) {
 }
 
 if (args.version) {
-  const path = new URL("package.json", import.meta.url);
-  const {version} = JSON.parse(readFileSync(path, "utf8"));
   console.info(version);
   exit(0);
 }
