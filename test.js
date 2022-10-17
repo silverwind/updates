@@ -121,8 +121,8 @@ test("version", async () => {
 test("simple", async () => {
   const {stdout, stderr, exitCode} = await execa(script, ["-C", "-G", githubUrl, "-f", testFile]);
   expect(stderr).toEqual("");
-  expect(stdout).toInclude("prismjs");
-  expect(stdout).toInclude("https://github.com/silverwind/updates");
+  expect(stdout).toContain("prismjs");
+  expect(stdout).toContain("https://github.com/silverwind/updates");
   expect(exitCode).toEqual(0);
 });
 
@@ -138,8 +138,8 @@ if (process.env.CI) {
     await execa("npm", ["i", "-g", "."]);
     const {stdout, stderr, exitCode} = await execa("updates", ["-C", "-G", githubUrl, "-f", testFile]);
     expect(stderr).toEqual("");
-    expect(stdout).toInclude("prismjs");
-    expect(stdout).toInclude("https://github.com/silverwind/updates");
+    expect(stdout).toContain("prismjs");
+    expect(stdout).toContain("https://github.com/silverwind/updates");
     expect(exitCode).toEqual(0);
   });
 }

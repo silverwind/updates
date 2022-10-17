@@ -11,11 +11,7 @@ lint: node_modules
 
 .PHONY: test
 test: node_modules lint build
-	NODE_OPTIONS="--experimental-vm-modules --no-warnings" npx jest --color
-
-.PHONY: unittest
-unittest: node_modules
-	NODE_OPTIONS="--experimental-vm-modules --no-warnings" npx jest --color --watchAll
+	npx vitest
 
 .PHONY: build
 build: node_modules
