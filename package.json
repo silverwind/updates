@@ -26,11 +26,11 @@
   "devDependencies": {
     "ansi-regex": "6.0.1",
     "del": "7.0.0",
-    "esbuild": "0.15.11",
-    "eslint": "8.25.0",
-    "eslint-config-silverwind": "59.0.0",
+    "esbuild": "0.15.12",
+    "eslint": "8.26.0",
+    "eslint-config-silverwind": "59.0.1",
     "execa": "6.1.0",
-    "fetch-enhanced": "10.0.2",
+    "fetch-enhanced": "10.0.3",
     "hosted-git-info": "6.0.0",
     "minimist": "1.2.7",
     "node-fetch": "3.2.10",
@@ -42,7 +42,7 @@
     "tempy": "3.0.0",
     "text-table": "0.2.0",
     "timerel": "5.0.4",
-    "versions": "9.3.3",
+    "versions": "10.0.4",
     "vitest": "0.24.3"
   }
 }

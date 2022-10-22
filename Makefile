@@ -33,15 +33,15 @@ update: node_modules build
 
 .PHONY: patch
 patch: node_modules test
-	npx versions -Cc 'make --no-print-directory build' patch
+	npx versions -c 'make --no-print-directory build' patch package.json package-lock.json
 	@$(MAKE) --no-print-directory publish
 
 .PHONY: minor
 minor: node_modules test
-	npx versions -Cc 'make --no-print-directory build' minor
+	npx versions -c 'make --no-print-directory build' minor package.json package-lock.json
 	@$(MAKE) --no-print-directory publish
 
 .PHONY: major
 major: node_modules test
-	npx versions -Cc 'make --no-print-directory build' major
+	npx versions -c 'make --no-print-directory build' major package.json package-lock.json
 	@$(MAKE) --no-print-directory publish
