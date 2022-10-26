@@ -35,10 +35,6 @@ const patchSemvers = new Set(["patch"]);
 const minorSemvers = new Set(["patch", "minor"]);
 const majorSemvers = new Set(["patch", "minor", "major"]);
 
-for (const stream of [process.stdout, process.stderr]) {
-  stream?._handle?.setBlocking?.(true);
-}
-
 const args = minimist(argv.slice(2), {
   boolean: [
     "E", "error-on-outdated",
@@ -88,56 +84,14 @@ const args = minimist(argv.slice(2), {
   },
 });
 
-if (args.color === false) env.NO_COLOR = "1";
-
 let magenta, red, green, gray;
-if ("NO_COLOR" in env || env.TERM === "dumb") {
+if (args.color === false || env.TERM === "dumb") {
   magenta = red = green = gray = str => str;
 } else {
   magenta = str => `\x1b[35m${str}\x1b[0m`;
   red = str => `\x1b[31m${str}\x1b[0m`;
   green = str => `\x1b[32m${str}\x1b[0m`;
   gray = str => `\x1b[90m${str}\x1b[0m`;
-}
-
-if (args.help) {
-  stdout.write(`usage: updates [options]
-
-  Options:
-    -u, --update                       Update versions and write package.json
-    -p, --prerelease [<pkg,...>]       Consider prerelease versions
-    -R, --release [<pkg,...>]          Only use release versions, may downgrade
-    -g, --greatest [<pkg,...>]         Prefer greatest over latest version
-    -i, --include <pkg,...>            Include only given packages
-    -e, --exclude <pkg,...>            Exclude given packages
-    -t, --types <type,...>             Check only given dependency types
-    -P, --patch [<pkg,...>]            Consider only up to semver-patch
-    -m, --minor [<pkg,...>]            Consider only up to semver-minor
-    -d, --allow-downgrade [<pkg,...>]  Allow version downgrades when using latest version
-    -E, --error-on-outdated            Exit with code 2 when updates are available and 0 when not
-    -U, --error-on-unchanged           Exit with code 0 when updates are available and 2 when not
-    -r, --registry <url>               Override npm registry URL
-    -G, --githubapi <url>              Override Github API URL
-    -f, --file <path>                  Use given package.json file or module directory
-    -S, --sockets <num>                Maximum number of parallel HTTP sockets opened. Default: ${MAX_SOCKETS}
-    -j, --json                         Output a JSON object
-    -n, --no-color                     Disable color output
-    -v, --version                      Print the version
-    -V, --verbose                      Print verbose output to stderr
-    -h, --help                         Print this help
-
-  Examples:
-    $ updates
-    $ updates -u
-    $ updates -u -m -e eslint
-    $ updates -u -U && rm -rf node_modules && npm i
-`);
-  exit(0);
-}
-
-if (args.version) {
-  console.info(version);
-  exit(0);
 }
 
 const greatest = parseMixedArg(args.greatest);
@@ -573,6 +527,50 @@ function parseMixedArg(arg) {
 }
 
 async function main() {
+  for (const stream of [process.stdout, process.stderr]) {
+    stream?._handle?.setBlocking?.(true);
+  }
+
+  if (args.help) {
+    stdout.write(`usage: updates [options]
+
+  Options:
+    -u, --update                       Update versions and write package.json
+    -p, --prerelease [<pkg,...>]       Consider prerelease versions
+    -R, --release [<pkg,...>]          Only use release versions, may downgrade
+    -g, --greatest [<pkg,...>]         Prefer greatest over latest version
+    -i, --include <pkg,...>            Include only given packages
+    -e, --exclude <pkg,...>            Exclude given packages
+    -t, --types <type,...>             Check only given dependency types
+    -P, --patch [<pkg,...>]            Consider only up to semver-patch
+    -m, --minor [<pkg,...>]            Consider only up to semver-minor
+    -d, --allow-downgrade [<pkg,...>]  Allow version downgrades when using latest version
+    -E, --error-on-outdated            Exit with code 2 when updates are available and 0 when not
+    -U, --error-on-unchanged           Exit with code 0 when updates are available and 2 when not
+    -r, --registry <url>               Override npm registry URL
+    -G, --githubapi <url>              Override Github API URL
+    -f, --file <path>                  Use given package.json file or module directory
+    -S, --sockets <num>                Maximum number of parallel HTTP sockets opened. Default: ${MAX_SOCKETS}
+    -j, --json                         Output a JSON object
+    -n, --no-color                     Disable color output
+    -v, --version                      Print the version
+    -V, --verbose                      Print verbose output to stderr
+    -h, --help                         Print this help
+
+  Examples:
+    $ updates
+    $ updates -u
+    $ updates -u -m -e eslint
+    $ updates -u -U && rm -rf node_modules && npm i
+`);
+    exit(0);
+  }
+
+  if (args.version) {
+    console.info(version);
+    exit(0);
+  }
+
   const agentOpts = {};
   if (npmrc["strict-ssl"] === false) {
     agentOpts.rejectUnauthorized = false;
