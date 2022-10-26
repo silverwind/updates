@@ -1,3 +1,6 @@
+SRC := updates.js
+DST := bin/updates.js
+
 node_modules: package-lock.json
 	npm install --no-save
 	@touch node_modules
@@ -14,10 +17,12 @@ test: node_modules lint build
 	npx vitest
 
 .PHONY: build
-build: node_modules
+build: $(DST)
+
+$(DST): $(SRC) node_modules
 # workaround for https://github.com/evanw/esbuild/issues/1921
-	npx esbuild --log-level=warning --platform=node --target=node14 --format=esm --bundle --minify --outdir=bin --legal-comments=none --banner:js="import {createRequire} from 'module';const require = createRequire(import.meta.url);" ./updates.js
-	chmod +x bin/updates.js
+	npx esbuild --log-level=warning --platform=node --target=node14 --format=esm --bundle --minify --legal-comments=none --banner:js="import {createRequire} from 'module';const require = createRequire(import.meta.url);" --outfile=$(DST) $(SRC)
+	chmod +x $(DST)
 
 .PHONY: publish
 publish: node_modules
@@ -26,7 +31,7 @@ publish: node_modules
 
 .PHONY: update
 update: node_modules build
-	node bin/updates.js -cu -e registry-auth-token
+	node $(DST) -cu -e registry-auth-token
 	rm package-lock.json
 	npm install
 	@touch node_modules
