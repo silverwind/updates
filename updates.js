@@ -36,7 +36,6 @@ const patchSemvers = new Set(["patch"]);
 const minorSemvers = new Set(["patch", "minor"]);
 const majorSemvers = new Set(["patch", "minor", "major"]);
 
-// workaround for https://github.com/nodejs/node/issues/6379
 for (const stream of [process.stdout, process.stderr]) {
   stream?._handle?.setBlocking?.(true);
 }
