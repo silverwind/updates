@@ -8,6 +8,7 @@ import {tmpdir} from "os";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const testFile = resolve(__dirname, "fixtures/test.json");
+const emptyFile = resolve(__dirname, "fixtures/empty.json");
 const testPkg = JSON.parse(readFileSync(testFile, "utf8"));
 const testDir = mkdtempSync(join(tmpdir(), "updates-"));
 const script = join(__dirname, "bin/updates.js");
@@ -118,6 +119,13 @@ test("simple", async () => {
   expect(stderr).toEqual("");
   expect(stdout).toContain("prismjs");
   expect(stdout).toContain("https://github.com/silverwind/updates");
+  expect(exitCode).toEqual(0);
+});
+
+test("empty", async () => {
+  const {stdout, stderr, exitCode} = await execa(script, ["-C", "-G", githubUrl, "-f", emptyFile]);
+  expect(stderr).toEqual("");
+  expect(stdout).toContain("No packages");
   expect(exitCode).toEqual(0);
 });
 

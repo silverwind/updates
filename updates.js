@@ -657,7 +657,7 @@ async function main() {
   }
 
   if (!Object.keys(deps).length && !Object.keys(maybeUrlDeps).length) {
-    finish(new Error(`No packages ${include || exclude ? "match the given filters" : "found"}`));
+    finish(`No packages ${include || exclude ? "match the given filters" : "present"}`);
   }
 
   const entries = await Promise.all(Object.keys(deps).map(key => {
