@@ -125,7 +125,7 @@ test("simple", async () => {
 test("empty", async () => {
   const {stdout, stderr, exitCode} = await execa(script, ["-C", "-G", githubUrl, "-f", emptyFile]);
   expect(stderr).toEqual("");
-  expect(stdout).toContain("No packages");
+  expect(stdout).toContain("No dependencies");
   expect(exitCode).toEqual(0);
 });
 

@@ -625,12 +625,12 @@ async function main() {
   try {
     pkgStr = readFileSync(packageFile, "utf8");
   } catch (err) {
-    finish(new Error(`Unable to open package.json: ${err.message}`));
+    finish(new Error(`Unable to open ${packageFile}: ${err.message}`));
   }
   try {
     pkg = JSON.parse(pkgStr);
   } catch (err) {
-    finish(new Error(`Error parsing package.json: ${err.message}`));
+    finish(new Error(`Error parsing ${packageFile}: ${err.message}`));
   }
 
   let include, exclude;
@@ -655,7 +655,11 @@ async function main() {
   }
 
   if (!Object.keys(deps).length && !Object.keys(maybeUrlDeps).length) {
-    finish(`No packages ${include || exclude ? "match the given filters" : "present"}`);
+    if (include || exclude) {
+      finish(new Error(`No dependencies match the given include/exclude filters`));
+    } else {
+      finish("No dependencies present");
+    }
   }
 
   const entries = await Promise.all(Object.keys(deps).map(key => {
@@ -714,7 +718,7 @@ async function main() {
   }
 
   if (!Object.keys(deps).length) {
-    finish("All packages are up to date.");
+    finish("All dependencies are up to date.");
   }
 
   if (!args.update) {
