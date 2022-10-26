@@ -1,17 +1,15 @@
-import {deleteAsync} from "del";
 import {execa} from "execa";
 import restana from "restana";
-import {temporaryDirectory} from "tempy";
 import {join, resolve, dirname} from "path";
-import {readFileSync} from "fs";
-import {writeFile, readFile} from "fs/promises";
-import enableDestroy from "server-destroy";
+import {readFileSync, mkdtempSync} from "fs";
+import {writeFile, readFile, rmdir} from "fs/promises";
 import {fileURLToPath} from "url";
+import {tmpdir} from "os";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const testFile = resolve(__dirname, "fixtures/test.json");
 const testPkg = JSON.parse(readFileSync(testFile, "utf8"));
-const testDir = temporaryDirectory();
+const testDir = mkdtempSync(join(tmpdir(), "updates-"));
 const script = join(__dirname, "bin/updates.js");
 
 const dependencyTypes = [
@@ -70,9 +68,6 @@ beforeAll(async () => {
     npmServer.start(0),
   ]);
 
-  enableDestroy(npmServer);
-  enableDestroy(githubServer);
-
   githubUrl = makeUrl(githubServer);
   npmUrl = makeUrl(npmServer);
 
@@ -82,9 +77,9 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await Promise.all([
-    deleteAsync(testDir, {force: true}),
-    npmServer && npmServer.destroy(),
-    githubServer && githubServer.destroy(),
+    rmdir(testDir, {recursive: true}),
+    npmServer?.close(),
+    githubServer?.close(),
   ]);
 });
 

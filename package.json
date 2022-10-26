@@ -25,7 +25,6 @@
   ],
   "devDependencies": {
     "ansi-regex": "6.0.1",
-    "del": "7.0.0",
     "esbuild": "0.15.12",
     "eslint": "8.26.0",
     "eslint-config-silverwind": "61.0.0",
@@ -38,8 +37,6 @@
     "registry-auth-token": "4.2.2",
     "restana": "4.9.6",
     "semver": "7.3.8",
-    "server-destroy": "1.0.1",
-    "tempy": "3.0.0",
     "text-table": "0.2.0",
     "timerel": "5.0.4",
     "versions": "10.1.0",
