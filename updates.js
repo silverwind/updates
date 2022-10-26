@@ -462,7 +462,7 @@ function highlightDiff(a, b, added) {
   return res;
 }
 
-function formatDeps() {
+function formatDeps(deps) {
   const arr = [["NAME", "OLD", "NEW", "AGE", "INFO"]];
 
   for (const [key, data] of Object.entries(deps)) {
