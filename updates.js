@@ -84,14 +84,13 @@ const args = minimist(argv.slice(2), {
   },
 });
 
-let magenta, red, green, gray;
+let magenta, red, green;
 if (args.color === false || env.TERM === "dumb") {
-  magenta = red = green = gray = str => str;
+  magenta = red = green = str => str;
 } else {
   magenta = str => `\x1b[35m${str}\x1b[0m`;
   red = str => `\x1b[31m${str}\x1b[0m`;
   green = str => `\x1b[32m${str}\x1b[0m`;
-  gray = str => `\x1b[90m${str}\x1b[0m`;
 }
 
 const greatest = parseMixedArg(args.greatest);
@@ -221,7 +220,7 @@ function finish(obj, deps = {}) {
   if (typeof obj === "string") {
     output.message = obj;
   } else if (hadError) {
-    output.error = obj.stack;
+    output.error = obj.message;
   }
 
   for (const value of Object.values(deps)) {
@@ -253,10 +252,7 @@ function finish(obj, deps = {}) {
       if (output.message) {
         console.info(output.message);
       } else if (output.error) {
-        const lines = output.error.split(/\r?\n/);
-        for (const [index, line] of Object.entries(lines)) {
-          console.info((index === "0" ? red : gray)(line));
-        }
+        console.info(red(output.error));
       }
     }
   }
