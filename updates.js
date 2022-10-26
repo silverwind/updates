@@ -654,7 +654,7 @@ async function main() {
     if (include || exclude) {
       finish(new Error(`No dependencies match the given include/exclude filters`));
     } else {
-      finish("No dependencies present");
+      finish("No dependencies present, nothing to do");
     }
   }
 
