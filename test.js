@@ -1,17 +1,16 @@
 import {execa} from "execa";
 import restana from "restana";
-import {join, resolve, dirname} from "path";
+import {join, dirname} from "path";
 import {readFileSync, mkdtempSync} from "fs";
 import {writeFile, readFile, rmdir} from "fs/promises";
 import {fileURLToPath} from "url";
 import {tmpdir} from "os";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const testFile = resolve(__dirname, "fixtures/test.json");
-const emptyFile = resolve(__dirname, "fixtures/empty.json");
+const testFile = fileURLToPath(new URL("fixtures/test.json", import.meta.url));
+const emptyFile = fileURLToPath(new URL("fixtures/empty.json", import.meta.url));
 const testPkg = JSON.parse(readFileSync(testFile, "utf8"));
 const testDir = mkdtempSync(join(tmpdir(), "updates-"));
-const script = join(__dirname, "bin/updates.js");
+const script = fileURLToPath(new URL("bin/updates.js", import.meta.url));
 
 const dependencyTypes = [
   "dependencies",
@@ -50,14 +49,15 @@ beforeAll(async () => {
   [npmServer, githubServer, commits, tags] = await Promise.all([
     restana({defaultRoute}),
     restana({defaultRoute}),
-    readFile(join(__dirname, "fixtures/github/updates-commits.json")),
-    readFile(join(__dirname, "fixtures/github/updates-tags.json"))
+    readFile(fileURLToPath(new URL("fixtures/github/updates-commits.json", import.meta.url))),
+    readFile(fileURLToPath(new URL("fixtures/github/updates-tags.json", import.meta.url))),
   ]);
 
   for (const pkgName of testPackages) {
     const name = testPkg.resolutions[pkgName] ? resolutionsBasePackage(pkgName) : pkgName;
     const urlName = name.replace(/\//g, "%2f");
-    const path = join(__dirname, `fixtures/npm/${urlName}.json`);
+    // can not use file URLs because node stupidely throws on "%2f" in paths.
+    const path = join(dirname(fileURLToPath(import.meta.url)), `fixtures/npm/${urlName}.json`);
     npmServer.get(`/${urlName}`, async (_, res) => res.send(await readFile(path)));
   }
 
