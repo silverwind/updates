@@ -2,7 +2,7 @@
 import ansiRegex from "ansi-regex";
 import fetchEnhanced from "fetch-enhanced";
 import minimist from "minimist";
-import nodeFetch from "node-fetch";
+import nodeFetch from "node-fetch"; // seems twice as fast than undici for the 1500 deps case
 import rat from "registry-auth-token";
 import rc from "rc";
 import ru from "registry-auth-token/registry-url.js";
