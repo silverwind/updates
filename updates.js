@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 import ansiRegex from "ansi-regex";
-import dns from "dns";
 import fetchEnhanced from "fetch-enhanced";
 import minimist from "minimist";
 import nodeFetch from "node-fetch";
@@ -36,32 +35,6 @@ const normalizeUrl = memoize(url => url.endsWith("/") ? url.substring(0, url.len
 const patchSemvers = new Set(["patch"]);
 const minorSemvers = new Set(["patch", "minor"]);
 const majorSemvers = new Set(["patch", "minor", "major"]);
-
-// dns cache
-const cache = Object.create(null);
-const waiting = Object.create(null);
-const originalLookup = dns.lookup;
-dns.lookup = (hostname, opts, callback) => {
-  if (!callback) {
-    callback = opts;
-    opts = undefined;
-  }
-  if (hostname in cache) {
-    callback(...cache[hostname]);
-  } else {
-    if (!(hostname in waiting)) {
-      waiting[hostname] = [callback];
-      originalLookup(hostname, opts, (...args) => {
-        if (!(hostname in cache)) cache[hostname] = args;
-        for (const callback of waiting[hostname]) {
-          callback(...args);
-        }
-      });
-    } else {
-      waiting[hostname].push(callback);
-    }
-  }
-};
 
 // workaround for https://github.com/nodejs/node/issues/6379
 for (const stream of [process.stdout, process.stderr]) {
