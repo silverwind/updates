@@ -20,7 +20,6 @@ import {version} from "./package.json";
 const fetch = fetchEnhanced(nodeFetch);
 const MAX_SOCKETS = 96;
 const sep = "\0";
-const pwd = cwd();
 
 // regexes for url dependencies. does only github and only hash or exact semver
 // https://regex101.com/r/gCZzfK/2
@@ -604,6 +603,7 @@ async function main() {
       finish(new Error(`${args.file} is neither a file nor directory`));
     }
   } else {
+    const pwd = cwd();
     packageFile = findSync("package.json", pwd);
     if (!packageFile) {
       finish(new Error(`Unable to find package.json in ${pwd} or any of its parents`));
