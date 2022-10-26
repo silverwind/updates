@@ -183,92 +183,6 @@ const githubApiUrl = args.githubapi ? normalizeUrl(args.githubapi) : "https://ap
 const maxSockets = typeof args.sockets === "number" ? parseInt(args.sockets) : MAX_SOCKETS;
 const extractCerts = str => Array.from(str.matchAll(/(----BEGIN CERT[^]+?IFICATE----)/g)).map(m => m[0]);
 
-const agentOpts = {};
-if (npmrc["strict-ssl"] === false) {
-  agentOpts.rejectUnauthorized = false;
-} else {
-  if ("cafile" in npmrc) {
-    agentOpts.ca = rootCertificates.concat(extractCerts(readFileSync(npmrc.cafile, "utf8")));
-  }
-  if ("ca" in npmrc) {
-    const cas = Array.isArray(npmrc.ca) ? npmrc.ca : [npmrc.ca];
-    agentOpts.ca = rootCertificates.concat(cas.map(ca => extractCerts(ca)));
-  }
-}
-
-let packageFile;
-if (args.file) {
-  let stat;
-  try {
-    stat = lstatSync(args.file);
-  } catch (err) {
-    finish(new Error(`Unable to open ${args.file}: ${err.message}`));
-  }
-
-  if (stat?.isFile()) {
-    packageFile = args.file;
-  } else if (stat?.isDirectory()) {
-    packageFile = join(args.file, "package.json");
-  } else {
-    finish(new Error(`${args.file} is neither a file nor directory`));
-  }
-} else {
-  packageFile = findSync("package.json", pwd);
-  if (!packageFile) {
-    finish(new Error(`Unable to find package.json in ${pwd} or any of its parents`));
-  }
-}
-
-let dependencyTypes;
-if (args.types) {
-  dependencyTypes = Array.isArray(args.types) ? args.types : args.types.split(",");
-} else {
-  dependencyTypes = [
-    "dependencies",
-    "devDependencies",
-    "optionalDependencies",
-    "peerDependencies",
-    "resolutions",
-  ];
-}
-
-let pkg, pkgStr;
-try {
-  pkgStr = readFileSync(packageFile, "utf8");
-} catch (err) {
-  finish(new Error(`Unable to open package.json: ${err.message}`));
-}
-try {
-  pkg = JSON.parse(pkgStr);
-} catch (err) {
-  finish(new Error(`Error parsing package.json: ${err.message}`));
-}
-
-let include, exclude;
-if (args.include && args.include !== true) include = new Set(((Array.isArray(args.include) ? args.include : [args.include]).flatMap(item => item.split(","))));
-if (args.exclude && args.exclude !== true) exclude = new Set(((Array.isArray(args.exclude) ? args.exclude : [args.exclude]).flatMap(item => item.split(","))));
-
-function canInclude(name) {
-  if (exclude?.has?.(name) === true) return false;
-  if (include?.has?.(name) === false) return false;
-  return true;
-}
-
-const deps = {}, maybeUrlDeps = {};
-for (const depType of dependencyTypes) {
-  for (const [name, value] of Object.entries(pkg[depType] || {})) {
-    if (semver.validRange(value) && canInclude(name)) {
-      deps[`${depType}${sep}${name}`] = {old: value};
-    } else if (canInclude(name)) {
-      maybeUrlDeps[`${depType}${sep}${name}`] = {old: value};
-    }
-  }
-}
-
-if (!Object.keys(deps).length && !Object.keys(maybeUrlDeps).length) {
-  finish(new Error(`No packages ${include || exclude ? "match the given filters" : "found"}`));
-}
-
 function memoize(fn) {
   const cache = Object.create(null);
   return (arg, arg2) => arg in cache ? cache[arg] : cache[arg] = fn(arg, arg2);
@@ -308,7 +222,7 @@ function getAuthAndRegistry(name, registry) {
   }
 }
 
-async function fetchInfo(name, type, originalRegistry) {
+async function fetchInfo(name, type, originalRegistry, agentOpts) {
   const [auth, registry] = getAuthAndRegistry(name, originalRegistry);
 
   const opts = {maxSockets};
@@ -375,7 +289,7 @@ function getInfoUrl({repository, homepage}, registry, name) {
   return url;
 }
 
-function finish(obj, opts = {}) {
+function finish(obj, deps = {}) {
   const output = {};
   const hadError = obj instanceof Error;
 
@@ -427,7 +341,7 @@ function finish(obj, opts = {}) {
   } else if (args["error-on-unchanged"]) {
     exit(Object.keys(deps).length ? 0 : 2);
   } else {
-    exit(opts.exitCode || (output.error ? 1 : 0));
+    exit(output.error ? 1 : 0);
   }
 }
 
@@ -482,7 +396,7 @@ function formatDeps(deps) {
   });
 }
 
-function updatePackageJson() {
+function updatePackageJson(pkgStr, deps) {
   let newPkgStr = pkgStr;
   for (const key of Object.keys(deps)) {
     const name = key.split(sep)[1];
@@ -688,9 +602,95 @@ function parseMixedArg(arg) {
 }
 
 async function main() {
+  const agentOpts = {};
+  if (npmrc["strict-ssl"] === false) {
+    agentOpts.rejectUnauthorized = false;
+  } else {
+    if ("cafile" in npmrc) {
+      agentOpts.ca = rootCertificates.concat(extractCerts(readFileSync(npmrc.cafile, "utf8")));
+    }
+    if ("ca" in npmrc) {
+      const cas = Array.isArray(npmrc.ca) ? npmrc.ca : [npmrc.ca];
+      agentOpts.ca = rootCertificates.concat(cas.map(ca => extractCerts(ca)));
+    }
+  }
+
+  let packageFile;
+  if (args.file) {
+    let stat;
+    try {
+      stat = lstatSync(args.file);
+    } catch (err) {
+      finish(new Error(`Unable to open ${args.file}: ${err.message}`));
+    }
+
+    if (stat?.isFile()) {
+      packageFile = args.file;
+    } else if (stat?.isDirectory()) {
+      packageFile = join(args.file, "package.json");
+    } else {
+      finish(new Error(`${args.file} is neither a file nor directory`));
+    }
+  } else {
+    packageFile = findSync("package.json", pwd);
+    if (!packageFile) {
+      finish(new Error(`Unable to find package.json in ${pwd} or any of its parents`));
+    }
+  }
+
+  let dependencyTypes;
+  if (args.types) {
+    dependencyTypes = Array.isArray(args.types) ? args.types : args.types.split(",");
+  } else {
+    dependencyTypes = [
+      "dependencies",
+      "devDependencies",
+      "optionalDependencies",
+      "peerDependencies",
+      "resolutions",
+    ];
+  }
+
+  let pkg, pkgStr;
+  try {
+    pkgStr = readFileSync(packageFile, "utf8");
+  } catch (err) {
+    finish(new Error(`Unable to open package.json: ${err.message}`));
+  }
+  try {
+    pkg = JSON.parse(pkgStr);
+  } catch (err) {
+    finish(new Error(`Error parsing package.json: ${err.message}`));
+  }
+
+  let include, exclude;
+  if (args.include && args.include !== true) include = new Set(((Array.isArray(args.include) ? args.include : [args.include]).flatMap(item => item.split(","))));
+  if (args.exclude && args.exclude !== true) exclude = new Set(((Array.isArray(args.exclude) ? args.exclude : [args.exclude]).flatMap(item => item.split(","))));
+
+  function canInclude(name) {
+    if (exclude?.has?.(name) === true) return false;
+    if (include?.has?.(name) === false) return false;
+    return true;
+  }
+
+  const deps = {}, maybeUrlDeps = {};
+  for (const depType of dependencyTypes) {
+    for (const [name, value] of Object.entries(pkg[depType] || {})) {
+      if (semver.validRange(value) && canInclude(name)) {
+        deps[`${depType}${sep}${name}`] = {old: value};
+      } else if (canInclude(name)) {
+        maybeUrlDeps[`${depType}${sep}${name}`] = {old: value};
+      }
+    }
+  }
+
+  if (!Object.keys(deps).length && !Object.keys(maybeUrlDeps).length) {
+    finish(new Error(`No packages ${include || exclude ? "match the given filters" : "found"}`));
+  }
+
   const entries = await Promise.all(Object.keys(deps).map(key => {
     const [type, name] = key.split(sep);
-    return fetchInfo(name, type, registry);
+    return fetchInfo(name, type, registry, agentOpts);
   }));
 
   for (const [data, type, registry, name] of entries) {
@@ -748,11 +748,11 @@ async function main() {
   }
 
   if (!args.update) {
-    finish();
+    finish(undefined, deps);
   }
 
   try {
-    write(packageFile, updatePackageJson());
+    write(packageFile, updatePackageJson(pkgStr, deps));
   } catch (err) {
     finish(new Error(`Error writing ${packageFile}: ${err.message}`));
   }
