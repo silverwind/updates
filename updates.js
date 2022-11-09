@@ -327,8 +327,9 @@ function updatePackageJson(pkgStr, deps) {
   return newPkgStr;
 }
 
+// "18.0" > "18.2.0"
 function updateRange(range, version) {
-  return range.replace(/[0-9]+\.[0-9]+\.[0-9]+(-.+)?/g, version);
+  return range.replace(/[0-9]+\.?[0-9]+?\.?[0-9]+?(-.+)?/g, version);
 }
 
 function isVersionPrerelease(version) {
