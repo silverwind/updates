@@ -9,14 +9,14 @@ import ru from "registry-auth-token/registry-url.js";
 import semver from "semver";
 import textTable from "text-table";
 import {cwd, stdout, argv, env, exit} from "process";
-import {fromUrl} from "hosted-git-info";
+import hostedGitInfo from "hosted-git-info";
 import {join, dirname} from "path";
 import {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync} from "fs";
 import {platform} from "os";
 import {rootCertificates} from "tls";
 import {timerel} from "timerel";
-import {version} from "./package.json";
 
+const {fromUrl} = hostedGitInfo;
 const fetch = fetchEnhanced(nodeFetch);
 const MAX_SOCKETS = 96;
 const sep = "\0";
@@ -27,7 +27,7 @@ const stripRe = /^.*?:\/\/(.*?@)?(github\.com[:/])/i;
 const partsRe = /^([^/]+)\/([^/#]+)?.*?\/([0-9a-f]+|v?[0-9]+\.[0-9]+\.[0-9]+)$/i;
 const hashRe = /^[0-9a-f]{7,}$/i;
 const esc = str => str.replace(/[|\\{}()[\]^$+*?.-]/g, "\\$&");
-const hostedGitInfo = memoize(fromUrl);
+const gitInfo = memoize(fromUrl);
 const registryAuthToken = memoize(rat);
 const registryUrl = memoize(ru);
 const normalizeUrl = memoize(url => url.endsWith("/") ? url.substring(0, url.length - 1) : url);
@@ -183,7 +183,7 @@ function getInfoUrl({repository, homepage}, registry, name) {
   } else if (repository) {
     const url = typeof repository === "string" ? repository : repository.url;
 
-    const info = hostedGitInfo(url);
+    const info = gitInfo(url);
     if (info?.browse) {
       // https://github.com/babel/babel
       infoUrl = info.browse();
@@ -563,7 +563,7 @@ async function main() {
   }
 
   if (args.version) {
-    console.info(version);
+    console.info(import.meta.VERSION || "0.0.0");
     exit(0);
   }
 
