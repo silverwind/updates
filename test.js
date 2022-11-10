@@ -189,7 +189,7 @@ test("latest", makeTest("-j", {
       info: "https://github.com/silverwind/updates",
     },
     "react": {
-      old: "18.0.0",
+      old: "18.0",
       new: "18.2.0",
       info: "https://github.com/facebook/react/tree/HEAD/packages/react",
     },
@@ -253,7 +253,7 @@ test("greatest", makeTest("-j -g", {
       info: "https://github.com/silverwind/updates",
     },
     "react": {
-      old: "18.0.0",
+      old: "18.0",
       new: "18.2.0",
       info: "https://github.com/facebook/react/tree/HEAD/packages/react",
     }
@@ -322,7 +322,7 @@ test("prerelease", makeTest("-j -g -p", {
       info: "https://github.com/silverwind/updates",
     },
     "react": {
-      old: "18.0.0",
+      old: "18.0",
       new: "18.3.0-next-d1e35c703-20221110",
       info: "https://github.com/facebook/react/tree/HEAD/packages/react",
     }
@@ -391,7 +391,7 @@ test("release", makeTest("-j -R", {
       info: "https://github.com/silverwind/updates",
     },
     "react": {
-      old: "18.0.0",
+      old: "18.0",
       new: "18.2.0",
       info: "https://github.com/facebook/react/tree/HEAD/packages/react",
     }

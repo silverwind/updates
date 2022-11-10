@@ -26,6 +26,7 @@ const sep = "\0";
 const stripRe = /^.*?:\/\/(.*?@)?(github\.com[:/])/i;
 const partsRe = /^([^/]+)\/([^/#]+)?.*?\/([0-9a-f]+|v?[0-9]+\.[0-9]+\.[0-9]+)$/i;
 const hashRe = /^[0-9a-f]{7,}$/i;
+const versionRe = /[0-9]+(\.[0-9]+)?(\.[0-9]+)?/g;
 const esc = str => str.replace(/[|\\{}()[\]^$+*?.-]/g, "\\$&");
 const gitInfo = memoize(fromUrl);
 const registryAuthToken = memoize(rat);
@@ -231,6 +232,10 @@ function finish(obj, deps = {}) {
     if ("newPrint" in value) {
       value.new = value.newPrint;
       delete value.newPrint;
+    }
+    if ("oldOriginal" in value) {
+      value.old = value.oldOriginal;
+      delete value.oldOriginal;
     }
   }
 
@@ -508,6 +513,12 @@ function resolutionsBasePackage(name) {
   return packages[packages.length - 1];
 }
 
+function normalizeRange(range) {
+  const versionMatches = range.match(versionRe);
+  if (versionMatches.length !== 1) return range;
+  return range.replace(versionRe, semver.coerce(versionMatches[0]));
+}
+
 function parseMixedArg(arg) {
   if (arg === undefined) {
     return false;
@@ -643,9 +654,14 @@ async function main() {
   for (const depType of dependencyTypes) {
     for (const [name, value] of Object.entries(pkg[depType] || {})) {
       if (semver.validRange(value) && canInclude(name)) {
-        deps[`${depType}${sep}${name}`] = {old: value};
+        deps[`${depType}${sep}${name}`] = {
+          old: normalizeRange(value),
+          oldOriginal: value,
+        };
       } else if (canInclude(name)) {
-        maybeUrlDeps[`${depType}${sep}${name}`] = {old: value};
+        maybeUrlDeps[`${depType}${sep}${name}`] = {
+          old: value,
+        };
       }
     }
   }
