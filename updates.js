@@ -326,7 +326,8 @@ function updatePackageJson(pkgStr, deps) {
   let newPkgStr = pkgStr;
   for (const key of Object.keys(deps)) {
     const name = key.split(sep)[1];
-    const re = new RegExp(`"${esc(name)}": +"${esc(deps[key].old)}"`, "g");
+    const old = deps[key].oldOriginal || deps[key].old;
+    const re = new RegExp(`"${esc(name)}": +"${esc(old)}"`, "g");
     newPkgStr = newPkgStr.replace(re, `"${name}": "${deps[key].new}"`);
   }
   return newPkgStr;
