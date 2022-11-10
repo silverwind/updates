@@ -92,18 +92,12 @@ function makeTest(args, expected) {
 
     // Parse results, with custom validation for the dynamic "age" property
     for (const dependencyType of dependencyTypes) {
-      for (const [name, actual] of Object.entries(results[dependencyType] || {})) {
-        for (const [key, actualValue] of Object.entries(actual || {})) {
-          const expectedValue = expected[dependencyType][name][key];
-          if (key === "age") {
-            expect(typeof actualValue).toEqual("string");
-            expect(actualValue.length > 0).toBeTruthy();
-          } else {
-            expect(expectedValue).toEqual(actualValue);
-          }
-        }
+      for (const name of Object.keys(results[dependencyType] || {})) {
+        delete results[dependencyType][name].age;
       }
     }
+
+    expect(results).toEqual(expected);
   };
 }
 
@@ -194,6 +188,11 @@ test("latest", makeTest("-j", {
       new: "537ccb7",
       info: "https://github.com/silverwind/updates",
     },
+    "react": {
+      old: "18.0.0",
+      new: "18.2.0",
+      info: "https://github.com/facebook/react/tree/HEAD/packages/react",
+    },
   },
   peerDependencies: {
     "@babel/preset-env": {
@@ -253,6 +252,11 @@ test("greatest", makeTest("-j -g", {
       new: "537ccb7",
       info: "https://github.com/silverwind/updates",
     },
+    "react": {
+      old: "18.0.0",
+      new: "18.2.0",
+      info: "https://github.com/facebook/react/tree/HEAD/packages/react",
+    }
   },
   peerDependencies: {
     "@babel/preset-env": {
@@ -317,6 +321,11 @@ test("prerelease", makeTest("-j -g -p", {
       new: "537ccb7",
       info: "https://github.com/silverwind/updates",
     },
+    "react": {
+      old: "18.0.0",
+      new: "18.3.0-next-d1e35c703-20221110",
+      info: "https://github.com/facebook/react/tree/HEAD/packages/react",
+    }
   },
   peerDependencies: {
     "@babel/preset-env": {
@@ -381,6 +390,11 @@ test("release", makeTest("-j -R", {
       new: "537ccb7",
       info: "https://github.com/silverwind/updates",
     },
+    "react": {
+      old: "18.0.0",
+      new: "18.2.0",
+      info: "https://github.com/facebook/react/tree/HEAD/packages/react",
+    }
   },
   peerDependencies: {
     "@babel/preset-env": {
@@ -455,7 +469,7 @@ test("include version deps #2", makeTest("-j -i noty -i noty,noty", {
   },
 }));
 
-test("exclude version deps", makeTest("-j -e gulp-sourcemaps,prismjs,svgstore,html-webpack-plugin,noty,jpeg-buffer-orientation,styled-components,@babel/preset-env,versions/updates", {
+test("exclude version deps", makeTest("-j -e gulp-sourcemaps,prismjs,svgstore,html-webpack-plugin,noty,jpeg-buffer-orientation,styled-components,@babel/preset-env,versions/updates,react", {
   dependencies: {
     "updates": {
       old: "6941e05",
