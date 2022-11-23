@@ -2,7 +2,7 @@ import {execa} from "execa";
 import restana from "restana";
 import {join, dirname} from "path";
 import {readFileSync, mkdtempSync} from "fs";
-import {writeFile, readFile, rmdir} from "fs/promises";
+import {writeFile, readFile, rm} from "fs/promises";
 import {fileURLToPath} from "url";
 import {tmpdir} from "os";
 
@@ -78,7 +78,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await Promise.all([
-    rmdir(testDir, {recursive: true}),
+    rm(testDir, {recursive: true}),
     npmServer?.close(),
     githubServer?.close(),
   ]);
