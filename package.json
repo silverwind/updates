@@ -25,21 +25,21 @@
   ],
   "devDependencies": {
     "ansi-regex": "6.0.1",
-    "esbuild": "0.15.13",
-    "eslint": "8.27.0",
-    "eslint-config-silverwind": "62.0.0",
+    "esbuild": "0.15.15",
+    "eslint": "8.28.0",
+    "eslint-config-silverwind": "63.0.0",
     "execa": "6.1.0",
-    "fetch-enhanced": "10.1.0",
+    "fetch-enhanced": "10.1.1",
     "hosted-git-info": "6.1.1",
     "minimist": "1.2.7",
-    "node-fetch": "3.2.10",
+    "node-fetch": "3.3.0",
     "rc": "1.2.8",
     "registry-auth-token": "4.2.2",
     "restana": "4.9.6",
     "semver": "7.3.8",
     "text-table": "0.2.0",
-    "timerel": "5.0.4",
-    "versions": "10.2.0",
-    "vitest": "0.25.1"
+    "timerel": "5.3.0",
+    "versions": "10.2.4",
+    "vitest": "0.25.3"
   }
 }
