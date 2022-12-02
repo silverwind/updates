@@ -17,7 +17,7 @@ import {rootCertificates} from "tls";
 import {timerel} from "timerel";
 
 const {fromUrl} = hostedGitInfo;
-const fetch = fetchEnhanced(nodeFetch);
+const fetch = fetchEnhanced(nodeFetch, {undici: false});
 const MAX_SOCKETS = 96;
 const sep = "\0";
 
