@@ -1,10 +1,10 @@
 import {execa} from "execa";
 import restana from "restana";
-import {join, dirname} from "path";
-import {readFileSync, mkdtempSync} from "fs";
-import {writeFile, readFile, rm} from "fs/promises";
-import {fileURLToPath} from "url";
-import {tmpdir} from "os";
+import {join, dirname} from "node:path";
+import {readFileSync, mkdtempSync} from "node:fs";
+import {writeFile, readFile, rm} from "node:fs/promises";
+import {fileURLToPath} from "node:url";
+import {tmpdir} from "node:os";
 
 const testFile = fileURLToPath(new URL("fixtures/test.json", import.meta.url));
 const emptyFile = fileURLToPath(new URL("fixtures/empty.json", import.meta.url));

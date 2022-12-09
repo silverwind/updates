@@ -8,12 +8,12 @@ import rc from "rc";
 import ru from "registry-auth-token/registry-url.js";
 import semver from "semver";
 import textTable from "text-table";
-import {cwd, stdout, argv, env, exit} from "process";
+import {cwd, stdout, argv, env, exit} from "node:process";
 import hostedGitInfo from "hosted-git-info";
-import {join, dirname} from "path";
-import {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync} from "fs";
-import {platform} from "os";
-import {rootCertificates} from "tls";
+import {join, dirname} from "node:path";
+import {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync} from "node:fs";
+import {platform} from "node:os";
+import {rootCertificates} from "node:tls";
 import {timerel} from "timerel";
 
 const {fromUrl} = hostedGitInfo;
