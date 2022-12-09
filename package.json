@@ -10,16 +10,6 @@
   "engines": {
     "node": ">= 14"
   },
-  "keywords": [
-    "dependencies",
-    "update",
-    "updates",
-    "check",
-    "checker",
-    "npm",
-    "yarn",
-    "packages"
-  ],
   "files": [
     "./bin/updates.js"
   ],
