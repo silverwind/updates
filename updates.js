@@ -516,7 +516,7 @@ function resolutionsBasePackage(name) {
 
 function normalizeRange(range) {
   const versionMatches = range.match(versionRe);
-  if (versionMatches.length !== 1) return range;
+  if (versionMatches?.length !== 1) return range;
   return range.replace(versionRe, semver.coerce(versionMatches[0]));
 }
 
