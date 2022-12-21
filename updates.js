@@ -612,7 +612,7 @@ async function main() {
     const pwd = cwd();
     packageFile = findSync("package.json", pwd);
     if (!packageFile) {
-      finish(new Error(`Unable to find package.json in ${pwd} or any of its parents`));
+      finish(new Error(`Unable to find package.json in ${pwd} or any of its parent directories`));
     }
   }
 
