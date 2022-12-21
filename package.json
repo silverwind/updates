@@ -19,7 +19,7 @@
     "eslint": "8.30.0",
     "eslint-config-silverwind": "65.0.0",
     "execa": "6.1.0",
-    "fetch-enhanced": "11.0.3",
+    "fetch-enhanced": "11.1.0",
     "hosted-git-info": "6.1.1",
     "minimist": "1.2.7",
     "node-fetch": "3.3.0",
