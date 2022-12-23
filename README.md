@@ -5,34 +5,33 @@
 
 `updates` is a CLI tool which checks for npm dependency updates of the current project and optionally updates `package.json`. It is highly configurable and is typically able to complete in less than a second.
 
-## Usage
+# Installation
 
 ```bash
-# install globally
-npm i -g updates
-
-# or install locally as a devDependency and run via `npx updates`
 npm i -D updates
 ```
 
-Then, check for new updates:
+# Usage
+
+Check for updates:
+
 ```bash
-updates
+npx updates
 ```
 
-When changes are satisfactory, update `package.json` and reinstall modules:
+Update `package.json` and install new dependencies:
+
 ```bash
-updates -u && npm i
+npx updates -u
+npm i
 ```
 
-To only reinstall modules when updates are available:
-```bash
-updates -uU && npm i
-```
+## Deno
 
-On a CI, it might be desireable to fail a build when updates are available:
+There is experimental support for deno, run via:
+
 ```bash
-updates -E
+deno run -A npm:updates
 ```
 
 ## Options
