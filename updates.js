@@ -145,12 +145,9 @@ function getAuthAndRegistry(name, registry) {
       try {
         const newAuth = registryAuthToken(url, authTokenOpts);
         if (newAuth?.token) return [newAuth, url];
-      } catch {
-        return [registryAuthToken(registry, authTokenOpts), registry];
-      }
-    } else {
-      return [registryAuthToken(registry, authTokenOpts), registry];
+      } catch {}
     }
+    return [registryAuthToken(registry, authTokenOpts), registry];
   }
 }
 
