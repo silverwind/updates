@@ -310,9 +310,8 @@ function formatDeps(deps) {
   const arr = [["NAME", "OLD", "NEW", "AGE", "INFO"]];
 
   for (const [key, data] of Object.entries(deps)) {
-    const [_type, name] = key.split(sep);
     arr.push([
-      name,
+      key.split(sep)[1],
       highlightDiff(data.old, data.new, false),
       highlightDiff(data.new, data.old, true),
       data.age || "",
