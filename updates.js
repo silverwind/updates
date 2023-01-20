@@ -8,7 +8,7 @@ import rc from "rc";
 import ru from "registry-auth-token/registry-url.js";
 import semver from "semver";
 import textTable from "text-table";
-import {cwd, stdout, argv, env, exit} from "node:process";
+import {cwd, stdout, argv, env, exit, versions} from "node:process";
 import hostedGitInfo from "hosted-git-info";
 import {join, dirname} from "node:path";
 import {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync} from "node:fs";
@@ -19,7 +19,7 @@ import {timerel} from "timerel";
 const {fromUrl} = hostedGitInfo;
 
 let fetch;
-if (globalThis.Deno && globalThis.fetch) {
+if (globalThis.fetch && !versions?.node) { // avoid node experimental warning
   fetch = globalThis.fetch;
 } else {
   fetch = fetchEnhanced(nodeFetch, {undici: false});
