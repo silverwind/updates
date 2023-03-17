@@ -32,7 +32,7 @@ publish: node_modules
 .PHONY: update
 update: node_modules build
 	node $(DST) -cu -e registry-auth-token
-	rm package-lock.json
+	rm -rf node_modules package-lock.json
 	npm install
 	@touch node_modules
 
