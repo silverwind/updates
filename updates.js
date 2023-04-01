@@ -465,7 +465,11 @@ async function checkUrlDep([key, dep], {useGreatest} = {}) {
   if (!user || !repo || !oldRef) return;
 
   if (hashRe.test(oldRef)) {
-    const res = await fetch(`${githubApiUrl}/repos/${user}/${repo}/commits`);
+    const opts = {maxSockets};
+    if (process.env.GITHUB_API_TOKEN) {
+      opts.headers = {Authorization: `Bearer ${process.env.GITHUB_API_TOKEN}`};
+    }
+    const res = await fetch(`${githubApiUrl}/repos/${user}/${repo}/commits`, opts);
     if (!res || !res.ok) return;
     const data = await res.json();
     let {sha: newRef, commit} = data[0];
