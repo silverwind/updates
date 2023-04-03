@@ -466,8 +466,9 @@ async function checkUrlDep([key, dep], {useGreatest} = {}) {
 
   if (hashRe.test(oldRef)) {
     const opts = {maxSockets};
-    if (process.env.GITHUB_API_TOKEN) {
-      opts.headers = {Authorization: `Bearer ${process.env.GITHUB_API_TOKEN}`};
+    const token = env.UPDATES_GITHUB_API_TOKEN || env.GITHUB_API_TOKEN || env.GH_TOKEN || env.HOMEBREW_GITHUB_API_TOKEN;
+    if (token) {
+      opts.headers = {Authorization: `Bearer ${token}`};
     }
     const res = await fetch(`${githubApiUrl}/repos/${user}/${repo}/commits`, opts);
     if (!res || !res.ok) return;
