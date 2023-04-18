@@ -225,7 +225,7 @@ function finish(obj, deps = {}) {
   if (typeof obj === "string") {
     output.message = obj;
   } else if (hadError) {
-    output.error = obj.message;
+    output.error = obj.stack || obj.message;
   }
 
   for (const value of Object.values(deps)) {
