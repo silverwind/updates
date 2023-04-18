@@ -719,13 +719,13 @@ async function main() {
   }
 
   if (Object.keys(maybeUrlDeps).length) {
-    let results = await Promise.all(Object.entries(maybeUrlDeps).map(([key, dep]) => {
+    const results = await Promise.all(Object.entries(maybeUrlDeps).map(([key, dep]) => {
       const name = key.split(sep)[1];
       const useGreatest = typeof greatest === "boolean" ? greatest : greatest.has(name);
       return checkUrlDep([key, dep], {useGreatest});
     }));
-    results = results.filter(Boolean);
-    for (const res of results || []) {
+
+    for (const res of (results || []).filter(Boolean)) {
       const {key, newRange, user, repo, oldRef, newRef, newDate} = res;
       deps[key] = {
         old: maybeUrlDeps[key].old,
