@@ -575,9 +575,7 @@ async function main() {
 
   Examples:
     $ updates
-    $ updates -u
-    $ updates -u -m -e eslint
-    $ updates -u -U && rm -rf node_modules && npm i
+    $ updates -u && npm i
 `);
     exit(0);
   }

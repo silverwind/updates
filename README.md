@@ -1,36 +1,24 @@
 # updates
-[![](https://img.shields.io/npm/v/updates.svg?style=flat)](https://www.npmjs.org/package/updates) [![](https://img.shields.io/npm/dm/updates.svg)](https://www.npmjs.org/package/updates) [![](https://packagephobia.com/badge?p=updates)](https://packagephobia.com/result?p=updates) [![](https://img.shields.io/badge/deno-experimental-yellow)](https://deno.land/)
+[![](https://img.shields.io/npm/v/updates.svg?style=flat)](https://www.npmjs.org/package/updates) [![](https://img.shields.io/npm/dm/updates.svg)](https://www.npmjs.org/package/updates) [![](https://packagephobia.com/badge?p=updates)](https://packagephobia.com/result?p=updates)
 
 ![](./screenshot.png)
 
 `updates` is a CLI tool which checks for npm dependency updates of the current project and optionally updates `package.json`. It is highly configurable and is typically able to complete in less than a second.
 
-# Installation
-
-```bash
-npm i -D updates
-```
-
 # Usage
 
-Check for updates:
-
 ```bash
+# check for updates
 npx updates
+
+# update package.json and install them
+npx updates -u && npm i
 ```
 
-Update `package.json` and install new dependencies:
+## Bun and Deno
 
 ```bash
-npx updates -u
-npm i
-```
-
-## Deno
-
-There is experimental support for deno, run via:
-
-```bash
+bunx updates
 deno run -A npm:updates
 ```
 
@@ -59,7 +47,6 @@ usage: updates [options]
     -f, --file <path>                  Use given package.json file or module directory
     -S, --sockets <num>                Maximum number of parallel HTTP sockets opened. Default: 96
     -j, --json                         Output a JSON object
-    -c, --color                        Force-enable color output
     -n, --no-color                     Disable color output
     -v, --version                      Print the version
     -V, --verbose                      Print verbose output to stderr
@@ -67,9 +54,7 @@ usage: updates [options]
 
   Examples:
     $ updates
-    $ updates -u
-    $ updates -u -m -e eslint
-    $ updates -u -U && rm -rf node_modules && npm i
+    $ updates -u && npm i
 ```
 
 ## JSON Output
