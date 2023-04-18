@@ -470,7 +470,12 @@ async function checkUrlDep([key, dep], {useGreatest} = {}) {
     if (token) {
       opts.headers = {Authorization: `Bearer ${token}`};
     }
-    const res = await fetch(`${githubApiUrl}/repos/${user}/${repo}/commits`, opts);
+
+    const url = `${githubApiUrl}/repos/${user}/${repo}/commits`;
+    if (args.verbose) console.error(`${magenta("fetch")} ${url}`);
+    const res = await fetch(url, opts);
+    if (args.verbose && res?.ok) console.error(`${green("done")} ${url}`);
+
     if (!res || !res.ok) return;
     const data = await res.json();
     let {sha: newRef, commit} = data[0];
