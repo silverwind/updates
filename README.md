@@ -64,7 +64,7 @@ Put a `updates.config.js` or `updates.config.mjs` in the root of your project, u
 ```js
 export default {
   exclude: [
-    "versions",
+    "semver",
   ],
 };
 ```
