@@ -42,7 +42,7 @@ const normalizeUrl = memoize(url => url.endsWith("/") ? url.substring(0, url.len
 const patchSemvers = new Set(["patch"]);
 const minorSemvers = new Set(["patch", "minor"]);
 const majorSemvers = new Set(["patch", "minor", "major"]);
-let config;
+let config = {};
 
 const args = minimist(argv.slice(2), {
   boolean: [
@@ -626,7 +626,6 @@ async function main() {
     if (!packageFile) return finish(new Error(`Unable to find package.json in ${pwd} or any of its parent directories`));
   }
 
-  let config = {};
   try {
     config = (await import(join(dirname(packageFile), "updates.config.js"))).default;
   } catch {
