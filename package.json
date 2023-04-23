@@ -15,9 +15,9 @@
   ],
   "devDependencies": {
     "ansi-regex": "6.0.1",
-    "esbuild": "0.17.17",
-    "eslint": "8.38.0",
-    "eslint-config-silverwind": "65.1.5",
+    "esbuild": "0.17.18",
+    "eslint": "8.39.0",
+    "eslint-config-silverwind": "65.1.6",
     "execa": "7.1.1",
     "fetch-enhanced": "11.1.1",
     "hosted-git-info": "6.1.1",
@@ -29,7 +29,7 @@
     "semver": "7.3.8",
     "text-table": "0.2.0",
     "timerel": "5.4.1",
-    "versions": "10.4.2",
+    "versions": "11.0.0",
     "vitest": "0.30.1"
   }
 }
