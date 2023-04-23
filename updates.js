@@ -637,7 +637,7 @@ async function main() {
   let dependencyTypes;
   if (args.types) {
     dependencyTypes = Array.isArray(args.types) ? args.types : args.types.split(",");
-  } else if ("types" in config) {
+  } else if ("types" in config && Array.isArray(config.types)) {
     dependencyTypes = config.types;
   } else {
     dependencyTypes = [
