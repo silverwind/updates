@@ -57,32 +57,22 @@ usage: updates [options]
     $ updates -u && npm i
 ```
 
-## JSON Output
+## Config File
 
-The JSON output is an object with possible properties `results`, `message` and `error`:
+Put a `updates.config.js` or `updates.config.mjs` in the root of your project, usually besides `package.json` to configure certain options of the module. CLI arguments have precedence over them.
 
-```bash
-updates -j | jq
-{
-  "results": {
-    "dependencies": {
-      "p-map": {
-        "old": "3.0.0",
-        "new": "4.0.0",
-        "info": "https://github.com/sindresorhus/p-map",
-        "age": "3 days"
-      }
-    },
-    "devDependencies": {
-      "eslint": {
-        "old": "6.7.2",
-        "new": "6.8.0",
-        "info": "https://github.com/eslint/eslint",
-        "age": "3 months"
-      }
-    }
-  }
-}
+```js
+export default {
+  exclude: [
+    "versions",
+  ],
+};
 ```
+
+### Config Options
+
+- `include` *[]String*: Array of dependencies to include
+- `exclude` *[]String*: Array of dependencies to exclude
+- `types` *[]String*: Array of dependency types
 
 © [silverwind](https://github.com/silverwind), distributed under BSD licence

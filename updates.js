@@ -42,6 +42,7 @@ const normalizeUrl = memoize(url => url.endsWith("/") ? url.substring(0, url.len
 const patchSemvers = new Set(["patch"]);
 const minorSemvers = new Set(["patch", "minor"]);
 const majorSemvers = new Set(["patch", "minor", "major"]);
+let config;
 
 const args = minimist(argv.slice(2), {
   boolean: [
@@ -622,14 +623,23 @@ async function main() {
   } else {
     const pwd = cwd();
     packageFile = findSync("package.json", pwd);
-    if (!packageFile) {
-      finish(new Error(`Unable to find package.json in ${pwd} or any of its parent directories`));
-    }
+    if (!packageFile) return finish(new Error(`Unable to find package.json in ${pwd} or any of its parent directories`));
+  }
+
+  let config = {};
+  try {
+    config = (await import(join(dirname(packageFile), "updates.config.js"))).default;
+  } catch {
+    try {
+      config = (await import(join(dirname(packageFile), "updates.config.mjs"))).default;
+    } catch {}
   }
 
   let dependencyTypes;
   if (args.types) {
     dependencyTypes = Array.isArray(args.types) ? args.types : args.types.split(",");
+  } else if ("types" in config) {
+    dependencyTypes = config.types;
   } else {
     dependencyTypes = [
       "dependencies",
@@ -653,8 +663,16 @@ async function main() {
   }
 
   let include, exclude;
-  if (args.include && args.include !== true) include = new Set(((Array.isArray(args.include) ? args.include : [args.include]).flatMap(item => item.split(","))));
-  if (args.exclude && args.exclude !== true) exclude = new Set(((Array.isArray(args.exclude) ? args.exclude : [args.exclude]).flatMap(item => item.split(","))));
+  if (args.include && args.include !== true) {
+    include = new Set(((Array.isArray(args.include) ? args.include : [args.include]).flatMap(item => item.split(","))));
+  } else if ("include" in config && Array.isArray(config.include)) {
+    include = new Set(config.include);
+  }
+  if (args.exclude && args.exclude !== true) {
+    exclude = new Set(((Array.isArray(args.exclude) ? args.exclude : [args.exclude]).flatMap(item => item.split(","))));
+  } else if ("exclude" in config && Array.isArray(config.exclude)) {
+    exclude = new Set(config.exclude);
+  }
 
   function canInclude(name) {
     if (exclude?.has?.(name) === true) return false;
