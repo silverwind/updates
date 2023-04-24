@@ -661,7 +661,6 @@ async function main() {
     finish(new Error(`Error parsing ${packageFile}: ${err.message}`));
   }
 
-  // TODO: merge cli and config options for these
   let include, exclude;
   if (args.include && args.include !== true) {
     include = new Set(((Array.isArray(args.include) ? args.include : [args.include]).flatMap(item => item.split(","))));
