@@ -59,7 +59,7 @@ usage: updates [options]
 
 ## Config File
 
-Put a `updates.config.js` or `updates.config.mjs` in the root of your project, usually besides `package.json` to configure certain options of the module. CLI arguments have precedence over them.
+Put a `updates.config.js` or `updates.config.mjs` in the root of your project, usually besides `package.json` to configure certain options of the module. CLI arguments have precedence over options in the config file.
 
 ```js
 export default {
@@ -71,8 +71,9 @@ export default {
 
 ### Config Options
 
-- `include` *[]String*: Array of dependencies to include
-- `exclude` *[]String*: Array of dependencies to exclude
-- `types` *[]String*: Array of dependency types
+- `include` *Array<String>*: Array of dependencies to include
+- `exclude` *Array<String>*: Array of dependencies to exclude
+- `types` *Array<String>*: Array of dependency types
+- `registry` *String*: URL to npm registry
 
 © [silverwind](https://github.com/silverwind), distributed under BSD licence

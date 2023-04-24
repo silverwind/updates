@@ -111,7 +111,6 @@ const allowDowngrade = parseMixedArg(args["allow-downgrade"]);
 
 const npmrc = rc("npm", {registry: "https://registry.npmjs.org"});
 const authTokenOpts = {npmrc, recursive: true};
-const registry = normalizeUrl(args.registry || npmrc.registry);
 const githubApiUrl = args.githubapi ? normalizeUrl(args.githubapi) : "https://api.github.com";
 const maxSockets = typeof args.sockets === "number" ? parseInt(args.sockets) : MAX_SOCKETS;
 const extractCerts = str => Array.from(str.matchAll(/(----BEGIN CERT[^]+?IFICATE----)/g)).map(m => m[0]);
@@ -591,19 +590,6 @@ async function main() {
     exit(0);
   }
 
-  const agentOpts = {};
-  if (npmrc["strict-ssl"] === false) {
-    agentOpts.rejectUnauthorized = false;
-  } else {
-    if ("cafile" in npmrc) {
-      agentOpts.ca = rootCertificates.concat(extractCerts(readFileSync(npmrc.cafile, "utf8")));
-    }
-    if ("ca" in npmrc) {
-      const cas = Array.isArray(npmrc.ca) ? npmrc.ca : [npmrc.ca];
-      agentOpts.ca = rootCertificates.concat(cas.map(ca => extractCerts(ca)));
-    }
-  }
-
   let packageFile;
   if (args.file) {
     let stat;
@@ -632,6 +618,19 @@ async function main() {
     try {
       config = (await import(join(dirname(packageFile), "updates.config.mjs"))).default;
     } catch {}
+  }
+
+  const agentOpts = {};
+  if (npmrc["strict-ssl"] === false) {
+    agentOpts.rejectUnauthorized = false;
+  } else {
+    if ("cafile" in npmrc) {
+      agentOpts.ca = rootCertificates.concat(extractCerts(readFileSync(npmrc.cafile, "utf8")));
+    }
+    if ("ca" in npmrc) {
+      const cas = Array.isArray(npmrc.ca) ? npmrc.ca : [npmrc.ca];
+      agentOpts.ca = rootCertificates.concat(cas.map(ca => extractCerts(ca)));
+    }
   }
 
   let dependencyTypes;
@@ -702,6 +701,8 @@ async function main() {
       finish("No dependencies present, nothing to do");
     }
   }
+
+  const registry = normalizeUrl(args.registry || config.registry || npmrc.registry);
 
   const entries = await Promise.all(Object.keys(deps).map(key => {
     const [type, name] = key.split(sep);
