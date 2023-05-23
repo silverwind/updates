@@ -16,6 +16,7 @@ import {platform} from "node:os";
 import {rootCertificates} from "node:tls";
 import {timerel} from "timerel";
 import supportsColor from "supports-color";
+import {magenta, red, green, disableColor} from "glowie";
 
 const {fromUrl} = hostedGitInfo;
 
@@ -94,14 +95,7 @@ const args = minimist(argv.slice(2), {
   },
 });
 
-let magenta, red, green;
-if (args.color === false || !supportsColor.stdout) {
-  magenta = red = green = str => str;
-} else {
-  magenta = str => `\x1b[35m${str}\x1b[0m`;
-  red = str => `\x1b[31m${str}\x1b[0m`;
-  green = str => `\x1b[32m${str}\x1b[0m`;
-}
+if (args["no-color"] || !supportsColor.stdout) disableColor();
 
 const greatest = parseMixedArg(args.greatest);
 const prerelease = parseMixedArg(args.prerelease);
