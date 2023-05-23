@@ -27,6 +27,7 @@
     "registry-auth-token": "4.2.2",
     "restana": "4.9.7",
     "semver": "7.3.8",
+    "supports-color": "9.3.1",
     "text-table": "0.2.0",
     "timerel": "5.4.1",
     "versions": "11.0.0",

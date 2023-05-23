@@ -15,6 +15,7 @@ import {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync} from "
 import {platform} from "node:os";
 import {rootCertificates} from "node:tls";
 import {timerel} from "timerel";
+import supportsColor from "supports-color";
 
 const {fromUrl} = hostedGitInfo;
 
@@ -94,7 +95,7 @@ const args = minimist(argv.slice(2), {
 });
 
 let magenta, red, green;
-if (args.color === false || env.TERM === "dumb") {
+if (args.color === false || !supportsColor.stdout) {
   magenta = red = green = str => str;
 } else {
   magenta = str => `\x1b[35m${str}\x1b[0m`;
