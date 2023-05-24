@@ -15,12 +15,12 @@
   ],
   "devDependencies": {
     "ansi-regex": "6.0.1",
-    "esbuild": "0.17.18",
-    "eslint": "8.39.0",
-    "eslint-config-silverwind": "65.1.6",
+    "esbuild": "0.17.19",
+    "eslint": "8.41.0",
+    "eslint-config-silverwind": "73.0.0",
     "execa": "7.1.1",
     "fetch-enhanced": "11.1.1",
-    "glowie": "1.0.0",
+    "glowie": "1.0.1",
     "hosted-git-info": "6.1.1",
     "minimist": "1.2.8",
     "node-fetch": "3.3.1",
@@ -32,6 +32,6 @@
     "text-table": "0.2.0",
     "timerel": "5.4.1",
     "versions": "11.0.0",
-    "vitest": "0.30.1"
+    "vitest": "0.31.1"
   }
 }
