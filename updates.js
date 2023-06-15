@@ -61,13 +61,13 @@ const args = minimist(argv.slice(2), {
     "d", "allow-downgrade",
     "f", "file",
     "g", "greatest",
-    "G", "githubapi",
     "m", "minor",
     "P", "patch",
     "p", "prerelease",
     "R", "release",
     "r", "registry",
     "t", "types",
+    "githubapi", // undocumented, only for tests
   ],
   alias: {
     d: "allow-downgrade",
@@ -76,7 +76,6 @@ const args = minimist(argv.slice(2), {
     e: "exclude",
     f: "file",
     g: "greatest",
-    G: "githubapi",
     h: "help",
     i: "include",
     j: "json",
@@ -564,7 +563,6 @@ async function main() {
     -E, --error-on-outdated            Exit with code 2 when updates are available and 0 when not
     -U, --error-on-unchanged           Exit with code 0 when updates are available and 2 when not
     -r, --registry <url>               Override npm registry URL
-    -G, --githubapi <url>              Override Github API URL
     -f, --file <path>                  Use given package.json file or module directory
     -S, --sockets <num>                Maximum number of parallel HTTP sockets opened. Default: ${MAX_SOCKETS}
     -j, --json                         Output a JSON object

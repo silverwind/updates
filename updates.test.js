@@ -86,7 +86,7 @@ afterAll(async () => {
 
 function makeTest(args, expected) {
   return async () => {
-    const argsArr = [...args.split(/\s+/), "-c", "-G", githubUrl];
+    const argsArr = [...args.split(/\s+/), "-c", "--githubapi", githubUrl];
     const {stdout} = await execa(script, argsArr, {cwd: testDir});
     const {results} = JSON.parse(stdout);
 
@@ -109,7 +109,7 @@ test("version", async () => {
 });
 
 test("simple", async () => {
-  const {stdout, stderr, exitCode} = await execa(script, ["-C", "-G", githubUrl, "-f", testFile]);
+  const {stdout, stderr, exitCode} = await execa(script, ["-C", "--githubapi", githubUrl, "-f", testFile]);
   expect(stderr).toEqual("");
   expect(stdout).toContain("prismjs");
   expect(stdout).toContain("https://github.com/silverwind/updates");
@@ -117,7 +117,7 @@ test("simple", async () => {
 });
 
 test("empty", async () => {
-  const {stdout, stderr, exitCode} = await execa(script, ["-C", "-G", githubUrl, "-f", emptyFile]);
+  const {stdout, stderr, exitCode} = await execa(script, ["-C", "--githubapi", githubUrl, "-f", emptyFile]);
   expect(stderr).toEqual("");
   expect(stdout).toContain("No dependencies");
   expect(exitCode).toEqual(0);
@@ -133,7 +133,7 @@ test("version", async () => {
 if (process.env.CI) {
   test("global", async () => {
     await execa("npm", ["i", "-g", "."]);
-    const {stdout, stderr, exitCode} = await execa("updates", ["-C", "-G", githubUrl, "-f", testFile]);
+    const {stdout, stderr, exitCode} = await execa("updates", ["-C", "--githubapi", githubUrl, "-f", testFile]);
     expect(stderr).toEqual("");
     expect(stdout).toContain("prismjs");
     expect(stdout).toContain("https://github.com/silverwind/updates");
