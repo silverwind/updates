@@ -61,6 +61,7 @@ const args = minimist(argv.slice(2), {
     "d", "allow-downgrade",
     "f", "file",
     "g", "greatest",
+    "l", "language",
     "m", "minor",
     "P", "patch",
     "p", "prerelease",
@@ -102,6 +103,8 @@ const release = parseMixedArg(args.release);
 const patch = parseMixedArg(args.patch);
 const minor = parseMixedArg(args.minor);
 const allowDowngrade = parseMixedArg(args["allow-downgrade"]);
+const language = parseMixedArg(args.language);
+const _languages = language instanceof Set ? language : new Set(["js"]);
 
 const npmrc = rc("npm", {registry: "https://registry.npmjs.org"});
 const authTokenOpts = {npmrc, recursive: true};
@@ -557,6 +560,7 @@ async function main() {
     -i, --include <pkg,...>            Include only given packages
     -e, --exclude <pkg,...>            Exclude given packages
     -t, --types <type,...>             Check only given dependency types
+    -l, --language <lang,...>          Languages to check, currently supports only 'js'
     -P, --patch [<pkg,...>]            Consider only up to semver-patch
     -m, --minor [<pkg,...>]            Consider only up to semver-minor
     -d, --allow-downgrade [<pkg,...>]  Allow version downgrades when using latest version

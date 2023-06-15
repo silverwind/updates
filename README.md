@@ -24,38 +24,7 @@ deno run -A npm:updates
 
 ## Options
 
-See `--help` or below for the available options. Option that take multiple arguments can take them either via comma-separated value or by specifying the option multiple times. If an option has a optional `pkg` argument but none is given, the option will be applied to all packages instead.
-
-```
-usage: updates [options]
-
-  Options:
-    -u, --update                       Update versions and write package.json
-    -p, --prerelease [<pkg,...>]       Consider prerelease versions
-    -R, --release [<pkg,...>]          Only use release versions, may downgrade
-    -g, --greatest [<pkg,...>]         Prefer greatest over latest version
-    -i, --include <pkg,...>            Include only given packages
-    -e, --exclude <pkg,...>            Exclude given packages
-    -t, --types <type,...>             Check only given dependency types
-    -P, --patch [<pkg,...>]            Consider only up to semver-patch
-    -m, --minor [<pkg,...>]            Consider only up to semver-minor
-    -d, --allow-downgrade [<pkg,...>]  Allow version downgrades when using latest version
-    -E, --error-on-outdated            Exit with code 2 when updates are available and 0 when not
-    -U, --error-on-unchanged           Exit with code 0 when updates are available and 2 when not
-    -r, --registry <url>               Override npm registry URL
-    -G, --githubapi <url>              Override Github API URL
-    -f, --file <path>                  Use given package.json file or module directory
-    -S, --sockets <num>                Maximum number of parallel HTTP sockets opened. Default: 96
-    -j, --json                         Output a JSON object
-    -n, --no-color                     Disable color output
-    -v, --version                      Print the version
-    -V, --verbose                      Print verbose output to stderr
-    -h, --help                         Print this help
-
-  Examples:
-    $ updates
-    $ updates -u && npm i
-```
+See `--help`. Options that take multiple arguments can take them either via comma-separated value or by specifying the option multiple times. If an option has a optional `pkg` argument but none is given, the option will be applied to all packages instead.
 
 ## Config File
 
