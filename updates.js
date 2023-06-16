@@ -642,7 +642,7 @@ async function main() {
     exit(0);
   }
 
-  if (language && !(language in ["js, py"])) {
+  if (language && !(language in ["js", "py"])) {
     throw new Error(`Invalid language: ${language}`);
   }
 
