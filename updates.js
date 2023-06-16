@@ -10,15 +10,19 @@ import semver from "semver";
 import textTable from "text-table";
 import {cwd, stdout, argv, env, exit, versions} from "node:process";
 import hostedGitInfo from "hosted-git-info";
-import {join, dirname} from "node:path";
+import {join, dirname, basename} from "node:path";
 import {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync} from "node:fs";
 import {platform} from "node:os";
 import {rootCertificates} from "node:tls";
 import {timerel} from "timerel";
 import supportsColor from "supports-color";
 import {magenta, red, green, disableColor} from "glowie";
+import parseTOML from "@iarna/toml/parse-string.js";
+import {getProperty} from "dot-prop";
+import {inspect} from "node:util";
 
 const {fromUrl} = hostedGitInfo;
+inspect.defaultOptions.depth = 1;
 
 let fetch;
 if (globalThis.fetch && !versions?.node) { // avoid node experimental warning
@@ -69,6 +73,7 @@ const args = minimist(argv.slice(2), {
     "r", "registry",
     "t", "types",
     "githubapi", // undocumented, only for tests
+    "pypiapi", // undocumented, only for tests
   ],
   alias: {
     d: "allow-downgrade",
@@ -80,6 +85,7 @@ const args = minimist(argv.slice(2), {
     h: "help",
     i: "include",
     j: "json",
+    l: "language",
     m: "minor",
     n: "no-color",
     P: "patch",
@@ -103,12 +109,11 @@ const release = parseMixedArg(args.release);
 const patch = parseMixedArg(args.patch);
 const minor = parseMixedArg(args.minor);
 const allowDowngrade = parseMixedArg(args["allow-downgrade"]);
-const language = parseMixedArg(args.language);
-const _languages = language instanceof Set ? language : new Set(["js"]);
 
 const npmrc = rc("npm", {registry: "https://registry.npmjs.org"});
 const authTokenOpts = {npmrc, recursive: true};
 const githubApiUrl = args.githubapi ? normalizeUrl(args.githubapi) : "https://api.github.com";
+const pypiApiUrl = args.pypiapi ? normalizeUrl(args.pypiapi) : "https://pypi.org";
 const maxSockets = typeof args.sockets === "number" ? parseInt(args.sockets) : MAX_SOCKETS;
 const extractCerts = str => Array.from(str.matchAll(/(----BEGIN CERT[^]+?IFICATE----)/g), m => m[0]);
 
@@ -117,7 +122,7 @@ function memoize(fn) {
   return (arg, arg2) => arg in cache ? cache[arg] : cache[arg] = fn(arg, arg2);
 }
 
-function findSync(filename, dir, stopDir) {
+function findUpSync(filename, dir, stopDir) {
   const path = join(dir, filename);
   try {
     accessSync(path);
@@ -128,7 +133,7 @@ function findSync(filename, dir, stopDir) {
   if ((stopDir && path === stopDir) || parent === dir) {
     return null;
   } else {
-    return findSync(filename, parent, stopDir);
+    return findUpSync(filename, parent, stopDir);
   }
 }
 
@@ -148,7 +153,7 @@ function getAuthAndRegistry(name, registry) {
   }
 }
 
-async function fetchInfo(name, type, originalRegistry, agentOpts) {
+async function fetchNpmInfo(name, type, originalRegistry, agentOpts) {
   const [auth, registry] = getAuthAndRegistry(name, originalRegistry);
 
   const opts = {maxSockets};
@@ -178,7 +183,44 @@ async function fetchInfo(name, type, originalRegistry, agentOpts) {
   }
 }
 
-function getInfoUrl({repository, homepage}, registry, name) {
+async function fetchPypiInfo(name, type, agentOpts) {
+  const opts = {maxSockets};
+  if (Object.keys(agentOpts).length) {
+    opts.agentOpts = agentOpts;
+  }
+
+  const url = `${pypiApiUrl}/pypi/${name}/json`;
+  if (args.verbose) console.error(`${magenta("fetch")} ${url}`);
+
+  const res = await fetch(url, opts);
+  if (res?.ok) {
+    if (args.verbose) console.error(`${green("done")} ${url}`);
+    return [await res.json(), type, null, name];
+  } else {
+    if (res?.status && res?.statusText) {
+      throw new Error(`Received ${res.status} ${res.statusText} for ${name} from PyPi`);
+    } else {
+      throw new Error(`Unable to fetch ${name} from PyPi`);
+    }
+  }
+}
+
+function getInfoUrl({repository, homepage, info}, registry, name) {
+  if (info) { // pypi
+    repository =
+      info.project_urls.repository ||
+      info.project_urls.Repository ||
+      info.project_urls.repo ||
+      info.project_urls.Repo ||
+      info.project_urls.source ||
+      info.project_urls.Source ||
+      info.project_urls["source code"] ||
+      info.project_urls["Source Code"] ||
+      info.project_urls.homepage ||
+      info.project_urls.Homepage ||
+      `https://pypi.org/project/${name}/`;
+  }
+
   let infoUrl;
   if (registry === "https://npm.pkg.github.com") {
     return `https://github.com/${name.replace(/^@/, "")}`;
@@ -394,29 +436,40 @@ function findVersion(data, versions, {range, semvers, usePre, useRel, useGreates
   return tempVersion || null;
 }
 
-function findNewVersion(data, opts) {
-  if (opts.range === "*") return null; // ignore wildcard
-  if (opts.range.includes("||")) return null; // ignore or-chains
-  const versions = Object.keys(data.versions).filter(version => semver.valid(version));
-  const version = findVersion(data, versions, opts);
+function coerce(version) {
+  return semver.coerce(version).version;
+}
 
-  if (opts.useGreatest) {
+function findNewVersion(data, {language, range, useGreatest, useRel, usePre, semvers} = {}) {
+  if (range === "*") return null; // ignore wildcard
+  if (range.includes("||")) return null; // ignore or-chains
+  const versions = Object.keys(language === "py" ? data.releases : data.versions)
+    .filter(version => semver.valid(version));
+  const version = findVersion(data, versions, {range, semvers, usePre, useRel, useGreatest});
+
+  if (useGreatest) {
     return version;
   } else {
-    const latestTag = data["dist-tags"].latest;
-    const oldVersion = semver.coerce(opts.range).version;
-    const oldIsPre = isRangePrerelease(opts.range);
+    let latestTag;
+    if (language === "py") {
+      latestTag = coerce(data.info.version); // add .0 to 6.0
+    } else {
+      latestTag = data["dist-tags"].latest;
+    }
+
+    const oldVersion = coerce(range);
+    const oldIsPre = isRangePrerelease(range);
     const newIsPre = isVersionPrerelease(version);
     const latestIsPre = isVersionPrerelease(latestTag);
     const isGreater = semver.gt(version, oldVersion);
 
     // update to new prerelease
-    if (!opts.useRel && opts.usePre || (oldIsPre && newIsPre)) {
+    if (!useRel && usePre || (oldIsPre && newIsPre)) {
       return version;
     }
 
     // downgrade from prerelease to release on --release-only
-    if (opts.useRel && !isGreater && oldIsPre && !newIsPre) {
+    if (useRel && !isGreater && oldIsPre && !newIsPre) {
       return version;
     }
 
@@ -432,12 +485,12 @@ function findNewVersion(data, opts) {
 
     // check if latestTag is allowed by semvers
     const diff = semver.diff(oldVersion, latestTag);
-    if (diff && diff !== "prerelease" && !opts.semvers.has(diff.replace(/^pre/, ""))) {
+    if (diff && diff !== "prerelease" && !semvers.has(diff.replace(/^pre/, ""))) {
       return version;
     }
 
     // prevent upgrading to prerelease with --release-only
-    if (opts.useRel && isVersionPrerelease(latestTag)) {
+    if (useRel && isVersionPrerelease(latestTag)) {
       return version;
     }
 
@@ -549,25 +602,27 @@ async function main() {
     stream?._handle?.setBlocking?.(true);
   }
 
-  if (args.help) {
+  let {help, version, language, file, types, update} = args;
+
+  if (help) {
     stdout.write(`usage: updates [options]
 
   Options:
-    -u, --update                       Update versions and write package.json
+    -u, --update                       Update versions and write package file
     -p, --prerelease [<pkg,...>]       Consider prerelease versions
     -R, --release [<pkg,...>]          Only use release versions, may downgrade
     -g, --greatest [<pkg,...>]         Prefer greatest over latest version
     -i, --include <pkg,...>            Include only given packages
     -e, --exclude <pkg,...>            Exclude given packages
     -t, --types <type,...>             Check only given dependency types
-    -l, --language <lang,...>          Languages to check, currently supports only 'js'
+    -l, --language <lang>              Language to check, either 'js' or 'py'
     -P, --patch [<pkg,...>]            Consider only up to semver-patch
     -m, --minor [<pkg,...>]            Consider only up to semver-minor
     -d, --allow-downgrade [<pkg,...>]  Allow version downgrades when using latest version
     -E, --error-on-outdated            Exit with code 2 when updates are available and 0 when not
     -U, --error-on-unchanged           Exit with code 0 when updates are available and 2 when not
     -r, --registry <url>               Override npm registry URL
-    -f, --file <path>                  Use given package.json file or module directory
+    -f, --file <path>                  Use given package file or module directory
     -S, --sockets <num>                Maximum number of parallel HTTP sockets opened. Default: ${MAX_SOCKETS}
     -j, --json                         Output a JSON object
     -n, --no-color                     Disable color output
@@ -582,45 +637,68 @@ async function main() {
     exit(0);
   }
 
-  if (args.version) {
+  if (version) {
     console.info(import.meta.VERSION || "0.0.0");
     exit(0);
   }
 
+  if (language && !(language in ["js, py"])) {
+    throw new Error(`Invalid language: ${language}`);
+  }
+
+  if (file) {
+    const filename = basename(file);
+    if (filename === "package.json") {
+      language = "js";
+    } else if (filename === "pyproject.toml") {
+      language = "py";
+    }
+  }
+  if (!language) language = "js";
+
+  let packageFileName;
+  if (language === "py") {
+    packageFileName = "pyproject.toml";
+  } else if (language === "js") {
+    packageFileName = "package.json";
+  }
+
   let packageFile;
-  if (args.file) {
+  if (file) {
     let stat;
     try {
-      stat = lstatSync(args.file);
+      stat = lstatSync(file);
     } catch (err) {
-      finish(new Error(`Unable to open ${args.file}: ${err.message}`));
+      finish(new Error(`Unable to open ${file}: ${err.message}`));
     }
 
     if (stat?.isFile()) {
-      packageFile = args.file;
+      packageFile = file;
     } else if (stat?.isDirectory()) {
-      packageFile = join(args.file, "package.json");
+      packageFile = join(file, packageFileName);
     } else {
-      finish(new Error(`${args.file} is neither a file nor directory`));
+      finish(new Error(`${file} is neither a file nor directory`));
     }
   } else {
     const pwd = cwd();
-    packageFile = findSync("package.json", pwd);
-    if (!packageFile) return finish(new Error(`Unable to find package.json in ${pwd} or any of its parent directories`));
+    packageFile = findUpSync(packageFileName, pwd);
+    if (!packageFile) return finish(new Error(`Unable to find ${packageFileName} in ${pwd} or any of its parent directories`));
   }
 
+  const packageDir = dirname(packageFile);
+
   try {
-    config = (await import(join(dirname(packageFile), "updates.config.js"))).default;
+    config = (await import(join(packageDir, "updates.config.js"))).default;
   } catch {
     try {
-      config = (await import(join(dirname(packageFile), "updates.config.mjs"))).default;
+      config = (await import(join(packageDir, "updates.config.mjs"))).default;
     } catch {}
   }
 
   const agentOpts = {};
   if (npmrc["strict-ssl"] === false) {
     agentOpts.rejectUnauthorized = false;
-  } else {
+  } else if (language === "js") {
     if ("cafile" in npmrc) {
       agentOpts.ca = rootCertificates.concat(extractCerts(readFileSync(npmrc.cafile, "utf8")));
     }
@@ -631,18 +709,25 @@ async function main() {
   }
 
   let dependencyTypes;
-  if (args.types) {
-    dependencyTypes = Array.isArray(args.types) ? args.types : args.types.split(",");
+  if (types) {
+    dependencyTypes = Array.isArray(types) ? types : types.split(",");
   } else if ("types" in config && Array.isArray(config.types)) {
     dependencyTypes = config.types;
   } else {
-    dependencyTypes = [
-      "dependencies",
-      "devDependencies",
-      "optionalDependencies",
-      "peerDependencies",
-      "resolutions",
-    ];
+    if (language === "js") {
+      dependencyTypes = [
+        "dependencies",
+        "devDependencies",
+        "optionalDependencies",
+        "peerDependencies",
+        "resolutions",
+      ];
+    } else {
+      dependencyTypes = [
+        "tool.poetry.dependencies",
+        "tool.poetry.group.dev.dependencies",
+      ];
+    }
   }
 
   let pkg, pkgStr;
@@ -652,7 +737,11 @@ async function main() {
     finish(new Error(`Unable to open ${packageFile}: ${err.message}`));
   }
   try {
-    pkg = JSON.parse(pkgStr);
+    if (language === "js") {
+      pkg = JSON.parse(pkgStr);
+    } else {
+      pkg = parseTOML(pkgStr);
+    }
   } catch (err) {
     finish(new Error(`Error parsing ${packageFile}: ${err.message}`));
   }
@@ -669,7 +758,8 @@ async function main() {
     exclude = new Set(config.exclude);
   }
 
-  function canInclude(name) {
+  function canInclude(name, language) {
+    if (language === "py" && name === "python") return false;
     if (exclude?.has?.(name) === true) return false;
     if (include?.has?.(name) === false) return false;
     return true;
@@ -677,13 +767,20 @@ async function main() {
 
   const deps = {}, maybeUrlDeps = {};
   for (const depType of dependencyTypes) {
-    for (const [name, value] of Object.entries(pkg[depType] || {})) {
-      if (semver.validRange(value) && canInclude(name)) {
+    let obj;
+    if (language === "js") {
+      obj = pkg[depType] || {};
+    } else {
+      obj = getProperty(pkg, depType) || {};
+    }
+
+    for (const [name, value] of Object.entries(obj)) {
+      if (semver.validRange(value) && canInclude(name, language)) {
         deps[`${depType}${sep}${name}`] = {
           old: normalizeRange(value),
           oldOriginal: value,
         };
-      } else if (canInclude(name)) {
+      } else if (language === "js" && canInclude(name, language)) {
         maybeUrlDeps[`${depType}${sep}${name}`] = {
           old: value,
         };
@@ -699,11 +796,19 @@ async function main() {
     }
   }
 
-  const registry = normalizeUrl(args.registry || config.registry || npmrc.registry);
+  let registry;
+
+  if (language === "js") {
+    registry = normalizeUrl(args.registry || config.registry || npmrc.registry);
+  }
 
   const entries = await Promise.all(Object.keys(deps).map(key => {
     const [type, name] = key.split(sep);
-    return fetchInfo(name, type, registry, agentOpts);
+    if (language === "js") {
+      return fetchNpmInfo(name, type, registry, agentOpts);
+    } else {
+      return fetchPypiInfo(name, type, agentOpts);
+    }
   }));
 
   for (const [data, type, registry, name] of entries) {
@@ -724,15 +829,22 @@ async function main() {
 
     const key = `${type}${sep}${name}`;
     const oldRange = deps[key].old;
-    const newVersion = findNewVersion(data, {usePre, useRel, useGreatest, semvers, range: oldRange});
+    const newVersion = findNewVersion(data, {
+      usePre, useRel, useGreatest, semvers, range: oldRange, language,
+    });
     const newRange = updateRange(oldRange, newVersion);
 
     if (!newVersion || oldRange === newRange) {
       delete deps[key];
     } else {
       deps[key].new = newRange;
-      deps[key].info = getInfoUrl(data.versions[newVersion] || data, registry, data.name);
-      if (data.time?.[newVersion]) deps[key].age = timerel(data.time[newVersion], {noAffix: true});
+      const info = data?.versions?.[newVersion] || data;
+      deps[key].info = getInfoUrl(info, registry, data.name);
+      if (data.time?.[newVersion]) {
+        deps[key].age = timerel(data.time[newVersion], {noAffix: true});
+      } else if (data.releases?.[newVersion][0]?.upload_time_iso_8601) {
+        deps[key].age = timerel(data.releases?.[newVersion][0]?.upload_time_iso_8601, {noAffix: true});
+      }
     }
   }
 
@@ -760,7 +872,7 @@ async function main() {
     finish("All dependencies are up to date.");
   }
 
-  if (!args.update) {
+  if (!update) {
     finish(undefined, deps);
   }
 

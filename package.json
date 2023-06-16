@@ -14,7 +14,9 @@
     "./bin/updates.js"
   ],
   "devDependencies": {
+    "@iarna/toml": "2.2.5",
     "ansi-regex": "6.0.1",
+    "dot-prop": "8.0.0",
     "esbuild": "0.18.3",
     "eslint": "8.42.0",
     "eslint-config-silverwind": "73.0.2",
