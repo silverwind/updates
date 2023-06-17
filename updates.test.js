@@ -43,15 +43,17 @@ function resolutionsBasePackage(name) {
   return packages[packages.length - 1];
 }
 
-let npmServer, githubServer, githubUrl, npmUrl;
+let npmServer, githubServer, githubUrl, pypiServer, pypiUrl, npmUrl;
 beforeAll(async () => {
-  let commits, tags;
+  let commits, tags, djlint;
 
-  [npmServer, githubServer, commits, tags] = await Promise.all([
+  [npmServer, githubServer, pypiServer, commits, tags, djlint] = await Promise.all([
+    restana({defaultRoute}),
     restana({defaultRoute}),
     restana({defaultRoute}),
     readFile(fileURLToPath(new URL("fixtures/github/updates-commits.json", import.meta.url))),
     readFile(fileURLToPath(new URL("fixtures/github/updates-tags.json", import.meta.url))),
+    readFile(fileURLToPath(new URL("fixtures/pypi/djlint.json", import.meta.url))),
   ]);
 
   for (const pkgName of testPackages) {
@@ -64,14 +66,17 @@ beforeAll(async () => {
 
   githubServer.get("/repos/silverwind/updates/commits", (_, res) => res.send(commits));
   githubServer.get("/repos/silverwind/updates/git/refs/tags", (_, res) => res.send(tags));
+  pypiServer.get("/pypi/djlint/json", (_, res) => res.send(djlint));
 
-  [githubServer, npmServer] = await Promise.all([
+  [githubServer, pypiServer, npmServer] = await Promise.all([
     githubServer.start(0),
+    pypiServer.start(0),
     npmServer.start(0),
   ]);
 
   githubUrl = makeUrl(githubServer);
   npmUrl = makeUrl(npmServer);
+  pypiUrl = makeUrl(pypiServer);
 
   await writeFile(join(testDir, ".npmrc"), `registry=${npmUrl}`); // Fake registry
   await writeFile(join(testDir, "package.json"), JSON.stringify(testPkg, null, 2)); // Copy fixture
@@ -87,7 +92,11 @@ afterAll(async () => {
 
 function makeTest(args) {
   return async () => {
-    const argsArr = [...args.split(/\s+/), "-c", "--githubapi", githubUrl];
+    const argsArr = [
+      ...args.split(/\s+/), "-c",
+      "--githubapi", githubUrl,
+      "--pypiapi", pypiUrl,
+    ];
     const {stdout} = await execa(script, argsArr, {cwd: testDir});
     const {results} = JSON.parse(stdout);
 
@@ -110,7 +119,12 @@ test("version", async () => {
 });
 
 test("simple", async () => {
-  const {stdout, stderr, exitCode} = await execa(script, ["-C", "--githubapi", githubUrl, "-f", testFile]);
+  const {stdout, stderr, exitCode} = await execa(script, [
+    "-C",
+    "--githubapi", githubUrl,
+    "--pypiapi", pypiUrl,
+    "-f", testFile,
+  ]);
   expect(stderr).toEqual("");
   expect(stdout).toContain("prismjs");
   expect(stdout).toContain("https://github.com/silverwind/updates");
@@ -118,23 +132,26 @@ test("simple", async () => {
 });
 
 test("empty", async () => {
-  const {stdout, stderr, exitCode} = await execa(script, ["-C", "--githubapi", githubUrl, "-f", emptyFile]);
+  const {stdout, stderr, exitCode} = await execa(script, [
+    "-C",
+    "--githubapi", githubUrl,
+    "--pypiapi", pypiUrl,
+    "-f", emptyFile,
+  ]);
   expect(stderr).toEqual("");
   expect(stdout).toContain("No dependencies");
-  expect(exitCode).toEqual(0);
-});
-
-test("version", async () => {
-  const {stdout, stderr, exitCode} = await execa(script, ["-v"]);
-  expect(stderr).toEqual("");
-  expect(stdout).toMatch(/^[0-9]+\.[0-9]+\.[0-9]+$/);
   expect(exitCode).toEqual(0);
 });
 
 if (env.CI) {
   test("global", async () => {
     await execa("npm", ["i", "-g", "."]);
-    const {stdout, stderr, exitCode} = await execa("updates", ["-C", "--githubapi", githubUrl, "-f", testFile]);
+    const {stdout, stderr, exitCode} = await execa("updates", [
+      "-C",
+      "--githubapi", githubUrl,
+      "--pypiapi", pypiUrl,
+      "-f", testFile,
+    ]);
     expect(stderr).toEqual("");
     expect(stdout).toContain("prismjs");
     expect(stdout).toContain("https://github.com/silverwind/updates");
@@ -150,3 +167,7 @@ test("patch", makeTest("-j -P"));
 test("include version deps", makeTest("-j -i noty"));
 test("include version deps #2", makeTest("-j -i noty -i noty,noty"));
 test("exclude version deps", makeTest("-j -e gulp-sourcemaps,prismjs,svgstore,html-webpack-plugin,noty,jpeg-buffer-orientation,styled-components,@babel/preset-env,versions/updates,react"));
+
+test("pypi", makeTest(
+  `-j -f ${fileURLToPath(new URL("fixtures/pyproject.toml", import.meta.url))}`,
+));

@@ -283,6 +283,19 @@ exports[`prerelease 1`] = `
 }
 `;
 
+exports[`pypi 1`] = `
+{
+  "tool.poetry.group.dev.dependencies": {
+    "djlint": {
+      "age": "5 days",
+      "info": "https://github.com/Riverside-Healthcare/djlint",
+      "new": "1.31.0",
+      "old": "1.30.0",
+    },
+  },
+}
+`;
+
 exports[`release 1`] = `
 {
   "dependencies": {
