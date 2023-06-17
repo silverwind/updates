@@ -19,10 +19,8 @@ import supportsColor from "supports-color";
 import {magenta, red, green, disableColor} from "glowie";
 import parseTOML from "@iarna/toml/parse-string.js";
 import {getProperty} from "dot-prop";
-import {inspect} from "node:util";
 
 const {fromUrl} = hostedGitInfo;
-inspect.defaultOptions.depth = 1;
 
 let fetch;
 if (globalThis.fetch && !versions?.node) { // avoid node experimental warning
