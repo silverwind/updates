@@ -5,6 +5,7 @@ import {readFileSync, mkdtempSync} from "node:fs";
 import {writeFile, readFile, rm} from "node:fs/promises";
 import {fileURLToPath} from "node:url";
 import {tmpdir} from "node:os";
+import {env} from "node:process";
 
 const testFile = fileURLToPath(new URL("fixtures/test.json", import.meta.url));
 const emptyFile = fileURLToPath(new URL("fixtures/empty.json", import.meta.url));
@@ -84,7 +85,7 @@ afterAll(async () => {
   ]);
 });
 
-function makeTest(args, expected) {
+function makeTest(args) {
   return async () => {
     const argsArr = [...args.split(/\s+/), "-c", "--githubapi", githubUrl];
     const {stdout} = await execa(script, argsArr, {cwd: testDir});
@@ -97,7 +98,7 @@ function makeTest(args, expected) {
       }
     }
 
-    expect(results).toEqual(expected);
+    expect(results).toMatchSnapshot();
   };
 }
 
@@ -130,7 +131,7 @@ test("version", async () => {
   expect(exitCode).toEqual(0);
 });
 
-if (process.env.CI) {
+if (env.CI) {
   test("global", async () => {
     await execa("npm", ["i", "-g", "."]);
     const {stdout, stderr, exitCode} = await execa("updates", ["-C", "--githubapi", githubUrl, "-f", testFile]);
@@ -141,340 +142,11 @@ if (process.env.CI) {
   });
 }
 
-test("latest", makeTest("-j", {
-  dependencies: {
-    "gulp-sourcemaps": {
-      old: "2.0.0",
-      new: "2.6.5",
-      info: "https://github.com/gulp-sourcemaps/gulp-sourcemaps",
-    },
-    "prismjs": {
-      old: "1.0.0",
-      new: "1.17.1",
-      info: "https://github.com/LeaVerou/prism",
-    },
-    "svgstore": {
-      old: "^3.0.0",
-      new: "^3.0.0-2",
-      info: "https://github.com/svgstore/svgstore",
-    },
-    "html-webpack-plugin": {
-      old: "4.0.0-alpha.2",
-      new: "4.0.0-beta.11",
-      info: "https://github.com/jantimon/html-webpack-plugin",
-    },
-    "noty": {
-      old: "3.1.0",
-      new: "3.2.0-beta",
-      info: "https://github.com/needim/noty",
-    },
-    "jpeg-buffer-orientation": {
-      old: "0.0.0",
-      new: "2.0.3",
-      info: "https://github.com/fisker/jpeg-buffer-orientation",
-    },
-    "styled-components": {
-      old: "2.5.0-1",
-      new: "5.0.0-rc.2",
-      info: "https://github.com/styled-components/styled-components",
-    },
-    "@babel/preset-env": {
-      old: "7.0.0",
-      new: "7.11.5",
-      info: "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
-    },
-    "updates": {
-      old: "6941e05",
-      new: "537ccb7",
-      info: "https://github.com/silverwind/updates",
-    },
-    "react": {
-      old: "18.0",
-      new: "18.2.0",
-      info: "https://github.com/facebook/react/tree/HEAD/packages/react",
-    },
-  },
-  peerDependencies: {
-    "@babel/preset-env": {
-      old: "~6.0.0",
-      new: "~7.11.5",
-      info: "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
-    },
-  },
-  resolutions: {
-    "versions/updates": {
-      old: "^1.0.0",
-      new: "^10.0.0",
-      info: "https://github.com/silverwind/updates",
-    },
-  },
-}));
-
-test("greatest", makeTest("-j -g", {
-  dependencies: {
-    "gulp-sourcemaps": {
-      old: "2.0.0",
-      new: "2.6.5",
-      info: "https://github.com/gulp-sourcemaps/gulp-sourcemaps",
-    },
-    "prismjs": {
-      old: "1.0.0",
-      new: "1.17.1",
-      info: "https://github.com/LeaVerou/prism",
-    },
-    "html-webpack-plugin": {
-      old: "4.0.0-alpha.2",
-      new: "4.0.0-beta.11",
-      info: "https://github.com/jantimon/html-webpack-plugin",
-    },
-    "noty": {
-      old: "3.1.0",
-      new: "3.1.4",
-      info: "https://github.com/needim/noty",
-    },
-    "jpeg-buffer-orientation": {
-      old: "0.0.0",
-      new: "2.0.3",
-      info: "https://github.com/fisker/jpeg-buffer-orientation",
-    },
-    "styled-components": {
-      old: "2.5.0-1",
-      new: "5.0.0-rc.2",
-      info: "https://github.com/styled-components/styled-components",
-    },
-    "@babel/preset-env": {
-      old: "7.0.0",
-      new: "7.11.5",
-      info: "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
-    },
-    "updates": {
-      old: "6941e05",
-      new: "537ccb7",
-      info: "https://github.com/silverwind/updates",
-    },
-    "react": {
-      old: "18.0",
-      new: "18.2.0",
-      info: "https://github.com/facebook/react/tree/HEAD/packages/react",
-    }
-  },
-  peerDependencies: {
-    "@babel/preset-env": {
-      old: "~6.0.0",
-      new: "~7.11.5",
-      info: "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
-    },
-  },
-  resolutions: {
-    "versions/updates": {
-      old: "^1.0.0",
-      new: "^10.0.0",
-      info: "https://github.com/silverwind/updates",
-    },
-  },
-}));
-
-test("prerelease", makeTest("-j -g -p", {
-  dependencies: {
-    "gulp-sourcemaps": {
-      old: "2.0.0",
-      new: "2.6.5",
-      info: "https://github.com/gulp-sourcemaps/gulp-sourcemaps",
-    },
-    "prismjs": {
-      old: "1.0.0",
-      new: "1.17.1",
-      info: "https://github.com/LeaVerou/prism",
-    },
-    "svgstore": {
-      old: "^3.0.0",
-      new: "^3.0.0-2",
-      info: "https://github.com/svgstore/svgstore",
-    },
-    "html-webpack-plugin": {
-      old: "4.0.0-alpha.2",
-      new: "4.0.0-beta.11",
-      info: "https://github.com/jantimon/html-webpack-plugin",
-    },
-    "noty": {
-      old: "3.1.0",
-      new: "3.2.0-beta",
-      info: "https://github.com/needim/noty",
-    },
-    "jpeg-buffer-orientation": {
-      old: "0.0.0",
-      new: "2.0.3",
-      info: "https://github.com/fisker/jpeg-buffer-orientation",
-    },
-    "styled-components": {
-      old: "2.5.0-1",
-      new: "5.0.0-rc.2",
-      info: "https://github.com/styled-components/styled-components",
-    },
-    "@babel/preset-env": {
-      old: "7.0.0",
-      new: "7.11.5",
-      info: "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
-    },
-    "updates": {
-      old: "6941e05",
-      new: "537ccb7",
-      info: "https://github.com/silverwind/updates",
-    },
-    "react": {
-      old: "18.0",
-      new: "18.3.0-next-d1e35c703-20221110",
-      info: "https://github.com/facebook/react/tree/HEAD/packages/react",
-    }
-  },
-  peerDependencies: {
-    "@babel/preset-env": {
-      old: "~6.0.0",
-      new: "~7.11.5",
-      info: "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
-    },
-  },
-  resolutions: {
-    "versions/updates": {
-      old: "^1.0.0",
-      new: "^10.0.0",
-      info: "https://github.com/silverwind/updates",
-    },
-  },
-}));
-
-test("release", makeTest("-j -R", {
-  dependencies: {
-    "gulp-sourcemaps": {
-      old: "2.0.0",
-      new: "2.6.5",
-      info: "https://github.com/gulp-sourcemaps/gulp-sourcemaps",
-    },
-    "prismjs": {
-      old: "1.0.0",
-      new: "1.17.1",
-      info: "https://github.com/LeaVerou/prism",
-    },
-    "svgstore": {
-      old: "^3.0.0",
-      new: "^2.0.3",
-      info: "https://github.com/svgstore/svgstore",
-    },
-    "html-webpack-plugin": {
-      old: "4.0.0-alpha.2",
-      new: "3.2.0",
-      info: "https://github.com/jantimon/html-webpack-plugin",
-    },
-    "noty": {
-      old: "3.1.0",
-      new: "3.1.4",
-      info: "https://github.com/needim/noty",
-    },
-    "jpeg-buffer-orientation": {
-      old: "0.0.0",
-      new: "2.0.3",
-      info: "https://github.com/fisker/jpeg-buffer-orientation",
-    },
-    "styled-components": {
-      old: "2.5.0-1",
-      new: "4.4.1",
-      info: "https://github.com/styled-components/styled-components",
-    },
-    "@babel/preset-env": {
-      old: "7.0.0",
-      new: "7.11.5",
-      info: "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
-    },
-    "updates": {
-      old: "6941e05",
-      new: "537ccb7",
-      info: "https://github.com/silverwind/updates",
-    },
-    "react": {
-      old: "18.0",
-      new: "18.2.0",
-      info: "https://github.com/facebook/react/tree/HEAD/packages/react",
-    }
-  },
-  peerDependencies: {
-    "@babel/preset-env": {
-      old: "~6.0.0",
-      new: "~7.11.5",
-      info: "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
-    },
-  },
-  resolutions: {
-    "versions/updates": {
-      old: "^1.0.0",
-      new: "^10.0.0",
-      info: "https://github.com/silverwind/updates",
-    },
-  },
-}));
-
-test("patch", makeTest("-j -P", {
-  dependencies: {
-    "gulp-sourcemaps": {
-      old: "2.0.0",
-      new: "2.0.1",
-      info: "https://github.com/floridoo/gulp-sourcemaps",
-    },
-    "svgstore": {
-      old: "^3.0.0",
-      new: "^3.0.0-2",
-      info: "https://github.com/svgstore/svgstore",
-    },
-    "html-webpack-plugin": {
-      old: "4.0.0-alpha.2",
-      new: "4.0.0-beta.11",
-      info: "https://github.com/jantimon/html-webpack-plugin",
-    },
-    "noty": {
-      old: "3.1.0",
-      new: "3.1.4",
-      info: "https://github.com/needim/noty",
-    },
-    "updates": {
-      old: "6941e05",
-      new: "537ccb7",
-      info: "https://github.com/silverwind/updates",
-    },
-  },
-  resolutions: {
-    "versions/updates": {
-      old: "^1.0.0",
-      new: "^1.0.6",
-      info: "https://github.com/silverwind/updates",
-    },
-  },
-}));
-
-test("include version deps", makeTest("-j -i noty", {
-  dependencies: {
-    "noty": {
-      old: "3.1.0",
-      new: "3.2.0-beta",
-      info: "https://github.com/needim/noty",
-    },
-  },
-}));
-
-test("include version deps #2", makeTest("-j -i noty -i noty,noty", {
-  dependencies: {
-    "noty": {
-      old: "3.1.0",
-      new: "3.2.0-beta",
-      info: "https://github.com/needim/noty",
-    },
-  },
-}));
-
-test("exclude version deps", makeTest("-j -e gulp-sourcemaps,prismjs,svgstore,html-webpack-plugin,noty,jpeg-buffer-orientation,styled-components,@babel/preset-env,versions/updates,react", {
-  dependencies: {
-    "updates": {
-      old: "6941e05",
-      new: "537ccb7",
-      info: "https://github.com/silverwind/updates",
-    },
-  },
-}));
+test("latest", makeTest("-j"));
+test("greatest", makeTest("-j -g"));
+test("prerelease", makeTest("-j -g -p"));
+test("release", makeTest("-j -R"));
+test("patch", makeTest("-j -P"));
+test("include version deps", makeTest("-j -i noty"));
+test("include version deps #2", makeTest("-j -i noty -i noty,noty"));
+test("exclude version deps", makeTest("-j -e gulp-sourcemaps,prismjs,svgstore,html-webpack-plugin,noty,jpeg-buffer-orientation,styled-components,@babel/preset-env,versions/updates,react"));
