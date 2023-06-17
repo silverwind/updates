@@ -19,6 +19,7 @@ import supportsColor from "supports-color";
 import {magenta, red, green, disableColor} from "glowie";
 import parseTOML from "@iarna/toml/parse-string.js";
 import {getProperty} from "dot-prop";
+import pAll from "p-all";
 
 const {fromUrl} = hostedGitInfo;
 
@@ -154,7 +155,7 @@ function getAuthAndRegistry(name, registry) {
 async function fetchNpmInfo(name, type, originalRegistry, agentOpts) {
   const [auth, registry] = getAuthAndRegistry(name, originalRegistry);
 
-  const opts = {maxSockets};
+  const opts = {};
   if (Object.keys(agentOpts).length) {
     opts.agentOpts = agentOpts;
   }
@@ -182,7 +183,7 @@ async function fetchNpmInfo(name, type, originalRegistry, agentOpts) {
 }
 
 async function fetchPypiInfo(name, type, agentOpts) {
-  const opts = {maxSockets};
+  const opts = {};
   if (Object.keys(agentOpts).length) {
     opts.agentOpts = agentOpts;
   }
@@ -800,14 +801,14 @@ async function main() {
     registry = normalizeUrl(args.registry || config.registry || npmrc.registry);
   }
 
-  const entries = await Promise.all(Object.keys(deps).map(key => {
+  const entries = await pAll(Object.keys(deps).map(key => () => {
     const [type, name] = key.split(sep);
     if (language === "js") {
       return fetchNpmInfo(name, type, registry, agentOpts);
     } else {
       return fetchPypiInfo(name, type, agentOpts);
     }
-  }));
+  }), {concurrency: maxSockets});
 
   for (const [data, type, registry, name] of entries) {
     if (data?.error) throw new Error(data.error);

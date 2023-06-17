@@ -26,6 +26,7 @@
     "hosted-git-info": "6.1.1",
     "minimist": "1.2.8",
     "node-fetch": "3.3.1",
+    "p-all": "5.0.0",
     "rc": "1.2.8",
     "registry-auth-token": "4.2.2",
     "restana": "4.9.7",
