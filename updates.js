@@ -20,6 +20,7 @@ import {magenta, red, green, disableColor} from "glowie";
 import parseTOML from "@iarna/toml/parse-string.js";
 import {getProperty} from "dot-prop";
 import pAll from "p-all";
+import memize from "memize";
 
 const {fromUrl} = hostedGitInfo;
 
@@ -40,13 +41,14 @@ const partsRe = /^([^/]+)\/([^/#]+)?.*?\/([0-9a-f]+|v?[0-9]+\.[0-9]+\.[0-9]+)$/i
 const hashRe = /^[0-9a-f]{7,}$/i;
 const versionRe = /[0-9]+(\.[0-9]+)?(\.[0-9]+)?/g;
 const esc = str => str.replace(/[|\\{}()[\]^$+*?.-]/g, "\\$&");
-const gitInfo = memoize(fromUrl);
-const registryAuthToken = memoize(rat);
-const registryUrl = memoize(ru);
-const normalizeUrl = memoize(url => url.endsWith("/") ? url.substring(0, url.length - 1) : url);
+const gitInfo = memize(fromUrl);
+const registryAuthToken = memize(rat);
+const registryUrl = memize(ru);
+const normalizeUrl = memize(url => url.endsWith("/") ? url.substring(0, url.length - 1) : url);
 const patchSemvers = new Set(["patch"]);
 const minorSemvers = new Set(["patch", "minor"]);
 const majorSemvers = new Set(["patch", "minor", "major"]);
+const packageVersion = import.meta.VERSION || "0.0.0";
 let config = {};
 
 const args = minimist(argv.slice(2), {
@@ -114,11 +116,9 @@ const authTokenOpts = {npmrc, recursive: true};
 const githubApiUrl = args.githubapi ? normalizeUrl(args.githubapi) : "https://api.github.com";
 const pypiApiUrl = args.pypiapi ? normalizeUrl(args.pypiapi) : "https://pypi.org";
 const maxSockets = typeof args.sockets === "number" ? parseInt(args.sockets) : MAX_SOCKETS;
-const extractCerts = str => Array.from(str.matchAll(/(----BEGIN CERT[^]+?IFICATE----)/g), m => m[0]);
 
-function memoize(fn) {
-  const cache = Object.create(null);
-  return (arg, arg2) => arg in cache ? cache[arg] : cache[arg] = fn(arg, arg2);
+function extractCerts(str) {
+  return Array.from(str.matchAll(/(----BEGIN CERT[^]+?IFICATE----)/g), m => m[0]);
 }
 
 function findUpSync(filename, dir, stopDir) {
@@ -152,24 +152,25 @@ function getAuthAndRegistry(name, registry) {
   }
 }
 
+const getFetchOpts = memize((agentOpts, authType, authToken) => {
+  return {
+    ...(Object.keys(agentOpts).length && {agentOpts}),
+    headers: {
+      "user-agent": `updates/${packageVersion}`,
+      ...(authToken && {Authorization: `${authType} ${authToken}`}),
+    }
+  };
+});
+
 async function fetchNpmInfo(name, type, originalRegistry, agentOpts) {
   const [auth, registry] = getAuthAndRegistry(name, originalRegistry);
-
-  const opts = {};
-  if (Object.keys(agentOpts).length) {
-    opts.agentOpts = agentOpts;
-  }
-  if (auth?.token) {
-    opts.headers = {Authorization: `${auth.type} ${auth.token}`};
-  }
-
   const packageName = type === "resolutions" ? resolutionsBasePackage(name) : name;
   const urlName = packageName.replace(/\//g, "%2f");
   const url = `${registry}/${urlName}`;
 
   if (args.verbose) console.error(`${magenta("fetch")} ${url}`);
 
-  const res = await fetch(url, opts);
+  const res = await fetch(url, getFetchOpts(agentOpts, auth?.type, auth?.token));
   if (res?.ok) {
     if (args.verbose) console.error(`${green("done")} ${url}`);
     return [await res.json(), type, registry, name];
@@ -183,15 +184,10 @@ async function fetchNpmInfo(name, type, originalRegistry, agentOpts) {
 }
 
 async function fetchPypiInfo(name, type, agentOpts) {
-  const opts = {};
-  if (Object.keys(agentOpts).length) {
-    opts.agentOpts = agentOpts;
-  }
-
   const url = `${pypiApiUrl}/pypi/${name}/json`;
   if (args.verbose) console.error(`${magenta("fetch")} ${url}`);
 
-  const res = await fetch(url, opts);
+  const res = await fetch(url, getFetchOpts(agentOpts));
   if (res?.ok) {
     if (args.verbose) console.error(`${green("done")} ${url}`);
     return [await res.json(), type, null, name];
@@ -637,7 +633,7 @@ async function main() {
   }
 
   if (version) {
-    console.info(import.meta.VERSION || "0.0.0");
+    console.info(packageVersion);
     exit(0);
   }
 
@@ -695,9 +691,10 @@ async function main() {
   }
 
   const agentOpts = {};
-  if (npmrc["strict-ssl"] === false) {
-    agentOpts.rejectUnauthorized = false;
-  } else if (language === "js") {
+  if (language === "js") {
+    if (npmrc["strict-ssl"] === false) {
+      agentOpts.rejectUnauthorized = false;
+    }
     if ("cafile" in npmrc) {
       agentOpts.ca = rootCertificates.concat(extractCerts(readFileSync(npmrc.cafile, "utf8")));
     }
