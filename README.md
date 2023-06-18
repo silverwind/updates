@@ -3,7 +3,7 @@
 
 ![](./screenshot.png)
 
-`updates` is a CLI tool which checks for npm and pypi dependency updates of the current project and optionally updates `package.json`. It is highly configurable and is typically able to complete in less than a second.
+`updates` is a CLI tool which checks for npm and poetry dependency updates of the current project and optionally updates `package.json`/`pyproject.toml`. It is highly configurable and is typically able to complete in less than a second.
 
 # Usage
 
