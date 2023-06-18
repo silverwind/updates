@@ -603,6 +603,7 @@ async function main() {
     stdout.write(`usage: updates [options]
 
   Options:
+    -l, --language <lang>              Language to check, either 'js' or 'py'
     -u, --update                       Update versions and write package file
     -p, --prerelease [<pkg,...>]       Consider prerelease versions
     -R, --release [<pkg,...>]          Only use release versions, may downgrade
@@ -610,7 +611,6 @@ async function main() {
     -i, --include <pkg,...>            Include only given packages
     -e, --exclude <pkg,...>            Exclude given packages
     -t, --types <type,...>             Check only given dependency types
-    -l, --language <lang>              Language to check, either 'js' or 'py'
     -P, --patch [<pkg,...>]            Consider only up to semver-patch
     -m, --minor [<pkg,...>]            Consider only up to semver-minor
     -d, --allow-downgrade [<pkg,...>]  Allow version downgrades when using latest version
