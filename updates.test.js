@@ -123,6 +123,7 @@ test("simple", async () => {
     "-C",
     "--githubapi", githubUrl,
     "--pypiapi", pypiUrl,
+    "--registry", npmUrl,
     "-f", testFile,
   ]);
   expect(stderr).toEqual("");
