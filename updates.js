@@ -364,8 +364,19 @@ function updatePackageJson(pkgStr, deps) {
   for (const key of Object.keys(deps)) {
     const name = key.split(sep)[1];
     const old = deps[key].oldOriginal || deps[key].old;
-    const re = new RegExp(`"${esc(name)}": +"${esc(old)}"`, "g");
+    const re = new RegExp(`"${esc(name)}": *"${esc(old)}"`, "g");
     newPkgStr = newPkgStr.replace(re, `"${name}": "${deps[key].new}"`);
+  }
+  return newPkgStr;
+}
+
+function updateProjectToml(pkgStr, deps) {
+  let newPkgStr = pkgStr;
+  for (const key of Object.keys(deps)) {
+    const name = key.split(sep)[1];
+    const old = deps[key].oldOriginal || deps[key].old;
+    const re = new RegExp(`${esc(name)} *= *"${esc(old)}"`, "g");
+    newPkgStr = newPkgStr.replace(re, `${name} = "${deps[key].new}"`);
   }
   return newPkgStr;
 }
@@ -873,12 +884,16 @@ async function main() {
   }
 
   try {
-    write(packageFile, updatePackageJson(pkgStr, deps));
+    if (language === "js") {
+      write(packageFile, updatePackageJson(pkgStr, deps));
+    } else {
+      write(packageFile, updateProjectToml(pkgStr, deps));
+    }
   } catch (err) {
     finish(new Error(`Error writing ${packageFile}: ${err.message}`));
   }
 
-  finish(green(`✨ package.json updated`), deps);
+  finish(green(`✨ ${packageFile} updated`), deps);
 }
 
 main().catch(finish);
