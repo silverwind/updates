@@ -101,7 +101,11 @@ function makeTest(args) {
     const {results} = JSON.parse(stdout);
 
     // Parse results, with custom validation for the dynamic "age" property
-    for (const dependencyType of dependencyTypes) {
+    for (const dependencyType of [
+      ...dependencyTypes,
+      "tool.poetry.dependencies",
+      "tool.poetry.group.dev.dependencies"
+    ]) {
       for (const name of Object.keys(results[dependencyType] || {})) {
         delete results[dependencyType][name].age;
       }
