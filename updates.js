@@ -223,9 +223,9 @@ function getInfoUrl({repository, homepage, info}, registry, name) {
     const url = typeof repository === "string" ? repository : repository.url;
 
     const info = gitInfo(url);
-    if (info?.browse) {
-      // https://github.com/babel/babel
-      infoUrl = info.browse();
+    const browse = info?.browse?.();
+    if (browse) {
+      infoUrl = browse; // https://github.com/babel/babel
     }
 
     if (infoUrl && repository.directory && info.treepath) {
@@ -237,6 +237,10 @@ function getInfoUrl({repository, homepage, info}, registry, name) {
 
     if (!infoUrl && repository?.url && /^https?:/.test(repository.url)) {
       infoUrl = repository.url;
+    }
+
+    if (!infoUrl && url) {
+      infoUrl = url;
     }
   }
 
@@ -457,8 +461,10 @@ function findNewVersion(data, {language, range, useGreatest, useRel, usePre, sem
     return version;
   } else {
     let latestTag;
+    let originalLatestTag;
     if (language === "py") {
-      latestTag = coerce(data.info.version); // add .0 to 6.0
+      originalLatestTag = data.info.version; // may not be a 3-part semver
+      latestTag = coerce(data.info.version); // add .0 to 6.0 so semver eats it
     } else {
       latestTag = data["dist-tags"].latest;
     }
@@ -510,7 +516,7 @@ function findNewVersion(data, {language, range, useGreatest, useRel, usePre, sem
     }
 
     // in all other cases, return latest dist-tag
-    return latestTag;
+    return originalLatestTag ?? latestTag;
   }
 }
 
@@ -845,12 +851,17 @@ async function main() {
       delete deps[key];
     } else {
       deps[key].new = newRange;
-      const info = data?.versions?.[newVersion] || data;
-      deps[key].info = getInfoUrl(info, registry, data.name);
+
+      if (language === "js") {
+        deps[key].info = getInfoUrl(data?.versions?.[newVersion], registry, data.name);
+      } else {
+        deps[key].info = getInfoUrl(data, registry, data.info.name);
+      }
+
       if (data.time?.[newVersion]) {
         deps[key].age = timerel(data.time[newVersion], {noAffix: true});
-      } else if (data.releases?.[newVersion][0]?.upload_time_iso_8601) {
-        deps[key].age = timerel(data.releases?.[newVersion][0]?.upload_time_iso_8601, {noAffix: true});
+      } else if (data.releases?.[newVersion]?.[0]?.upload_time_iso_8601) {
+        deps[key].age = timerel(data.releases[newVersion][0].upload_time_iso_8601, {noAffix: true});
       }
     }
   }
