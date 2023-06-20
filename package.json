@@ -36,6 +36,7 @@
     "text-table": "0.2.0",
     "timerel": "5.4.1",
     "versions": "11.0.1",
-    "vitest": "0.32.2"
+    "vitest": "0.32.2",
+    "vitest-config-silverwind": "1.0.0"
   }
 }
