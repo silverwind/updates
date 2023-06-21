@@ -904,7 +904,7 @@ async function main() {
     finish(new Error(`Error writing ${packageFile}: ${err.message}`));
   }
 
-  finish(green(`✨ ${packageFile} updated`), deps);
+  finish(green(`✨ ${basename(packageFile)} updated`), deps);
 }
 
 main().catch(finish);
