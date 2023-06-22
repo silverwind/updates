@@ -9,7 +9,4 @@ python = "^3.8"
 
 [tool.poetry.group.dev.dependencies]
 djlint = "1.30.0"
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+PyYAML = "6.0"

@@ -321,6 +321,7 @@ function write(file, content) {
 }
 
 function highlightDiff(a, b, added) {
+  if (a === b) return a;
   const aParts = a.split(/\./);
   const bParts = b.split(/\./);
   const color = added ? green : red;

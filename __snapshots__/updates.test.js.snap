@@ -286,6 +286,11 @@ exports[`prerelease 1`] = `
 exports[`pypi 1`] = `
 {
   "tool.poetry.group.dev.dependencies": {
+    "PyYAML": {
+      "info": "https://github.com/yaml/pyyaml",
+      "new": "6.0",
+      "old": "6.0",
+    },
     "djlint": {
       "info": "https://github.com/Riverside-Healthcare/djlint",
       "new": "1.31.0",

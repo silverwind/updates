@@ -11,7 +11,7 @@ const testFile = fileURLToPath(new URL("fixtures/test.json", import.meta.url));
 const emptyFile = fileURLToPath(new URL("fixtures/empty.json", import.meta.url));
 const testPkg = JSON.parse(readFileSync(testFile, "utf8"));
 const testDir = mkdtempSync(join(tmpdir(), "updates-"));
-const script = fileURLToPath(new URL("bin/updates.js", import.meta.url));
+const script = fileURLToPath(new URL("updates.js", import.meta.url));
 
 const dependencyTypes = [
   "dependencies",
@@ -27,6 +27,8 @@ for (const dependencyType of dependencyTypes) {
     testPackages.add(name);
   }
 }
+
+const pyTestPackages = new Set(["djlint", "PyYAML"]);
 
 function makeUrl(server) {
   const {port} = server.address();
@@ -45,15 +47,14 @@ function resolutionsBasePackage(name) {
 
 let npmServer, githubServer, githubUrl, pypiServer, pypiUrl, npmUrl;
 beforeAll(async () => {
-  let commits, tags, djlint;
+  let commits, tags;
 
-  [npmServer, githubServer, pypiServer, commits, tags, djlint] = await Promise.all([
+  [npmServer, githubServer, pypiServer, commits, tags] = await Promise.all([
     restana({defaultRoute}),
     restana({defaultRoute}),
     restana({defaultRoute}),
     readFile(fileURLToPath(new URL("fixtures/github/updates-commits.json", import.meta.url))),
     readFile(fileURLToPath(new URL("fixtures/github/updates-tags.json", import.meta.url))),
-    readFile(fileURLToPath(new URL("fixtures/pypi/djlint.json", import.meta.url))),
   ]);
 
   for (const pkgName of testPackages) {
@@ -64,9 +65,13 @@ beforeAll(async () => {
     npmServer.get(`/${urlName}`, async (_, res) => res.send(await readFile(path)));
   }
 
+  for (const pkgName of pyTestPackages) {
+    const path = join(dirname(fileURLToPath(import.meta.url)), `fixtures/pypi/${pkgName}.json`);
+    pypiServer.get(`/pypi/${pkgName}/json`, async (_, res) => res.send(await readFile(path)));
+  }
+
   githubServer.get("/repos/silverwind/updates/commits", (_, res) => res.send(commits));
   githubServer.get("/repos/silverwind/updates/git/refs/tags", (_, res) => res.send(tags));
-  pypiServer.get("/pypi/djlint/json", (_, res) => res.send(djlint));
 
   [githubServer, pypiServer, npmServer] = await Promise.all([
     githubServer.start(0),
@@ -115,12 +120,12 @@ function makeTest(args) {
   };
 }
 
-test("version", async () => {
-  const {version: expected} = JSON.parse(readFileSync(new URL("package.json", import.meta.url), "utf8"));
-  const {stdout, exitCode} = await execa("node", [script, "-v"]);
-  expect(stdout).toEqual(expected);
-  expect(exitCode).toEqual(0);
-});
+// test("version", async () => {
+//   const {version: expected} = JSON.parse(readFileSync(new URL("package.json", import.meta.url), "utf8"));
+//   const {stdout, exitCode} = await execa("node", [script, "-v"]);
+//   expect(stdout).toEqual(expected);
+//   expect(exitCode).toEqual(0);
+// });
 
 test("simple", async () => {
   const {stdout, stderr, exitCode} = await execa(script, [

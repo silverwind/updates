@@ -16,6 +16,10 @@ lint: node_modules
 test: node_modules lint build
 	npx vitest
 
+.PHONY: test-update
+test-update: node_modules lint build
+	npx vitest -u
+
 .PHONY: build
 build: $(DST)
 
