@@ -22,7 +22,7 @@
     "eslint-config-silverwind": "73.0.4",
     "execa": "7.1.1",
     "fetch-enhanced": "11.1.1",
-    "glowie": "1.1.0",
+    "glowie": "1.2.0",
     "hosted-git-info": "6.1.1",
     "memize": "2.1.0",
     "minimist": "1.2.8",
