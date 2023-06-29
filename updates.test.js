@@ -120,13 +120,6 @@ function makeTest(args) {
   };
 }
 
-// test("version", async () => {
-//   const {version: expected} = JSON.parse(readFileSync(new URL("package.json", import.meta.url), "utf8"));
-//   const {stdout, exitCode} = await execa("node", [script, "-v"]);
-//   expect(stdout).toEqual(expected);
-//   expect(exitCode).toEqual(0);
-// });
-
 test("simple", async () => {
   const {stdout, stderr, exitCode} = await execa(script, [
     "-C",
