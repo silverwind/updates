@@ -5,7 +5,6 @@ import minimist from "minimist";
 import nodeFetch from "node-fetch"; // seems twice as fast than undici for the 1500 deps case
 import rat from "registry-auth-token";
 import rc from "rc";
-import ru from "registry-auth-token/registry-url.js";
 import {parse, coerce, diff, gt, gte, lt, neq, valid, validRange} from "semver";
 import textTable from "text-table";
 import {cwd, stdout, argv, env, exit, versions} from "node:process";
@@ -39,7 +38,6 @@ const versionRe = /[0-9]+(\.[0-9]+)?(\.[0-9]+)?/g;
 const esc = str => str.replace(/[|\\{}()[\]^$+*?.-]/g, "\\$&");
 const gitInfo = memize(hostedGitInfo.fromUrl);
 const registryAuthToken = memize(rat);
-const registryUrl = memize(ru);
 const normalizeUrl = memize(url => url.endsWith("/") ? url.substring(0, url.length - 1) : url);
 const patchSemvers = new Set(["patch"]);
 const minorSemvers = new Set(["patch", "minor"]);
@@ -112,6 +110,11 @@ const authTokenOpts = {npmrc, recursive: true};
 const githubApiUrl = args.githubapi ? normalizeUrl(args.githubapi) : "https://api.github.com";
 const pypiApiUrl = args.pypiapi ? normalizeUrl(args.pypiapi) : "https://pypi.org";
 const maxSockets = typeof args.sockets === "number" ? parseInt(args.sockets) : MAX_SOCKETS;
+
+const registryUrl = memize((scope, npmrc) => {
+  const url = npmrc[`${scope}:registry`] || npmrc.registry;
+  return url.endsWith("/") ? url : `${url}/`;
+});
 
 function findUpSync(filename, dir, stopDir) {
   const path = join(dir, filename);
@@ -810,7 +813,6 @@ async function main() {
   }
 
   let registry;
-
   if (language === "js") {
     registry = normalizeUrl(args.registry || config.registry || npmrc.registry);
   }
