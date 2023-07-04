@@ -10,7 +10,7 @@ import semver from "semver";
 import textTable from "text-table";
 import {cwd, stdout, argv, env, exit, versions} from "node:process";
 import hostedGitInfo from "hosted-git-info";
-import {join, dirname, basename} from "node:path";
+import {join, dirname, basename, resolve} from "node:path";
 import {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync} from "node:fs";
 import {platform} from "node:os";
 import {rootCertificates} from "node:tls";
@@ -698,7 +698,7 @@ async function main() {
     if (!packageFile) return finish(new Error(`Unable to find ${packageFileName} in ${pwd} or any of its parent directories`));
   }
 
-  const packageDir = dirname(packageFile);
+  const packageDir = dirname(resolve(packageFile));
 
   try {
     config = (await import(join(packageDir, "updates.config.js"))).default;
