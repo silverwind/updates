@@ -903,7 +903,7 @@ async function main() {
       write(packageFile, updateProjectToml(pkgStr, deps));
     }
   } catch (err) {
-    finish(new Error(`Error writing ${packageFile}: ${err.message}`));
+    finish(new Error(`Error writing ${basename(packageFile)}: ${err.message}`));
   }
 
   finish(green(`✨ ${basename(packageFile)} updated`), deps);
