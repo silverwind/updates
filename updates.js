@@ -741,6 +741,7 @@ async function main() {
     } else {
       dependencyTypes = [
         "tool.poetry.dependencies",
+        "tool.poetry.dev-dependencies",
         "tool.poetry.group.dev.dependencies",
       ];
     }
