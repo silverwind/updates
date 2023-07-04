@@ -6,23 +6,19 @@ import nodeFetch from "node-fetch"; // seems twice as fast than undici for the 1
 import rat from "registry-auth-token";
 import rc from "rc";
 import ru from "registry-auth-token/registry-url.js";
-import semver from "semver";
+import {parse, coerce, diff, gt, gte, lt, neq, valid, validRange} from "semver";
 import textTable from "text-table";
 import {cwd, stdout, argv, env, exit, versions} from "node:process";
 import hostedGitInfo from "hosted-git-info";
 import {join, dirname, basename, resolve} from "node:path";
 import {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync} from "node:fs";
 import {platform} from "node:os";
-import {rootCertificates} from "node:tls";
 import {timerel} from "timerel";
 import supportsColor from "supports-color";
 import {magenta, red, green, disableColor} from "glowie";
-import parseTOML from "@iarna/toml/parse-string.js";
 import {getProperty} from "dot-prop";
 import pAll from "p-all";
 import memize from "memize";
-
-const {fromUrl} = hostedGitInfo;
 
 let fetch;
 if (globalThis.fetch && !versions?.node) { // avoid node experimental warning
@@ -41,7 +37,7 @@ const partsRe = /^([^/]+)\/([^/#]+)?.*?\/([0-9a-f]+|v?[0-9]+\.[0-9]+\.[0-9]+)$/i
 const hashRe = /^[0-9a-f]{7,}$/i;
 const versionRe = /[0-9]+(\.[0-9]+)?(\.[0-9]+)?/g;
 const esc = str => str.replace(/[|\\{}()[\]^$+*?.-]/g, "\\$&");
-const gitInfo = memize(fromUrl);
+const gitInfo = memize(hostedGitInfo.fromUrl);
 const registryAuthToken = memize(rat);
 const registryUrl = memize(ru);
 const normalizeUrl = memize(url => url.endsWith("/") ? url.substring(0, url.length - 1) : url);
@@ -116,10 +112,6 @@ const authTokenOpts = {npmrc, recursive: true};
 const githubApiUrl = args.githubapi ? normalizeUrl(args.githubapi) : "https://api.github.com";
 const pypiApiUrl = args.pypiapi ? normalizeUrl(args.pypiapi) : "https://pypi.org";
 const maxSockets = typeof args.sockets === "number" ? parseInt(args.sockets) : MAX_SOCKETS;
-
-function extractCerts(str) {
-  return Array.from(str.matchAll(/(----BEGIN CERT[^]+?IFICATE----)/g), m => m[0]);
-}
 
 function findUpSync(filename, dir, stopDir) {
   const path = join(dir, filename);
@@ -391,19 +383,19 @@ function updateRange(range, version) {
 }
 
 function isVersionPrerelease(version) {
-  const parsed = semver.parse(version);
+  const parsed = parse(version);
   if (!parsed) return false;
   return Boolean(parsed.prerelease.length);
 }
 
 function isRangePrerelease(range) {
-  // can not use semver.coerce here because it ignores prerelease tags
+  // can not use coerce here because it ignores prerelease tags
   return /[0-9]+\.[0-9]+\.[0-9]+-.+/.test(range);
 }
 
 function rangeToVersion(range) {
   try {
-    return semver.coerce(range).version;
+    return coerce(range).version;
   } catch {
     return null;
   }
@@ -424,15 +416,15 @@ function findVersion(data, versions, {range, semvers, usePre, useRel, useGreates
   }
 
   for (const version of versions) {
-    const parsed = semver.parse(version);
+    const parsed = parse(version);
     if (parsed.prerelease.length && (!usePre || useRel)) continue;
 
-    const diff = semver.diff(tempVersion, parsed.version);
-    if (!diff || !semvers.has(diff)) continue;
+    const d = diff(tempVersion, parsed.version);
+    if (!d || !semvers.has(d)) continue;
 
     // some registries like github don't have data.time available, fall back to greatest on them
     if (useGreatest || !("time" in data)) {
-      if (semver.gte(semver.coerce(parsed.version).version, tempVersion)) {
+      if (gte(coerce(parsed.version).version, tempVersion)) {
         tempVersion = parsed.version;
       }
     } else {
@@ -447,15 +439,11 @@ function findVersion(data, versions, {range, semvers, usePre, useRel, useGreates
   return tempVersion || null;
 }
 
-function coerce(version) {
-  return semver.coerce(version).version;
-}
-
 function findNewVersion(data, {language, range, useGreatest, useRel, usePre, semvers} = {}) {
   if (range === "*") return null; // ignore wildcard
   if (range.includes("||")) return null; // ignore or-chains
   const versions = Object.keys(language === "py" ? data.releases : data.versions)
-    .filter(version => semver.valid(version));
+    .filter(version => valid(version));
   const version = findVersion(data, versions, {range, semvers, usePre, useRel, useGreatest});
 
   if (useGreatest) {
@@ -465,16 +453,16 @@ function findNewVersion(data, {language, range, useGreatest, useRel, usePre, sem
     let originalLatestTag;
     if (language === "py") {
       originalLatestTag = data.info.version; // may not be a 3-part semver
-      latestTag = coerce(data.info.version); // add .0 to 6.0 so semver eats it
+      latestTag = coerce(data.info.version).version; // add .0 to 6.0 so semver eats it
     } else {
       latestTag = data["dist-tags"].latest;
     }
 
-    const oldVersion = coerce(range);
+    const oldVersion = coerce(range).version;
     const oldIsPre = isRangePrerelease(range);
     const newIsPre = isVersionPrerelease(version);
     const latestIsPre = isVersionPrerelease(latestTag);
-    const isGreater = semver.gt(version, oldVersion);
+    const isGreater = gt(version, oldVersion);
 
     // update to new prerelease
     if (!useRel && usePre || (oldIsPre && newIsPre)) {
@@ -497,8 +485,8 @@ function findNewVersion(data, {language, range, useGreatest, useRel, usePre, sem
     }
 
     // check if latestTag is allowed by semvers
-    const diff = semver.diff(oldVersion, latestTag);
-    if (diff && diff !== "prerelease" && !semvers.has(diff.replace(/^pre/, ""))) {
+    const d = diff(oldVersion, latestTag);
+    if (d && d !== "prerelease" && !semvers.has(d.replace(/^pre/, ""))) {
       return version;
     }
 
@@ -508,7 +496,7 @@ function findNewVersion(data, {language, range, useGreatest, useRel, usePre, sem
     }
 
     // prevent downgrade to older version except with --allow-downgrade
-    if (semver.lt(latestTag, oldVersion) && !latestIsPre) {
+    if (lt(latestTag, oldVersion) && !latestIsPre) {
       if (allowDowngrade === true || allowDowngrade?.has?.(data.name)) {
         return latestTag;
       } else {
@@ -556,14 +544,14 @@ async function checkUrlDep([key, dep], {useGreatest} = {}) {
     const data = await res.json();
     const tags = data.map(entry => entry.ref.replace(/^refs\/tags\//, ""));
     const oldRefBare = oldRef.replace(/^v/, "");
-    if (!semver.valid(oldRefBare)) return;
+    if (!valid(oldRefBare)) return;
 
     if (!useGreatest) {
       const lastTag = tags[tags.length - 1];
       const lastTagBare = lastTag.replace(/^v/, "");
-      if (!semver.valid(lastTagBare)) return;
+      if (!valid(lastTagBare)) return;
 
-      if (semver.neq(oldRefBare, lastTagBare)) {
+      if (neq(oldRefBare, lastTagBare)) {
         return {key, newRange: lastTag, user, repo, oldRef, newRef: lastTag};
       }
     } else {
@@ -572,13 +560,13 @@ async function checkUrlDep([key, dep], {useGreatest} = {}) {
 
       for (const tag of tags) {
         const tagBare = tag.replace(/^v/, "");
-        if (!semver.valid(tagBare)) continue;
-        if (!greatestTag || semver.gt(tagBare, greatestTagBare)) {
+        if (!valid(tagBare)) continue;
+        if (!greatestTag || gt(tagBare, greatestTagBare)) {
           greatestTag = tag;
           greatestTagBare = tagBare;
         }
       }
-      if (semver.neq(oldRefBare, greatestTagBare)) {
+      if (neq(oldRefBare, greatestTagBare)) {
         return {key, newRange: greatestTag, user, repo, oldRef, newRef: greatestTag};
       }
     }
@@ -593,7 +581,7 @@ function resolutionsBasePackage(name) {
 function normalizeRange(range) {
   const versionMatches = range.match(versionRe);
   if (versionMatches?.length !== 1) return range;
-  return range.replace(versionRe, semver.coerce(versionMatches[0]));
+  return range.replace(versionRe, coerce(versionMatches[0]));
 }
 
 function parseMixedArg(arg) {
@@ -608,6 +596,17 @@ function parseMixedArg(arg) {
   } else {
     return false;
   }
+}
+
+function extractCerts(str) {
+  return Array.from(str.matchAll(/(----BEGIN CERT[^]+?IFICATE----)/g), m => m[0]);
+}
+
+async function getCerts(extra = []) {
+  return [
+    ...(await import("node:tls")).rootCertificates,
+    ...extra,
+  ];
 }
 
 async function main() {
@@ -714,11 +713,11 @@ async function main() {
       agentOpts.rejectUnauthorized = false;
     }
     if ("cafile" in npmrc) {
-      agentOpts.ca = rootCertificates.concat(extractCerts(readFileSync(npmrc.cafile, "utf8")));
+      agentOpts.ca = getCerts(extractCerts(readFileSync(npmrc.cafile, "utf8")));
     }
     if ("ca" in npmrc) {
       const cas = Array.isArray(npmrc.ca) ? npmrc.ca : [npmrc.ca];
-      agentOpts.ca = rootCertificates.concat(cas.map(ca => extractCerts(ca)));
+      agentOpts.ca = getCerts(cas.map(ca => extractCerts(ca)));
     }
   }
 
@@ -754,7 +753,7 @@ async function main() {
     if (language === "js") {
       pkg = JSON.parse(pkgStr);
     } else {
-      pkg = parseTOML(pkgStr);
+      pkg = (await import("@iarna/toml/parse-string.js")).default(pkgStr);
     }
   } catch (err) {
     finish(new Error(`Error parsing ${packageFile}: ${err.message}`));
@@ -789,7 +788,7 @@ async function main() {
     }
 
     for (const [name, value] of Object.entries(obj)) {
-      if (semver.validRange(value) && canInclude(name, language)) {
+      if (validRange(value) && canInclude(name, language)) {
         deps[`${depType}${sep}${name}`] = {
           old: normalizeRange(value),
           oldOriginal: value,
