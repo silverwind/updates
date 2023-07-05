@@ -11,7 +11,6 @@ import {cwd, stdout, argv, env, exit, versions} from "node:process";
 import hostedGitInfo from "hosted-git-info";
 import {join, dirname, basename, resolve} from "node:path";
 import {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync} from "node:fs";
-import {platform} from "node:os";
 import {timerel} from "timerel";
 import supportsColor from "supports-color";
 import {magenta, red, green, disableColor} from "glowie";
@@ -309,7 +308,8 @@ function finish(obj, deps = {}) {
 }
 
 // preserve file metadata on windows
-function write(file, content) {
+async function write(file, content) {
+  const {platform} = await import("node:os");
   const isWindows = platform() === "win32";
   if (isWindows) truncateSync(file, 0);
   writeFileSync(file, content, isWindows ? {flag: "r+"} : undefined);
@@ -898,11 +898,13 @@ async function main() {
   }
 
   try {
+    let fn;
     if (language === "js") {
-      write(packageFile, updatePackageJson(pkgStr, deps));
+      fn = updatePackageJson;
     } else {
-      write(packageFile, updateProjectToml(pkgStr, deps));
+      fn = updateProjectToml;
     }
+    await write(packageFile, fn(pkgStr, deps));
   } catch (err) {
     finish(new Error(`Error writing ${basename(packageFile)}: ${err.message}`));
   }
