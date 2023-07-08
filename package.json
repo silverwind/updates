@@ -19,7 +19,7 @@
     "dot-prop": "8.0.1",
     "esbuild": "0.18.11",
     "eslint": "8.44.0",
-    "eslint-config-silverwind": "73.1.0",
+    "eslint-config-silverwind": "73.1.2",
     "execa": "7.1.1",
     "fetch-enhanced": "11.1.1",
     "glowie": "1.2.0",
@@ -36,7 +36,7 @@
     "text-table": "0.2.0",
     "timerel": "5.4.2",
     "versions": "11.0.1",
-    "vitest": "0.32.4",
+    "vitest": "0.33.0",
     "vitest-config-silverwind": "2.1.0"
   }
 }
