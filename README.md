@@ -38,7 +38,7 @@ export default {
 };
 ```
 
-### Config Options
+### Config File Options
 
 - `include` *Array<String>*: Array of dependencies to include
 - `exclude` *Array<String>*: Array of dependencies to exclude
