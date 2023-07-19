@@ -42,7 +42,6 @@ const patchSemvers = new Set(["patch"]);
 const minorSemvers = new Set(["patch", "minor"]);
 const majorSemvers = new Set(["patch", "minor", "major"]);
 const packageVersion = import.meta.VERSION || "0.0.0";
-let config = {};
 
 const args = minimist(argv.slice(2), {
   boolean: [
@@ -702,6 +701,7 @@ async function main() {
   }
 
   const packageDir = dirname(resolve(packageFile));
+  let config = {};
 
   try {
     config = (await import(join(packageDir, "updates.config.js"))).default;
