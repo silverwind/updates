@@ -342,10 +342,14 @@ function highlightDiff(a, b, added) {
 
 function formatDeps(deps) {
   const arr = [["NAME", "OLD", "NEW", "AGE", "INFO"]];
+  const seen = new Set();
 
   for (const [key, data] of Object.entries(deps)) {
+    const name = key.split(sep)[1];
+    if (seen.has(name)) continue;
+    seen.add(name);
     arr.push([
-      key.split(sep)[1],
+      name,
       highlightDiff(data.old, data.new, false),
       highlightDiff(data.new, data.old, true),
       data.age || "",
@@ -606,10 +610,7 @@ function extractCerts(str) {
 }
 
 async function getCerts(extra = []) {
-  return [
-    ...(await import("node:tls")).rootCertificates,
-    ...extra,
-  ];
+  return [...(await import("node:tls")).rootCertificates, ...extra];
 }
 
 async function main() {
