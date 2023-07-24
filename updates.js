@@ -314,22 +314,21 @@ async function write(file, content) {
   writeFileSync(file, content, isWindows ? {flag: "r+"} : undefined);
 }
 
-function highlightDiff(a, b, added) {
+function highlightDiff(a, b, colorFn) {
   if (a === b) return a;
   const aParts = a.split(/\./);
   const bParts = b.split(/\./);
-  const color = added ? green : red;
   const versionPartRe = /^[0-9a-zA-Z-.]+$/;
 
   let res = "";
   for (let i = 0; i < aParts.length; i++) {
     if (aParts[i] !== bParts[i]) {
       if (versionPartRe.test(aParts[i])) {
-        res += color(aParts.slice(i).join("."));
+        res += colorFn(aParts.slice(i).join("."));
       } else {
         res += aParts[i].split("").map(char => {
-          return versionPartRe.test(char) ? color(char) : char;
-        }).join("") + color(`.${aParts.slice(i + 1).join(".")}`);
+          return versionPartRe.test(char) ? colorFn(char) : char;
+        }).join("") + colorFn(`.${aParts.slice(i + 1).join(".")}`);
       }
       break;
     } else {
@@ -349,8 +348,8 @@ function formatDeps(deps) {
     seen.add(name);
     arr.push([
       name,
-      highlightDiff(data.old, data.new, false),
-      highlightDiff(data.new, data.old, true),
+      highlightDiff(data.old, data.new, red),
+      highlightDiff(data.new, data.old, green),
       data.age || "",
       data.info,
     ]);
