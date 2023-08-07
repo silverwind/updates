@@ -40,9 +40,9 @@ export default {
 
 ### Config File Options
 
-- `include` *Array<String>*: Array of dependencies to include
-- `exclude` *Array<String>*: Array of dependencies to exclude
-- `types` *Array<String>*: Array of dependency types
+- `include` *Array[String]*: Array of dependencies to include
+- `exclude` *Array[String]*: Array of dependencies to exclude
+- `types` *Array[String]*: Array of dependency types
 - `registry` *String*: URL to npm registry
 
 © [silverwind](https://github.com/silverwind), distributed under BSD licence
