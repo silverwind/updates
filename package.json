@@ -17,16 +17,16 @@
     "@iarna/toml": "2.2.5",
     "ansi-regex": "6.0.1",
     "dot-prop": "8.0.2",
-    "esbuild": "0.18.14",
-    "eslint": "8.45.0",
-    "eslint-config-silverwind": "74.0.0",
-    "execa": "7.1.1",
+    "esbuild": "0.18.19",
+    "eslint": "8.46.0",
+    "eslint-config-silverwind": "74.0.1",
+    "execa": "7.2.0",
     "fetch-enhanced": "11.1.2",
     "glowie": "1.2.0",
     "hosted-git-info": "6.1.1",
     "memize": "2.1.0",
     "minimist": "1.2.8",
-    "node-fetch": "3.3.1",
+    "node-fetch": "3.3.2",
     "p-all": "5.0.0",
     "rc": "1.2.8",
     "registry-auth-token": "4.2.2",
@@ -36,7 +36,7 @@
     "text-table": "0.2.0",
     "timerel": "5.4.2",
     "versions": "11.0.1",
-    "vitest": "0.33.0",
-    "vitest-config-silverwind": "2.1.0"
+    "vitest": "0.34.1",
+    "vitest-config-silverwind": "3.0.0"
   }
 }
