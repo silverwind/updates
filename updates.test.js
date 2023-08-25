@@ -167,9 +167,11 @@ test("greatest", makeTest("-j -g"));
 test("prerelease", makeTest("-j -g -p"));
 test("release", makeTest("-j -R"));
 test("patch", makeTest("-j -P"));
-test("include version deps", makeTest("-j -i noty"));
-test("include version deps #2", makeTest("-j -i noty -i noty,noty"));
-test("exclude version deps", makeTest("-j -e gulp-sourcemaps,prismjs,svgstore,html-webpack-plugin,noty,jpeg-buffer-orientation,styled-components,@babel/preset-env,versions/updates,react"));
+test("include", makeTest("-j -i noty"));
+test("include 2", makeTest("-j -i noty -i noty,noty"));
+test("include 3", makeTest("-j -i /^noty/"));
+test("exclude", makeTest("-j -e gulp-sourcemaps,prismjs,svgstore,html-webpack-plugin,noty,jpeg-buffer-orientation,styled-components,@babel/preset-env,versions/updates,react"));
+test("exclude", makeTest("-j -e gulp-sourcemaps -i /react/"));
 
 test("pypi", makeTest(
   `-j -f ${fileURLToPath(new URL("fixtures/pyproject.toml", import.meta.url))}`,

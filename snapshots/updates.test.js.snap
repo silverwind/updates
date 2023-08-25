@@ -1,12 +1,24 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`exclude version deps 1`] = `
+exports[`exclude 1`] = `
 {
   "dependencies": {
     "updates": {
       "info": "https://github.com/silverwind/updates",
       "new": "537ccb7",
       "old": "6941e05",
+    },
+  },
+}
+`;
+
+exports[`exclude 2`] = `
+{
+  "dependencies": {
+    "react": {
+      "info": "https://github.com/facebook/react/tree/HEAD/packages/react",
+      "new": "18.2.0",
+      "old": "18.0",
     },
   },
 }
@@ -78,7 +90,7 @@ exports[`greatest 1`] = `
 }
 `;
 
-exports[`include version deps #2 1`] = `
+exports[`include 1`] = `
 {
   "dependencies": {
     "noty": {
@@ -90,7 +102,19 @@ exports[`include version deps #2 1`] = `
 }
 `;
 
-exports[`include version deps 1`] = `
+exports[`include 2 1`] = `
+{
+  "dependencies": {
+    "noty": {
+      "info": "https://github.com/needim/noty",
+      "new": "3.2.0-beta",
+      "old": "3.1.0",
+    },
+  },
+}
+`;
+
+exports[`include 3 1`] = `
 {
   "dependencies": {
     "noty": {

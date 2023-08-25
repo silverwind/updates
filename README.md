@@ -34,14 +34,15 @@ Put a `updates.config.js` or `updates.config.mjs` in the root of your project, u
 export default {
   exclude: [
     "semver",
+    /^react/,
   ],
 };
 ```
 
 ### Config File Options
 
-- `include` *Array[String]*: Array of dependencies to include
-- `exclude` *Array[String]*: Array of dependencies to exclude
+- `include` *Array[String|Regexp]*: Array of dependencies to include
+- `exclude` *Array[String|Regexp]*: Array of dependencies to exclude
 - `types` *Array[String]*: Array of dependency types
 - `registry` *String*: URL to npm registry
 

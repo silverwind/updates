@@ -611,6 +611,18 @@ async function getCerts(extra = []) {
   return [...(await import("node:tls")).rootCertificates, ...extra];
 }
 
+// parse include/exclude into a Set of regexes
+function matchersToRegexSet(cliArgs, configArgs) {
+  const ret = new Set();
+  for (const arg of cliArgs || []) {
+    ret.add(new RegExp(/\/.+\//.test(arg) ? arg.slice(1, -1) : `^${esc(arg)}$`));
+  }
+  for (const arg of configArgs || []) {
+    ret.add(arg instanceof RegExp ? arg : new RegExp(`^${esc(arg)}$`));
+  }
+  return ret;
+}
+
 async function main() {
   for (const stream of [process.stdout, process.stderr]) {
     stream?._handle?.setBlocking?.(true);
@@ -622,13 +634,13 @@ async function main() {
     stdout.write(`usage: updates [options]
 
   Options:
-    -l, --language <lang>              Language to check, either 'js' or 'py'
     -u, --update                       Update versions and write package file
+    -f, --file <path>                  Use given package file or module directory
+    -i, --include <pkg,...>            Include only given packages, supports '/regex/' syntax
+    -e, --exclude <pkg,...>            Exclude given packages, supports '/regex/' syntax
     -p, --prerelease [<pkg,...>]       Consider prerelease versions
     -R, --release [<pkg,...>]          Only use release versions, may downgrade
     -g, --greatest [<pkg,...>]         Prefer greatest over latest version
-    -i, --include <pkg,...>            Include only given packages
-    -e, --exclude <pkg,...>            Exclude given packages
     -t, --types <type,...>             Check only given dependency types
     -P, --patch [<pkg,...>]            Consider only up to semver-patch
     -m, --minor [<pkg,...>]            Consider only up to semver-minor
@@ -636,7 +648,7 @@ async function main() {
     -E, --error-on-outdated            Exit with code 2 when updates are available and 0 when not
     -U, --error-on-unchanged           Exit with code 0 when updates are available and 2 when not
     -r, --registry <url>               Override npm registry URL
-    -f, --file <path>                  Use given package file or module directory
+    -l, --language <lang>              Language to check, either 'js' or 'py'
     -S, --sockets <num>                Maximum number of parallel HTTP sockets opened. Default: ${MAX_SOCKETS}
     -j, --json                         Output a JSON object
     -n, --no-color                     Disable color output
@@ -646,7 +658,10 @@ async function main() {
 
   Examples:
     $ updates
-    $ updates -u && npm i
+    $ updates -u
+    $ updates -e '/^react-(dom)?/'
+    $ updates -f package.json
+    $ updates -f pyproject.toml
 `);
     exit(0);
   }
@@ -763,22 +778,25 @@ async function main() {
     finish(new Error(`Error parsing ${packageFile}: ${err.message}`));
   }
 
-  let include, exclude;
-  if (args.include && args.include !== true) {
-    include = new Set(((Array.isArray(args.include) ? args.include : [args.include]).flatMap(item => item.split(","))));
-  } else if ("include" in config && Array.isArray(config.include)) {
-    include = new Set(config.include);
+  let includeCli, excludeCli;
+  if (args.include && args.include !== true) { // cli
+    includeCli = (Array.isArray(args.include) ? args.include : [args.include]).flatMap(item => item.split(","));
   }
   if (args.exclude && args.exclude !== true) {
-    exclude = new Set(((Array.isArray(args.exclude) ? args.exclude : [args.exclude]).flatMap(item => item.split(","))));
-  } else if ("exclude" in config && Array.isArray(config.exclude)) {
-    exclude = new Set(config.exclude);
+    excludeCli = (Array.isArray(args.exclude) ? args.exclude : [args.exclude]).flatMap(item => item.split(","));
   }
+
+  const include = matchersToRegexSet(includeCli, config?.include);
+  const exclude = matchersToRegexSet(excludeCli, config?.exclude);
 
   function canInclude(name, language) {
     if (language === "py" && name === "python") return false;
-    if (exclude?.has?.(name) === true) return false;
-    if (include?.has?.(name) === false) return false;
+    for (const re of exclude) {
+      if (re.test(name)) return false;
+    }
+    for (const re of include) {
+      if (!re.test(name)) return false;
+    }
     return true;
   }
 
@@ -806,7 +824,7 @@ async function main() {
   }
 
   if (!Object.keys(deps).length && !Object.keys(maybeUrlDeps).length) {
-    if (include || exclude) {
+    if (include.size || exclude.size) {
       finish(new Error(`No dependencies match the given include/exclude filters`));
     } else {
       finish("No dependencies present, nothing to do");
