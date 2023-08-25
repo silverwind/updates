@@ -28,7 +28,7 @@ See `--help`. Options that take multiple arguments can take them either via comm
 
 ## Config File
 
-Put a `updates.config.js` or `updates.config.mjs` in the root of your project, usually besides `package.json` to configure certain options of the module. CLI arguments have precedence over options in the config file.
+Put a `updates.config.js` or `updates.config.mjs` in the root of your project, usually besides `package.json` to configure certain options of the module. CLI arguments have precedence over options in the config file, except for `include` and `exclude` options which are merged.
 
 ```js
 export default {
