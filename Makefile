@@ -12,6 +12,10 @@ deps: node_modules
 lint: node_modules
 	npx eslint --color .
 
+.PHONY: lint-fix
+lint: node_modules
+	npx eslint --color . --fix
+
 .PHONY: test
 test: node_modules build
 	npx vitest
