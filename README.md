@@ -24,7 +24,11 @@ deno run -A npm:updates
 
 ## Options
 
-See `--help`. Options that take multiple arguments can take them either via comma-separated value or by specifying the option multiple times. If an option has a optional `pkg` argument but none is given, the option will be applied to all packages instead.
+See `--help`. Options that take multiple arguments can take them either via comma-separated value or by specifying the option multiple times.
+
+If an option has a optional `pkg` argument but none is given, the option will be applied to all packages instead.
+
+All `pkg` options support glob matching via [picomatch](https://github.com/micromatch/picomatch) or regex (on CLI, wrap the regex in slashes, e.g. `'/^foo/'`).
 
 ## Config File
 

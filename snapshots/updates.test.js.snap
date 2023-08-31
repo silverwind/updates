@@ -24,6 +24,30 @@ exports[`exclude 2`] = `
 }
 `;
 
+exports[`exclude 3`] = `
+{
+  "dependencies": {
+    "gulp-sourcemaps": {
+      "info": "https://github.com/gulp-sourcemaps/gulp-sourcemaps",
+      "new": "2.6.5",
+      "old": "2.0.0",
+    },
+  },
+}
+`;
+
+exports[`exclude 4`] = `
+{
+  "dependencies": {
+    "gulp-sourcemaps": {
+      "info": "https://github.com/floridoo/gulp-sourcemaps",
+      "new": "2.0.1",
+      "old": "2.0.0",
+    },
+  },
+}
+`;
+
 exports[`greatest 1`] = `
 {
   "dependencies": {

@@ -13,7 +13,7 @@ lint: node_modules
 	npx eslint --color .
 
 .PHONY: lint-fix
-lint: node_modules
+lint-fix: node_modules
 	npx eslint --color . --fix
 
 .PHONY: test

@@ -17,6 +17,7 @@ import {magenta, red, green, disableColor} from "glowie";
 import {getProperty} from "dot-prop";
 import pAll from "p-all";
 import memize from "memize";
+import picomatch from "picomatch";
 
 let fetch;
 if (globalThis.fetch && !versions?.node) { // avoid node experimental warning
@@ -96,11 +97,11 @@ const args = minimist(argv.slice(2), {
 
 if (args["no-color"] || !supportsColor.stdout) disableColor();
 
-const greatest = parseMixedArg(args.greatest);
-const prerelease = parseMixedArg(args.prerelease);
-const release = parseMixedArg(args.release);
-const patch = parseMixedArg(args.patch);
-const minor = parseMixedArg(args.minor);
+const greatest = argSetToRegexes(parseMixedArg(args.greatest));
+const prerelease = argSetToRegexes(parseMixedArg(args.prerelease));
+const release = argSetToRegexes(parseMixedArg(args.release));
+const patch = argSetToRegexes(parseMixedArg(args.patch));
+const minor = argSetToRegexes(parseMixedArg(args.minor));
 const allowDowngrade = parseMixedArg(args["allow-downgrade"]);
 
 const npmrc = rc("npm", {registry: "https://registry.npmjs.org"});
@@ -108,6 +109,13 @@ const authTokenOpts = {npmrc, recursive: true};
 const githubApiUrl = args.githubapi ? normalizeUrl(args.githubapi) : "https://api.github.com";
 const pypiApiUrl = args.pypiapi ? normalizeUrl(args.pypiapi) : "https://pypi.org";
 const maxSockets = typeof args.sockets === "number" ? parseInt(args.sockets) : MAX_SOCKETS;
+
+function matchesAny(str, set) {
+  for (const re of (set instanceof Set ? set : [])) {
+    if (re.test(str)) return true;
+  }
+  return false;
+}
 
 const registryUrl = memize((scope, npmrc) => {
   const url = npmrc[`${scope}:registry`] || npmrc.registry;
@@ -502,7 +510,7 @@ function findNewVersion(data, {language, range, useGreatest, useRel, usePre, sem
 
     // prevent downgrade to older version except with --allow-downgrade
     if (lt(latestTag, oldVersion) && !latestIsPre) {
-      if (allowDowngrade === true || allowDowngrade?.has?.(data.name)) {
+      if (allowDowngrade === true || matchesAny(data.name, allowDowngrade)) {
         return latestTag;
       } else {
         return null;
@@ -611,14 +619,35 @@ async function getCerts(extra = []) {
   return [...(await import("node:tls")).rootCertificates, ...extra];
 }
 
+// convert arg from cli or config to regex
+function argToRegex(arg, cli) {
+  if (cli) {
+    return /\/.+\//.test(arg) ? new RegExp(arg.slice(1, -1)) : picomatch.makeRe(arg);
+  } else {
+    return arg instanceof RegExp ? arg : picomatch.makeRe(arg);
+  }
+}
+
+// parse cli arg into regex set
+function argSetToRegexes(arg) {
+  if (arg instanceof Set) {
+    const ret = new Set();
+    for (const entry of arg) {
+      ret.add(argToRegex(entry, true));
+    }
+    return ret;
+  }
+  return arg;
+}
+
 // parse include/exclude into a Set of regexes
 function matchersToRegexSet(cliArgs, configArgs) {
   const ret = new Set();
   for (const arg of cliArgs || []) {
-    ret.add(new RegExp(/\/.+\//.test(arg) ? arg.slice(1, -1) : `^${esc(arg)}$`));
+    ret.add(argToRegex(arg, true));
   }
   for (const arg of configArgs || []) {
-    ret.add(arg instanceof RegExp ? arg : new RegExp(`^${esc(arg)}$`));
+    ret.add(argToRegex(arg, false));
   }
   return ret;
 }
@@ -636,8 +665,8 @@ async function main() {
   Options:
     -u, --update                       Update versions and write package file
     -f, --file <path>                  Use given package file or module directory
-    -i, --include <pkg,...>            Include only given packages, supports '/regex/' syntax
-    -e, --exclude <pkg,...>            Exclude given packages, supports '/regex/' syntax
+    -i, --include <pkg,...>            Include only given packages
+    -e, --exclude <pkg,...>            Exclude given packages
     -p, --prerelease [<pkg,...>]       Consider prerelease versions
     -R, --release [<pkg,...>]          Only use release versions, may downgrade
     -g, --greatest [<pkg,...>]         Prefer greatest over latest version
@@ -850,14 +879,14 @@ async function main() {
   for (const [data, type, registry, name] of entries) {
     if (data?.error) throw new Error(data.error);
 
-    const useGreatest = typeof greatest === "boolean" ? greatest : greatest.has(data.name);
-    const usePre = typeof prerelease === "boolean" ? prerelease : prerelease.has(data.name);
-    const useRel = typeof release === "boolean" ? release : release.has(data.name);
+    const useGreatest = typeof greatest === "boolean" ? greatest : matchesAny(data.name, greatest);
+    const usePre = typeof prerelease === "boolean" ? prerelease : matchesAny(data.name, prerelease);
+    const useRel = typeof release === "boolean" ? release : matchesAny(data.name, release);
 
     let semvers;
-    if (patch === true || patch?.has?.(data.name)) {
+    if (patch === true || matchesAny(data.name, patch)) {
       semvers = patchSemvers;
-    } else if (minor === true || minor?.has?.(data.name)) {
+    } else if (minor === true || matchesAny(data.name, minor)) {
       semvers = minorSemvers;
     } else {
       semvers = majorSemvers;
@@ -892,7 +921,7 @@ async function main() {
   if (Object.keys(maybeUrlDeps).length) {
     const results = await Promise.all(Object.entries(maybeUrlDeps).map(([key, dep]) => {
       const name = key.split(sep)[1];
-      const useGreatest = typeof greatest === "boolean" ? greatest : greatest.has(name);
+      const useGreatest = typeof greatest === "boolean" ? greatest : matchesAny(name, greatest);
       return checkUrlDep([key, dep], {useGreatest});
     }));
 

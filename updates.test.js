@@ -172,6 +172,8 @@ test("include 2", makeTest("-j -i noty -i noty,noty"));
 test("include 3", makeTest("-j -i /^noty/"));
 test("exclude", makeTest("-j -e gulp-sourcemaps,prismjs,svgstore,html-webpack-plugin,noty,jpeg-buffer-orientation,styled-components,@babel/preset-env,versions/updates,react"));
 test("exclude", makeTest("-j -e gulp-sourcemaps -i /react/"));
+test("exclude", makeTest("-j -i gulp*"));
+test("exclude", makeTest("-j -i /^gulp/ -P gulp*"));
 
 test("pypi", makeTest(
   `-j -f ${fileURLToPath(new URL("fixtures/pyproject.toml", import.meta.url))}`,
