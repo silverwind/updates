@@ -9,6 +9,9 @@ import {env} from "node:process";
 
 const testFile = fileURLToPath(new URL("fixtures/npm-test/package.json", import.meta.url));
 const emptyFile = fileURLToPath(new URL("fixtures/npm-empty/package.json", import.meta.url));
+const poetryFile = fileURLToPath(new URL("fixtures/poetry/pyproject.toml", import.meta.url));
+const dualFile = fileURLToPath(new URL("fixtures/dual", import.meta.url));
+
 const testPkg = JSON.parse(readFileSync(testFile, "utf8"));
 const testDir = mkdtempSync(join(tmpdir(), "updates-"));
 const script = fileURLToPath(new URL("updates.js", import.meta.url));
@@ -174,7 +177,5 @@ test("exclude", makeTest("-j -e gulp-sourcemaps,prismjs,svgstore,html-webpack-pl
 test("exclude", makeTest("-j -e gulp-sourcemaps -i /react/"));
 test("exclude", makeTest("-j -i gulp*"));
 test("exclude", makeTest("-j -i /^gulp/ -P gulp*"));
-
-test("pypi", makeTest(
-  `-j -f ${fileURLToPath(new URL("fixtures/pyproject.toml", import.meta.url))}`,
-));
+test("pypi", makeTest(`-j -f ${poetryFile}`));
+test("dual", makeTest(`-j -f ${dualFile}`));

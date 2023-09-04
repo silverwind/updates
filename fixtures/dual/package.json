@@ -1,0 +1,25 @@
+{
+  "dependencies": {
+    "gulp-sourcemaps": "2.0.0",
+    "prismjs": "1.0.0",
+    "svgstore": "^3.0.0",
+    "html-webpack-plugin": "4.0.0-alpha.2",
+    "noty": "3.1.0",
+    "jpeg-buffer-orientation": "0.0.0",
+    "styled-components": "2.5.0-1",
+    "@babel/preset-env": "7.0.0",
+    "updates": "https://github.com/silverwind/updates/tarball/6941e05",
+    "ipaddr.js": "https://github.com/silverwind/ipaddr.js/tarball/ipv6_cidrs_take2",
+    "react": "18.0"
+  },
+  "devDependencies": {
+    "updates": "file:."
+  },
+  "peerDependencies": {
+    "@babel/preset-env": "~6.0.0",
+    "svgstore": "^1.0.0 || ^2.0.0"
+  },
+  "resolutions": {
+    "versions/updates": "^1.0.0"
+  }
+}
