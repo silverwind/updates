@@ -760,17 +760,17 @@ async function main() {
   for (const file of resolveFiles) {
     const projectDir = dirname(resolve(file));
     const filename = basename(file);
-    let config = {};
 
     let mode;
-    if (filename === "package.json") {
-      mode = "npm";
-    } else {
+    if (filename === "pyproject.toml") {
       mode = "pypi";
+    } else {
+      mode = "npm";
     }
     filePerMode[mode] = file;
     if (!deps[mode]) deps[mode] = {};
 
+    let config = {};
     try {
       config = (await import(join(projectDir, "updates.config.js"))).default;
     } catch {
@@ -778,6 +778,16 @@ async function main() {
         config = (await import(join(projectDir, "updates.config.mjs"))).default;
       } catch {}
     }
+
+    let includeCli, excludeCli;
+    if (args.include && args.include !== true) { // cli
+      includeCli = (Array.isArray(args.include) ? args.include : [args.include]).flatMap(item => item.split(","));
+    }
+    if (args.exclude && args.exclude !== true) {
+      excludeCli = (Array.isArray(args.exclude) ? args.exclude : [args.exclude]).flatMap(item => item.split(","));
+    }
+    const include = matchersToRegexSet(includeCli, config?.include);
+    const exclude = matchersToRegexSet(excludeCli, config?.exclude);
 
     const agentOpts = {};
     if (mode === "npm") {
@@ -835,17 +845,6 @@ async function main() {
       throw new Error(`Error parsing ${file}: ${err.message}`);
     }
 
-    let includeCli, excludeCli;
-    if (args.include && args.include !== true) { // cli
-      includeCli = (Array.isArray(args.include) ? args.include : [args.include]).flatMap(item => item.split(","));
-    }
-    if (args.exclude && args.exclude !== true) {
-      excludeCli = (Array.isArray(args.exclude) ? args.exclude : [args.exclude]).flatMap(item => item.split(","));
-    }
-
-    const include = matchersToRegexSet(includeCli, config?.include);
-    const exclude = matchersToRegexSet(excludeCli, config?.exclude);
-
     for (const depType of dependencyTypes) {
       let obj;
       if (mode === "npm") {
@@ -872,11 +871,7 @@ async function main() {
     numDependencies += Object.keys(maybeUrlDeps).length;
 
     if (!Object.keys(deps[mode]).length && !Object.keys(maybeUrlDeps).length) {
-      if (include.size || exclude.size) {
-        throw new Error(`No dependencies match the given include/exclude filters`);
-      } else {
-        continue;
-      }
+      continue;
     }
 
     let registry;
@@ -957,7 +952,7 @@ async function main() {
   }
 
   if (numDependencies === 0) {
-    console.info("No dependencies present, nothing to do");
+    console.info("No dependencies found, nothing to do");
     doExit();
   }
 

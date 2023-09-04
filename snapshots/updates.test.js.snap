@@ -109,6 +109,21 @@ exports[`dual 1`] = `
 }
 `;
 
+exports[`dual 2`] = `
+{
+  "npm": {
+    "dependencies": {
+      "noty": {
+        "age": "5 years",
+        "info": "https://github.com/needim/noty",
+        "new": "3.2.0-beta",
+        "old": "3.1.0",
+      },
+    },
+  },
+}
+`;
+
 exports[`exclude 1`] = `
 {
   "npm": {
@@ -263,7 +278,7 @@ exports[`include 1`] = `
 }
 `;
 
-exports[`include 2 1`] = `
+exports[`include 2`] = `
 {
   "npm": {
     "dependencies": {
@@ -278,7 +293,7 @@ exports[`include 2 1`] = `
 }
 `;
 
-exports[`include 3 1`] = `
+exports[`include 3`] = `
 {
   "npm": {
     "dependencies": {
