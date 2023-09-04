@@ -59,7 +59,6 @@ const args = minimist(argv.slice(2), {
     "d", "allow-downgrade",
     "f", "file",
     "g", "greatest",
-    "l", "language",
     "m", "minor",
     "P", "patch",
     "p", "prerelease",
@@ -79,7 +78,6 @@ const args = minimist(argv.slice(2), {
     h: "help",
     i: "include",
     j: "json",
-    l: "language",
     m: "minor",
     n: "no-color",
     P: "patch",
@@ -257,60 +255,62 @@ function getInfoUrl({repository, homepage, info}, registry, name) {
   return url;
 }
 
-function finish(obj, deps = {}) {
-  const output = {};
-  const hadError = obj instanceof Error;
+function doExit(err) {
+  if (err) {
+    const error = err.stack || err.message;
+    if (args.json) {
+      console.info(JSON.stringify({error}));
+    } else {
+      console.info(red(error));
+    }
+  }
+  process.exit(err ? 1 : 0);
+}
 
-  if (typeof obj === "string") {
-    output.message = obj;
-  } else if (hadError) {
-    output.error = obj.stack || obj.message;
+function outputDeps(deps = {}) {
+  for (const mode of Object.keys(deps)) {
+    for (const value of Object.values(deps[mode])) {
+      if ("oldPrint" in value) {
+        value.old = value.oldPrint;
+        delete value.oldPrint;
+      }
+      if ("newPrint" in value) {
+        value.new = value.newPrint;
+        delete value.newPrint;
+      }
+      if ("oldOriginal" in value) {
+        value.old = value.oldOriginal;
+        delete value.oldOriginal;
+      }
+    }
   }
 
-  for (const value of Object.values(deps)) {
-    if ("oldPrint" in value) {
-      value.old = value.oldPrint;
-      delete value.oldPrint;
-    }
-    if ("newPrint" in value) {
-      value.new = value.newPrint;
-      delete value.newPrint;
-    }
-    if ("oldOriginal" in value) {
-      value.old = value.oldOriginal;
-      delete value.oldOriginal;
-    }
+  let num = 0;
+  for (const mode of Object.keys(deps)) {
+    num += Object.keys(deps[mode]).length;
   }
 
   if (args.json) {
-    if (!hadError) {
-      output.results = {};
-      for (const [key, value] of Object.entries(deps)) {
+    const output = {results: {}};
+    for (const mode of Object.keys(deps)) {
+      for (const [key, value] of Object.entries(deps[mode])) {
         const [type, name] = key.split(sep);
-        if (!output.results[type]) output.results[type] = {};
-        output.results[type][name] = value;
+        if (!output.results[mode]) output.results[mode] = {};
+        if (!output.results[mode][type]) output.results[mode][type] = {};
+        output.results[mode][type][name] = value;
       }
     }
     console.info(JSON.stringify(output));
-  } else {
-    if (Object.keys(deps).length && !hadError) {
-      console.info(formatDeps(deps));
-    }
-    if (output.message || output.error) {
-      if (output.message) {
-        console.info(output.message);
-      } else if (output.error) {
-        console.info(red(output.error));
-      }
-    }
+  } else if (num) {
+    console.info(formatDeps(deps));
   }
 
   if (args["error-on-outdated"]) {
-    exit(Object.keys(deps).length ? 2 : 0);
+    return num ? 2 : 0;
   } else if (args["error-on-unchanged"]) {
-    exit(Object.keys(deps).length ? 0 : 2);
+    return num ? 0 : 2;
   } else {
-    exit(output.error ? 1 : 0);
+    return 0;
   }
 }
 
@@ -350,17 +350,20 @@ function formatDeps(deps) {
   const arr = [["NAME", "OLD", "NEW", "AGE", "INFO"]];
   const seen = new Set();
 
-  for (const [key, data] of Object.entries(deps)) {
-    const name = key.split(sep)[1];
-    if (seen.has(name)) continue;
-    seen.add(name);
-    arr.push([
-      name,
-      highlightDiff(data.old, data.new, red),
-      highlightDiff(data.new, data.old, green),
-      data.age || "",
-      data.info,
-    ]);
+  for (const mode of Object.keys(deps)) {
+    for (const [key, data] of Object.entries(deps[mode])) {
+      const name = key.split(sep)[1];
+      const id = `${mode}|${name}`;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      arr.push([
+        name,
+        highlightDiff(data.old, data.new, red),
+        highlightDiff(data.new, data.old, green),
+        data.age || "",
+        data.info,
+      ]);
+    }
   }
 
   return textTable(arr, {
@@ -452,10 +455,10 @@ function findVersion(data, versions, {range, semvers, usePre, useRel, useGreates
   return tempVersion || null;
 }
 
-function findNewVersion(data, {language, range, useGreatest, useRel, usePre, semvers} = {}) {
+function findNewVersion(data, {mode, range, useGreatest, useRel, usePre, semvers} = {}) {
   if (range === "*") return null; // ignore wildcard
   if (range.includes("||")) return null; // ignore or-chains
-  const versions = Object.keys(language === "py" ? data.releases : data.versions)
+  const versions = Object.keys(mode === "pypi" ? data.releases : data.versions)
     .filter(version => valid(version));
   const version = findVersion(data, versions, {range, semvers, usePre, useRel, useGreatest});
 
@@ -464,7 +467,7 @@ function findNewVersion(data, {language, range, useGreatest, useRel, usePre, sem
   } else {
     let latestTag;
     let originalLatestTag;
-    if (language === "py") {
+    if (mode === "pypi") {
       originalLatestTag = data.info.version; // may not be a 3-part semver
       latestTag = coerce(data.info.version).version; // add .0 to 6.0 so semver eats it
     } else {
@@ -652,19 +655,30 @@ function matchersToRegexSet(cliArgs, configArgs) {
   return ret;
 }
 
+function canInclude(name, mode, {include, exclude}) {
+  if (mode === "pypi" && name === "python") return false;
+  for (const re of exclude) {
+    if (re.test(name)) return false;
+  }
+  for (const re of include) {
+    if (!re.test(name)) return false;
+  }
+  return true;
+}
+
 async function main() {
   for (const stream of [process.stdout, process.stderr]) {
     stream?._handle?.setBlocking?.(true);
   }
 
-  let {help, version, language, file, types, update} = args;
+  const {help, version, file, types, update} = args;
 
   if (help) {
     stdout.write(`usage: updates [options]
 
   Options:
     -u, --update                       Update versions and write package file
-    -f, --file <path>                  Use given package file or module directory
+    -f, --file <path,...>              Use file or project directory, defaults to current directory
     -i, --include <pkg,...>            Include only given packages
     -e, --exclude <pkg,...>            Exclude given packages
     -p, --prerelease [<pkg,...>]       Consider prerelease versions
@@ -677,7 +691,6 @@ async function main() {
     -E, --error-on-outdated            Exit with code 2 when updates are available and 0 when not
     -U, --error-on-unchanged           Exit with code 0 when updates are available and 2 when not
     -r, --registry <url>               Override npm registry URL
-    -l, --language <lang>              Language to check, either 'js' or 'py'
     -S, --sockets <num>                Maximum number of parallel HTTP sockets opened. Default: ${MAX_SOCKETS}
     -j, --json                         Output a JSON object
     -n, --no-color                     Disable color output
@@ -700,265 +713,285 @@ async function main() {
     exit(0);
   }
 
-  if (language && !["js", "py"].includes(language)) {
-    throw new Error(`Invalid language: ${language}`);
-  }
+  const files = parseMixedArg(file);
 
-  if (file) {
-    const filename = basename(file);
-    if (filename === "package.json") {
-      language = "js";
-    } else if (filename === "pyproject.toml") {
-      language = "py";
-    }
-  }
-  if (!language) language = "js";
-
-  let packageFileName;
-  if (language === "py") {
-    packageFileName = "pyproject.toml";
-  } else if (language === "js") {
-    packageFileName = "package.json";
-  }
-
-  let packageFile;
-  if (file) {
-    let stat;
-    try {
-      stat = lstatSync(file);
-    } catch (err) {
-      finish(new Error(`Unable to open ${file}: ${err.message}`));
-    }
-
-    if (stat?.isFile()) {
-      packageFile = file;
-    } else if (stat?.isDirectory()) {
-      packageFile = join(file, packageFileName);
-    } else {
-      finish(new Error(`${file} is neither a file nor directory`));
-    }
-  } else {
-    const pwd = cwd();
-    packageFile = findUpSync(packageFileName, pwd);
-    if (!packageFile) return finish(new Error(`Unable to find ${packageFileName} in ${pwd} or any of its parent directories`));
-  }
-
-  const packageDir = dirname(resolve(packageFile));
-  let config = {};
-
-  try {
-    config = (await import(join(packageDir, "updates.config.js"))).default;
-  } catch {
-    try {
-      config = (await import(join(packageDir, "updates.config.mjs"))).default;
-    } catch {}
-  }
-
-  const agentOpts = {};
-  if (language === "js") {
-    if (npmrc["strict-ssl"] === false) {
-      agentOpts.rejectUnauthorized = false;
-    }
-    if ("cafile" in npmrc) {
-      agentOpts.ca = getCerts(extractCerts(readFileSync(npmrc.cafile, "utf8")));
-    }
-    if ("ca" in npmrc) {
-      const cas = Array.isArray(npmrc.ca) ? npmrc.ca : [npmrc.ca];
-      agentOpts.ca = getCerts(cas.map(ca => extractCerts(ca)));
-    }
-  }
-
-  let dependencyTypes;
-  if (types) {
-    dependencyTypes = Array.isArray(types) ? types : types.split(",");
-  } else if ("types" in config && Array.isArray(config.types)) {
-    dependencyTypes = config.types;
-  } else {
-    if (language === "js") {
-      dependencyTypes = [
-        "dependencies",
-        "devDependencies",
-        "optionalDependencies",
-        "peerDependencies",
-        "resolutions",
-      ];
-    } else {
-      dependencyTypes = [
-        "tool.poetry.dependencies",
-        "tool.poetry.dev-dependencies",
-        "tool.poetry.test-dependencies",
-        "tool.poetry.group.dev.dependencies",
-        "tool.poetry.group.test.dependencies",
-      ];
-    }
-  }
-
-  let pkg, pkgStr;
-  try {
-    pkgStr = readFileSync(packageFile, "utf8");
-  } catch (err) {
-    finish(new Error(`Unable to open ${packageFile}: ${err.message}`));
-  }
-  try {
-    if (language === "js") {
-      pkg = JSON.parse(pkgStr);
-    } else {
-      pkg = (await import("@iarna/toml/parse-string.js")).default(pkgStr);
-    }
-  } catch (err) {
-    finish(new Error(`Error parsing ${packageFile}: ${err.message}`));
-  }
-
-  let includeCli, excludeCli;
-  if (args.include && args.include !== true) { // cli
-    includeCli = (Array.isArray(args.include) ? args.include : [args.include]).flatMap(item => item.split(","));
-  }
-  if (args.exclude && args.exclude !== true) {
-    excludeCli = (Array.isArray(args.exclude) ? args.exclude : [args.exclude]).flatMap(item => item.split(","));
-  }
-
-  const include = matchersToRegexSet(includeCli, config?.include);
-  const exclude = matchersToRegexSet(excludeCli, config?.exclude);
-
-  function canInclude(name, language) {
-    if (language === "py" && name === "python") return false;
-    for (const re of exclude) {
-      if (re.test(name)) return false;
-    }
-    for (const re of include) {
-      if (!re.test(name)) return false;
-    }
-    return true;
-  }
-
-  const deps = {}, maybeUrlDeps = {};
-  for (const depType of dependencyTypes) {
-    let obj;
-    if (language === "js") {
-      obj = pkg[depType] || {};
-    } else {
-      obj = getProperty(pkg, depType) || {};
-    }
-
-    for (const [name, value] of Object.entries(obj)) {
-      if (validRange(value) && canInclude(name, language)) {
-        deps[`${depType}${sep}${name}`] = {
-          old: normalizeRange(value),
-          oldOriginal: value,
-        };
-      } else if (language === "js" && canInclude(name, language)) {
-        maybeUrlDeps[`${depType}${sep}${name}`] = {
-          old: value,
-        };
+  const resolveFiles = new Set();
+  if (files) { // check passed files
+    for (const file of files) {
+      let stat;
+      try {
+        stat = lstatSync(file);
+      } catch (err) {
+        throw new Error(`Unable to open ${file}: ${err.message}`);
       }
-    }
-  }
 
-  if (!Object.keys(deps).length && !Object.keys(maybeUrlDeps).length) {
-    if (include.size || exclude.size) {
-      finish(new Error(`No dependencies match the given include/exclude filters`));
-    } else {
-      finish("No dependencies present, nothing to do");
-    }
-  }
-
-  let registry;
-  if (language === "js") {
-    registry = normalizeUrl(args.registry || config.registry || npmrc.registry);
-  }
-
-  const entries = await pAll(Object.keys(deps).map(key => () => {
-    const [type, name] = key.split(sep);
-    if (language === "js") {
-      return fetchNpmInfo(name, type, registry, agentOpts);
-    } else {
-      return fetchPypiInfo(name, type, agentOpts);
-    }
-  }), {concurrency: maxSockets});
-
-  for (const [data, type, registry, name] of entries) {
-    if (data?.error) throw new Error(data.error);
-
-    const useGreatest = typeof greatest === "boolean" ? greatest : matchesAny(data.name, greatest);
-    const usePre = typeof prerelease === "boolean" ? prerelease : matchesAny(data.name, prerelease);
-    const useRel = typeof release === "boolean" ? release : matchesAny(data.name, release);
-
-    let semvers;
-    if (patch === true || matchesAny(data.name, patch)) {
-      semvers = patchSemvers;
-    } else if (minor === true || matchesAny(data.name, minor)) {
-      semvers = minorSemvers;
-    } else {
-      semvers = majorSemvers;
-    }
-
-    const key = `${type}${sep}${name}`;
-    const oldRange = deps[key].old;
-    const newVersion = findNewVersion(data, {
-      usePre, useRel, useGreatest, semvers, range: oldRange, language,
-    });
-    const newRange = updateRange(oldRange, newVersion);
-
-    if (!newVersion || oldRange === newRange) {
-      delete deps[key];
-    } else {
-      deps[key].new = newRange;
-
-      if (language === "js") {
-        deps[key].info = getInfoUrl(data?.versions?.[newVersion], registry, data.name);
+      if (stat?.isFile()) {
+        resolveFiles.add(resolve(file));
+      } else if (stat?.isDirectory()) {
+        for (const filename of ["package.json", "pyproject.toml"]) {
+          const f = join(file, filename);
+          let stat;
+          try {
+            stat = lstatSync(f);
+          } catch {}
+          if (stat?.isFile()) {
+            resolveFiles.add(resolve(f));
+          }
+        }
       } else {
-        deps[key].info = getInfoUrl(data, registry, data.info.name);
+        throw new Error(`${file} is neither a file nor directory`);
       }
-
-      if (data.time?.[newVersion]) {
-        deps[key].age = timerel(data.time[newVersion], {noAffix: true});
-      } else if (data.releases?.[newVersion]?.[0]?.upload_time_iso_8601) {
-        deps[key].age = timerel(data.releases[newVersion][0].upload_time_iso_8601, {noAffix: true});
-      }
+    }
+  } else { // search for files
+    for (const filename of ["package.json", "pyproject.toml"]) {
+      const pwd = cwd();
+      const file = findUpSync(filename, pwd);
+      if (file) resolveFiles.add(resolve(file));
     }
   }
 
-  if (Object.keys(maybeUrlDeps).length) {
-    const results = await Promise.all(Object.entries(maybeUrlDeps).map(([key, dep]) => {
-      const name = key.split(sep)[1];
-      const useGreatest = typeof greatest === "boolean" ? greatest : matchesAny(name, greatest);
-      return checkUrlDep([key, dep], {useGreatest});
-    }));
+  // output vars
+  const deps = {};
+  const maybeUrlDeps = {};
+  const pkgStrs = {};
+  const filePerMode = {};
+  let numDependencies = 0;
 
-    for (const res of (results || []).filter(Boolean)) {
-      const {key, newRange, user, repo, oldRef, newRef, newDate} = res;
-      deps[key] = {
-        old: maybeUrlDeps[key].old,
-        new: newRange,
-        oldPrint: hashRe.test(oldRef) ? oldRef.substring(0, 7) : oldRef,
-        newPrint: hashRe.test(newRef) ? newRef.substring(0, 7) : newRef,
-        info: `https://github.com/${user}/${repo}`,
-        ...(newDate ? {age: timerel(newDate, {noAffix: true})} : {}),
-      };
-    }
-  }
+  for (const file of resolveFiles) {
+    const projectDir = dirname(resolve(file));
+    const filename = basename(file);
+    let config = {};
 
-  if (!Object.keys(deps).length) {
-    finish("All dependencies are up to date.");
-  }
-
-  if (!update) {
-    finish(undefined, deps);
-  }
-
-  try {
-    let fn;
-    if (language === "js") {
-      fn = updatePackageJson;
+    let mode;
+    if (filename === "package.json") {
+      mode = "npm";
     } else {
-      fn = updateProjectToml;
+      mode = "pypi";
     }
-    await write(packageFile, fn(pkgStr, deps));
-  } catch (err) {
-    finish(new Error(`Error writing ${basename(packageFile)}: ${err.message}`));
+    filePerMode[mode] = file;
+    if (!deps[mode]) deps[mode] = {};
+
+    try {
+      config = (await import(join(projectDir, "updates.config.js"))).default;
+    } catch {
+      try {
+        config = (await import(join(projectDir, "updates.config.mjs"))).default;
+      } catch {}
+    }
+
+    const agentOpts = {};
+    if (mode === "npm") {
+      if (npmrc["strict-ssl"] === false) {
+        agentOpts.rejectUnauthorized = false;
+      }
+      if ("cafile" in npmrc) {
+        agentOpts.ca = getCerts(extractCerts(readFileSync(npmrc.cafile, "utf8")));
+      }
+      if ("ca" in npmrc) {
+        const cas = Array.isArray(npmrc.ca) ? npmrc.ca : [npmrc.ca];
+        agentOpts.ca = getCerts(cas.map(ca => extractCerts(ca)));
+      }
+    }
+
+    let dependencyTypes;
+    if (types) {
+      dependencyTypes = Array.isArray(types) ? types : types.split(",");
+    } else if ("types" in config && Array.isArray(config.types)) {
+      dependencyTypes = config.types;
+    } else {
+      if (mode === "npm") {
+        dependencyTypes = [
+          "dependencies",
+          "devDependencies",
+          "optionalDependencies",
+          "peerDependencies",
+          "resolutions",
+        ];
+      } else {
+        dependencyTypes = [
+          "tool.poetry.dependencies",
+          "tool.poetry.dev-dependencies",
+          "tool.poetry.test-dependencies",
+          "tool.poetry.group.dev.dependencies",
+          "tool.poetry.group.test.dependencies",
+        ];
+      }
+    }
+
+    let pkg;
+    try {
+      pkgStrs[mode] = readFileSync(file, "utf8");
+    } catch (err) {
+      throw new Error(`Unable to open ${file}: ${err.message}`);
+    }
+
+    try {
+      if (mode === "npm") {
+        pkg = JSON.parse(pkgStrs[mode]);
+      } else {
+        pkg = (await import("@iarna/toml/parse-string.js")).default(pkgStrs[mode]);
+      }
+    } catch (err) {
+      throw new Error(`Error parsing ${file}: ${err.message}`);
+    }
+
+    let includeCli, excludeCli;
+    if (args.include && args.include !== true) { // cli
+      includeCli = (Array.isArray(args.include) ? args.include : [args.include]).flatMap(item => item.split(","));
+    }
+    if (args.exclude && args.exclude !== true) {
+      excludeCli = (Array.isArray(args.exclude) ? args.exclude : [args.exclude]).flatMap(item => item.split(","));
+    }
+
+    const include = matchersToRegexSet(includeCli, config?.include);
+    const exclude = matchersToRegexSet(excludeCli, config?.exclude);
+
+    for (const depType of dependencyTypes) {
+      let obj;
+      if (mode === "npm") {
+        obj = pkg[depType] || {};
+      } else {
+        obj = getProperty(pkg, depType) || {};
+      }
+
+      for (const [name, value] of Object.entries(obj)) {
+        if (validRange(value) && canInclude(name, mode, {include, exclude})) {
+          deps[mode][`${depType}${sep}${name}`] = {
+            old: normalizeRange(value),
+            oldOriginal: value,
+          };
+        } else if (mode === "npm" && canInclude(name, mode, {include, exclude})) {
+          maybeUrlDeps[`${depType}${sep}${name}`] = {
+            old: value,
+          };
+        }
+      }
+    }
+
+    numDependencies += Object.keys(deps[mode]).length;
+    numDependencies += Object.keys(maybeUrlDeps).length;
+
+    if (!Object.keys(deps[mode]).length && !Object.keys(maybeUrlDeps).length) {
+      if (include.size || exclude.size) {
+        throw new Error(`No dependencies match the given include/exclude filters`);
+      } else {
+        continue;
+      }
+    }
+
+    let registry;
+    if (mode === "npm") {
+      registry = normalizeUrl(args.registry || config.registry || npmrc.registry);
+    }
+
+    const entries = await pAll(Object.keys(deps[mode]).map(key => () => {
+      const [type, name] = key.split(sep);
+      if (mode === "npm") {
+        return fetchNpmInfo(name, type, registry, agentOpts);
+      } else {
+        return fetchPypiInfo(name, type, agentOpts);
+      }
+    }), {concurrency: maxSockets});
+
+    for (const [data, type, registry, name] of entries) {
+      if (data?.error) throw new Error(data.error);
+
+      const useGreatest = typeof greatest === "boolean" ? greatest : matchesAny(data.name, greatest);
+      const usePre = typeof prerelease === "boolean" ? prerelease : matchesAny(data.name, prerelease);
+      const useRel = typeof release === "boolean" ? release : matchesAny(data.name, release);
+
+      let semvers;
+      if (patch === true || matchesAny(data.name, patch)) {
+        semvers = patchSemvers;
+      } else if (minor === true || matchesAny(data.name, minor)) {
+        semvers = minorSemvers;
+      } else {
+        semvers = majorSemvers;
+      }
+
+      const key = `${type}${sep}${name}`;
+      const oldRange = deps[mode][key].old;
+      const newVersion = findNewVersion(data, {
+        usePre, useRel, useGreatest, semvers, range: oldRange, mode,
+      });
+      const newRange = updateRange(oldRange, newVersion);
+
+      if (!newVersion || oldRange === newRange) {
+        delete deps[mode][key];
+      } else {
+        deps[mode][key].new = newRange;
+
+        if (mode === "npm") {
+          deps[mode][key].info = getInfoUrl(data?.versions?.[newVersion], registry, data.name);
+        } else {
+          deps[mode][key].info = getInfoUrl(data, registry, data.info.name);
+        }
+
+        if (data.time?.[newVersion]) {
+          deps[mode][key].age = timerel(data.time[newVersion], {noAffix: true});
+        } else if (data.releases?.[newVersion]?.[0]?.upload_time_iso_8601) {
+          deps[mode][key].age = timerel(data.releases[newVersion][0].upload_time_iso_8601, {noAffix: true});
+        }
+      }
+    }
+
+    if (Object.keys(maybeUrlDeps).length) {
+      const results = await Promise.all(Object.entries(maybeUrlDeps).map(([key, dep]) => {
+        const name = key.split(sep)[1];
+        const useGreatest = typeof greatest === "boolean" ? greatest : matchesAny(name, greatest);
+        return checkUrlDep([key, dep], {useGreatest});
+      }));
+
+      for (const res of (results || []).filter(Boolean)) {
+        const {key, newRange, user, repo, oldRef, newRef, newDate} = res;
+        deps[mode][key] = {
+          old: maybeUrlDeps[key].old,
+          new: newRange,
+          oldPrint: hashRe.test(oldRef) ? oldRef.substring(0, 7) : oldRef,
+          newPrint: hashRe.test(newRef) ? newRef.substring(0, 7) : newRef,
+          info: `https://github.com/${user}/${repo}`,
+          ...(newDate ? {age: timerel(newDate, {noAffix: true})} : {}),
+        };
+      }
+    }
   }
 
-  finish(green(`✨ ${basename(packageFile)} updated`), deps);
+  if (numDependencies === 0) {
+    console.info("No dependencies present, nothing to do");
+    doExit();
+  }
+
+  let numEntries = 0;
+  for (const mode of Object.keys(deps)) {
+    numEntries += Object.keys(deps[mode]).length;
+  }
+
+  if (!numEntries) {
+    console.info("All dependencies are up to date.");
+    doExit();
+  }
+
+  const exitCode = outputDeps(deps);
+
+  if (update) {
+    for (const mode of Object.keys(deps)) {
+      try {
+        let fn;
+        if (mode === "npm") {
+          fn = updatePackageJson;
+        } else {
+          fn = updateProjectToml;
+        }
+        await write(filePerMode[mode], fn(pkgStrs[mode], deps[mode]));
+      } catch (err) {
+        throw new Error(`Error writing ${basename(filePerMode[mode])}: ${err.message}`);
+      }
+
+      console.info(green(`✨ ${basename(filePerMode[mode])} updated`));
+    }
+  }
+
+  doExit(exitCode);
 }
 
-main().catch(finish);
+main().catch(doExit).then(doExit);

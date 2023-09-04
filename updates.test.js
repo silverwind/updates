@@ -7,8 +7,8 @@ import {fileURLToPath} from "node:url";
 import {tmpdir} from "node:os";
 import {env} from "node:process";
 
-const testFile = fileURLToPath(new URL("fixtures/test.json", import.meta.url));
-const emptyFile = fileURLToPath(new URL("fixtures/empty.json", import.meta.url));
+const testFile = fileURLToPath(new URL("fixtures/npm-test/package.json", import.meta.url));
+const emptyFile = fileURLToPath(new URL("fixtures/npm-empty/package.json", import.meta.url));
 const testPkg = JSON.parse(readFileSync(testFile, "utf8"));
 const testDir = mkdtempSync(join(tmpdir(), "updates-"));
 const script = fileURLToPath(new URL("updates.js", import.meta.url));
