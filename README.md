@@ -38,7 +38,8 @@ Put a `updates.config.js` or `updates.config.mjs` in the root of your project, u
 export default {
   exclude: [
     "semver",
-    /^react/,
+    "@vitejs/*",
+    /^react(-dom)?$/,
   ],
 };
 ```
