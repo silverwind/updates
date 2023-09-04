@@ -678,7 +678,7 @@ async function main() {
 
   Options:
     -u, --update                       Update versions and write package file
-    -f, --file <path,...>              Use file or project directory, defaults to current directory
+    -f, --file <path,...>              File or directory to use, defaults to current directory
     -i, --include <pkg,...>            Include only given packages
     -e, --exclude <pkg,...>            Exclude given packages
     -p, --prerelease [<pkg,...>]       Consider prerelease versions
