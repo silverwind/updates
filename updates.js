@@ -666,12 +666,51 @@ function canInclude(name, mode, {include, exclude}) {
   return true;
 }
 
+function resolveFiles(filesArg) {
+  const resolvedFiles = new Set();
+
+  if (filesArg) { // check passed files
+    for (const file of filesArg) {
+      let stat;
+      try {
+        stat = lstatSync(file);
+      } catch (err) {
+        throw new Error(`Unable to open ${file}: ${err.message}`);
+      }
+
+      if (stat?.isFile()) {
+        resolvedFiles.add(resolve(file));
+      } else if (stat?.isDirectory()) {
+        for (const filename of ["package.json", "pyproject.toml"]) {
+          const f = join(file, filename);
+          let stat;
+          try {
+            stat = lstatSync(f);
+          } catch {}
+          if (stat?.isFile()) {
+            resolvedFiles.add(resolve(f));
+          }
+        }
+      } else {
+        throw new Error(`${file} is neither a file nor directory`);
+      }
+    }
+  } else { // search for files
+    for (const filename of ["package.json", "pyproject.toml"]) {
+      const pwd = cwd();
+      const file = findUpSync(filename, pwd);
+      if (file) resolvedFiles.add(resolve(file));
+    }
+  }
+  return resolvedFiles;
+}
+
 async function main() {
   for (const stream of [process.stdout, process.stderr]) {
     stream?._handle?.setBlocking?.(true);
   }
 
-  const {help, version, file, types, update} = args;
+  const {help, version, file: filesArg, types, update} = args;
 
   if (help) {
     stdout.write(`usage: updates [options]
@@ -714,43 +753,6 @@ async function main() {
     exit(0);
   }
 
-  const files = parseMixedArg(file);
-
-  const resolvedFiles = new Set();
-  if (files) { // check passed files
-    for (const file of files) {
-      let stat;
-      try {
-        stat = lstatSync(file);
-      } catch (err) {
-        throw new Error(`Unable to open ${file}: ${err.message}`);
-      }
-
-      if (stat?.isFile()) {
-        resolvedFiles.add(resolve(file));
-      } else if (stat?.isDirectory()) {
-        for (const filename of ["package.json", "pyproject.toml"]) {
-          const f = join(file, filename);
-          let stat;
-          try {
-            stat = lstatSync(f);
-          } catch {}
-          if (stat?.isFile()) {
-            resolvedFiles.add(resolve(f));
-          }
-        }
-      } else {
-        throw new Error(`${file} is neither a file nor directory`);
-      }
-    }
-  } else { // search for files
-    for (const filename of ["package.json", "pyproject.toml"]) {
-      const pwd = cwd();
-      const file = findUpSync(filename, pwd);
-      if (file) resolvedFiles.add(resolve(file));
-    }
-  }
-
   // output vars
   const deps = {};
   const maybeUrlDeps = {};
@@ -758,7 +760,7 @@ async function main() {
   const filePerMode = {};
   let numDependencies = 0;
 
-  for (const file of resolvedFiles) {
+  for (const file of resolveFiles(parseMixedArg(filesArg))) {
     const projectDir = dirname(resolve(file));
     const filename = basename(file);
 
