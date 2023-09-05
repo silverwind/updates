@@ -673,7 +673,7 @@ function canInclude(name, mode, {include, exclude}) {
   for (const re of include) {
     if (re.test(name)) return true;
   }
-  return false;
+  return include.size ? false : true;
 }
 
 function resolveFiles(filesArg) {

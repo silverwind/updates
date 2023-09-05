@@ -108,7 +108,19 @@ exports[`dual 2`] = `
 }
 `;
 
-exports[`exclude 1`] = `undefined`;
+exports[`exclude 1`] = `
+{
+  "npm": {
+    "dependencies": {
+      "updates": {
+        "info": "https://github.com/silverwind/updates",
+        "new": "537ccb7",
+        "old": "6941e05",
+      },
+    },
+  },
+}
+`;
 
 exports[`exclude 2`] = `
 {
