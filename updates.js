@@ -701,6 +701,7 @@ async function main() {
   Examples:
     $ updates
     $ updates -u
+    $ updates -e '@vitejs/*'
     $ updates -e '/^react-(dom)?/'
     $ updates -f package.json
     $ updates -f pyproject.toml
