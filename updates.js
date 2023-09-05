@@ -969,6 +969,7 @@ async function main() {
 
   if (update) {
     for (const mode of Object.keys(deps)) {
+      if (!Object.keys(deps[mode]).length) continue;
       try {
         let fn;
         if (mode === "npm") {
