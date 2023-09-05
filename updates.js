@@ -716,7 +716,7 @@ async function main() {
 
   const files = parseMixedArg(file);
 
-  const resolveFiles = new Set();
+  const resolvedFiles = new Set();
   if (files) { // check passed files
     for (const file of files) {
       let stat;
@@ -727,7 +727,7 @@ async function main() {
       }
 
       if (stat?.isFile()) {
-        resolveFiles.add(resolve(file));
+        resolvedFiles.add(resolve(file));
       } else if (stat?.isDirectory()) {
         for (const filename of ["package.json", "pyproject.toml"]) {
           const f = join(file, filename);
@@ -736,7 +736,7 @@ async function main() {
             stat = lstatSync(f);
           } catch {}
           if (stat?.isFile()) {
-            resolveFiles.add(resolve(f));
+            resolvedFiles.add(resolve(f));
           }
         }
       } else {
@@ -747,7 +747,7 @@ async function main() {
     for (const filename of ["package.json", "pyproject.toml"]) {
       const pwd = cwd();
       const file = findUpSync(filename, pwd);
-      if (file) resolveFiles.add(resolve(file));
+      if (file) resolvedFiles.add(resolve(file));
     }
   }
 
@@ -758,7 +758,7 @@ async function main() {
   const filePerMode = {};
   let numDependencies = 0;
 
-  for (const file of resolveFiles) {
+  for (const file of resolvedFiles) {
     const projectDir = dirname(resolve(file));
     const filename = basename(file);
 
