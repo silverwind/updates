@@ -870,12 +870,8 @@ async function main() {
       }
     }
 
-    numDependencies += Object.keys(deps[mode]).length;
-    numDependencies += Object.keys(maybeUrlDeps).length;
-
-    if (!Object.keys(deps[mode]).length && !Object.keys(maybeUrlDeps).length) {
-      continue;
-    }
+    numDependencies += Object.keys(deps[mode]).length + Object.keys(maybeUrlDeps).length;
+    if (!numDependencies) continue;
 
     let registry;
     if (mode === "npm") {
