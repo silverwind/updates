@@ -255,6 +255,15 @@ function getInfoUrl({repository, homepage, info}, registry, name) {
   return url;
 }
 
+function finishWithMessage(message) {
+  if (args.json) {
+    console.info(JSON.stringify({message}));
+  } else {
+    console.info(message);
+  }
+  doExit();
+}
+
 function doExit(err) {
   if (err) {
     const error = err.stack || err.message;
@@ -657,13 +666,14 @@ function matchersToRegexSet(cliArgs, configArgs) {
 
 function canInclude(name, mode, {include, exclude}) {
   if (mode === "pypi" && name === "python") return false;
+  if (!include.size && !exclude.size) return true;
   for (const re of exclude) {
     if (re.test(name)) return false;
   }
   for (const re of include) {
-    if (!re.test(name)) return false;
+    if (re.test(name)) return true;
   }
-  return true;
+  return false;
 }
 
 function resolveFiles(filesArg) {
@@ -951,7 +961,7 @@ async function main() {
   }
 
   if (numDependencies === 0) {
-    console.info("No dependencies found, nothing to do");
+    finishWithMessage("No dependencies found, nothing to do");
     doExit();
   }
 
@@ -961,7 +971,7 @@ async function main() {
   }
 
   if (!numEntries) {
-    console.info("All dependencies are up to date.");
+    finishWithMessage("All dependencies are up to date.");
     doExit();
   }
 
@@ -982,6 +992,7 @@ async function main() {
         throw new Error(`Error writing ${basename(filePerMode[mode])}: ${err.message}`);
       }
 
+      // TODO: json
       console.info(green(`✨ ${basename(filePerMode[mode])} updated`));
     }
   }

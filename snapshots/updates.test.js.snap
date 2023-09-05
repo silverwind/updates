@@ -5,61 +5,51 @@ exports[`dual 1`] = `
   "npm": {
     "dependencies": {
       "@babel/preset-env": {
-        "age": "3 years",
         "info": "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
         "new": "7.11.5",
         "old": "7.0.0",
       },
       "gulp-sourcemaps": {
-        "age": "4 years",
         "info": "https://github.com/gulp-sourcemaps/gulp-sourcemaps",
         "new": "2.6.5",
         "old": "2.0.0",
       },
       "html-webpack-plugin": {
-        "age": "3 years",
         "info": "https://github.com/jantimon/html-webpack-plugin",
         "new": "4.0.0-beta.11",
         "old": "4.0.0-alpha.2",
       },
       "jpeg-buffer-orientation": {
-        "age": "3 years",
         "info": "https://github.com/fisker/jpeg-buffer-orientation",
         "new": "2.0.3",
         "old": "0.0.0",
       },
       "noty": {
-        "age": "5 years",
         "info": "https://github.com/needim/noty",
         "new": "3.2.0-beta",
         "old": "3.1.0",
       },
       "prismjs": {
-        "age": "4 years",
         "info": "https://github.com/LeaVerou/prism",
         "new": "1.17.1",
         "old": "1.0.0",
       },
       "react": {
-        "age": "1 year",
         "info": "https://github.com/facebook/react/tree/HEAD/packages/react",
         "new": "18.2.0",
         "old": "18.0",
       },
       "styled-components": {
-        "age": "3 years",
         "info": "https://github.com/styled-components/styled-components",
         "new": "5.0.0-rc.2",
         "old": "2.5.0-1",
       },
       "svgstore": {
-        "age": "4 years",
         "info": "https://github.com/svgstore/svgstore",
         "new": "^3.0.0-2",
         "old": "^3.0.0",
       },
       "updates": {
-        "age": "3 years",
         "info": "https://github.com/silverwind/updates",
         "new": "537ccb7",
         "old": "6941e05",
@@ -67,7 +57,6 @@ exports[`dual 1`] = `
     },
     "peerDependencies": {
       "@babel/preset-env": {
-        "age": "3 years",
         "info": "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
         "new": "~7.11.5",
         "old": "~6.0.0",
@@ -75,7 +64,6 @@ exports[`dual 1`] = `
     },
     "resolutions": {
       "versions/updates": {
-        "age": "3 years",
         "info": "https://github.com/silverwind/updates",
         "new": "^10.0.0",
         "old": "^1.0.0",
@@ -85,7 +73,6 @@ exports[`dual 1`] = `
   "pypi": {
     "dependencies": {
       "updates": {
-        "age": "3 years",
         "info": "https://github.com/silverwind/updates",
         "new": "537ccb7",
         "old": "6941e05",
@@ -93,13 +80,11 @@ exports[`dual 1`] = `
     },
     "tool.poetry.group.dev.dependencies": {
       "PyYAML": {
-        "age": "1 year",
         "info": "https://github.com/yaml/pyyaml",
         "new": "6.0",
         "old": "6.0",
       },
       "djlint": {
-        "age": "2 months",
         "info": "https://github.com/Riverside-Healthcare/djlint",
         "new": "1.31.0",
         "old": "1.30.0",
@@ -114,7 +99,6 @@ exports[`dual 2`] = `
   "npm": {
     "dependencies": {
       "noty": {
-        "age": "5 years",
         "info": "https://github.com/needim/noty",
         "new": "3.2.0-beta",
         "old": "3.1.0",
@@ -124,27 +108,13 @@ exports[`dual 2`] = `
 }
 `;
 
-exports[`exclude 1`] = `
-{
-  "npm": {
-    "dependencies": {
-      "updates": {
-        "age": "3 years",
-        "info": "https://github.com/silverwind/updates",
-        "new": "537ccb7",
-        "old": "6941e05",
-      },
-    },
-  },
-}
-`;
+exports[`exclude 1`] = `undefined`;
 
 exports[`exclude 2`] = `
 {
   "npm": {
     "dependencies": {
       "react": {
-        "age": "1 year",
         "info": "https://github.com/facebook/react/tree/HEAD/packages/react",
         "new": "18.2.0",
         "old": "18.0",
@@ -159,7 +129,6 @@ exports[`exclude 3`] = `
   "npm": {
     "dependencies": {
       "gulp-sourcemaps": {
-        "age": "4 years",
         "info": "https://github.com/gulp-sourcemaps/gulp-sourcemaps",
         "new": "2.6.5",
         "old": "2.0.0",
@@ -174,7 +143,6 @@ exports[`exclude 4`] = `
   "npm": {
     "dependencies": {
       "gulp-sourcemaps": {
-        "age": "6 years",
         "info": "https://github.com/floridoo/gulp-sourcemaps",
         "new": "2.0.1",
         "old": "2.0.0",
@@ -189,55 +157,46 @@ exports[`greatest 1`] = `
   "npm": {
     "dependencies": {
       "@babel/preset-env": {
-        "age": "3 years",
         "info": "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
         "new": "7.11.5",
         "old": "7.0.0",
       },
       "gulp-sourcemaps": {
-        "age": "4 years",
         "info": "https://github.com/gulp-sourcemaps/gulp-sourcemaps",
         "new": "2.6.5",
         "old": "2.0.0",
       },
       "html-webpack-plugin": {
-        "age": "3 years",
         "info": "https://github.com/jantimon/html-webpack-plugin",
         "new": "4.0.0-beta.11",
         "old": "4.0.0-alpha.2",
       },
       "jpeg-buffer-orientation": {
-        "age": "3 years",
         "info": "https://github.com/fisker/jpeg-buffer-orientation",
         "new": "2.0.3",
         "old": "0.0.0",
       },
       "noty": {
-        "age": "5 years",
         "info": "https://github.com/needim/noty",
         "new": "3.1.4",
         "old": "3.1.0",
       },
       "prismjs": {
-        "age": "4 years",
         "info": "https://github.com/LeaVerou/prism",
         "new": "1.17.1",
         "old": "1.0.0",
       },
       "react": {
-        "age": "1 year",
         "info": "https://github.com/facebook/react/tree/HEAD/packages/react",
         "new": "18.2.0",
         "old": "18.0",
       },
       "styled-components": {
-        "age": "3 years",
         "info": "https://github.com/styled-components/styled-components",
         "new": "5.0.0-rc.2",
         "old": "2.5.0-1",
       },
       "updates": {
-        "age": "3 years",
         "info": "https://github.com/silverwind/updates",
         "new": "537ccb7",
         "old": "6941e05",
@@ -245,7 +204,6 @@ exports[`greatest 1`] = `
     },
     "peerDependencies": {
       "@babel/preset-env": {
-        "age": "3 years",
         "info": "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
         "new": "~7.11.5",
         "old": "~6.0.0",
@@ -253,7 +211,6 @@ exports[`greatest 1`] = `
     },
     "resolutions": {
       "versions/updates": {
-        "age": "3 years",
         "info": "https://github.com/silverwind/updates",
         "new": "^10.0.0",
         "old": "^1.0.0",
@@ -268,7 +225,6 @@ exports[`include 1`] = `
   "npm": {
     "dependencies": {
       "noty": {
-        "age": "5 years",
         "info": "https://github.com/needim/noty",
         "new": "3.2.0-beta",
         "old": "3.1.0",
@@ -283,7 +239,6 @@ exports[`include 2`] = `
   "npm": {
     "dependencies": {
       "noty": {
-        "age": "5 years",
         "info": "https://github.com/needim/noty",
         "new": "3.2.0-beta",
         "old": "3.1.0",
@@ -298,7 +253,6 @@ exports[`include 3`] = `
   "npm": {
     "dependencies": {
       "noty": {
-        "age": "5 years",
         "info": "https://github.com/needim/noty",
         "new": "3.2.0-beta",
         "old": "3.1.0",
@@ -313,61 +267,51 @@ exports[`latest 1`] = `
   "npm": {
     "dependencies": {
       "@babel/preset-env": {
-        "age": "3 years",
         "info": "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
         "new": "7.11.5",
         "old": "7.0.0",
       },
       "gulp-sourcemaps": {
-        "age": "4 years",
         "info": "https://github.com/gulp-sourcemaps/gulp-sourcemaps",
         "new": "2.6.5",
         "old": "2.0.0",
       },
       "html-webpack-plugin": {
-        "age": "3 years",
         "info": "https://github.com/jantimon/html-webpack-plugin",
         "new": "4.0.0-beta.11",
         "old": "4.0.0-alpha.2",
       },
       "jpeg-buffer-orientation": {
-        "age": "3 years",
         "info": "https://github.com/fisker/jpeg-buffer-orientation",
         "new": "2.0.3",
         "old": "0.0.0",
       },
       "noty": {
-        "age": "5 years",
         "info": "https://github.com/needim/noty",
         "new": "3.2.0-beta",
         "old": "3.1.0",
       },
       "prismjs": {
-        "age": "4 years",
         "info": "https://github.com/LeaVerou/prism",
         "new": "1.17.1",
         "old": "1.0.0",
       },
       "react": {
-        "age": "1 year",
         "info": "https://github.com/facebook/react/tree/HEAD/packages/react",
         "new": "18.2.0",
         "old": "18.0",
       },
       "styled-components": {
-        "age": "3 years",
         "info": "https://github.com/styled-components/styled-components",
         "new": "5.0.0-rc.2",
         "old": "2.5.0-1",
       },
       "svgstore": {
-        "age": "4 years",
         "info": "https://github.com/svgstore/svgstore",
         "new": "^3.0.0-2",
         "old": "^3.0.0",
       },
       "updates": {
-        "age": "3 years",
         "info": "https://github.com/silverwind/updates",
         "new": "537ccb7",
         "old": "6941e05",
@@ -375,7 +319,6 @@ exports[`latest 1`] = `
     },
     "peerDependencies": {
       "@babel/preset-env": {
-        "age": "3 years",
         "info": "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
         "new": "~7.11.5",
         "old": "~6.0.0",
@@ -383,7 +326,6 @@ exports[`latest 1`] = `
     },
     "resolutions": {
       "versions/updates": {
-        "age": "3 years",
         "info": "https://github.com/silverwind/updates",
         "new": "^10.0.0",
         "old": "^1.0.0",
@@ -398,31 +340,26 @@ exports[`patch 1`] = `
   "npm": {
     "dependencies": {
       "gulp-sourcemaps": {
-        "age": "6 years",
         "info": "https://github.com/floridoo/gulp-sourcemaps",
         "new": "2.0.1",
         "old": "2.0.0",
       },
       "html-webpack-plugin": {
-        "age": "3 years",
         "info": "https://github.com/jantimon/html-webpack-plugin",
         "new": "4.0.0-beta.11",
         "old": "4.0.0-alpha.2",
       },
       "noty": {
-        "age": "5 years",
         "info": "https://github.com/needim/noty",
         "new": "3.1.4",
         "old": "3.1.0",
       },
       "svgstore": {
-        "age": "4 years",
         "info": "https://github.com/svgstore/svgstore",
         "new": "^3.0.0-2",
         "old": "^3.0.0",
       },
       "updates": {
-        "age": "3 years",
         "info": "https://github.com/silverwind/updates",
         "new": "537ccb7",
         "old": "6941e05",
@@ -430,7 +367,6 @@ exports[`patch 1`] = `
     },
     "resolutions": {
       "versions/updates": {
-        "age": "5 years",
         "info": "https://github.com/silverwind/updates",
         "new": "^1.0.6",
         "old": "^1.0.0",
@@ -445,61 +381,51 @@ exports[`prerelease 1`] = `
   "npm": {
     "dependencies": {
       "@babel/preset-env": {
-        "age": "3 years",
         "info": "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
         "new": "7.11.5",
         "old": "7.0.0",
       },
       "gulp-sourcemaps": {
-        "age": "4 years",
         "info": "https://github.com/gulp-sourcemaps/gulp-sourcemaps",
         "new": "2.6.5",
         "old": "2.0.0",
       },
       "html-webpack-plugin": {
-        "age": "3 years",
         "info": "https://github.com/jantimon/html-webpack-plugin",
         "new": "4.0.0-beta.11",
         "old": "4.0.0-alpha.2",
       },
       "jpeg-buffer-orientation": {
-        "age": "3 years",
         "info": "https://github.com/fisker/jpeg-buffer-orientation",
         "new": "2.0.3",
         "old": "0.0.0",
       },
       "noty": {
-        "age": "5 years",
         "info": "https://github.com/needim/noty",
         "new": "3.2.0-beta",
         "old": "3.1.0",
       },
       "prismjs": {
-        "age": "4 years",
         "info": "https://github.com/LeaVerou/prism",
         "new": "1.17.1",
         "old": "1.0.0",
       },
       "react": {
-        "age": "9 months",
         "info": "https://github.com/facebook/react/tree/HEAD/packages/react",
         "new": "18.3.0-next-d1e35c703-20221110",
         "old": "18.0",
       },
       "styled-components": {
-        "age": "3 years",
         "info": "https://github.com/styled-components/styled-components",
         "new": "5.0.0-rc.2",
         "old": "2.5.0-1",
       },
       "svgstore": {
-        "age": "4 years",
         "info": "https://github.com/svgstore/svgstore",
         "new": "^3.0.0-2",
         "old": "^3.0.0",
       },
       "updates": {
-        "age": "3 years",
         "info": "https://github.com/silverwind/updates",
         "new": "537ccb7",
         "old": "6941e05",
@@ -507,7 +433,6 @@ exports[`prerelease 1`] = `
     },
     "peerDependencies": {
       "@babel/preset-env": {
-        "age": "3 years",
         "info": "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
         "new": "~7.11.5",
         "old": "~6.0.0",
@@ -515,7 +440,6 @@ exports[`prerelease 1`] = `
     },
     "resolutions": {
       "versions/updates": {
-        "age": "3 years",
         "info": "https://github.com/silverwind/updates",
         "new": "^10.0.0",
         "old": "^1.0.0",
@@ -530,13 +454,11 @@ exports[`pypi 1`] = `
   "pypi": {
     "tool.poetry.group.dev.dependencies": {
       "PyYAML": {
-        "age": "1 year",
         "info": "https://github.com/yaml/pyyaml",
         "new": "6.0",
         "old": "6.0",
       },
       "djlint": {
-        "age": "2 months",
         "info": "https://github.com/Riverside-Healthcare/djlint",
         "new": "1.31.0",
         "old": "1.30.0",
@@ -551,61 +473,51 @@ exports[`release 1`] = `
   "npm": {
     "dependencies": {
       "@babel/preset-env": {
-        "age": "3 years",
         "info": "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
         "new": "7.11.5",
         "old": "7.0.0",
       },
       "gulp-sourcemaps": {
-        "age": "4 years",
         "info": "https://github.com/gulp-sourcemaps/gulp-sourcemaps",
         "new": "2.6.5",
         "old": "2.0.0",
       },
       "html-webpack-plugin": {
-        "age": "5 years",
         "info": "https://github.com/jantimon/html-webpack-plugin",
         "new": "3.2.0",
         "old": "4.0.0-alpha.2",
       },
       "jpeg-buffer-orientation": {
-        "age": "3 years",
         "info": "https://github.com/fisker/jpeg-buffer-orientation",
         "new": "2.0.3",
         "old": "0.0.0",
       },
       "noty": {
-        "age": "5 years",
         "info": "https://github.com/needim/noty",
         "new": "3.1.4",
         "old": "3.1.0",
       },
       "prismjs": {
-        "age": "4 years",
         "info": "https://github.com/LeaVerou/prism",
         "new": "1.17.1",
         "old": "1.0.0",
       },
       "react": {
-        "age": "1 year",
         "info": "https://github.com/facebook/react/tree/HEAD/packages/react",
         "new": "18.2.0",
         "old": "18.0",
       },
       "styled-components": {
-        "age": "3 years",
         "info": "https://github.com/styled-components/styled-components",
         "new": "4.4.1",
         "old": "2.5.0-1",
       },
       "svgstore": {
-        "age": "5 years",
         "info": "https://github.com/svgstore/svgstore",
         "new": "^2.0.3",
         "old": "^3.0.0",
       },
       "updates": {
-        "age": "3 years",
         "info": "https://github.com/silverwind/updates",
         "new": "537ccb7",
         "old": "6941e05",
@@ -613,7 +525,6 @@ exports[`release 1`] = `
     },
     "peerDependencies": {
       "@babel/preset-env": {
-        "age": "3 years",
         "info": "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
         "new": "~7.11.5",
         "old": "~6.0.0",
@@ -621,7 +532,6 @@ exports[`release 1`] = `
     },
     "resolutions": {
       "versions/updates": {
-        "age": "3 years",
         "info": "https://github.com/silverwind/updates",
         "new": "^10.0.0",
         "old": "^1.0.0",
