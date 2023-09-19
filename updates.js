@@ -961,7 +961,7 @@ async function main() {
   }
 
   if (numDependencies === 0) {
-    finishWithMessage("No dependencies found, nothing to do");
+    finishWithMessage("No dependencies found, nothing to do.");
     doExit();
   }
 
