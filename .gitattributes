@@ -1,2 +1,2 @@
 * text=auto eol=lf
-*.snap linguist-language=JavaScript
+snapshots/*.snap linguist-language=JavaScript linguist-generated
