@@ -243,16 +243,7 @@ function getInfoUrl({repository, homepage, info}, registry, name) {
     }
   }
 
-  let url = infoUrl || homepage || "";
-  if (url) {
-    const u = new URL(url);
-    // force https for github.com
-    if (u.protocol === "http:" && u.hostname === "github.com") {
-      u.protocol = "https:";
-      url = String(u);
-    }
-  }
-  return url;
+  return infoUrl || homepage || "";
 }
 
 function finishWithMessage(message) {
