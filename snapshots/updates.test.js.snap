@@ -94,7 +94,7 @@ exports[`dual 1`] = `
 }
 `;
 
-exports[`dual 2`] = `
+exports[`dual 2 1`] = `
 {
   "npm": {
     "dependencies": {
@@ -122,7 +122,7 @@ exports[`exclude 1`] = `
 }
 `;
 
-exports[`exclude 2`] = `
+exports[`exclude 2 1`] = `
 {
   "npm": {
     "dependencies": {
@@ -136,7 +136,7 @@ exports[`exclude 2`] = `
 }
 `;
 
-exports[`exclude 3`] = `
+exports[`exclude 3 1`] = `
 {
   "npm": {
     "dependencies": {
@@ -150,7 +150,7 @@ exports[`exclude 3`] = `
 }
 `;
 
-exports[`exclude 4`] = `
+exports[`exclude 4 1`] = `
 {
   "npm": {
     "dependencies": {
@@ -246,7 +246,7 @@ exports[`include 1`] = `
 }
 `;
 
-exports[`include 2`] = `
+exports[`include 2 1`] = `
 {
   "npm": {
     "dependencies": {
@@ -260,7 +260,7 @@ exports[`include 2`] = `
 }
 `;
 
-exports[`include 3`] = `
+exports[`include 3 1`] = `
 {
   "npm": {
     "dependencies": {

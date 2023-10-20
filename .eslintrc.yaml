@@ -3,6 +3,3 @@ extends: silverwind
 
 ignorePatterns:
  - /bin/
-
-rules:
-  import/no-unresolved: [2, { ignore: [^vitest/] }]
