@@ -17,9 +17,9 @@
     "@iarna/toml": "2.2.5",
     "ansi-regex": "6.0.1",
     "dot-prop": "8.0.2",
-    "esbuild": "0.19.5",
-    "eslint": "8.53.0",
-    "eslint-config-silverwind": "79.3.0",
+    "esbuild": "0.19.8",
+    "eslint": "8.55.0",
+    "eslint-config-silverwind": "79.3.6",
     "execa": "8.0.1",
     "fetch-enhanced": "12.0.0",
     "glowie": "1.2.0",
@@ -37,7 +37,7 @@
     "text-table": "0.2.0",
     "timerel": "5.4.3",
     "versions": "12.0.0",
-    "vitest": "0.34.6",
+    "vitest": "1.0.0",
     "vitest-config-silverwind": "3.0.0"
   }
 }
