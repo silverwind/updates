@@ -2,6 +2,7 @@
 import ansiRegex from "ansi-regex";
 import fetchEnhanced from "fetch-enhanced";
 import minimist from "minimist";
+import nodeFetch from "node-fetch"; // seems twice as fast than undici for the 1500 deps case
 import rat from "registry-auth-token";
 import rc from "rc";
 import {parse, coerce, diff, gt, gte, lt, neq, valid, validRange} from "semver";
@@ -18,13 +19,11 @@ import pAll from "p-all";
 import memize from "memize";
 import picomatch from "picomatch";
 
-// in bun use fetch as-is, it has built-in proxy support
-// in node, wrap the native fetch to add proxy support
 let fetch;
-if (versions?.bun) {
+if (globalThis.fetch && !versions?.node) { // avoid node experimental warning
   fetch = globalThis.fetch;
 } else {
-  fetch = fetchEnhanced(globalThis.fetch, {undici: true});
+  fetch = fetchEnhanced(nodeFetch, {undici: false});
 }
 
 const MAX_SOCKETS = 96;
