@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 import ansiRegex from "ansi-regex";
+import fetchEnhanced from "fetch-enhanced";
 import minimist from "minimist";
 import rat from "registry-auth-token";
 import rc from "rc";
 import {parse, coerce, diff, gt, gte, lt, neq, valid, validRange} from "semver";
 import textTable from "text-table";
-import {cwd, stdout, argv, env, exit} from "node:process";
+import {cwd, stdout, argv, env, exit, versions} from "node:process";
 import hostedGitInfo from "hosted-git-info";
 import {join, dirname, basename, resolve} from "node:path";
 import {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync} from "node:fs";
@@ -16,6 +17,15 @@ import {getProperty} from "dot-prop";
 import pAll from "p-all";
 import memize from "memize";
 import picomatch from "picomatch";
+
+// in bun use fetch as-is, it has built-in proxy support
+// in node, wrap the native fetch to add proxy support
+let fetch;
+if (versions?.bun) {
+  fetch = globalThis.fetch;
+} else {
+  fetch = fetchEnhanced(globalThis.fetch, {undici: true});
+}
 
 const MAX_SOCKETS = 96;
 const sep = "\0";
