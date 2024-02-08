@@ -17,9 +17,9 @@
     "@iarna/toml": "2.2.5",
     "ansi-regex": "6.0.1",
     "dot-prop": "8.0.2",
-    "esbuild": "0.19.12",
+    "esbuild": "0.20.0",
     "eslint": "8.56.0",
-    "eslint-config-silverwind": "79.4.0",
+    "eslint-config-silverwind": "80.0.2",
     "execa": "8.0.1",
     "fetch-enhanced": "12.0.1",
     "glowie": "1.2.0",
@@ -28,7 +28,7 @@
     "minimist": "1.2.8",
     "node-fetch": "3.3.2",
     "p-all": "5.0.0",
-    "picomatch": "3.0.1",
+    "picomatch": "4.0.1",
     "rc": "1.2.8",
     "registry-auth-token": "4.2.2",
     "restana": "4.9.7",
@@ -36,8 +36,8 @@
     "supports-color": "9.4.0",
     "text-table": "0.2.0",
     "timerel": "5.5.0",
-    "versions": "12.0.0",
-    "vitest": "1.2.1",
-    "vitest-config-silverwind": "5.1.0"
+    "versions": "12.0.1",
+    "vitest": "1.2.2",
+    "vitest-config-silverwind": "5.1.1"
   }
 }
