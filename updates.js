@@ -972,12 +972,7 @@ async function main() {
     for (const mode of Object.keys(deps)) {
       if (!Object.keys(deps[mode]).length) continue;
       try {
-        let fn;
-        if (mode === "npm") {
-          fn = updatePackageJson;
-        } else {
-          fn = updateProjectToml;
-        }
+        const fn = (mode === "npm") ? updatePackageJson : updateProjectToml;
         await write(filePerMode[mode], fn(pkgStrs[mode], deps[mode]));
       } catch (err) {
         throw new Error(`Error writing ${basename(filePerMode[mode])}: ${err.message}`);
