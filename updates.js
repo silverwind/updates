@@ -2,6 +2,7 @@
 import ansiRegex from "ansi-regex";
 import fetchEnhanced from "fetch-enhanced";
 import minimist from "minimist";
+import nodeFetch from "node-fetch"; // seems twice as fast than undici for the 1500 deps case
 import rat from "registry-auth-token";
 import rc from "rc";
 import {parse, coerce, diff, gt, gte, lt, neq, valid, validRange} from "semver";
@@ -19,10 +20,10 @@ import memize from "memize";
 import picomatch from "picomatch";
 
 let fetch;
-if (globalThis.fetch && !versions.node) { // likely bun fetch
+if (globalThis.fetch && !versions?.node) { // avoid node experimental warning
   fetch = globalThis.fetch;
-} else { // node undici
-  fetch = fetchEnhanced(globalThis.fetch, {undici: true});
+} else {
+  fetch = fetchEnhanced(nodeFetch, {undici: false});
 }
 
 const MAX_SOCKETS = 96;
