@@ -32,7 +32,7 @@ All `pkg` options support glob matching via [picomatch](https://github.com/micro
 
 ## Config File
 
-Put a `updates.config.js` or `updates.config.mjs` in the root of your project, usually besides `package.json` to configure certain options of the module. CLI arguments have precedence over options in the config file, except for `include` and `exclude` options which are merged.
+The config file is used to configure certain options of the module. CLI arguments have precedence over options in the config file, except for `include` and `exclude` options which are merged.
 
 ```js
 export default {
@@ -43,6 +43,15 @@ export default {
   ],
 };
 ```
+
+### Config File Locations
+
+The config file can be placed in these locations, relative to `package.json` is:
+
+- `updates.config.js`
+- `updates.config.mjs`
+- `.config/updates.js`
+- `.config/updates.mjs`
 
 ### Config File Options
 

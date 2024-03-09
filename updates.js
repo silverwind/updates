@@ -776,12 +776,13 @@ async function main() {
 
     let config = {};
     try {
-      config = (await import(join(projectDir, "updates.config.js"))).default;
-    } catch {
-      try {
-        config = (await import(join(projectDir, "updates.config.mjs"))).default;
-      } catch {}
-    }
+      ({default: config} = await Promise.any([
+        "updates.config.js",
+        "updates.config.mjs",
+        ".config/updates.js",
+        ".config/updates.mjs",
+      ].map(str => import(join(projectDir, ...str.split("/"))))));
+    } catch {}
 
     let includeCli, excludeCli;
     if (args.include && args.include !== true) { // cli
