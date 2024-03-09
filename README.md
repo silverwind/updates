@@ -46,7 +46,7 @@ export default {
 
 ### Config File Locations
 
-The config file can be placed in these locations, relative to `package.json` is:
+The config file can be placed in these locations, relative to `package.json`:
 
 - `updates.config.js`
 - `updates.config.mjs`
