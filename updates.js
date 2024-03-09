@@ -17,6 +17,8 @@ import pAll from "p-all";
 import memize from "memize";
 import picomatch from "picomatch";
 
+// bun and deno have built-in proxy support via environment while undici has not,
+// so we fall back to node-fetch with fetch-enhanced wrapper to add it there.
 let fetch;
 if (globalThis.fetch && !versions?.node) {
   fetch = globalThis.fetch;
