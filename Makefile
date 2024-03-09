@@ -1,5 +1,5 @@
 SRC := updates.js
-DST := bin/updates.js
+DST := dist/updates.js
 
 node_modules: package-lock.json
 	npm install --no-save
