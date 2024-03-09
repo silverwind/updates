@@ -2,7 +2,6 @@
 import ansiRegex from "ansi-regex";
 import fetchEnhanced from "fetch-enhanced";
 import minimist from "minimist";
-import nodeFetch from "node-fetch"; // seems twice as fast than undici for the 1500 deps case
 import rat from "registry-auth-token";
 import rc from "rc";
 import {parse, coerce, diff, gt, gte, lt, neq, valid, validRange} from "semver";
@@ -20,9 +19,10 @@ import memize from "memize";
 import picomatch from "picomatch";
 
 let fetch;
-if (globalThis.fetch && !versions?.node) { // avoid node experimental warning
+if (globalThis.fetch && !versions?.node) {
   fetch = globalThis.fetch;
 } else {
+  const {default: nodeFetch} = await import("node-fetch");
   fetch = fetchEnhanced(nodeFetch, {undici: false});
 }
 
