@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 import ansiRegex from "ansi-regex";
-import fetchEnhanced from "fetch-enhanced";
 import minimist from "minimist";
 import rat from "registry-auth-token";
 import rc from "rc";
@@ -22,7 +21,10 @@ let fetch;
 if (globalThis.fetch && !versions?.node) {
   fetch = globalThis.fetch;
 } else {
-  const {default: nodeFetch} = await import("node-fetch");
+  const [{default: nodeFetch}, {default: fetchEnhanced}] = await Promise.all([
+    import("node-fetch"),
+    import("fetch-enhanced"),
+  ]);
   fetch = fetchEnhanced(nodeFetch, {undici: false});
 }
 
