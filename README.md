@@ -27,7 +27,7 @@ All `pkg` options support glob matching via [picomatch](https://github.com/micro
 
 ## Notes
 
-The module uses global `fetch` under the hood. In Node.js HTTP proxies from environment variables in global `fetch`, but it's still possible to enable `updates` to use them by installing the `undici` dependency into your project. Track https://github.com/nodejs/undici/issues/1650 for further updates.
+The module uses global `fetch` under the hood. In Node.js HTTP proxies from environment are [not supported](https://github.com/nodejs/undici/issues/1650), but it's still possible to enable `updates` to use them by installing the `undici` dependency into your project.
 
 ## Config File
 
