@@ -7,7 +7,7 @@
 
 # Usage
 
-`bun` and `node` are supported and tested. For bun, replace `npx` with `bunx` and `npm` with `bun`.
+`bun` and `node` are officially supported. `deno` should work as well. For bun, replace `npx` with `bunx` and `npm` with `bun`.
 
 ```bash
 # check for updates
