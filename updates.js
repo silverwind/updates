@@ -5,7 +5,7 @@ import rat from "registry-auth-token";
 import rc from "rc";
 import {parse, coerce, diff, gt, gte, lt, neq, valid, validRange} from "semver";
 import textTable from "text-table";
-import {cwd, stdout, argv, env, exit, versions} from "node:process";
+import {cwd, stdout, argv, env, exit} from "node:process";
 import hostedGitInfo from "hosted-git-info";
 import {join, dirname, basename, resolve} from "node:path";
 import {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync} from "node:fs";
@@ -16,19 +16,6 @@ import {getProperty} from "dot-prop";
 import pAll from "p-all";
 import memize from "memize";
 import picomatch from "picomatch";
-
-// bun and deno have built-in proxy support via environment while undici has not,
-// so we fall back to node-fetch with fetch-enhanced wrapper to add it there.
-let fetch;
-if (globalThis.fetch && !versions?.node) {
-  fetch = globalThis.fetch;
-} else {
-  const [{default: nodeFetch}, {default: fetchEnhanced}] = await Promise.all([
-    import("node-fetch"),
-    import("fetch-enhanced"),
-  ]);
-  fetch = fetchEnhanced(nodeFetch, {undici: false});
-}
 
 const MAX_SOCKETS = 96;
 const sep = "\0";
