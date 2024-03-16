@@ -25,6 +25,10 @@ If an option has a optional `pkg` argument but none is given, the option will be
 
 All `pkg` options support glob matching via [picomatch](https://github.com/micromatch/picomatch) or regex (on CLI, wrap the regex in slashes, e.g. `'/^foo/'`).
 
+## Notes
+
+The module uses global `fetch` under the hood. In Node.js HTTP proxies from environment variables in global `fetch`, but it's still possible to enable `updates` to use them by installing the `undici` dependency into your project. Track https://github.com/nodejs/undici/issues/1650 for further updates.
+
 ## Config File
 
 The config file is used to configure certain options of the module. CLI arguments have precedence over options in the config file, except for `include` and `exclude` options which are merged.
