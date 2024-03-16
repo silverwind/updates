@@ -24,6 +24,11 @@ test: node_modules build
 test-update: node_modules build
 	npx vitest -u
 
+.PHONY: test
+test-bun: node_modules build
+	bun test
+	rm -rf __snapshots__
+
 .PHONY: build
 build: $(DST)
 

@@ -7,19 +7,14 @@
 
 # Usage
 
+`bun` and `node` are supported and tested. For bun, replace `npx` with `bunx` and `npm` with `bun`.
+
 ```bash
 # check for updates
 npx updates
 
 # update package.json and install new dependencies
 npx updates -u && npm i
-```
-
-## Bun and Deno
-
-```bash
-bunx updates
-deno run -A npm:updates
 ```
 
 ## Options
