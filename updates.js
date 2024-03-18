@@ -537,7 +537,16 @@ async function getLastestCommit(user, repo) {
   return {hash, commit};
 }
 
-// TODO: refactor this mess
+// return list of tags sorted old to new
+// TODO: newDate support, semver matching
+async function getTags(user, repo) {
+  const res = await fetchGitHub(`${githubApiUrl}/repos/${user}/${repo}/git/refs/tags`);
+  if (!res || !res.ok) return;
+  const data = await res.json();
+  const tags = data.map(entry => entry.ref.replace(/^refs\/tags\//, ""));
+  return tags;
+}
+
 async function checkUrlDep([key, dep], {useGreatest} = {}) {
   const stripped = dep.old.replace(stripRe, "");
   const [_, user, repo, oldRef] = partsRe.exec(stripped) || [];
@@ -553,11 +562,8 @@ async function checkUrlDep([key, dep], {useGreatest} = {}) {
       const newRange = dep.old.replace(oldRef, newRef);
       return {key, newRange, user, repo, oldRef, newRef, newDate};
     }
-  } else { // TODO: newDate support
-    const res = await fetch(`${githubApiUrl}/repos/${user}/${repo}/git/refs/tags`);
-    if (!res || !res.ok) return;
-    const data = await res.json();
-    const tags = data.map(entry => entry.ref.replace(/^refs\/tags\//, ""));
+  } else {
+    const tags = await getTags(user, repo);
     const oldRefBare = oldRef.replace(/^v/, "");
     if (!valid(oldRefBare)) return;
 
