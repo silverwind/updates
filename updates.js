@@ -17,9 +17,6 @@ import pAll from "p-all";
 import memize from "memize";
 import picomatch from "picomatch";
 
-const MAX_SOCKETS = 96;
-const sep = "\0";
-
 // regexes for url dependencies. does only github and only hash or exact semver
 // https://regex101.com/r/gCZzfK/2
 const stripRe = /^.*?:\/\/(.*?@)?(github\.com[:/])/i;
@@ -30,10 +27,8 @@ const esc = str => str.replace(/[|\\{}()[\]^$+*?.-]/g, "\\$&");
 const gitInfo = memize(hostedGitInfo.fromUrl);
 const registryAuthToken = memize(rat);
 const normalizeUrl = memize(url => url.endsWith("/") ? url.substring(0, url.length - 1) : url);
-const patchSemvers = new Set(["patch"]);
-const minorSemvers = new Set(["patch", "minor"]);
-const majorSemvers = new Set(["patch", "minor", "major"]);
 const packageVersion = import.meta.VERSION || "0.0.0";
+const sep = "\0";
 
 const args = minimist(argv.slice(2), {
   boolean: [
@@ -97,7 +92,6 @@ const npmrc = rc("npm", {registry: "https://registry.npmjs.org"});
 const authTokenOpts = {npmrc, recursive: true};
 const githubApiUrl = args.githubapi ? normalizeUrl(args.githubapi) : "https://api.github.com";
 const pypiApiUrl = args.pypiapi ? normalizeUrl(args.pypiapi) : "https://pypi.org";
-const maxSockets = typeof args.sockets === "number" ? parseInt(args.sockets) : MAX_SOCKETS;
 
 function matchesAny(str, set) {
   for (const re of (set instanceof Set ? set : [])) {
@@ -517,7 +511,7 @@ function findNewVersion(data, {mode, range, useGreatest, useRel, usePre, semvers
 }
 
 function fetchGitHub(url) {
-  const opts = {maxSockets};
+  const opts = {};
   const token = env.UPDATES_GITHUB_API_TOKEN || env.GITHUB_API_TOKEN || env.GH_TOKEN || env.HOMEBREW_GITHUB_API_TOKEN;
   if (token) {
     opts.headers = {Authorization: `Bearer ${token}`};
@@ -716,6 +710,8 @@ async function main() {
     stream?._handle?.setBlocking?.(true);
   }
 
+  const maxSockets = 96;
+  const concurrency = typeof args.sockets === "number" ? parseInt(args.sockets) : maxSockets;
   const {help, version, file: filesArg, types, update} = args;
 
   if (help) {
@@ -736,7 +732,7 @@ async function main() {
     -E, --error-on-outdated            Exit with code 2 when updates are available and 0 when not
     -U, --error-on-unchanged           Exit with code 0 when updates are available and 2 when not
     -r, --registry <url>               Override npm registry URL
-    -S, --sockets <num>                Maximum number of parallel HTTP sockets opened. Default: ${MAX_SOCKETS}
+    -S, --sockets <num>                Maximum number of parallel HTTP sockets opened. Default: ${maxSockets}
     -j, --json                         Output a JSON object
     -n, --no-color                     Disable color output
     -v, --version                      Print the version
@@ -892,7 +888,7 @@ async function main() {
       } else {
         return fetchPypiInfo(name, type, agentOpts);
       }
-    }), {concurrency: maxSockets});
+    }), {concurrency});
 
     for (const [data, type, registry, name] of entries) {
       if (data?.error) throw new Error(data.error);
@@ -903,11 +899,11 @@ async function main() {
 
       let semvers;
       if (patch === true || matchesAny(data.name, patch)) {
-        semvers = patchSemvers;
+        semvers = new Set(["patch"]);
       } else if (minor === true || matchesAny(data.name, minor)) {
-        semvers = minorSemvers;
+        semvers = new Set(["patch", "minor"]);
       } else {
-        semvers = majorSemvers;
+        semvers = new Set(["patch", "minor", "major"]);
       }
 
       const key = `${type}${sep}${name}`;
@@ -937,11 +933,11 @@ async function main() {
     }
 
     if (Object.keys(maybeUrlDeps).length) {
-      const results = await Promise.all(Object.entries(maybeUrlDeps).map(([key, dep]) => {
+      const results = await pAll(Object.entries(maybeUrlDeps).map(([key, dep]) => () => {
         const name = key.split(sep)[1];
         const useGreatest = typeof greatest === "boolean" ? greatest : matchesAny(name, greatest);
         return checkUrlDep([key, dep], {useGreatest});
-      }));
+      }), {concurrency});
 
       for (const res of (results || []).filter(Boolean)) {
         const {key, newRange, user, repo, oldRef, newRef, newDate} = res;
