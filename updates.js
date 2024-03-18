@@ -516,6 +516,27 @@ function findNewVersion(data, {mode, range, useGreatest, useRel, usePre, semvers
   }
 }
 
+function fetchGitHub(url) {
+  const opts = {maxSockets};
+  const token = env.UPDATES_GITHUB_API_TOKEN || env.GITHUB_API_TOKEN || env.GH_TOKEN || env.HOMEBREW_GITHUB_API_TOKEN;
+  if (token) {
+    opts.headers = {Authorization: `Bearer ${token}`};
+  }
+  return fetch(url, opts);
+}
+
+async function getLastestCommit(user, repo) {
+  const url = `${githubApiUrl}/repos/${user}/${repo}/commits`;
+  if (args.verbose) console.error(`${magenta("fetch")} ${url}`);
+  const res = await fetchGitHub(url);
+  if (args.verbose && res?.ok) console.error(`${green("done")} ${url}`);
+
+  if (!res || !res.ok) return;
+  const data = await res.json();
+  const {sha: hash, commit} = data[0];
+  return {hash, commit};
+}
+
 // TODO: refactor this mess
 async function checkUrlDep([key, dep], {useGreatest} = {}) {
   const stripped = dep.old.replace(stripRe, "");
@@ -523,24 +544,11 @@ async function checkUrlDep([key, dep], {useGreatest} = {}) {
   if (!user || !repo || !oldRef) return;
 
   if (hashRe.test(oldRef)) {
-    const opts = {maxSockets};
-    const token = env.UPDATES_GITHUB_API_TOKEN || env.GITHUB_API_TOKEN || env.GH_TOKEN || env.HOMEBREW_GITHUB_API_TOKEN;
-    if (token) {
-      opts.headers = {Authorization: `Bearer ${token}`};
-    }
-
-    const url = `${githubApiUrl}/repos/${user}/${repo}/commits`;
-    if (args.verbose) console.error(`${magenta("fetch")} ${url}`);
-    const res = await fetch(url, opts);
-    if (args.verbose && res?.ok) console.error(`${green("done")} ${url}`);
-
-    if (!res || !res.ok) return;
-    const data = await res.json();
-    let {sha: newRef, commit} = data[0];
-    if (!newRef || !newRef.length) return;
+    const {hash, commit} = await getLastestCommit(user, repo);
+    if (!hash?.length) return;
 
     const newDate = commit?.committer?.date ?? commit?.author?.date;
-    newRef = newRef.substring(0, oldRef.length);
+    const newRef = hash.substring(0, oldRef.length);
     if (oldRef !== newRef) {
       const newRange = dep.old.replace(oldRef, newRef);
       return {key, newRange, user, repo, oldRef, newRef, newDate};
