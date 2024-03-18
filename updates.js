@@ -105,19 +105,11 @@ const registryUrl = memize((scope, npmrc) => {
   return url.endsWith("/") ? url : `${url}/`;
 });
 
-function findUpSync(filename, dir, stopDir) {
+function findUpSync(filename, dir) {
   const path = join(dir, filename);
-  try {
-    accessSync(path);
-    return path;
-  } catch {}
-
+  try { accessSync(path); return path; } catch {}
   const parent = dirname(dir);
-  if ((stopDir && path === stopDir) || parent === dir) {
-    return null;
-  } else {
-    return findUpSync(filename, parent, stopDir);
-  }
+  return parent === dir ? null : findUpSync(filename, parent);
 }
 
 function getAuthAndRegistry(name, registry) {
@@ -146,17 +138,21 @@ const getFetchOpts = memize((agentOpts, authType, authToken) => {
   };
 });
 
+async function doFetch(url, opts) {
+  if (args.verbose) console.error(`${magenta("fetch")} ${url}`);
+  const res = await fetch(url, opts);
+  if (args.verbose) console.error(`${res.ok ? green("done") : red("error")} ${url}`);
+  return res;
+}
+
 async function fetchNpmInfo(name, type, originalRegistry, agentOpts) {
   const [auth, registry] = getAuthAndRegistry(name, originalRegistry);
   const packageName = type === "resolutions" ? resolutionsBasePackage(name) : name;
   const urlName = packageName.replace(/\//g, "%2f");
   const url = `${registry}/${urlName}`;
 
-  if (args.verbose) console.error(`${magenta("fetch")} ${url}`);
-
-  const res = await fetch(url, getFetchOpts(agentOpts, auth?.type, auth?.token));
+  const res = await doFetch(url, getFetchOpts(agentOpts, auth?.type, auth?.token));
   if (res?.ok) {
-    if (args.verbose) console.error(`${green("done")} ${url}`);
     return [await res.json(), type, registry, name];
   } else {
     if (res?.status && res?.statusText) {
@@ -169,11 +165,9 @@ async function fetchNpmInfo(name, type, originalRegistry, agentOpts) {
 
 async function fetchPypiInfo(name, type, agentOpts) {
   const url = `${pypiApiUrl}/pypi/${name}/json`;
-  if (args.verbose) console.error(`${magenta("fetch")} ${url}`);
 
-  const res = await fetch(url, getFetchOpts(agentOpts));
+  const res = await doFetch(url, getFetchOpts(agentOpts));
   if (res?.ok) {
-    if (args.verbose) console.error(`${green("done")} ${url}`);
     return [await res.json(), type, null, name];
   } else {
     if (res?.status && res?.statusText) {
@@ -516,15 +510,12 @@ function fetchGitHub(url) {
   if (token) {
     opts.headers = {Authorization: `Bearer ${token}`};
   }
-  return fetch(url, opts);
+  return doFetch(url, opts);
 }
 
 async function getLastestCommit(user, repo) {
   const url = `${githubApiUrl}/repos/${user}/${repo}/commits`;
-  if (args.verbose) console.error(`${magenta("fetch")} ${url}`);
   const res = await fetchGitHub(url);
-  if (args.verbose && res?.ok) console.error(`${green("done")} ${url}`);
-
   if (!res || !res.ok) return;
   const data = await res.json();
   const {sha: hash, commit} = data[0];
