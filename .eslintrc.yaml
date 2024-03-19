@@ -1,5 +1,2 @@
 root: true
 extends: silverwind
-
-ignorePatterns:
- - /dist/
