@@ -87,9 +87,6 @@ const release = argSetToRegexes(parseMixedArg(args.release));
 const patch = argSetToRegexes(parseMixedArg(args.patch));
 const minor = argSetToRegexes(parseMixedArg(args.minor));
 const allowDowngrade = parseMixedArg(args["allow-downgrade"]);
-
-const npmrc = rc("npm", {registry: "https://registry.npmjs.org"});
-const authTokenOpts = {npmrc, recursive: true};
 const githubApiUrl = args.githubapi ? normalizeUrl(args.githubapi) : "https://api.github.com";
 const pypiApiUrl = args.pypiapi ? normalizeUrl(args.pypiapi) : "https://pypi.org";
 
@@ -112,7 +109,7 @@ function findUpSync(filename, dir) {
   return parent === dir ? null : findUpSync(filename, parent);
 }
 
-function getAuthAndRegistry(name, registry) {
+function getAuthAndRegistry(name, registry, authTokenOpts, npmrc) {
   if (!name.startsWith("@")) {
     return [registryAuthToken(registry, authTokenOpts), registry];
   } else {
@@ -145,9 +142,9 @@ async function doFetch(url, opts) {
   return res;
 }
 
-async function fetchNpmInfo(name, type, originalRegistry, agentOpts) {
-  const [auth, registry] = getAuthAndRegistry(name, originalRegistry);
-  const packageName = type === "resolutions" ? resolutionsBasePackage(name) : name;
+async function fetchNpmInfo(name, type, originalRegistry, agentOpts, authTokenOpts, npmrc) {
+  const [auth, registry] = getAuthAndRegistry(name, originalRegistry, authTokenOpts, npmrc);
+  const packageName = type === "resolutions" ? basename(name) : name;
   const urlName = packageName.replace(/\//g, "%2f");
   const url = `${registry}/${urlName}`;
 
@@ -199,24 +196,17 @@ function getInfoUrl({repository, homepage, info}, registry, name) {
     return `https://github.com/${name.replace(/^@/, "")}`;
   } else if (repository) {
     const url = typeof repository === "string" ? repository : repository.url;
-
     const info = gitInfo(url);
     const browse = info?.browse?.();
     if (browse) {
-      infoUrl = browse; // https://github.com/babel/babel
+      infoUrl = browse;
     }
-
     if (infoUrl && repository.directory && info.treepath) {
-      // https://github.com/babel/babel/tree/HEAD/packages/babel-cli
-      // HEAD seems to always go to the default branch on GitHub but ideally
-      // package.json should have a field for source branch
       infoUrl = `${infoUrl}/${info.treepath}/HEAD/${repository.directory}`;
     }
-
     if (!infoUrl && repository?.url && /^https?:/.test(repository.url)) {
       infoUrl = repository.url;
     }
-
     if (!infoUrl && url) {
       infoUrl = url;
     }
@@ -226,22 +216,14 @@ function getInfoUrl({repository, homepage, info}, registry, name) {
 }
 
 function finishWithMessage(message) {
-  if (args.json) {
-    console.info(JSON.stringify({message}));
-  } else {
-    console.info(message);
-  }
+  console.info(args.json ? JSON.stringify({message}) : message);
   doExit();
 }
 
 function doExit(err) {
   if (err) {
-    const error = err.stack || err.message;
-    if (args.json) {
-      console.info(JSON.stringify({error}));
-    } else {
-      console.info(red(error));
-    }
+    const error = err.stack ?? err.message;
+    console.info(args.json ? JSON.stringify({error}) : red(error));
   }
   process.exit(err ? 1 : 0);
 }
@@ -553,7 +535,7 @@ async function checkUrlDep([key, dep], {useGreatest} = {}) {
     if (!valid(oldRefBare)) return;
 
     if (!useGreatest) {
-      const lastTag = tags[tags.length - 1];
+      const lastTag = tags.at(-1);
       const lastTagBare = lastTag.replace(/^v/, "");
       if (!valid(lastTagBare)) return;
 
@@ -577,11 +559,6 @@ async function checkUrlDep([key, dep], {useGreatest} = {}) {
       }
     }
   }
-}
-
-function resolutionsBasePackage(name) {
-  const packages = name.match(/(@[^/]+\/)?([^/]+)/g) || [];
-  return packages[packages.length - 1];
 }
 
 function normalizeRange(range) {
@@ -688,8 +665,7 @@ function resolveFiles(filesArg) {
     }
   } else { // search for files
     for (const filename of ["package.json", "pyproject.toml"]) {
-      const pwd = cwd();
-      const file = findUpSync(filename, pwd);
+      const file = findUpSync(filename, cwd());
       if (file) resolvedFiles.add(resolve(file));
     }
   }
@@ -757,12 +733,7 @@ async function main() {
     const projectDir = dirname(resolve(file));
     const filename = basename(file);
 
-    let mode;
-    if (filename === "pyproject.toml") {
-      mode = "pypi";
-    } else {
-      mode = "npm";
-    }
+    const mode = filename === "pyproject.toml" ? "pypi" : "npm";
     filePerMode[mode] = file;
     if (!deps[mode]) deps[mode] = {};
 
@@ -787,16 +758,17 @@ async function main() {
     const exclude = matchersToRegexSet(excludeCli, config?.exclude);
 
     const agentOpts = {};
+    const npmrc = rc("npm", {registry: "https://registry.npmjs.org"});
+    const authTokenOpts = {npmrc, recursive: true};
     if (mode === "npm") {
       if (npmrc["strict-ssl"] === false) {
         agentOpts.rejectUnauthorized = false;
       }
-      if ("cafile" in npmrc) {
+      if (npmrc?.cafile) {
         agentOpts.ca = getCerts(extractCerts(readFileSync(npmrc.cafile, "utf8")));
       }
-      if ("ca" in npmrc) {
-        const cas = Array.isArray(npmrc.ca) ? npmrc.ca : [npmrc.ca];
-        agentOpts.ca = getCerts(cas.map(ca => extractCerts(ca)));
+      if (npmrc?.ca) {
+        agentOpts.ca = getCerts(Array.isArray(npmrc.ca) ? npmrc.ca : [npmrc.ca].map(ca => extractCerts(ca)));
       }
     }
 
@@ -875,7 +847,7 @@ async function main() {
     const entries = await pAll(Object.keys(deps[mode]).map(key => () => {
       const [type, name] = key.split(sep);
       if (mode === "npm") {
-        return fetchNpmInfo(name, type, registry, agentOpts);
+        return fetchNpmInfo(name, type, registry, agentOpts, authTokenOpts, npmrc);
       } else {
         return fetchPypiInfo(name, type, agentOpts);
       }
