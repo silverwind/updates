@@ -34,7 +34,7 @@ build: $(DST)
 
 $(DST): $(SRC) node_modules
 # workaround for https://github.com/evanw/esbuild/issues/1921
-	npx esbuild --log-level=warning --platform=node --target=node18 --format=esm --bundle --minify --legal-comments=none --define:import.meta.VERSION=\"$(shell jq .version package.json)\" --outfile=$(DST) $(SRC)
+	npx esbuild --log-level=warning --platform=node --target=node18 --format=esm --bundle --minify --legal-comments=none --banner:js="import {createRequire} from 'module';const require = createRequire(import.meta.url);" --define:import.meta.VERSION=\"$(shell jq .version package.json)\" --outfile=$(DST) $(SRC)
 	chmod +x $(DST)
 
 .PHONY: publish
