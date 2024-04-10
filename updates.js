@@ -514,6 +514,36 @@ async function getTags(user, repo) {
   return tags;
 }
 
+function selectTag(tags, oldRef, useGreatest) {
+  const oldRefBare = oldRef.replace(/^v/, "");
+  if (!valid(oldRefBare)) return;
+
+  if (!useGreatest) {
+    const lastTag = tags.at(-1);
+    const lastTagBare = lastTag.replace(/^v/, "");
+    if (!valid(lastTagBare)) return;
+
+    if (neq(oldRefBare, lastTagBare)) {
+      return lastTag;
+    }
+  } else {
+    let greatestTag = oldRef;
+    let greatestTagBare = oldRef.replace(/^v/, "");
+
+    for (const tag of tags) {
+      const tagBare = tag.replace(/^v/, "");
+      if (!valid(tagBare)) continue;
+      if (!greatestTag || gt(tagBare, greatestTagBare)) {
+        greatestTag = tag;
+        greatestTagBare = tagBare;
+      }
+    }
+    if (neq(oldRefBare, greatestTagBare)) {
+      return greatestTag;
+    }
+  }
+}
+
 async function checkUrlDep([key, dep], {useGreatest} = {}) {
   const stripped = dep.old.replace(stripRe, "");
   const [_, user, repo, oldRef] = partsRe.exec(stripped) || [];
@@ -531,32 +561,9 @@ async function checkUrlDep([key, dep], {useGreatest} = {}) {
     }
   } else {
     const tags = await getTags(user, repo);
-    const oldRefBare = oldRef.replace(/^v/, "");
-    if (!valid(oldRefBare)) return;
-
-    if (!useGreatest) {
-      const lastTag = tags.at(-1);
-      const lastTagBare = lastTag.replace(/^v/, "");
-      if (!valid(lastTagBare)) return;
-
-      if (neq(oldRefBare, lastTagBare)) {
-        return {key, newRange: lastTag, user, repo, oldRef, newRef: lastTag};
-      }
-    } else {
-      let greatestTag = oldRef;
-      let greatestTagBare = oldRef.replace(/^v/, "");
-
-      for (const tag of tags) {
-        const tagBare = tag.replace(/^v/, "");
-        if (!valid(tagBare)) continue;
-        if (!greatestTag || gt(tagBare, greatestTagBare)) {
-          greatestTag = tag;
-          greatestTagBare = tagBare;
-        }
-      }
-      if (neq(oldRefBare, greatestTagBare)) {
-        return {key, newRange: greatestTag, user, repo, oldRef, newRef: greatestTag};
-      }
+    const newTag = selectTag(tags, oldRef, useGreatest);
+    if (newTag) {
+      return {key, newRange: newTag, user, repo, oldRef, newRef: newTag};
     }
   }
 }
