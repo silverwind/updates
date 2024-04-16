@@ -89,6 +89,7 @@ const minor = argSetToRegexes(parseMixedArg(args.minor));
 const allowDowngrade = parseMixedArg(args["allow-downgrade"]);
 const githubApiUrl = args.githubapi ? normalizeUrl(args.githubapi) : "https://api.github.com";
 const pypiApiUrl = args.pypiapi ? normalizeUrl(args.pypiapi) : "https://pypi.org";
+const stripV = str => str.replace(/^v/, "");
 
 function matchesAny(str, set) {
   for (const re of (set instanceof Set ? set : [])) {
@@ -515,12 +516,12 @@ async function getTags(user, repo) {
 }
 
 function selectTag(tags, oldRef, useGreatest) {
-  const oldRefBare = oldRef.replace(/^v/, "");
+  const oldRefBare = stripV(oldRef);
   if (!valid(oldRefBare)) return;
 
   if (!useGreatest) {
     const lastTag = tags.at(-1);
-    const lastTagBare = lastTag.replace(/^v/, "");
+    const lastTagBare = stripV(lastTag);
     if (!valid(lastTagBare)) return;
 
     if (neq(oldRefBare, lastTagBare)) {
@@ -528,10 +529,10 @@ function selectTag(tags, oldRef, useGreatest) {
     }
   } else {
     let greatestTag = oldRef;
-    let greatestTagBare = oldRef.replace(/^v/, "");
+    let greatestTagBare = stripV(oldRef);
 
     for (const tag of tags) {
-      const tagBare = tag.replace(/^v/, "");
+      const tagBare = stripV(tag);
       if (!valid(tagBare)) continue;
       if (!greatestTag || gt(tagBare, greatestTagBare)) {
         greatestTag = tag;
