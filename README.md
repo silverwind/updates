@@ -57,10 +57,10 @@ export default {
 
 The config file can be placed in these locations, relative to `package.json`:
 
-- `updates.config.js`
-- `updates.config.mjs`
-- `.config/updates.js`
-- `.config/updates.mjs`
+- `updates.config.{js,ts,mjs,mts}`
+- `.config/updates.{js,ts,mjs,mts}`
+
+For typescript, your runtime needs to support it either natively or via a node loader.
 
 ### Config File Options
 

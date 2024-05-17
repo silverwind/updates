@@ -749,9 +749,13 @@ async function main() {
     try {
       ({default: config} = await Promise.any([
         "updates.config.js",
+        "updates.config.ts",
         "updates.config.mjs",
+        "updates.config.mts",
         ".config/updates.js",
+        ".config/updates.ts",
         ".config/updates.mjs",
+        ".config/updates.mts",
       ].map(str => import(join(projectDir, ...str.split("/"))))));
     } catch {}
 
