@@ -6,6 +6,9 @@ export default defineConfig(lib({
   noDts: true,
   build: {
     target: "node18",
-    minify: true,
-  }
+    minify: false,
+  },
+  resolve: {
+    mainFields: ["module"],
+  },
 }));
