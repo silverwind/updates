@@ -27,6 +27,51 @@ type Npmrc = {
   [other: string]: any,
 }
 
+type Dep = {
+  "old": string,
+  "new": string,
+  "oldPrint"?: string,
+  "newPrint"?: string,
+  "oldOriginal"?: string,
+  "info"?: string,
+  "age"?: string,
+}
+
+type Deps = {
+  [name: string]: Dep,
+}
+
+type DepsByMode = {
+  [mode: string]: Deps,
+}
+
+type Output = {
+  results: {
+    [mode: string]: {
+      [type: string]: Deps,
+    }
+  }
+}
+
+type NpmData = {[other: string]: any};
+
+type FindVersionOpts = {
+  range: string,
+  semvers: Set<string>,
+  usePre: boolean,
+  useRel: boolean,
+  useGreatest: boolean,
+}
+
+type FindNewVersionOpts = {
+  mode: string,
+  range: string,
+  usePre: boolean,
+  useRel: boolean,
+  useGreatest: boolean,
+  semvers: Set<string>,
+}
+
 // regexes for url dependencies. does only github and only hash or exact semver
 // https://regex101.com/r/gCZzfK/2
 const stripRe = /^.*?:\/\/(.*?@)?(github\.com[:/])/i;
@@ -239,32 +284,6 @@ function doExit(err?: Error | void) {
   process.exit(err ? 1 : 0);
 }
 
-type Dep = {
-  "old": string,
-  "new": string,
-  "oldPrint"?: string,
-  "newPrint"?: string,
-  "oldOriginal"?: string,
-  "info"?: string,
-  "age"?: string,
-}
-
-type Deps = {
-  [name: string]: Dep,
-}
-
-type DepsByMode = {
-  [mode: string]: Deps,
-}
-
-type Output = {
-  results: {
-    [mode: string]: {
-      [type: string]: Deps,
-    }
-  }
-}
-
 function outputDeps(deps: DepsByMode = {}) {
   for (const mode of Object.keys(deps)) {
     for (const value of Object.values(deps[mode])) {
@@ -415,16 +434,6 @@ function rangeToVersion(range: string) {
   }
 }
 
-type NpmData = {[other: string]: any};
-
-type FindVersionOpts = {
-  range: string,
-  semvers: Set<string>,
-  usePre: boolean,
-  useRel: boolean,
-  useGreatest: boolean,
-}
-
 function findVersion(data: NpmData, versions: string[], {range, semvers, usePre, useRel, useGreatest}: FindVersionOpts) {
   let tempVersion = rangeToVersion(range);
   let tempDate = 0;
@@ -461,15 +470,6 @@ function findVersion(data: NpmData, versions: string[], {range, semvers, usePre,
   }
 
   return tempVersion || null;
-}
-
-type FindNewVersionOpts = {
-  mode: string,
-  range: string,
-  usePre: boolean,
-  useRel: boolean,
-  useGreatest: boolean,
-  semvers: Set<string>,
 }
 
 function findNewVersion(data: NpmData, {mode, range, useGreatest, useRel, usePre, semvers}: FindNewVersionOpts) {
