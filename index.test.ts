@@ -6,6 +6,8 @@ import {writeFile, readFile, rm} from "node:fs/promises";
 import {fileURLToPath} from "node:url";
 import {tmpdir} from "node:os";
 import {env} from "node:process";
+import type {Server} from "node:http";
+import type {Service, Protocol} from "restana";
 
 const testFile = fileURLToPath(new URL("fixtures/npm-test/package.json", import.meta.url));
 const emptyFile = fileURLToPath(new URL("fixtures/npm-empty/package.json", import.meta.url));
@@ -14,7 +16,7 @@ const dualFile = fileURLToPath(new URL("fixtures/dual", import.meta.url));
 
 const testPkg = JSON.parse(readFileSync(testFile, "utf8"));
 const testDir = mkdtempSync(join(tmpdir(), "updates-"));
-const script = fileURLToPath(new URL("updates.js", import.meta.url));
+const script = fileURLToPath(new URL("dist/index.js", import.meta.url));
 
 const dependencyTypes = [
   "dependencies",
@@ -24,7 +26,7 @@ const dependencyTypes = [
   "resolutions",
 ];
 
-const testPackages = new Set();
+const testPackages: Set<string> = new Set();
 for (const dependencyType of dependencyTypes) {
   for (const name of Object.keys(testPkg[dependencyType] || [])) {
     testPackages.add(name);
@@ -33,22 +35,29 @@ for (const dependencyType of dependencyTypes) {
 
 const pyTestPackages = new Set(["djlint", "PyYAML"]);
 
-function makeUrl(server) {
-  const {port} = server.address();
+function makeUrl(server: Server) {
+  const {port}: any = server.address();
   return Object.assign(new URL("http://localhost"), {port}).toString();
 }
 
-function defaultRoute(req, res) {
+function defaultRoute(req: any, res: any) {
   console.error(`default handler hit for ${req.url}`);
   res.send(404);
 }
 
-function resolutionsBasePackage(name) {
+function resolutionsBasePackage(name: string) {
   const packages = name.match(/(@[^/]+\/)?([^/]+)/g) || [];
   return packages[packages.length - 1];
 }
 
-let npmServer, githubServer, githubUrl, pypiServer, pypiUrl, npmUrl;
+let npmServer: Service<Protocol.HTTP> | Server;
+let githubServer: Service<Protocol.HTTP> | Server;
+let pypiServer: Service<Protocol.HTTP> | Server;
+
+let githubUrl: string;
+let pypiUrl: string;
+let npmUrl: string;
+
 beforeAll(async () => {
   let commits, tags;
 
@@ -98,7 +107,7 @@ afterAll(async () => {
   ]);
 });
 
-function makeTest(args) {
+function makeTest(args: string) {
   return async () => {
     const argsArr = [
       ...args.split(/\s+/), "-c",

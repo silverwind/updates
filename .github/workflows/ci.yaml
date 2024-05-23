@@ -7,17 +7,11 @@ jobs:
       fail-fast: false
       matrix:
         node: [18, 20, 22]
-        bun: [latest]
-        os: [ubuntu-latest, macos-latest]
-
-    runs-on: ubuntu-latest
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{matrix.os}}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: ${{matrix.node}}
-      - uses: oven-sh/setup-bun@v1
-        with:
-          bun-version: ${{matrix.bun}}
       - run: make lint test
-      - run: bun test

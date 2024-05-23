@@ -16,6 +16,16 @@ import {getProperty} from "dot-prop";
 import pAll from "p-all";
 import memize from "memize";
 import picomatch from "picomatch";
+import {version} from "./package.json" with {type: "json"};
+import type {AuthOptions} from "registry-auth-token";
+import type {AgentOptions} from "node:https";
+
+type Npmrc = {
+  registry?: string,
+  ca?: string,
+  cafile?: string,
+  [other: string]: any,
+}
 
 // regexes for url dependencies. does only github and only hash or exact semver
 // https://regex101.com/r/gCZzfK/2
@@ -23,11 +33,11 @@ const stripRe = /^.*?:\/\/(.*?@)?(github\.com[:/])/i;
 const partsRe = /^([^/]+)\/([^/#]+)?.*?\/([0-9a-f]+|v?[0-9]+\.[0-9]+\.[0-9]+)$/i;
 const hashRe = /^[0-9a-f]{7,}$/i;
 const versionRe = /[0-9]+(\.[0-9]+)?(\.[0-9]+)?/g;
-const esc = str => str.replace(/[|\\{}()[\]^$+*?.-]/g, "\\$&");
+const esc = (str: string) => str.replace(/[|\\{}()[\]^$+*?.-]/g, "\\$&");
 const gitInfo = memize(hostedGitInfo.fromUrl);
 const registryAuthToken = memize(rat);
 const normalizeUrl = memize(url => url.endsWith("/") ? url.substring(0, url.length - 1) : url);
-const packageVersion = import.meta.VERSION || "0.0.0";
+const packageVersion = version || "0.0.0";
 const sep = "\0";
 
 const args = minimist(argv.slice(2), {
@@ -89,32 +99,32 @@ const minor = argSetToRegexes(parseMixedArg(args.minor));
 const allowDowngrade = parseMixedArg(args["allow-downgrade"]);
 const githubApiUrl = args.githubapi ? normalizeUrl(args.githubapi) : "https://api.github.com";
 const pypiApiUrl = args.pypiapi ? normalizeUrl(args.pypiapi) : "https://pypi.org";
-const stripV = str => str.replace(/^v/, "");
+const stripV = (str: string) => str.replace(/^v/, "");
 
-function matchesAny(str, set) {
+function matchesAny(str: string, set: boolean | Set<RegExp>) {
   for (const re of (set instanceof Set ? set : [])) {
     if (re.test(str)) return true;
   }
   return false;
 }
 
-const registryUrl = memize((scope, npmrc) => {
+const registryUrl = memize((scope: string, npmrc: Npmrc) => {
   const url = npmrc[`${scope}:registry`] || npmrc.registry;
   return url.endsWith("/") ? url : `${url}/`;
 });
 
-function findUpSync(filename, dir) {
+function findUpSync(filename: string, dir: string): string | null {
   const path = join(dir, filename);
   try { accessSync(path); return path; } catch {}
   const parent = dirname(dir);
   return parent === dir ? null : findUpSync(filename, parent);
 }
 
-function getAuthAndRegistry(name, registry, authTokenOpts, npmrc) {
+function getAuthAndRegistry(name: string, registry: string, authTokenOpts: AuthOptions, npmrc: Npmrc) {
   if (!name.startsWith("@")) {
     return [registryAuthToken(registry, authTokenOpts), registry];
   } else {
-    const scope = (/@[a-z0-9][\w-.]+/.exec(name) || [])[0];
+    const scope = (/@[a-z0-9][\w-.]+/.exec(name) || [""])[0];
     const url = normalizeUrl(registryUrl(scope, npmrc));
     if (url !== registry) {
       try {
@@ -126,7 +136,7 @@ function getAuthAndRegistry(name, registry, authTokenOpts, npmrc) {
   }
 }
 
-const getFetchOpts = memize((agentOpts, authType, authToken) => {
+const getFetchOpts = memize((agentOpts: AgentOptions, authType?: string, authToken?: string) => {
   return {
     ...(Object.keys(agentOpts).length && {agentOpts}),
     headers: {
@@ -136,14 +146,14 @@ const getFetchOpts = memize((agentOpts, authType, authToken) => {
   };
 });
 
-async function doFetch(url, opts) {
+async function doFetch(url: string, opts: RequestInit) {
   if (args.verbose) console.error(`${magenta("fetch")} ${url}`);
   const res = await fetch(url, opts);
   if (args.verbose) console.error(`${res.ok ? green("done") : red("error")} ${url}`);
   return res;
 }
 
-async function fetchNpmInfo(name, type, originalRegistry, agentOpts, authTokenOpts, npmrc) {
+async function fetchNpmInfo(name: string, type: string, originalRegistry: string, agentOpts: AgentOptions, authTokenOpts: AuthOptions, npmrc: Npmrc) {
   const [auth, registry] = getAuthAndRegistry(name, originalRegistry, authTokenOpts, npmrc);
   const packageName = type === "resolutions" ? basename(name) : name;
   const urlName = packageName.replace(/\//g, "%2f");
@@ -161,7 +171,7 @@ async function fetchNpmInfo(name, type, originalRegistry, agentOpts, authTokenOp
   }
 }
 
-async function fetchPypiInfo(name, type, agentOpts) {
+async function fetchPypiInfo(name: string, type: string, agentOpts: AgentOptions) {
   const url = `${pypiApiUrl}/pypi/${name}/json`;
 
   const res = await doFetch(url, getFetchOpts(agentOpts));
@@ -176,7 +186,7 @@ async function fetchPypiInfo(name, type, agentOpts) {
   }
 }
 
-function getInfoUrl({repository, homepage, info}, registry, name) {
+function getInfoUrl({repository, homepage, info}: {repository: string | {[other: string]: any}, homepage: string, info: {[other: string]: any}}, registry: string, name: string) {
   if (info) { // pypi
     repository =
       info.project_urls.repository ||
@@ -202,10 +212,10 @@ function getInfoUrl({repository, homepage, info}, registry, name) {
     if (browse) {
       infoUrl = browse;
     }
-    if (infoUrl && repository.directory && info.treepath) {
+    if (infoUrl && typeof repository !== "string" && repository.directory && info?.treepath) {
       infoUrl = `${infoUrl}/${info.treepath}/HEAD/${repository.directory}`;
     }
-    if (!infoUrl && repository?.url && /^https?:/.test(repository.url)) {
+    if (!infoUrl && typeof repository !== "string" && repository?.url && /^https?:/.test(repository.url)) {
       infoUrl = repository.url;
     }
     if (!infoUrl && url) {
@@ -216,12 +226,12 @@ function getInfoUrl({repository, homepage, info}, registry, name) {
   return infoUrl || homepage || "";
 }
 
-function finishWithMessage(message) {
+function finishWithMessage(message: string) {
   console.info(args.json ? JSON.stringify({message}) : message);
   doExit();
 }
 
-function doExit(err) {
+function doExit(err?: Error | void) {
   if (err) {
     const error = err.stack ?? err.message;
     console.info(args.json ? JSON.stringify({error}) : red(error));
@@ -229,18 +239,44 @@ function doExit(err) {
   process.exit(err ? 1 : 0);
 }
 
-function outputDeps(deps = {}) {
+type Dep = {
+  "old": string,
+  "new": string,
+  "oldPrint"?: string,
+  "newPrint"?: string,
+  "oldOriginal"?: string,
+  "info"?: string,
+  "age"?: string,
+}
+
+type Deps = {
+  [name: string]: Dep,
+}
+
+type DepsByMode = {
+  [mode: string]: Deps,
+}
+
+type Output = {
+  results: {
+    [mode: string]: {
+      [type: string]: Deps,
+    }
+  }
+}
+
+function outputDeps(deps: DepsByMode = {}) {
   for (const mode of Object.keys(deps)) {
     for (const value of Object.values(deps[mode])) {
-      if ("oldPrint" in value) {
+      if (typeof value.oldPrint === "string") {
         value.old = value.oldPrint;
         delete value.oldPrint;
       }
-      if ("newPrint" in value) {
+      if (typeof value.newPrint === "string") {
         value.new = value.newPrint;
         delete value.newPrint;
       }
-      if ("oldOriginal" in value) {
+      if (typeof value.oldOriginal === "string") {
         value.old = value.oldOriginal;
         delete value.oldOriginal;
       }
@@ -253,7 +289,7 @@ function outputDeps(deps = {}) {
   }
 
   if (args.json) {
-    const output = {results: {}};
+    const output: Output = {results: {}};
     for (const mode of Object.keys(deps)) {
       for (const [key, value] of Object.entries(deps[mode])) {
         const [type, name] = key.split(sep);
@@ -277,14 +313,14 @@ function outputDeps(deps = {}) {
 }
 
 // preserve file metadata on windows
-async function write(file, content) {
+async function write(file: string, content: string) {
   const {platform} = await import("node:os");
   const isWindows = platform() === "win32";
   if (isWindows) truncateSync(file, 0);
   writeFileSync(file, content, isWindows ? {flag: "r+"} : undefined);
 }
 
-function highlightDiff(a, b, colorFn) {
+function highlightDiff(a: string, b: string, colorFn: (str: string) => string) {
   if (a === b) return a;
   const aParts = a.split(/\./);
   const bParts = b.split(/\./);
@@ -308,7 +344,7 @@ function highlightDiff(a, b, colorFn) {
   return res;
 }
 
-function formatDeps(deps) {
+function formatDeps(deps: DepsByMode) {
   const arr = [["NAME", "OLD", "NEW", "AGE", "INFO"]];
   const seen = new Set();
 
@@ -323,7 +359,7 @@ function formatDeps(deps) {
         highlightDiff(data.old, data.new, red),
         highlightDiff(data.new, data.old, green),
         data.age || "",
-        data.info,
+        data.info || "",
       ]);
     }
   }
@@ -334,7 +370,7 @@ function formatDeps(deps) {
   });
 }
 
-function updatePackageJson(pkgStr, deps) {
+function updatePackageJson(pkgStr: string, deps: Deps) {
   let newPkgStr = pkgStr;
   for (const key of Object.keys(deps)) {
     const name = key.split(sep)[1];
@@ -345,7 +381,7 @@ function updatePackageJson(pkgStr, deps) {
   return newPkgStr;
 }
 
-function updateProjectToml(pkgStr, deps) {
+function updateProjectToml(pkgStr: string, deps: Deps) {
   let newPkgStr = pkgStr;
   for (const key of Object.keys(deps)) {
     const name = key.split(sep)[1];
@@ -356,34 +392,42 @@ function updateProjectToml(pkgStr, deps) {
   return newPkgStr;
 }
 
-function updateRange(range, version) {
+function updateRange(range: string, version: string) {
   return range.replace(/[0-9]+\.[0-9]+\.[0-9]+(-.+)?/g, version);
 }
 
-function isVersionPrerelease(version) {
+function isVersionPrerelease(version: string) {
   const parsed = parse(version);
   if (!parsed) return false;
   return Boolean(parsed.prerelease.length);
 }
 
-function isRangePrerelease(range) {
+function isRangePrerelease(range: string) {
   // can not use coerce here because it ignores prerelease tags
   return /[0-9]+\.[0-9]+\.[0-9]+-.+/.test(range);
 }
 
-function rangeToVersion(range) {
+function rangeToVersion(range: string) {
   try {
-    return coerce(range).version;
+    return coerce(range)?.version ?? null;
   } catch {
     return null;
   }
 }
 
-function findVersion(data, versions, {range, semvers, usePre, useRel, useGreatest} = {}) {
+type NpmData = {[other: string]: any};
+
+type FindVersionOpts = {
+  range: string,
+  semvers: Set<string>,
+  usePre: boolean,
+  useRel: boolean,
+  useGreatest: boolean,
+}
+
+function findVersion(data: NpmData, versions: string[], {range, semvers, usePre, useRel, useGreatest}: FindVersionOpts) {
   let tempVersion = rangeToVersion(range);
   let tempDate = 0;
-
-  semvers = new Set(semvers);
   usePre = isRangePrerelease(range) || usePre;
 
   if (usePre) {
@@ -395,14 +439,16 @@ function findVersion(data, versions, {range, semvers, usePre, useRel, useGreates
 
   for (const version of versions) {
     const parsed = parse(version);
-    if (parsed.prerelease.length && (!usePre || useRel)) continue;
+    if (!parsed || !tempVersion || parsed.prerelease.length && (!usePre || useRel)) continue;
 
     const d = diff(tempVersion, parsed.version);
     if (!d || !semvers.has(d)) continue;
 
     // some registries like github don't have data.time available, fall back to greatest on them
     if (useGreatest || !("time" in data)) {
-      if (gte(coerce(parsed.version).version, tempVersion)) {
+      const coerced = coerce(parsed?.version)?.version;
+      if (!coerced) continue;
+      if (gte(coerced, tempVersion)) {
         tempVersion = parsed.version;
       }
     } else {
@@ -417,12 +463,22 @@ function findVersion(data, versions, {range, semvers, usePre, useRel, useGreates
   return tempVersion || null;
 }
 
-function findNewVersion(data, {mode, range, useGreatest, useRel, usePre, semvers} = {}) {
+type FindNewVersionOpts = {
+  mode: string,
+  range: string,
+  usePre: boolean,
+  useRel: boolean,
+  useGreatest: boolean,
+  semvers: Set<string>,
+}
+
+function findNewVersion(data: NpmData, {mode, range, useGreatest, useRel, usePre, semvers}: FindNewVersionOpts) {
   if (range === "*") return null; // ignore wildcard
   if (range.includes("||")) return null; // ignore or-chains
   const versions = Object.keys(mode === "pypi" ? data.releases : data.versions)
     .filter(version => valid(version));
   const version = findVersion(data, versions, {range, semvers, usePre, useRel, useGreatest});
+  if (!version) return null;
 
   if (useGreatest) {
     return version;
@@ -431,12 +487,16 @@ function findNewVersion(data, {mode, range, useGreatest, useRel, usePre, semvers
     let originalLatestTag;
     if (mode === "pypi") {
       originalLatestTag = data.info.version; // may not be a 3-part semver
-      latestTag = coerce(data.info.version).version; // add .0 to 6.0 so semver eats it
+      const coerced = coerce(data.info.version);
+      if (!coerced) throw new Error(`Unable to coerce ${data.info.version}`);
+      latestTag = coerced.version; // add .0 to 6.0 so semver eats it
     } else {
       latestTag = data["dist-tags"].latest;
     }
 
-    const oldVersion = coerce(range).version;
+    const coerced = coerce(range);
+    if (!coerced) throw new Error(`Unable to coerce ${range}`);
+    const oldVersion = coerced.version;
     const oldIsPre = isRangePrerelease(range);
     const newIsPre = isVersionPrerelease(version);
     const latestIsPre = isVersionPrerelease(latestTag);
@@ -487,8 +547,8 @@ function findNewVersion(data, {mode, range, useGreatest, useRel, usePre, semvers
   }
 }
 
-function fetchGitHub(url) {
-  const opts = {};
+function fetchGitHub(url: string) {
+  const opts: RequestInit = {};
   const token = env.UPDATES_GITHUB_API_TOKEN || env.GITHUB_API_TOKEN || env.GH_TOKEN || env.HOMEBREW_GITHUB_API_TOKEN;
   if (token) {
     opts.headers = {Authorization: `Bearer ${token}`};
@@ -496,10 +556,10 @@ function fetchGitHub(url) {
   return doFetch(url, opts);
 }
 
-async function getLastestCommit(user, repo) {
+async function getLastestCommit(user: string, repo: string): Promise<{hash: string, commit: {[other: string]: any}}> {
   const url = `${githubApiUrl}/repos/${user}/${repo}/commits`;
   const res = await fetchGitHub(url);
-  if (!res || !res.ok) return;
+  if (!res || !res.ok) return {hash: "", commit: {}};
   const data = await res.json();
   const {sha: hash, commit} = data[0];
   return {hash, commit};
@@ -507,20 +567,21 @@ async function getLastestCommit(user, repo) {
 
 // return list of tags sorted old to new
 // TODO: newDate support, semver matching
-async function getTags(user, repo) {
+async function getTags(user: string, repo: string): Promise<string[]> {
   const res = await fetchGitHub(`${githubApiUrl}/repos/${user}/${repo}/git/refs/tags`);
-  if (!res || !res.ok) return;
+  if (!res || !res.ok) return [];
   const data = await res.json();
-  const tags = data.map(entry => entry.ref.replace(/^refs\/tags\//, ""));
+  const tags = data.map((entry: {ref: string}) => entry.ref.replace(/^refs\/tags\//, ""));
   return tags;
 }
 
-function selectTag(tags, oldRef, useGreatest) {
+function selectTag(tags: string[], oldRef: string, useGreatest: boolean) {
   const oldRefBare = stripV(oldRef);
   if (!valid(oldRefBare)) return;
 
   if (!useGreatest) {
     const lastTag = tags.at(-1);
+    if (!lastTag) return;
     const lastTagBare = stripV(lastTag);
     if (!valid(lastTagBare)) return;
 
@@ -545,14 +606,14 @@ function selectTag(tags, oldRef, useGreatest) {
   }
 }
 
-async function checkUrlDep([key, dep], {useGreatest} = {}) {
+async function checkUrlDep(key: string, dep: Dep, useGreatest: boolean) {
   const stripped = dep.old.replace(stripRe, "");
   const [_, user, repo, oldRef] = partsRe.exec(stripped) || [];
   if (!user || !repo || !oldRef) return;
 
   if (hashRe.test(oldRef)) {
     const {hash, commit} = await getLastestCommit(user, repo);
-    if (!hash?.length) return;
+    if (!hash) return;
 
     const newDate = commit?.committer?.date ?? commit?.author?.date;
     const newRef = hash.substring(0, oldRef.length);
@@ -569,13 +630,16 @@ async function checkUrlDep([key, dep], {useGreatest} = {}) {
   }
 }
 
-function normalizeRange(range) {
+function normalizeRange(range: string) {
   const versionMatches = range.match(versionRe);
   if (versionMatches?.length !== 1) return range;
-  return range.replace(versionRe, coerce(versionMatches[0]));
+  const coerced = coerce(versionMatches[0]);
+  if (!coerced) return range;
+  // @ts-ignore
+  return range.replace(versionRe, coerced);
 }
 
-function parseMixedArg(arg) {
+function parseMixedArg(arg: any) {
   if (arg === undefined) {
     return false;
   } else if (arg === "") {
@@ -589,17 +653,17 @@ function parseMixedArg(arg) {
   }
 }
 
-function extractCerts(str) {
-  return Array.from(str.matchAll(/(----BEGIN CERT[^]+?IFICATE----)/g), m => m[0]);
+function extractCerts(str: string): string[] {
+  return Array.from(str.matchAll(/(----BEGIN CERT[^]+?IFICATE----)/g), (m: string[]) => m[0]);
 }
 
-async function getCerts(extra = []) {
+async function getCerts(extra: string[] = []) {
   return [...(await import("node:tls")).rootCertificates, ...extra];
 }
 
 // convert arg from cli or config to regex
-function argToRegex(arg, cli) {
-  if (cli) {
+function argToRegex(arg: string | RegExp, cli: boolean) {
+  if (cli && typeof arg === "string") {
     return /\/.+\//.test(arg) ? new RegExp(arg.slice(1, -1)) : picomatch.makeRe(arg);
   } else {
     return arg instanceof RegExp ? arg : picomatch.makeRe(arg);
@@ -607,7 +671,7 @@ function argToRegex(arg, cli) {
 }
 
 // parse cli arg into regex set
-function argSetToRegexes(arg) {
+function argSetToRegexes(arg: any) {
   if (arg instanceof Set) {
     const ret = new Set();
     for (const entry of arg) {
@@ -619,7 +683,7 @@ function argSetToRegexes(arg) {
 }
 
 // parse include/exclude into a Set of regexes
-function matchersToRegexSet(cliArgs, configArgs) {
+function matchersToRegexSet(cliArgs: string[], configArgs: string[]): Set<RegExp> {
   const ret = new Set();
   for (const arg of cliArgs || []) {
     ret.add(argToRegex(arg, true));
@@ -627,10 +691,10 @@ function matchersToRegexSet(cliArgs, configArgs) {
   for (const arg of configArgs || []) {
     ret.add(argToRegex(arg, false));
   }
-  return ret;
+  return ret as Set<RegExp>;
 }
 
-function canInclude(name, mode, {include, exclude}) {
+function canInclude(name: string, mode: string, include: Set<RegExp>, exclude: Set<RegExp>) {
   if (mode === "pypi" && name === "python") return false;
   if (!include.size && !exclude.size) return true;
   for (const re of exclude) {
@@ -642,7 +706,7 @@ function canInclude(name, mode, {include, exclude}) {
   return include.size ? false : true;
 }
 
-function resolveFiles(filesArg) {
+function resolveFiles(filesArg: Set<string>): Set<string> {
   const resolvedFiles = new Set();
 
   if (filesArg) { // check passed files
@@ -651,7 +715,7 @@ function resolveFiles(filesArg) {
       try {
         stat = lstatSync(file);
       } catch (err) {
-        throw new Error(`Unable to open ${file}: ${err.message}`);
+        throw new Error(`Unable to open ${file}: ${(err as Error).message}`);
       }
 
       if (stat?.isFile()) {
@@ -677,16 +741,17 @@ function resolveFiles(filesArg) {
       if (file) resolvedFiles.add(resolve(file));
     }
   }
-  return resolvedFiles;
+  return resolvedFiles as Set<string>;
 }
 
 async function main() {
   for (const stream of [process.stdout, process.stderr]) {
+    // @ts-ignore
     stream?._handle?.setBlocking?.(true);
   }
 
   const maxSockets = 96;
-  const concurrency = typeof args.sockets === "number" ? parseInt(args.sockets) : maxSockets;
+  const concurrency = typeof args.sockets === "number" ? args.sockets : maxSockets;
   const {help, version, file: filesArg, types, update} = args;
 
   if (help) {
@@ -731,13 +796,13 @@ async function main() {
   }
 
   // output vars
-  const deps = {};
-  const maybeUrlDeps = {};
-  const pkgStrs = {};
-  const filePerMode = {};
+  const deps: DepsByMode = {};
+  const maybeUrlDeps: DepsByMode = {};
+  const pkgStrs: {[other: string]: string} = {};
+  const filePerMode: {[other: string]: string} = {};
   let numDependencies = 0;
 
-  for (const file of resolveFiles(parseMixedArg(filesArg))) {
+  for (const file of resolveFiles(parseMixedArg(filesArg) as Set<string>)) {
     const projectDir = dirname(resolve(file));
     const filename = basename(file);
 
@@ -745,7 +810,7 @@ async function main() {
     filePerMode[mode] = file;
     if (!deps[mode]) deps[mode] = {};
 
-    let config = {};
+    let config: {[other: string]: any} = {};
     try {
       ({default: config} = await Promise.any([
         "updates.config.js",
@@ -759,7 +824,8 @@ async function main() {
       ].map(str => import(join(projectDir, ...str.split("/"))))));
     } catch {}
 
-    let includeCli, excludeCli;
+    let includeCli: string[] = [];
+    let excludeCli: string[] = [];
     if (args.include && args.include !== true) { // cli
       includeCli = (Array.isArray(args.include) ? args.include : [args.include]).flatMap(item => item.split(","));
     }
@@ -769,18 +835,19 @@ async function main() {
     const include = matchersToRegexSet(includeCli, config?.include);
     const exclude = matchersToRegexSet(excludeCli, config?.exclude);
 
-    const agentOpts = {};
-    const npmrc = rc("npm", {registry: "https://registry.npmjs.org"});
+    const agentOpts: AgentOptions = {};
+    const npmrc: Npmrc = rc("npm", {registry: "https://registry.npmjs.org"});
     const authTokenOpts = {npmrc, recursive: true};
     if (mode === "npm") {
       if (npmrc["strict-ssl"] === false) {
         agentOpts.rejectUnauthorized = false;
       }
       if (npmrc?.cafile) {
-        agentOpts.ca = getCerts(extractCerts(readFileSync(npmrc.cafile, "utf8")));
+        agentOpts.ca = await getCerts(extractCerts(readFileSync(npmrc.cafile, "utf8")));
       }
       if (npmrc?.ca) {
-        agentOpts.ca = getCerts(Array.isArray(npmrc.ca) ? npmrc.ca : [npmrc.ca].map(ca => extractCerts(ca)));
+        const cas = Array.isArray(npmrc.ca) ? npmrc.ca : [npmrc.ca];
+        agentOpts.ca = await getCerts(cas.flatMap(ca => extractCerts(ca)));
       }
     }
 
@@ -809,11 +876,11 @@ async function main() {
       }
     }
 
-    let pkg;
+    let pkg: {[other: string]: any};
     try {
       pkgStrs[mode] = readFileSync(file, "utf8");
     } catch (err) {
-      throw new Error(`Unable to open ${file}: ${err.message}`);
+      throw new Error(`Unable to open ${file}: ${(err as Error).message}`);
     }
 
     try {
@@ -823,11 +890,11 @@ async function main() {
         pkg = (await import("@iarna/toml/parse-string.js")).default(pkgStrs[mode]);
       }
     } catch (err) {
-      throw new Error(`Error parsing ${file}: ${err.message}`);
+      throw new Error(`Error parsing ${file}: ${(err as Error).message}`);
     }
 
     for (const depType of dependencyTypes) {
-      let obj;
+      let obj: {[other: string]: string};
       if (mode === "npm") {
         obj = pkg[depType] || {};
       } else {
@@ -835,15 +902,17 @@ async function main() {
       }
 
       for (const [name, value] of Object.entries(obj)) {
-        if (validRange(value) && canInclude(name, mode, {include, exclude})) {
+        if (validRange(value) && canInclude(name, mode, include, exclude)) {
+          // @ts-ignore
           deps[mode][`${depType}${sep}${name}`] = {
             old: normalizeRange(value),
             oldOriginal: value,
-          };
-        } else if (mode === "npm" && canInclude(name, mode, {include, exclude})) {
+          } as Partial<Dep>;
+        } else if (mode === "npm" && canInclude(name, mode, include, exclude)) {
+          // @ts-ignore
           maybeUrlDeps[`${depType}${sep}${name}`] = {
             old: value,
-          };
+          } as Partial<Dep>;
         }
       }
     }
@@ -851,7 +920,7 @@ async function main() {
     numDependencies += Object.keys(deps[mode]).length + Object.keys(maybeUrlDeps).length;
     if (!numDependencies) continue;
 
-    let registry;
+    let registry: string;
     if (mode === "npm") {
       registry = normalizeUrl(args.registry || config.registry || npmrc.registry);
     }
@@ -911,12 +980,15 @@ async function main() {
       const results = await pAll(Object.entries(maybeUrlDeps).map(([key, dep]) => () => {
         const name = key.split(sep)[1];
         const useGreatest = typeof greatest === "boolean" ? greatest : matchesAny(name, greatest);
-        return checkUrlDep([key, dep], {useGreatest});
+        // @ts-ignore
+        return checkUrlDep(key, dep, useGreatest);
       }), {concurrency});
 
       for (const res of (results || []).filter(Boolean)) {
+        // @ts-ignore
         const {key, newRange, user, repo, oldRef, newRef, newDate} = res;
         deps[mode][key] = {
+          // @ts-ignore
           old: maybeUrlDeps[key].old,
           new: newRange,
           oldPrint: hashRe.test(oldRef) ? oldRef.substring(0, 7) : oldRef,
@@ -952,7 +1024,7 @@ async function main() {
         const fn = (mode === "npm") ? updatePackageJson : updateProjectToml;
         await write(filePerMode[mode], fn(pkgStrs[mode], deps[mode]));
       } catch (err) {
-        throw new Error(`Error writing ${basename(filePerMode[mode])}: ${err.message}`);
+        throw new Error(`Error writing ${basename(filePerMode[mode])}: ${(err as Error).message}`);
       }
 
       // TODO: json
@@ -960,7 +1032,7 @@ async function main() {
     }
   }
 
-  doExit(exitCode);
+  process.exit(exitCode);
 }
 
 main().catch(doExit).then(doExit);

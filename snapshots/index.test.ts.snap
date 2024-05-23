@@ -6,47 +6,47 @@ exports[`dual 1`] = `
     "dependencies": {
       "@babel/preset-env": {
         "info": "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
-        "new": "7.11.5",
+        "new": "7.24.5",
         "old": "7.0.0",
       },
       "gulp-sourcemaps": {
         "info": "https://github.com/gulp-sourcemaps/gulp-sourcemaps",
-        "new": "2.6.5",
+        "new": "3.0.0",
         "old": "2.0.0",
       },
       "html-webpack-plugin": {
         "info": "https://github.com/jantimon/html-webpack-plugin",
-        "new": "4.0.0-beta.11",
+        "new": "5.6.0",
         "old": "4.0.0-alpha.2",
       },
       "jpeg-buffer-orientation": {
         "info": "https://github.com/fisker/jpeg-buffer-orientation",
-        "new": "2.0.3",
+        "new": "4.1.1",
         "old": "0.0.0",
       },
       "noty": {
         "info": "https://github.com/needim/noty",
-        "new": "3.2.0-beta",
+        "new": "3.2.0-beta-deprecated",
         "old": "3.1.0",
       },
       "prismjs": {
-        "info": "https://github.com/LeaVerou/prism",
-        "new": "1.17.1",
+        "info": "https://github.com/PrismJS/prism",
+        "new": "1.29.0",
         "old": "1.0.0",
       },
       "react": {
         "info": "https://github.com/facebook/react/tree/HEAD/packages/react",
-        "new": "18.2.0",
+        "new": "18.3.1",
         "old": "18.0",
       },
       "styled-components": {
         "info": "https://github.com/styled-components/styled-components",
-        "new": "5.0.0-rc.2",
+        "new": "6.1.11",
         "old": "2.5.0-1",
       },
       "svgstore": {
         "info": "https://github.com/svgstore/svgstore",
-        "new": "^3.0.0-2",
+        "new": "^3.0.1",
         "old": "^3.0.0",
       },
       "updates": {
@@ -58,14 +58,14 @@ exports[`dual 1`] = `
     "peerDependencies": {
       "@babel/preset-env": {
         "info": "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
-        "new": "~7.11.5",
+        "new": "~7.24.5",
         "old": "~6.0.0",
       },
     },
     "resolutions": {
       "versions/updates": {
         "info": "https://github.com/silverwind/updates",
-        "new": "^10.0.0",
+        "new": "^16.1.1",
         "old": "^1.0.0",
       },
     },
@@ -100,7 +100,7 @@ exports[`dual 2 1`] = `
     "dependencies": {
       "noty": {
         "info": "https://github.com/needim/noty",
-        "new": "3.2.0-beta",
+        "new": "3.2.0-beta-deprecated",
         "old": "3.1.0",
       },
     },
@@ -128,7 +128,7 @@ exports[`exclude 2 1`] = `
     "dependencies": {
       "react": {
         "info": "https://github.com/facebook/react/tree/HEAD/packages/react",
-        "new": "18.2.0",
+        "new": "18.3.1",
         "old": "18.0",
       },
     },
@@ -142,7 +142,7 @@ exports[`exclude 3 1`] = `
     "dependencies": {
       "gulp-sourcemaps": {
         "info": "https://github.com/gulp-sourcemaps/gulp-sourcemaps",
-        "new": "2.6.5",
+        "new": "3.0.0",
         "old": "2.0.0",
       },
     },
@@ -170,22 +170,22 @@ exports[`greatest 1`] = `
     "dependencies": {
       "@babel/preset-env": {
         "info": "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
-        "new": "7.11.5",
+        "new": "7.24.5",
         "old": "7.0.0",
       },
       "gulp-sourcemaps": {
         "info": "https://github.com/gulp-sourcemaps/gulp-sourcemaps",
-        "new": "2.6.5",
+        "new": "3.0.0",
         "old": "2.0.0",
       },
       "html-webpack-plugin": {
         "info": "https://github.com/jantimon/html-webpack-plugin",
-        "new": "4.0.0-beta.11",
+        "new": "5.6.0",
         "old": "4.0.0-alpha.2",
       },
       "jpeg-buffer-orientation": {
         "info": "https://github.com/fisker/jpeg-buffer-orientation",
-        "new": "2.0.3",
+        "new": "4.1.1",
         "old": "0.0.0",
       },
       "noty": {
@@ -194,19 +194,24 @@ exports[`greatest 1`] = `
         "old": "3.1.0",
       },
       "prismjs": {
-        "info": "https://github.com/LeaVerou/prism",
-        "new": "1.17.1",
+        "info": "https://github.com/PrismJS/prism",
+        "new": "1.29.0",
         "old": "1.0.0",
       },
       "react": {
         "info": "https://github.com/facebook/react/tree/HEAD/packages/react",
-        "new": "18.2.0",
+        "new": "18.3.1",
         "old": "18.0",
       },
       "styled-components": {
         "info": "https://github.com/styled-components/styled-components",
-        "new": "5.0.0-rc.2",
+        "new": "6.1.11",
         "old": "2.5.0-1",
+      },
+      "svgstore": {
+        "info": "https://github.com/svgstore/svgstore",
+        "new": "^3.0.1",
+        "old": "^3.0.0",
       },
       "updates": {
         "info": "https://github.com/silverwind/updates",
@@ -217,14 +222,14 @@ exports[`greatest 1`] = `
     "peerDependencies": {
       "@babel/preset-env": {
         "info": "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
-        "new": "~7.11.5",
+        "new": "~7.24.5",
         "old": "~6.0.0",
       },
     },
     "resolutions": {
       "versions/updates": {
         "info": "https://github.com/silverwind/updates",
-        "new": "^10.0.0",
+        "new": "^16.1.1",
         "old": "^1.0.0",
       },
     },
@@ -238,7 +243,7 @@ exports[`include 1`] = `
     "dependencies": {
       "noty": {
         "info": "https://github.com/needim/noty",
-        "new": "3.2.0-beta",
+        "new": "3.2.0-beta-deprecated",
         "old": "3.1.0",
       },
     },
@@ -252,7 +257,7 @@ exports[`include 2 1`] = `
     "dependencies": {
       "noty": {
         "info": "https://github.com/needim/noty",
-        "new": "3.2.0-beta",
+        "new": "3.2.0-beta-deprecated",
         "old": "3.1.0",
       },
     },
@@ -266,7 +271,7 @@ exports[`include 3 1`] = `
     "dependencies": {
       "noty": {
         "info": "https://github.com/needim/noty",
-        "new": "3.2.0-beta",
+        "new": "3.2.0-beta-deprecated",
         "old": "3.1.0",
       },
     },
@@ -280,47 +285,47 @@ exports[`latest 1`] = `
     "dependencies": {
       "@babel/preset-env": {
         "info": "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
-        "new": "7.11.5",
+        "new": "7.24.5",
         "old": "7.0.0",
       },
       "gulp-sourcemaps": {
         "info": "https://github.com/gulp-sourcemaps/gulp-sourcemaps",
-        "new": "2.6.5",
+        "new": "3.0.0",
         "old": "2.0.0",
       },
       "html-webpack-plugin": {
         "info": "https://github.com/jantimon/html-webpack-plugin",
-        "new": "4.0.0-beta.11",
+        "new": "5.6.0",
         "old": "4.0.0-alpha.2",
       },
       "jpeg-buffer-orientation": {
         "info": "https://github.com/fisker/jpeg-buffer-orientation",
-        "new": "2.0.3",
+        "new": "4.1.1",
         "old": "0.0.0",
       },
       "noty": {
         "info": "https://github.com/needim/noty",
-        "new": "3.2.0-beta",
+        "new": "3.2.0-beta-deprecated",
         "old": "3.1.0",
       },
       "prismjs": {
-        "info": "https://github.com/LeaVerou/prism",
-        "new": "1.17.1",
+        "info": "https://github.com/PrismJS/prism",
+        "new": "1.29.0",
         "old": "1.0.0",
       },
       "react": {
         "info": "https://github.com/facebook/react/tree/HEAD/packages/react",
-        "new": "18.2.0",
+        "new": "18.3.1",
         "old": "18.0",
       },
       "styled-components": {
         "info": "https://github.com/styled-components/styled-components",
-        "new": "5.0.0-rc.2",
+        "new": "6.1.11",
         "old": "2.5.0-1",
       },
       "svgstore": {
         "info": "https://github.com/svgstore/svgstore",
-        "new": "^3.0.0-2",
+        "new": "^3.0.1",
         "old": "^3.0.0",
       },
       "updates": {
@@ -332,14 +337,14 @@ exports[`latest 1`] = `
     "peerDependencies": {
       "@babel/preset-env": {
         "info": "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
-        "new": "~7.11.5",
+        "new": "~7.24.5",
         "old": "~6.0.0",
       },
     },
     "resolutions": {
       "versions/updates": {
         "info": "https://github.com/silverwind/updates",
-        "new": "^10.0.0",
+        "new": "^16.1.1",
         "old": "^1.0.0",
       },
     },
@@ -358,7 +363,7 @@ exports[`patch 1`] = `
       },
       "html-webpack-plugin": {
         "info": "https://github.com/jantimon/html-webpack-plugin",
-        "new": "4.0.0-beta.11",
+        "new": "4.0.4",
         "old": "4.0.0-alpha.2",
       },
       "noty": {
@@ -368,7 +373,7 @@ exports[`patch 1`] = `
       },
       "svgstore": {
         "info": "https://github.com/svgstore/svgstore",
-        "new": "^3.0.0-2",
+        "new": "^3.0.1",
         "old": "^3.0.0",
       },
       "updates": {
@@ -394,47 +399,47 @@ exports[`prerelease 1`] = `
     "dependencies": {
       "@babel/preset-env": {
         "info": "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
-        "new": "7.11.5",
+        "new": "8.0.0-alpha.8",
         "old": "7.0.0",
       },
       "gulp-sourcemaps": {
         "info": "https://github.com/gulp-sourcemaps/gulp-sourcemaps",
-        "new": "2.6.5",
+        "new": "3.0.0",
         "old": "2.0.0",
       },
       "html-webpack-plugin": {
         "info": "https://github.com/jantimon/html-webpack-plugin",
-        "new": "4.0.0-beta.11",
+        "new": "5.6.0",
         "old": "4.0.0-alpha.2",
       },
       "jpeg-buffer-orientation": {
         "info": "https://github.com/fisker/jpeg-buffer-orientation",
-        "new": "2.0.3",
+        "new": "4.1.1",
         "old": "0.0.0",
       },
       "noty": {
         "info": "https://github.com/needim/noty",
-        "new": "3.2.0-beta",
+        "new": "3.2.0-beta-deprecated",
         "old": "3.1.0",
       },
       "prismjs": {
-        "info": "https://github.com/LeaVerou/prism",
-        "new": "1.17.1",
+        "info": "https://github.com/PrismJS/prism",
+        "new": "1.29.0",
         "old": "1.0.0",
       },
       "react": {
         "info": "https://github.com/facebook/react/tree/HEAD/packages/react",
-        "new": "18.3.0-next-d1e35c703-20221110",
+        "new": "19.0.0-rc-4c2e457c7c-20240522",
         "old": "18.0",
       },
       "styled-components": {
         "info": "https://github.com/styled-components/styled-components",
-        "new": "5.0.0-rc.2",
+        "new": "6.1.11",
         "old": "2.5.0-1",
       },
       "svgstore": {
         "info": "https://github.com/svgstore/svgstore",
-        "new": "^3.0.0-2",
+        "new": "^3.0.1",
         "old": "^3.0.0",
       },
       "updates": {
@@ -446,14 +451,14 @@ exports[`prerelease 1`] = `
     "peerDependencies": {
       "@babel/preset-env": {
         "info": "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
-        "new": "~7.11.5",
+        "new": "~8.0.0-alpha.8",
         "old": "~6.0.0",
       },
     },
     "resolutions": {
       "versions/updates": {
         "info": "https://github.com/silverwind/updates",
-        "new": "^10.0.0",
+        "new": "^16.1.1",
         "old": "^1.0.0",
       },
     },
@@ -486,22 +491,22 @@ exports[`release 1`] = `
     "dependencies": {
       "@babel/preset-env": {
         "info": "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
-        "new": "7.11.5",
+        "new": "7.24.5",
         "old": "7.0.0",
       },
       "gulp-sourcemaps": {
         "info": "https://github.com/gulp-sourcemaps/gulp-sourcemaps",
-        "new": "2.6.5",
+        "new": "3.0.0",
         "old": "2.0.0",
       },
       "html-webpack-plugin": {
         "info": "https://github.com/jantimon/html-webpack-plugin",
-        "new": "3.2.0",
+        "new": "5.6.0",
         "old": "4.0.0-alpha.2",
       },
       "jpeg-buffer-orientation": {
         "info": "https://github.com/fisker/jpeg-buffer-orientation",
-        "new": "2.0.3",
+        "new": "4.1.1",
         "old": "0.0.0",
       },
       "noty": {
@@ -510,23 +515,23 @@ exports[`release 1`] = `
         "old": "3.1.0",
       },
       "prismjs": {
-        "info": "https://github.com/LeaVerou/prism",
-        "new": "1.17.1",
+        "info": "https://github.com/PrismJS/prism",
+        "new": "1.29.0",
         "old": "1.0.0",
       },
       "react": {
         "info": "https://github.com/facebook/react/tree/HEAD/packages/react",
-        "new": "18.2.0",
+        "new": "18.3.1",
         "old": "18.0",
       },
       "styled-components": {
         "info": "https://github.com/styled-components/styled-components",
-        "new": "4.4.1",
+        "new": "6.1.11",
         "old": "2.5.0-1",
       },
       "svgstore": {
         "info": "https://github.com/svgstore/svgstore",
-        "new": "^2.0.3",
+        "new": "^3.0.1",
         "old": "^3.0.0",
       },
       "updates": {
@@ -538,14 +543,14 @@ exports[`release 1`] = `
     "peerDependencies": {
       "@babel/preset-env": {
         "info": "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
-        "new": "~7.11.5",
+        "new": "~7.24.5",
         "old": "~6.0.0",
       },
     },
     "resolutions": {
       "versions/updates": {
         "info": "https://github.com/silverwind/updates",
-        "new": "^10.0.0",
+        "new": "^16.1.1",
         "old": "^1.0.0",
       },
     },

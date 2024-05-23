@@ -1,3 +1,4 @@
 * text=auto eol=lf
 *.snap linguist-language=JavaScript linguist-generated
 fixtures/** linguist-generated
+vendor/** linguist-vendored

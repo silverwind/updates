@@ -1,5 +1,5 @@
-SRC := updates.js
-DST := dist/updates.js
+SOURCE_FILES := index.ts
+DIST_FILES := dist/index.js
 
 node_modules: package-lock.json
 	npm install --no-save
@@ -10,11 +10,13 @@ deps: node_modules
 
 .PHONY: lint
 lint: node_modules
-	npx eslint --color .
+	npx eslint --ext js,jsx,ts,tsx --color .
+	npx tsc
 
 .PHONY: lint-fix
 lint-fix: node_modules
-	npx eslint --color . --fix
+	npx eslint --ext js,jsx,ts,tsx --color . --fix
+	npx tsc
 
 .PHONY: test
 test: node_modules build
@@ -24,18 +26,12 @@ test: node_modules build
 test-update: node_modules build
 	npx vitest -u
 
-.PHONY: test
-test-bun: node_modules build
-	bun test
-	rm -rf __snapshots__
-
 .PHONY: build
-build: $(DST)
+build: node_modules $(DIST_FILES)
 
-$(DST): $(SRC) node_modules
-# workaround for https://github.com/evanw/esbuild/issues/1921
-	npx esbuild --log-level=warning --platform=node --target=node18 --format=esm --bundle --minify --legal-comments=none --banner:js="import {createRequire} from 'module';const require = createRequire(import.meta.url);" --define:import.meta.VERSION=\"$(shell jq .version package.json)\" --outfile=$(DST) $(SRC)
-	chmod +x $(DST)
+$(DIST_FILES): $(SOURCE_FILES) package-lock.json vite.config.ts
+	npx vite build
+	chmod +x $(DIST_FILES)
 
 .PHONY: publish
 publish: node_modules
@@ -43,23 +39,23 @@ publish: node_modules
 	npm publish
 
 .PHONY: update
-update: node_modules build
-	node $(DST) -u
+update: node_modules
+	npx updates -cu
 	rm -rf node_modules package-lock.json
 	npm install
 	@touch node_modules
 
-.PHONY: patch
-patch: node_modules lint test
-	npx versions -c 'make --no-print-directory build' patch package.json package-lock.json
+.PHONY: path
+patch: node_modules lint test build
+	npx versions patch package.json package-lock.json
 	@$(MAKE) --no-print-directory publish
 
 .PHONY: minor
-minor: node_modules lint test
-	npx versions -c 'make --no-print-directory build' minor package.json package-lock.json
+minor: node_modules lint test build
+	npx versions minor package.json package-lock.json
 	@$(MAKE) --no-print-directory publish
 
 .PHONY: major
-major: node_modules lint test
-	npx versions -c 'make --no-print-directory build' major package.json package-lock.json
+major: node_modules lint test build
+	npx versions major package.json package-lock.json
 	@$(MAKE) --no-print-directory publish
