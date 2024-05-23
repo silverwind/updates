@@ -7,6 +7,11 @@ export default defineConfig(lib({
   build: {
     target: "node18",
     minify: false,
+    rollupOptions: {
+      output: {
+        inlineDynamicImports: true,
+      },
+    },
   },
   resolve: {
     mainFields: ["module"],
