@@ -1,9 +1,8 @@
 import {defineConfig} from "vite";
-import {nodeLib} from "vite-config-silverwind";
+import {nodeCli} from "vite-config-silverwind";
 
-export default defineConfig(nodeLib({
+export default defineConfig(nodeCli({
   url: import.meta.url,
-  noDts: true,
   build: {
     target: "node18",
     minify: false,
