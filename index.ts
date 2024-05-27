@@ -428,9 +428,9 @@ function isRangePrerelease(range: string) {
 
 function rangeToVersion(range: string) {
   try {
-    return coerce(range)?.version ?? null;
+    return coerce(range)?.version ?? "";
   } catch {
-    return null;
+    return "";
   }
 }
 
@@ -455,9 +455,7 @@ function findVersion(data: NpmData, versions: string[], {range, semvers, usePre,
 
     // some registries like github don't have data.time available, fall back to greatest on them
     if (useGreatest || !("time" in data)) {
-      const coerced = coerce(parsed?.version)?.version;
-      if (!coerced) continue;
-      if (gte(coerced, tempVersion)) {
+      if (gte(rangeToVersion(parsed?.version), tempVersion)) {
         tempVersion = parsed.version;
       }
     } else {
@@ -487,16 +485,12 @@ function findNewVersion(data: NpmData, {mode, range, useGreatest, useRel, usePre
     let originalLatestTag;
     if (mode === "pypi") {
       originalLatestTag = data.info.version; // may not be a 3-part semver
-      const coerced = coerce(data.info.version);
-      if (!coerced) throw new Error(`Unable to coerce ${data.info.version}`);
-      latestTag = coerced.version; // add .0 to 6.0 so semver eats it
+      latestTag = rangeToVersion(data.info.version); // add .0 to 6.0 so semver eats it
     } else {
       latestTag = data["dist-tags"].latest;
     }
 
-    const coerced = coerce(range);
-    if (!coerced) throw new Error(`Unable to coerce ${range}`);
-    const oldVersion = coerced.version;
+    const oldVersion = rangeToVersion(range);
     const oldIsPre = isRangePrerelease(range);
     const newIsPre = isVersionPrerelease(version);
     const latestIsPre = isVersionPrerelease(latestTag);
@@ -633,10 +627,7 @@ async function checkUrlDep(key: string, dep: Dep, useGreatest: boolean) {
 function normalizeRange(range: string) {
   const versionMatches = range.match(versionRe);
   if (versionMatches?.length !== 1) return range;
-  const coerced = coerce(versionMatches[0]);
-  if (!coerced) return range;
-  // @ts-ignore
-  return range.replace(versionRe, coerced);
+  return range.replace(versionRe, rangeToVersion(versionMatches[0]));
 }
 
 function parseMixedArg(arg: any) {
