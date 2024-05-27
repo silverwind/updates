@@ -8,10 +8,15 @@ jobs:
       matrix:
         node: [18, 20, 22]
         os: [ubuntu-latest, macos-latest, windows-latest]
+        bun: [latest]
     runs-on: ${{matrix.os}}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: ${{matrix.node}}
+      - uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: ${{matrix.bun}}
       - run: make lint test
+      - run: bun test
