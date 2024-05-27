@@ -163,7 +163,7 @@ test("empty", async () => {
   expect(exitCode).toEqual(0);
 });
 
-if (env.CI) {
+if (env.CI && !env.BUN) {
   test("global", async () => {
     await execa("npm", ["i", "-g", "."]);
     const {stdout, stderr, exitCode} = await execa("updates", [

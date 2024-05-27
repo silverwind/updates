@@ -6,17 +6,22 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: [18, 20, 22]
+        js: [[node, 18], [node, 20], [node,22], [bun,1]]
         os: [ubuntu-latest, macos-latest, windows-latest]
-        bun: [latest]
     runs-on: ${{matrix.os}}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: ${{matrix.node}}
+          node-version: ${{matrix.js[1]}}
+        if: ${{matrix.js[0] == 'node'}}
       - uses: oven-sh/setup-bun@v1
         with:
-          bun-version: ${{matrix.bun}}
+          bun-version: ${{matrix.js[1]}}
+        if: ${{matrix.js[0] == 'bun'}}
       - run: make lint test
-      - run: bun test
+        if: ${{matrix.js[0] == 'node'}}
+      - run: bun install && bunx vite build && chmod +x dist/index.js && bun test
+        if: ${{matrix.js[0] == 'bun'}}
+        env:
+          BUN: "true"

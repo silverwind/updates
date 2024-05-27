@@ -50,5 +50,8 @@
     "vite-config-silverwind": "2.1.4",
     "vitest": "1.6.0",
     "vitest-config-silverwind": "9.0.6"
-  }
+  },
+  "trustedDependencies": [
+    "restana"
+  ]
 }
