@@ -5,14 +5,14 @@
   "author": "silverwind",
   "repository": "silverwind/updates",
   "license": "BSD-2-Clause",
-  "bin": "dist/updates.js",
+  "bin": "dist/index.js",
   "type": "module",
+  "files": [
+    "dist"
+  ],
   "engines": {
     "node": ">=18"
   },
-  "files": [
-    "dist/updates.js"
-  ],
   "devDependencies": {
     "@iarna/toml": "2.2.5",
     "@types/hosted-git-info": "3.0.5",
