@@ -5,6 +5,5 @@ export default defineConfig(nodeCli({
   url: import.meta.url,
   build: {
     target: "node18",
-    minify: false,
   },
 }));
