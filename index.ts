@@ -353,7 +353,7 @@ function highlightDiff(a: string, b: string, colorFn: (str: string) => string) {
       } else {
         res += aParts[i].split("").map(char => {
           return versionPartRe.test(char) ? colorFn(char) : char;
-        }).join("") + colorFn(`.${aParts.slice(i + 1).join(".")}`);
+        }).join("") + colorFn(`.${aParts.slice(i + 1).join(".")}`.replace(/\.$/, ""));
       }
       break;
     } else {
@@ -411,8 +411,19 @@ function updateProjectToml(pkgStr: string, deps: Deps) {
   return newPkgStr;
 }
 
-function updateRange(range: string, version: string) {
-  return range.replace(/[0-9]+\.[0-9]+\.[0-9]+(-.+)?/g, version);
+function updateRange(oldRange: string, newVersion: string, oldOriginal?: string) {
+  let newRange = oldRange.replace(/[0-9]+\.[0-9]+\.[0-9]+(-.+)?/g, newVersion);
+
+  // if old version is a range like ^5 or ~5, retain number of version parts in new range
+  if (oldOriginal && oldOriginal !== oldRange && /^[\^~]/.test(newRange)) {
+    const oldParts = oldOriginal.substring(1).split(".");
+    const newParts = newRange.substring(1).split(".");
+    if (oldParts.length !== newParts.length) {
+      newRange = `${newRange[0]}${newParts.slice(0, oldParts.length).join(".")}`;
+    }
+  }
+
+  return newRange;
 }
 
 function isVersionPrerelease(version: string) {
@@ -943,12 +954,13 @@ async function main() {
 
       const key = `${type}${sep}${name}`;
       const oldRange = deps[mode][key].old;
+      const oldOriginal = deps[mode][key].oldOriginal;
       const newVersion = findNewVersion(data, {
         usePre, useRel, useGreatest, semvers, range: oldRange, mode,
       });
-      const newRange = updateRange(oldRange, newVersion);
+      const newRange = updateRange(oldRange, newVersion, oldOriginal);
 
-      if (!newVersion || oldRange === newRange) {
+      if (!newVersion || oldOriginal === newRange) {
         delete deps[mode][key];
       } else {
         deps[mode][key].new = newRange;

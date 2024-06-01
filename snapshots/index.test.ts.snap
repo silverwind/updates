@@ -79,11 +79,6 @@ exports[`dual 1`] = `
       },
     },
     "tool.poetry.group.dev.dependencies": {
-      "PyYAML": {
-        "info": "https://github.com/yaml/pyyaml",
-        "new": "6.0",
-        "old": "6.0",
-      },
       "djlint": {
         "info": "https://github.com/Riverside-Healthcare/djlint",
         "new": "1.31.0",
@@ -121,8 +116,8 @@ exports[`exclude 1`] = `
     "peerDependencies": {
       "typescript": {
         "info": "https://github.com/Microsoft/TypeScript",
-        "new": "^5.4.5",
-        "old": "^5",
+        "new": "^5",
+        "old": "^4",
       },
     },
   },
@@ -229,8 +224,8 @@ exports[`greatest 1`] = `
       },
       "typescript": {
         "info": "https://github.com/Microsoft/TypeScript",
-        "new": "^5.4.5",
-        "old": "^5",
+        "new": "^5",
+        "old": "^4",
       },
     },
     "resolutions": {
@@ -349,8 +344,8 @@ exports[`latest 1`] = `
       },
       "typescript": {
         "info": "https://github.com/Microsoft/TypeScript",
-        "new": "^5.4.5",
-        "old": "^5",
+        "new": "^5",
+        "old": "^4",
       },
     },
     "resolutions": {
@@ -383,6 +378,11 @@ exports[`patch 1`] = `
         "new": "3.1.4",
         "old": "3.1.0",
       },
+      "react": {
+        "info": "https://github.com/facebook/react/tree/HEAD/packages/react",
+        "new": "18.0.0",
+        "old": "18.0",
+      },
       "svgstore": {
         "info": "https://github.com/svgstore/svgstore",
         "new": "^3.0.0-2",
@@ -392,13 +392,6 @@ exports[`patch 1`] = `
         "info": "https://github.com/silverwind/updates",
         "new": "537ccb7",
         "old": "6941e05",
-      },
-    },
-    "peerDependencies": {
-      "typescript": {
-        "info": "https://github.com/Microsoft/TypeScript",
-        "new": "^5.0.4",
-        "old": "^5",
       },
     },
     "resolutions": {
@@ -475,8 +468,8 @@ exports[`prerelease 1`] = `
       },
       "typescript": {
         "info": "https://github.com/Microsoft/TypeScript",
-        "new": "^5.5.0-dev.20240601",
-        "old": "^5",
+        "new": "^5",
+        "old": "^4",
       },
     },
     "resolutions": {
@@ -494,11 +487,6 @@ exports[`pypi 1`] = `
 {
   "pypi": {
     "tool.poetry.group.dev.dependencies": {
-      "PyYAML": {
-        "info": "https://github.com/yaml/pyyaml",
-        "new": "6.0",
-        "old": "6.0",
-      },
       "djlint": {
         "info": "https://github.com/Riverside-Healthcare/djlint",
         "new": "1.31.0",
@@ -572,8 +560,8 @@ exports[`release 1`] = `
       },
       "typescript": {
         "info": "https://github.com/Microsoft/TypeScript",
-        "new": "^5.4.5",
-        "old": "^5",
+        "new": "^5",
+        "old": "^4",
       },
     },
     "resolutions": {

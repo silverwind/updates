@@ -18,7 +18,7 @@
   "peerDependencies": {
     "@babel/preset-env": "~6.0.0",
     "svgstore": "^1.0.0 || ^2.0.0",
-    "typescript": "^5"
+    "typescript": "^4"
   },
   "resolutions": {
     "versions/updates": "^1.0.0"
