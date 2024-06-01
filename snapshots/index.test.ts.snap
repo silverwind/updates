@@ -118,6 +118,13 @@ exports[`exclude 1`] = `
         "old": "6941e05",
       },
     },
+    "peerDependencies": {
+      "typescript": {
+        "info": "https://github.com/Microsoft/TypeScript",
+        "new": "^5.4.5",
+        "old": "^5",
+      },
+    },
   },
 }
 `;
@@ -219,6 +226,11 @@ exports[`greatest 1`] = `
         "info": "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
         "new": "~7.11.5",
         "old": "~6.0.0",
+      },
+      "typescript": {
+        "info": "https://github.com/Microsoft/TypeScript",
+        "new": "^5.4.5",
+        "old": "^5",
       },
     },
     "resolutions": {
@@ -335,6 +347,11 @@ exports[`latest 1`] = `
         "new": "~7.11.5",
         "old": "~6.0.0",
       },
+      "typescript": {
+        "info": "https://github.com/Microsoft/TypeScript",
+        "new": "^5.4.5",
+        "old": "^5",
+      },
     },
     "resolutions": {
       "versions/updates": {
@@ -375,6 +392,13 @@ exports[`patch 1`] = `
         "info": "https://github.com/silverwind/updates",
         "new": "537ccb7",
         "old": "6941e05",
+      },
+    },
+    "peerDependencies": {
+      "typescript": {
+        "info": "https://github.com/Microsoft/TypeScript",
+        "new": "^5.0.4",
+        "old": "^5",
       },
     },
     "resolutions": {
@@ -448,6 +472,11 @@ exports[`prerelease 1`] = `
         "info": "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
         "new": "~7.11.5",
         "old": "~6.0.0",
+      },
+      "typescript": {
+        "info": "https://github.com/Microsoft/TypeScript",
+        "new": "^5.5.0-dev.20240601",
+        "old": "^5",
       },
     },
     "resolutions": {
@@ -540,6 +569,11 @@ exports[`release 1`] = `
         "info": "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
         "new": "~7.11.5",
         "old": "~6.0.0",
+      },
+      "typescript": {
+        "info": "https://github.com/Microsoft/TypeScript",
+        "new": "^5.4.5",
+        "old": "^5",
       },
     },
     "resolutions": {
