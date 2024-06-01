@@ -360,7 +360,7 @@ function highlightDiff(a: string, b: string, colorFn: (str: string) => string) {
       res += `${aParts[i]}.`;
     }
   }
-  return res;
+  return res.replace(/\.$/, "");
 }
 
 function formatDeps(deps: DepsByMode) {
