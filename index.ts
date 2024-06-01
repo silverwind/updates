@@ -889,7 +889,7 @@ async function main() {
       if (mode === "npm") {
         pkg = JSON.parse(pkgStrs[mode]);
       } else {
-        pkg = (await import("@iarna/toml/parse-string.js")).default(pkgStrs[mode]);
+        pkg = (await import("smol-toml")).parse(pkgStrs[mode]);
       }
     } catch (err) {
       throw new Error(`Error parsing ${file}: ${(err as Error).message}`);
