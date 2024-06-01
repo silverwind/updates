@@ -39,7 +39,7 @@
     "registry-auth-token": "4.2.2",
     "restana": "4.9.9",
     "semver": "7.3.8",
-    "smol-toml": "1.2.0",
+    "smol-toml": "1.2.1",
     "supports-color": "9.4.0",
     "text-table": "0.2.0",
     "timerel": "5.8.0",
