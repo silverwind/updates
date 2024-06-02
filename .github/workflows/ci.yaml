@@ -18,6 +18,7 @@ jobs:
       - uses: oven-sh/setup-bun@v1
         with:
           bun-version: ${{matrix.js[1]}}
+          no-cache: true
         if: ${{matrix.js[0] == 'bun'}}
       - run: make lint test
         if: ${{matrix.js[0] == 'node'}}
