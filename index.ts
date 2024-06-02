@@ -81,7 +81,7 @@ const versionRe = /[0-9]+(\.[0-9]+)?(\.[0-9]+)?/g;
 const esc = (str: string) => str.replace(/[|\\{}()[\]^$+*?.-]/g, "\\$&");
 const gitInfo = memize(hostedGitInfo.fromUrl);
 const registryAuthToken = memize(rat);
-const normalizeUrl = memize(url => url.endsWith("/") ? url.substring(0, url.length - 1) : url);
+const normalizeUrl = memize((url: string) => url.endsWith("/") ? url.substring(0, url.length - 1) : url);
 const packageVersion = version || "0.0.0";
 const sep = "\0";
 
@@ -167,17 +167,17 @@ function findUpSync(filename: string, dir: string): string | null {
 
 function getAuthAndRegistry(name: string, registry: string, authTokenOpts: AuthOptions, npmrc: Npmrc) {
   if (!name.startsWith("@")) {
-    return [registryAuthToken(registry, authTokenOpts), registry];
+    return {auth: registryAuthToken(registry, authTokenOpts), registry};
   } else {
     const scope = (/@[a-z0-9][\w-.]+/.exec(name) || [""])[0];
     const url = normalizeUrl(registryUrl(scope, npmrc));
     if (url !== registry) {
       try {
         const newAuth = registryAuthToken(url, authTokenOpts);
-        if (newAuth?.token) return [newAuth, url];
+        if (newAuth?.token) return {auth: newAuth, registry: url};
       } catch {}
     }
-    return [registryAuthToken(registry, authTokenOpts), registry];
+    return {auth: registryAuthToken(registry, authTokenOpts), registry};
   }
 }
 
@@ -199,7 +199,7 @@ async function doFetch(url: string, opts: RequestInit) {
 }
 
 async function fetchNpmInfo(name: string, type: string, originalRegistry: string, agentOpts: AgentOptions, authTokenOpts: AuthOptions, npmrc: Npmrc) {
-  const [auth, registry] = getAuthAndRegistry(name, originalRegistry, authTokenOpts, npmrc);
+  const {auth, registry} = getAuthAndRegistry(name, originalRegistry, authTokenOpts, npmrc);
   const packageName = type === "resolutions" ? basename(name) : name;
   const urlName = packageName.replace(/\//g, "%2f");
   const url = `${registry}/${urlName}`;
@@ -231,7 +231,7 @@ async function fetchPypiInfo(name: string, type: string, agentOpts: AgentOptions
   }
 }
 
-function getInfoUrl({repository, homepage, info}: {repository: string | {[other: string]: any}, homepage: string, info: {[other: string]: any}}, registry: string, name: string) {
+function getInfoUrl({repository, homepage, info}: {repository: string | {[other: string]: any}, homepage: string, info: {[other: string]: any}}, registry: string, name: string): string {
   if (info) { // pypi
     repository =
       info.project_urls.repository ||
@@ -247,11 +247,11 @@ function getInfoUrl({repository, homepage, info}: {repository: string | {[other:
       `https://pypi.org/project/${name}/`;
   }
 
-  let infoUrl;
+  let infoUrl = "";
   if (registry === "https://npm.pkg.github.com") {
     return `https://github.com/${name.replace(/^@/, "")}`;
   } else if (repository) {
-    const url = typeof repository === "string" ? repository : repository.url;
+    const url: string = typeof repository === "string" ? repository : repository.url;
     const info = gitInfo(url);
     const browse = info?.browse?.();
     if (browse) {
@@ -492,8 +492,8 @@ function findNewVersion(data: NpmData, {mode, range, useGreatest, useRel, usePre
   if (useGreatest) {
     return version;
   } else {
-    let latestTag;
-    let originalLatestTag;
+    let latestTag = "";
+    let originalLatestTag = "";
     if (mode === "pypi") {
       originalLatestTag = data.info.version; // may not be a 3-part semver
       latestTag = rangeToVersion(data.info.version); // add .0 to 6.0 so semver eats it
@@ -548,7 +548,7 @@ function findNewVersion(data: NpmData, {mode, range, useGreatest, useRel, usePre
     }
 
     // in all other cases, return latest dist-tag
-    return originalLatestTag ?? latestTag;
+    return originalLatestTag || latestTag;
   }
 }
 
@@ -709,7 +709,7 @@ function canInclude(name: string, mode: string, include: Set<RegExp>, exclude: S
 }
 
 function resolveFiles(filesArg: Set<string>): Set<string> {
-  const resolvedFiles = new Set();
+  const resolvedFiles = new Set<string>();
 
   if (filesArg) { // check passed files
     for (const file of filesArg) {
@@ -743,7 +743,7 @@ function resolveFiles(filesArg: Set<string>): Set<string> {
       if (file) resolvedFiles.add(resolve(file));
     }
   }
-  return resolvedFiles as Set<string>;
+  return resolvedFiles;
 }
 
 async function main() {
@@ -945,11 +945,11 @@ async function main() {
 
       let semvers;
       if (patch === true || matchesAny(data.name, patch)) {
-        semvers = new Set(["patch"]);
+        semvers = new Set<string>(["patch"]);
       } else if (minor === true || matchesAny(data.name, minor)) {
-        semvers = new Set(["patch", "minor"]);
+        semvers = new Set<string>(["patch", "minor"]);
       } else {
-        semvers = new Set(["patch", "minor", "major"]);
+        semvers = new Set<string>(["patch", "minor", "major"]);
       }
 
       const key = `${type}${sep}${name}`;
@@ -958,7 +958,10 @@ async function main() {
       const newVersion = findNewVersion(data, {
         usePre, useRel, useGreatest, semvers, range: oldRange, mode,
       });
-      const newRange = updateRange(oldRange, newVersion, oldOriginal);
+      let newRange: string = "";
+      if (newVersion) {
+        newRange = updateRange(oldRange, newVersion, oldOriginal);
+      }
 
       if (!newVersion || oldOriginal === newRange) {
         delete deps[mode][key];
