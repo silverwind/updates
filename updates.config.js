@@ -3,6 +3,5 @@ export default {
     "eslint",
     "registry-auth-token",
     "semver",
-    "execa", // events.addAbortListener not available in bun
   ],
 };
