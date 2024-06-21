@@ -564,7 +564,7 @@ function fetchGitHub(url: string) {
 async function getLastestCommit(user: string, repo: string): Promise<{hash: string, commit: {[other: string]: any}}> {
   const url = `${githubApiUrl}/repos/${user}/${repo}/commits`;
   const res = await fetchGitHub(url);
-  if (!res || !res.ok) return {hash: "", commit: {}};
+  if (!res?.ok) return {hash: "", commit: {}};
   const data = await res.json();
   const {sha: hash, commit} = data[0];
   return {hash, commit};
@@ -574,7 +574,7 @@ async function getLastestCommit(user: string, repo: string): Promise<{hash: stri
 // TODO: newDate support, semver matching
 async function getTags(user: string, repo: string): Promise<string[]> {
   const res = await fetchGitHub(`${githubApiUrl}/repos/${user}/${repo}/git/refs/tags`);
-  if (!res || !res.ok) return [];
+  if (!res?.ok) return [];
   const data = await res.json();
   const tags = data.map((entry: {ref: string}) => entry.ref.replace(/^refs\/tags\//, ""));
   return tags;
@@ -748,7 +748,7 @@ function resolveFiles(filesArg: Set<string>): Set<string> {
 
 async function main() {
   for (const stream of [process.stdout, process.stderr]) {
-    // @ts-ignore
+    // @ts-expect-error
     stream?._handle?.setBlocking?.(true);
   }
 
@@ -905,13 +905,13 @@ async function main() {
 
       for (const [name, value] of Object.entries(obj)) {
         if (validRange(value) && canInclude(name, mode, include, exclude)) {
-          // @ts-ignore
+          // @ts-expect-error
           deps[mode][`${depType}${sep}${name}`] = {
             old: normalizeRange(value),
             oldOriginal: value,
           } as Partial<Dep>;
         } else if (mode === "npm" && canInclude(name, mode, include, exclude)) {
-          // @ts-ignore
+          // @ts-expect-error
           maybeUrlDeps[`${depType}${sep}${name}`] = {
             old: value,
           } as Partial<Dep>;
@@ -986,15 +986,15 @@ async function main() {
       const results = await pAll(Object.entries(maybeUrlDeps).map(([key, dep]) => () => {
         const name = key.split(sep)[1];
         const useGreatest = typeof greatest === "boolean" ? greatest : matchesAny(name, greatest);
-        // @ts-ignore
+        // @ts-expect-error
         return checkUrlDep(key, dep, useGreatest);
       }), {concurrency});
 
       for (const res of (results || []).filter(Boolean)) {
-        // @ts-ignore
+        // @ts-expect-error
         const {key, newRange, user, repo, oldRef, newRef, newDate} = res;
         deps[mode][key] = {
-          // @ts-ignore
+          // @ts-expect-error
           old: maybeUrlDeps[key].old,
           new: newRange,
           oldPrint: hashRe.test(oldRef) ? oldRef.substring(0, 7) : oldRef,
