@@ -611,7 +611,18 @@ function selectTag(tags: string[], oldRef: string, useGreatest: boolean) {
   }
 }
 
-async function checkUrlDep(key: string, dep: Dep, useGreatest: boolean) {
+type CheckResult = {
+  key: string,
+  newRange: string,
+  user: string,
+  repo: string,
+  oldRef: string,
+  newRef: string,
+  newDate?: string,
+  newTag?: string,
+};
+
+async function checkUrlDep(key: string, dep: Dep, useGreatest: boolean): Promise<CheckResult | undefined> {
   const stripped = dep.old.replace(stripRe, "");
   const [_, user, repo, oldRef] = partsRe.exec(stripped) || [];
   if (!user || !repo || !oldRef) return;
@@ -991,8 +1002,7 @@ async function main() {
       }), {concurrency});
 
       for (const res of (results || []).filter(Boolean)) {
-        // @ts-expect-error
-        const {key, newRange, user, repo, oldRef, newRef, newDate} = res;
+        const {key, newRange, user, repo, oldRef, newRef, newDate} = res as CheckResult;
         deps[mode][key] = {
           // @ts-expect-error
           old: maybeUrlDeps[key].old,
