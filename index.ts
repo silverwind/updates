@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env -S node --import @swc-node/register/esm-register
 import ansiRegex from "ansi-regex";
 import minimist from "minimist";
 import rat from "registry-auth-token";
@@ -16,7 +16,7 @@ import {getProperty} from "dot-prop";
 import pAll from "p-all";
 import memize from "memize";
 import picomatch from "picomatch";
-import {version} from "./package.json" with {type: "json"};
+import pkg from "./package.json" with {type: "json"};
 import type {AuthOptions} from "registry-auth-token";
 import type {AgentOptions} from "node:https";
 
@@ -82,7 +82,7 @@ const esc = (str: string) => str.replace(/[|\\{}()[\]^$+*?.-]/g, "\\$&");
 const gitInfo = memize(hostedGitInfo.fromUrl);
 const registryAuthToken = memize(rat);
 const normalizeUrl = memize((url: string) => url.endsWith("/") ? url.substring(0, url.length - 1) : url);
-const packageVersion = version || "0.0.0";
+const packageVersion = pkg.version || "0.0.0";
 const sep = "\0";
 
 const args = minimist(argv.slice(2), {

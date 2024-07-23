@@ -22,7 +22,7 @@ jobs:
         if: ${{matrix.js[0] == 'bun'}}
       - run: make lint test
         if: ${{matrix.js[0] == 'node'}}
-      - run: bun install && bunx vite build && chmod +x dist/index.js && bun test
+      - run: bun install && bunx vite build && make hashbang && chmod +x dist/index.js && bun test
         if: ${{matrix.js[0] == 'bun'}}
         env:
           BUN: "true"
