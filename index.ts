@@ -19,6 +19,7 @@ import picomatch from "picomatch";
 import pkg from "./package.json" with {type: "json"};
 import type {AuthOptions} from "registry-auth-token";
 import type {AgentOptions} from "node:https";
+import {execFileSync} from "node:child_process";
 
 type Npmrc = {
   registry?: string,
@@ -53,8 +54,6 @@ type Output = {
   }
 }
 
-type NpmData = {[other: string]: any};
-
 type FindVersionOpts = {
   range: string,
   semvers: Set<string>,
@@ -85,6 +84,12 @@ const normalizeUrl = memize((url: string) => url.endsWith("/") ? url.substring(0
 const packageVersion = pkg.version || "0.0.0";
 const sep = "\0";
 
+const modeByFileName = {
+  "package.json": "npm",
+  "pyproject.toml": "pypi",
+  // "go.mod": "go",
+};
+
 const args = minimist(argv.slice(2), {
   boolean: [
     "E", "error-on-outdated",
@@ -108,6 +113,7 @@ const args = minimist(argv.slice(2), {
     "t", "types",
     "githubapi", // undocumented, only for tests
     "pypiapi", // undocumented, only for tests
+    "goproxy", // undocumented, only for tests
   ],
   alias: {
     d: "allow-downgrade",
@@ -144,6 +150,7 @@ const minor = argSetToRegexes(parseMixedArg(args.minor));
 const allowDowngrade = parseMixedArg(args["allow-downgrade"]);
 const githubApiUrl = args.githubapi ? normalizeUrl(args.githubapi) : "https://api.github.com";
 const pypiApiUrl = args.pypiapi ? normalizeUrl(args.pypiapi) : "https://pypi.org";
+const goProxyUrl = args.goproxy ? normalizeUrl(args.goproxy) : (env.GOPROXY || "https://proxy.golang.org");
 const stripV = (str: string) => str.replace(/^v/, "");
 
 function matchesAny(str: string, set: boolean | Set<RegExp>) {
@@ -201,15 +208,14 @@ async function doFetch(url: string, opts: RequestInit) {
 async function fetchNpmInfo(name: string, type: string, originalRegistry: string, agentOpts: AgentOptions, authTokenOpts: AuthOptions, npmrc: Npmrc) {
   const {auth, registry} = getAuthAndRegistry(name, originalRegistry, authTokenOpts, npmrc);
   const packageName = type === "resolutions" ? basename(name) : name;
-  const urlName = packageName.replace(/\//g, "%2f");
-  const url = `${registry}/${urlName}`;
+  const url = `${registry}/${packageName.replace(/\//g, "%2f")}`;
 
   const res = await doFetch(url, getFetchOpts(agentOpts, auth?.type, auth?.token));
   if (res?.ok) {
     return [await res.json(), type, registry, name];
   } else {
     if (res?.status && res?.statusText) {
-      throw new Error(`Received ${res.status} ${res.statusText} for ${name} from ${registry}`);
+      throw new Error(`Received ${res.status} ${res.statusText} from ${url}`);
     } else {
       throw new Error(`Unable to fetch ${name} from ${registry}`);
     }
@@ -224,9 +230,42 @@ async function fetchPypiInfo(name: string, type: string, agentOpts: AgentOptions
     return [await res.json(), type, null, name];
   } else {
     if (res?.status && res?.statusText) {
-      throw new Error(`Received ${res.status} ${res.statusText} for ${name} from PyPi`);
+      throw new Error(`Received ${res.status} ${res.statusText} from ${url}`);
     } else {
       throw new Error(`Unable to fetch ${name} from PyPi`);
+    }
+  }
+}
+
+function splitPlainText(str: string): string[] {
+  return str.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+}
+
+// this is ultra slow on server-side
+async function fetchGoVersions(modulePath: string, agentOpts: AgentOptions) {
+  const url = `${goProxyUrl}/${modulePath}/@v/list`;
+  const res = await doFetch(url, getFetchOpts(agentOpts));
+  if (res?.ok) {
+    return splitPlainText(await res.text());
+  } else {
+    if (res?.status && res?.statusText) {
+      throw new Error(`Received ${res.status} ${res.statusText} from ${url}`);
+    } else {
+      throw new Error(`Unable to fetch ${modulePath} from PyPi`);
+    }
+  }
+}
+
+async function fetchGoVersionInfo(modulePath: string, version: string, agentOpts: AgentOptions) {
+  const url = `${goProxyUrl}/${modulePath}/${version === "latest" ? "@latest" : `@v/${version}.info`}`;
+  const res = await doFetch(url, getFetchOpts(agentOpts));
+  if (res?.ok) {
+    return res.json();
+  } else {
+    if (res?.status && res?.statusText) {
+      throw new Error(`Received ${res.status} ${res.statusText} from ${url}`);
+    } else {
+      throw new Error(`Unable to fetch ${modulePath} from PyPi`);
     }
   }
 }
@@ -445,7 +484,7 @@ function rangeToVersion(range: string) {
   }
 }
 
-function findVersion(data: NpmData, versions: string[], {range, semvers, usePre, useRel, useGreatest}: FindVersionOpts) {
+function findVersion(data: any, versions: string[], {range, semvers, usePre, useRel, useGreatest}: FindVersionOpts) {
   let tempVersion = rangeToVersion(range);
   let tempDate = 0;
   usePre = isRangePrerelease(range) || usePre;
@@ -481,11 +520,18 @@ function findVersion(data: NpmData, versions: string[], {range, semvers, usePre,
   return tempVersion || null;
 }
 
-function findNewVersion(data: NpmData, {mode, range, useGreatest, useRel, usePre, semvers}: FindNewVersionOpts) {
+function findNewVersion(data: any, {mode, range, useGreatest, useRel, usePre, semvers}: FindNewVersionOpts) {
   if (range === "*") return null; // ignore wildcard
   if (range.includes("||")) return null; // ignore or-chains
-  const versions = Object.keys(mode === "pypi" ? data.releases : data.versions)
-    .filter(version => valid(version));
+
+  let versions: string[];
+  if (mode === "pypi") {
+    versions = Object.keys(data.releases).filter((version: string) => valid(version));
+  } else if (mode === "npm") {
+    versions = Object.keys(data.versions).filter((version: string) => valid(version));
+  } else {
+    versions = data.versions;
+  }
   const version = findVersion(data, versions, {range, semvers, usePre, useRel, useGreatest});
   if (!version) return null;
 
@@ -497,6 +543,8 @@ function findNewVersion(data: NpmData, {mode, range, useGreatest, useRel, usePre
     if (mode === "pypi") {
       originalLatestTag = data.info.version; // may not be a 3-part semver
       latestTag = rangeToVersion(data.info.version); // add .0 to 6.0 so semver eats it
+    } else if (mode === "go") {
+      latestTag = data.latest.Version;
     } else {
       latestTag = data["dist-tags"].latest;
     }
@@ -734,7 +782,7 @@ function resolveFiles(filesArg: Set<string>): Set<string> {
       if (stat?.isFile()) {
         resolvedFiles.add(resolve(file));
       } else if (stat?.isDirectory()) {
-        for (const filename of ["package.json", "pyproject.toml"]) {
+        for (const filename of Object.keys(modeByFileName)) {
           const f = join(file, filename);
           let stat;
           try {
@@ -749,7 +797,7 @@ function resolveFiles(filesArg: Set<string>): Set<string> {
       }
     }
   } else { // search for files
-    for (const filename of ["package.json", "pyproject.toml"]) {
+    for (const filename of Object.keys(modeByFileName)) {
       const file = findUpSync(filename, cwd());
       if (file) resolvedFiles.add(resolve(file));
     }
@@ -817,9 +865,8 @@ async function main() {
 
   for (const file of resolveFiles(parseMixedArg(filesArg) as Set<string>)) {
     const projectDir = dirname(resolve(file));
-    const filename = basename(file);
-
-    const mode = filename === "pyproject.toml" ? "pypi" : "npm";
+    const filename = basename(file) as keyof typeof modeByFileName;
+    const mode = modeByFileName[filename];
     filePerMode[mode] = file;
     if (!deps[mode]) deps[mode] = {};
 
@@ -864,7 +911,7 @@ async function main() {
       }
     }
 
-    let dependencyTypes;
+    let dependencyTypes: string[] = [];
     if (types) {
       dependencyTypes = Array.isArray(types) ? types : types.split(",");
     } else if ("types" in config && Array.isArray(config.types)) {
@@ -878,7 +925,7 @@ async function main() {
           "peerDependencies",
           "resolutions",
         ];
-      } else {
+      } else if (mode === "pypi") {
         dependencyTypes = [
           "tool.poetry.dependencies",
           "tool.poetry.dev-dependencies",
@@ -886,21 +933,39 @@ async function main() {
           "tool.poetry.group.dev.dependencies",
           "tool.poetry.group.test.dependencies",
         ];
+      } else if (mode === "go") {
+        dependencyTypes = [
+          "deps",
+        ];
       }
     }
 
-    let pkg: {[other: string]: any};
-    try {
-      pkgStrs[mode] = readFileSync(file, "utf8");
-    } catch (err) {
-      throw new Error(`Unable to open ${file}: ${(err as Error).message}`);
+    let pkg: {[other: string]: any} = {};
+    if (mode === "go") {
+      pkgStrs[mode] = execFileSync("go", [
+        "list", "-m", "-f", "{{if not .Indirect}}{{.Path}}@{{.Version}}{{end}}", "all",
+      ], {stdio: "pipe", encoding: "utf8", cwd: projectDir});
+    } else {
+      try {
+        pkgStrs[mode] = readFileSync(file, "utf8");
+      } catch (err) {
+        throw new Error(`Unable to open ${file}: ${(err as Error).message}`);
+      }
     }
 
     try {
       if (mode === "npm") {
         pkg = JSON.parse(pkgStrs[mode]);
-      } else {
+      } else if (mode === "pypi") {
         pkg = (await import("smol-toml")).parse(pkgStrs[mode]);
+      } else {
+        pkg.deps = {};
+        for (const modulePathAndVersion of splitPlainText(pkgStrs[mode])) {
+          const [modulePath, version] = modulePathAndVersion.split("@");
+          if (version) { // current module has no version
+            pkg.deps[modulePath] = version;
+          }
+        }
       }
     } catch (err) {
       throw new Error(`Error parsing ${file}: ${(err as Error).message}`);
@@ -908,14 +973,14 @@ async function main() {
 
     for (const depType of dependencyTypes) {
       let obj: {[other: string]: string};
-      if (mode === "npm") {
+      if (mode === "npm" || mode === "go") {
         obj = pkg[depType] || {};
       } else {
         obj = getProperty(pkg, depType) || {};
       }
 
       for (const [name, value] of Object.entries(obj)) {
-        if (validRange(value) && canInclude(name, mode, include, exclude)) {
+        if (mode !== "go" && validRange(value) && canInclude(name, mode, include, exclude)) {
           // @ts-expect-error
           deps[mode][`${depType}${sep}${name}`] = {
             old: normalizeRange(value),
@@ -924,6 +989,11 @@ async function main() {
         } else if (mode === "npm" && canInclude(name, mode, include, exclude)) {
           // @ts-expect-error
           maybeUrlDeps[`${depType}${sep}${name}`] = {
+            old: value,
+          } as Partial<Dep>;
+        } else if (mode === "go") {
+          // @ts-expect-error
+          deps[mode][`${depType}${sep}${name}`] = {
             old: value,
           } as Partial<Dep>;
         }
@@ -938,12 +1008,16 @@ async function main() {
       registry = normalizeUrl(args.registry || config.registry || npmrc.registry);
     }
 
-    const entries = await pAll(Object.keys(deps[mode]).map(key => () => {
+    const entries = await pAll(Object.keys(deps[mode]).map(key => async () => {
       const [type, name] = key.split(sep);
       if (mode === "npm") {
         return fetchNpmInfo(name, type, registry, agentOpts, authTokenOpts, npmrc);
-      } else {
+      } else if (mode === "pypi") {
         return fetchPypiInfo(name, type, agentOpts);
+      } else {
+        const versions: string[] = await fetchGoVersions(name, agentOpts);
+        const latest: Record<string, any> = await fetchGoVersionInfo(name, "latest", agentOpts);
+        return [{versions, latest}, null, null, name];
       }
     }), {concurrency});
 
@@ -969,8 +1043,11 @@ async function main() {
       const newVersion = findNewVersion(data, {
         usePre, useRel, useGreatest, semvers, range: oldRange, mode,
       });
+
       let newRange: string = "";
-      if (newVersion) {
+      if (mode === "go" && newVersion) {
+        newRange = newVersion;
+      } else if (newVersion) {
         newRange = updateRange(oldRange, newVersion, oldOriginal);
       }
 
@@ -981,8 +1058,10 @@ async function main() {
 
         if (mode === "npm") {
           deps[mode][key].info = getInfoUrl(data?.versions?.[newVersion], registry, data.name);
-        } else {
+        } else if (mode === "pypi") {
           deps[mode][key].info = getInfoUrl(data, registry, data.info.name);
+        } else {
+          deps[mode][key].info = data.latest.Origin.URL;
         }
 
         if (data.time?.[newVersion]) {
