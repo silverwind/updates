@@ -247,7 +247,7 @@ function splitPlainText(str: string): string[] {
 }
 
 async function fetchGoVersionInfo(modulePath: string, version: string, agentOpts: AgentOptions, proxyUrl: string) {
-  const url = `${proxyUrl}/${modulePath}/${version === "latest" ? "@latest" : `@v/${version}.info`}`;
+  const url = `${proxyUrl}/${modulePath.toLowerCase()}/${version === "latest" ? "@latest" : `@v/${version}.info`}`;
   const res = await doFetch(url, getFetchOpts(agentOpts));
   if ([404, 410].includes(res.status) && proxyUrl !== defaultGoProxy) {
     return fetchGoVersionInfo(modulePath, version, agentOpts, defaultGoProxy);
