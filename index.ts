@@ -1037,8 +1037,7 @@ async function main() {
         const data: Record<string, any> = await fetchGoVersionInfo(name, "latest", agentOpts, goProxyUrl);
         return [data, "deps", null, name];
       }
-    // athens can't take too many parallel requests
-    }), {concurrency: mode === "go" ? concurrency / 12 : concurrency});
+    }), {concurrency});
 
     for (const [data, type, registry, name] of entries) {
       if (data?.error) throw new Error(data.error);
