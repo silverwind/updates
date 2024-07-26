@@ -8,7 +8,7 @@ import {cwd, stdout, argv, env, exit} from "node:process";
 import hostedGitInfo from "hosted-git-info";
 import {join, dirname, basename, resolve} from "node:path";
 import {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync} from "node:fs";
-import {timerel} from "timerel";
+import {timerel, type TimerelAnyDate} from "timerel";
 import supportsColor from "supports-color";
 import {magenta, red, green, disableColor} from "glowie";
 import {getProperty} from "dot-prop";
@@ -86,7 +86,7 @@ const sep = "\0";
 const modeByFileName = {
   "package.json": "npm",
   "pyproject.toml": "pypi",
-  // "go.mod": "go",
+  "go.mod": "go",
 };
 
 const args = minimist(argv.slice(2), {
@@ -105,6 +105,7 @@ const args = minimist(argv.slice(2), {
     "f", "file",
     "g", "greatest",
     "m", "minor",
+    "M", "modes",
     "P", "patch",
     "p", "prerelease",
     "R", "release",
@@ -125,6 +126,7 @@ const args = minimist(argv.slice(2), {
     i: "include",
     j: "json",
     m: "minor",
+    M: "modes",
     n: "no-color",
     P: "patch",
     p: "prerelease",
@@ -141,18 +143,22 @@ const args = minimist(argv.slice(2), {
 
 if (args["no-color"] || !supportsColor.stdout) disableColor();
 
-const greatest = argSetToRegexes(parseMixedArg(args.greatest));
-const prerelease = argSetToRegexes(parseMixedArg(args.prerelease));
-const release = argSetToRegexes(parseMixedArg(args.release));
-const patch = argSetToRegexes(parseMixedArg(args.patch));
-const minor = argSetToRegexes(parseMixedArg(args.minor));
-const allowDowngrade = parseMixedArg(args["allow-downgrade"]);
+type PackageArg = Set<RegExp> | boolean;
+
+const greatest = argSetToRegexes(parseMixedArg(args.greatest)) as PackageArg;
+const prerelease = argSetToRegexes(parseMixedArg(args.prerelease)) as PackageArg;
+const release = argSetToRegexes(parseMixedArg(args.release)) as PackageArg;
+const patch = argSetToRegexes(parseMixedArg(args.patch)) as PackageArg;
+const minor = argSetToRegexes(parseMixedArg(args.minor)) as PackageArg;
+const allowDowngrade = parseMixedArg(args["allow-downgrade"]) as PackageArg;
+const enabledModes = parseMixedArg(args.modes) as Set<string> || new Set(["npm", "pypi"]);
 const githubApiUrl = args.githubapi ? normalizeUrl(args.githubapi) : "https://api.github.com";
 const pypiApiUrl = args.pypiapi ? normalizeUrl(args.pypiapi) : "https://pypi.org";
-const goProxyUrl = args.goproxy ? normalizeUrl(args.goproxy) : (env.GOPROXY || "https://proxy.golang.org");
+const defaultGoProxy = "https://proxy.golang.org";
+const goProxyUrl = args.goproxy ? normalizeUrl(args.goproxy) : (env.GOPROXY || defaultGoProxy);
 const stripV = (str: string) => str.replace(/^v/, "");
 
-function matchesAny(str: string, set: boolean | Set<RegExp>) {
+function matchesAny(str: string, set: PackageArg) {
   for (const re of (set instanceof Set ? set : [])) {
     if (re.test(str)) return true;
   }
@@ -200,7 +206,7 @@ const getFetchOpts = memize((agentOpts: AgentOptions, authType?: string, authTok
 async function doFetch(url: string, opts: RequestInit) {
   if (args.verbose) console.error(`${magenta("fetch")} ${url}`);
   const res = await fetch(url, opts);
-  if (args.verbose) console.error(`${res.ok ? green("done") : red("error")} ${url}`);
+  if (args.verbose) console.error(`${res.ok ? green(res.status) : red(res.status)} ${url}`);
   return res;
 }
 
@@ -240,24 +246,12 @@ function splitPlainText(str: string): string[] {
   return str.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
 }
 
-// this is ultra slow on server-side
-async function fetchGoVersions(modulePath: string, agentOpts: AgentOptions) {
-  const url = `${goProxyUrl}/${modulePath}/@v/list`;
+async function fetchGoVersionInfo(modulePath: string, version: string, agentOpts: AgentOptions, proxyUrl: string) {
+  const url = `${proxyUrl}/${modulePath}/${version === "latest" ? "@latest" : `@v/${version}.info`}`;
   const res = await doFetch(url, getFetchOpts(agentOpts));
-  if (res?.ok) {
-    return splitPlainText(await res.text());
-  } else {
-    if (res?.status && res?.statusText) {
-      throw new Error(`Received ${res.status} ${res.statusText} from ${url}`);
-    } else {
-      throw new Error(`Unable to fetch ${modulePath} from PyPi`);
-    }
+  if ([404, 410].includes(res.status) && proxyUrl !== defaultGoProxy) {
+    return fetchGoVersionInfo(modulePath, version, agentOpts, defaultGoProxy);
   }
-}
-
-async function fetchGoVersionInfo(modulePath: string, version: string, agentOpts: AgentOptions) {
-  const url = `${goProxyUrl}/${modulePath}/${version === "latest" ? "@latest" : `@v/${version}.info`}`;
-  const res = await doFetch(url, getFetchOpts(agentOpts));
   if (res?.ok) {
     return res.json();
   } else {
@@ -540,17 +534,16 @@ function findVersion(data: any, versions: string[], {range, semvers, usePre, use
   return tempVersion || null;
 }
 
-function findNewVersion(data: any, {mode, range, useGreatest, useRel, usePre, semvers}: FindNewVersionOpts) {
+function findNewVersion(data: any, {mode, range, useGreatest, useRel, usePre, semvers}: FindNewVersionOpts): string | null {
+  if (mode === "go") return data.Version;
   if (range === "*") return null; // ignore wildcard
   if (range.includes("||")) return null; // ignore or-chains
 
-  let versions: string[];
+  let versions: string[] = [];
   if (mode === "pypi") {
     versions = Object.keys(data.releases).filter((version: string) => valid(version));
   } else if (mode === "npm") {
     versions = Object.keys(data.versions).filter((version: string) => valid(version));
-  } else {
-    versions = data.versions;
   }
   const version = findVersion(data, versions, {range, semvers, usePre, useRel, useGreatest});
   if (!version) return null;
@@ -563,8 +556,6 @@ function findNewVersion(data: any, {mode, range, useGreatest, useRel, usePre, se
     if (mode === "pypi") {
       originalLatestTag = data.info.version; // may not be a 3-part semver
       latestTag = rangeToVersion(data.info.version); // add .0 to 6.0 so semver eats it
-    } else if (mode === "go") {
-      latestTag = data.latest.Version;
     } else {
       latestTag = data["dist-tags"].latest;
     }
@@ -787,8 +778,9 @@ function canInclude(name: string, mode: string, include: Set<RegExp>, exclude: S
   return include.size ? false : true;
 }
 
-function resolveFiles(filesArg: Set<string>): Set<string> {
+function resolveFiles(filesArg: Set<string>): [Set<string>, Set<string>] {
   const resolvedFiles = new Set<string>();
+  const explicitFiles = new Set<string>();
 
   if (filesArg) { // check passed files
     for (const file of filesArg) {
@@ -800,7 +792,9 @@ function resolveFiles(filesArg: Set<string>): Set<string> {
       }
 
       if (stat?.isFile()) {
-        resolvedFiles.add(resolve(file));
+        const resolved = resolve(file);
+        resolvedFiles.add(resolved);
+        explicitFiles.add(resolved);
       } else if (stat?.isDirectory()) {
         for (const filename of Object.keys(modeByFileName)) {
           const f = join(file, filename);
@@ -822,7 +816,7 @@ function resolveFiles(filesArg: Set<string>): Set<string> {
       if (file) resolvedFiles.add(resolve(file));
     }
   }
-  return resolvedFiles;
+  return [resolvedFiles, explicitFiles];
 }
 
 async function main() {
@@ -854,6 +848,7 @@ async function main() {
     -U, --error-on-unchanged           Exit with code 0 when updates are available and 2 when not
     -r, --registry <url>               Override npm registry URL
     -S, --sockets <num>                Maximum number of parallel HTTP sockets opened. Default: ${maxSockets}
+    -M, --modes <mode,...>             Which modes to enable. Either npm,pypi,go. Default: npm,pypi
     -j, --json                         Output a JSON object
     -n, --no-color                     Disable color output
     -v, --version                      Print the version
@@ -883,10 +878,13 @@ async function main() {
   const filePerMode: {[other: string]: string} = {};
   let numDependencies = 0;
 
-  for (const file of resolveFiles(parseMixedArg(filesArg) as Set<string>)) {
+  const [files, explicitFiles] = resolveFiles(parseMixedArg(filesArg) as Set<string>);
+
+  for (const file of files) {
     const projectDir = dirname(resolve(file));
     const filename = basename(file) as keyof typeof modeByFileName;
     const mode = modeByFileName[filename];
+    if (!enabledModes.has(mode) && !explicitFiles.has(file)) continue;
     filePerMode[mode] = file;
     if (!deps[mode]) deps[mode] = {};
 
@@ -1015,6 +1013,7 @@ async function main() {
           // @ts-expect-error
           deps[mode][`${depType}${sep}${name}`] = {
             old: value,
+            oldOriginal: value,
           } as Partial<Dep>;
         }
       }
@@ -1035,11 +1034,11 @@ async function main() {
       } else if (mode === "pypi") {
         return fetchPypiInfo(name, type, agentOpts);
       } else {
-        const versions: string[] = await fetchGoVersions(name, agentOpts);
-        const latest: Record<string, any> = await fetchGoVersionInfo(name, "latest", agentOpts);
-        return [{versions, latest}, null, null, name];
+        const data: Record<string, any> = await fetchGoVersionInfo(name, "latest", agentOpts, goProxyUrl);
+        return [data, "deps", null, name];
       }
-    }), {concurrency});
+    // athens can't take too many parallel requests
+    }), {concurrency: mode === "go" ? concurrency / 12 : concurrency});
 
     for (const [data, type, registry, name] of entries) {
       if (data?.error) throw new Error(data.error);
@@ -1071,7 +1070,7 @@ async function main() {
         newRange = updateRange(oldRange, newVersion, oldOriginal);
       }
 
-      if (!newVersion || oldOriginal === newRange) {
+      if (!newVersion || oldOriginal && (oldOriginal === newRange)) {
         delete deps[mode][key];
       } else {
         deps[mode][key].new = newRange;
@@ -1081,13 +1080,19 @@ async function main() {
         } else if (mode === "pypi") {
           deps[mode][key].info = getInfoUrl(data, registry, data.info.name);
         } else {
-          deps[mode][key].info = data.latest.Origin.URL;
+          deps[mode][key].info = data?.Origin?.URL ?? `https://${name}`;
         }
 
-        if (data.time?.[newVersion]) {
-          deps[mode][key].age = timerel(data.time[newVersion], {noAffix: true});
-        } else if (data.releases?.[newVersion]?.[0]?.upload_time_iso_8601) {
-          deps[mode][key].age = timerel(data.releases[newVersion][0].upload_time_iso_8601, {noAffix: true});
+        let date: TimerelAnyDate = "";
+        if (mode === "npm" && data.time?.[newVersion]) { // npm
+          date = data.time[newVersion];
+        } else if (mode === "pypi" && data.releases?.[newVersion]?.[0]?.upload_time_iso_8601) {
+          date = data.releases[newVersion][0].upload_time_iso_8601;
+        } else if (mode === "go" && data.Time) {
+          date = data.Time;
+        }
+        if (date) {
+          deps[mode][key].age = timerel(date, {noAffix: true});
         }
       }
     }
