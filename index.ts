@@ -4,7 +4,6 @@ import minimist from "minimist";
 import rat from "registry-auth-token";
 import rc from "rc";
 import {parse, coerce, diff, gt, gte, lt, neq, valid, validRange} from "semver";
-import textTable from "text-table";
 import {cwd, stdout, argv, env, exit} from "node:process";
 import hostedGitInfo from "hosted-git-info";
 import {join, dirname, basename, resolve} from "node:path";
@@ -402,6 +401,30 @@ function highlightDiff(a: string, b: string, colorFn: (str: string) => string) {
   return res.replace(/\.$/, "");
 }
 
+const ansiLen = (str: string): number => str.replace(ansiRegex(), "").length;
+
+function textTable(rows: string[][], hsep = " "): string {
+  let ret = "";
+  const colSizes = new Array(rows[0].length).fill(0);
+  for (const row of rows) {
+    for (const [colIndex, col] of row.entries()) {
+      const len = ansiLen(col);
+      if (len > colSizes[colIndex]) {
+        colSizes[colIndex] = len;
+      }
+    }
+  }
+  for (const [rowIndex, row] of rows.entries()) {
+    for (const [colIndex, col] of row.entries()) {
+      if (colIndex > 0) ret += hsep;
+      const space = " ".repeat(colSizes[colIndex] - ansiLen(col));
+      ret += col + (colIndex === row.length - 1 ? "" : space);
+    }
+    if (rowIndex < rows.length - 1) ret += "\n";
+  }
+  return ret;
+}
+
 function formatDeps(deps: DepsByMode) {
   const arr = [["NAME", "OLD", "NEW", "AGE", "INFO"]];
   const seen = new Set();
@@ -422,10 +445,7 @@ function formatDeps(deps: DepsByMode) {
     }
   }
 
-  return textTable(arr, {
-    hsep: " ",
-    stringLength: str => str.replace(ansiRegex(), "").length,
-  });
+  return textTable(arr);
 }
 
 function updatePackageJson(pkgStr: string, deps: Deps) {
