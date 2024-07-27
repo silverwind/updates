@@ -438,7 +438,7 @@ function shortenGoName(moduleName: string) {
   if (/\/v[0-9]$/.test(moduleName)) {
     moduleName = dirname(moduleName);
   }
-  return basename(moduleName);
+  return moduleName;
 }
 
 function formatDeps(deps: DepsByMode) {
@@ -557,7 +557,13 @@ function findVersion(data: any, versions: string[], {range, semvers, usePre, use
 }
 
 function findNewVersion(data: any, {mode, range, useGreatest, useRel, usePre, semvers}: FindNewVersionOpts): string | null {
-  if (mode === "go") return data.Version;
+  if (mode === "go") {
+    if (gt(stripV(data.Version), stripV(range))) {
+      return data.Version;
+    } else {
+      return null;
+    }
+  }
   if (range === "*") return null; // ignore wildcard
   if (range.includes("||")) return null; // ignore or-chains
 
@@ -725,6 +731,11 @@ async function checkUrlDep(key: string, dep: Dep, useGreatest: boolean): Promise
       return {key, newRange: newTag, user, repo, oldRef, newRef: newTag};
     }
   }
+}
+
+// turn "v1.3.2-0.20230802210424-5b0b94c5c0d3" into "v1.3.2"
+function shortenGoVersion(version: string) {
+  return version.replace(/-.*/, "");
 }
 
 function normalizeRange(range: string) {
@@ -1034,7 +1045,7 @@ async function main() {
         } else if (mode === "go") {
           // @ts-expect-error
           deps[mode][`${depType}${sep}${name}`] = {
-            old: value,
+            old: shortenGoVersion(value),
             oldOriginal: value,
           } as Partial<Dep>;
         }
