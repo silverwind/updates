@@ -434,6 +434,13 @@ function textTable(rows: string[][], hsep = " "): string {
   return ret;
 }
 
+function shortenGoName(moduleName: string) {
+  if (/\/v[0-9]$/.test(moduleName)) {
+    moduleName = dirname(moduleName);
+  }
+  return basename(moduleName);
+}
+
 function formatDeps(deps: DepsByMode) {
   const arr = [["NAME", "OLD", "NEW", "AGE", "INFO"]];
   const seen = new Set();
@@ -445,7 +452,7 @@ function formatDeps(deps: DepsByMode) {
       if (seen.has(id)) continue;
       seen.add(id);
       arr.push([
-        mode === "go" ? basename(name) : name,
+        mode === "go" ? shortenGoName(name) : name,
         highlightDiff(data.old, data.new, red),
         highlightDiff(data.new, data.old, green),
         data.age || "",
