@@ -154,8 +154,8 @@ const allowDowngrade = parseMixedArg(args["allow-downgrade"]) as PackageArg;
 const enabledModes = parseMixedArg(args.modes) as Set<string> || new Set(["npm", "pypi"]);
 const githubApiUrl = args.githubapi ? normalizeUrl(args.githubapi) : "https://api.github.com";
 const pypiApiUrl = args.pypiapi ? normalizeUrl(args.pypiapi) : "https://pypi.org";
+const goProxies = args.goproxy ? normalizeUrl(args.goproxy) : makeGoProxies();
 const defaultGoProxy = "https://proxy.golang.org";
-const goProxyUrl = args.goproxy ? normalizeUrl(args.goproxy) : (env.GOPROXY || defaultGoProxy);
 const stripV = (str: string) => str.replace(/^v/, "");
 
 function matchesAny(str: string, set: PackageArg) {
@@ -169,6 +169,14 @@ const registryUrl = memize((scope: string, npmrc: Npmrc) => {
   const url = npmrc[`${scope}:registry`] || npmrc.registry;
   return url.endsWith("/") ? url : `${url}/`;
 });
+
+function makeGoProxies(): string[] {
+  if (env.GOPROXY) {
+    return env.GOPROXY.split(/[,|]/).map(s => s.trim()).filter(s => (Boolean(s) && s !== "direct"));
+  } else {
+    return [defaultGoProxy];
+  }
+}
 
 function findUpSync(filename: string, dir: string): string | null {
   const path = join(dir, filename);
@@ -246,12 +254,19 @@ function splitPlainText(str: string): string[] {
   return str.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
 }
 
-async function fetchGoVersionInfo(modulePath: string, version: string, agentOpts: AgentOptions, proxyUrl: string) {
+async function fetchGoVersionInfo(modulePath: string, version: string, agentOpts: AgentOptions, proxies: string[]) {
+  const proxyUrl = proxies.shift();
+  if (!proxyUrl) {
+    throw new Error("No more go proxies available");
+  }
+
   const url = `${proxyUrl}/${modulePath.toLowerCase()}/${version === "latest" ? "@latest" : `@v/${version}.info`}`;
   const res = await doFetch(url, getFetchOpts(agentOpts));
-  if ([404, 410].includes(res.status) && proxyUrl !== defaultGoProxy) {
-    return fetchGoVersionInfo(modulePath, version, agentOpts, defaultGoProxy);
+
+  if ([404, 410].includes(res.status) && proxies.length) {
+    return fetchGoVersionInfo(modulePath, version, agentOpts, proxies);
   }
+
   if (res?.ok) {
     return res.json();
   } else {
@@ -1034,7 +1049,8 @@ async function main() {
       } else if (mode === "pypi") {
         return fetchPypiInfo(name, type, agentOpts);
       } else {
-        const data: Record<string, any> = await fetchGoVersionInfo(name, "latest", agentOpts, goProxyUrl);
+        const proxies = Array.from(goProxies);
+        const data: Record<string, any> = await fetchGoVersionInfo(name, "latest", agentOpts, proxies);
         return [data, "deps", null, name];
       }
     }), {concurrency});
