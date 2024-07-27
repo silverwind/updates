@@ -445,7 +445,7 @@ function formatDeps(deps: DepsByMode) {
       if (seen.has(id)) continue;
       seen.add(id);
       arr.push([
-        name,
+        mode === "go" ? basename(name) : name,
         highlightDiff(data.old, data.new, red),
         highlightDiff(data.new, data.old, green),
         data.age || "",
