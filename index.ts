@@ -154,8 +154,8 @@ const allowDowngrade = parseMixedArg(args["allow-downgrade"]) as PackageArg;
 const enabledModes = parseMixedArg(args.modes) as Set<string> || new Set(["npm", "pypi"]);
 const githubApiUrl = args.githubapi ? normalizeUrl(args.githubapi) : "https://api.github.com";
 const pypiApiUrl = args.pypiapi ? normalizeUrl(args.pypiapi) : "https://pypi.org";
-const goProxies = args.goproxy ? normalizeUrl(args.goproxy) : makeGoProxies();
 const defaultGoProxy = "https://proxy.golang.org";
+const goProxies = args.goproxy ? normalizeUrl(args.goproxy) : makeGoProxies();
 const stripV = (str: string) => str.replace(/^v/, "");
 
 function matchesAny(str: string, set: PackageArg) {
