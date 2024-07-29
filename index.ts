@@ -5,7 +5,6 @@ import registryAuthToken from "registry-auth-token";
 import rc from "rc";
 import {parse, coerce, diff, gt, gte, lt, neq, valid, validRange} from "semver";
 import {cwd, stdout, argv, env, exit} from "node:process";
-import hostedGitInfo from "hosted-git-info";
 import {join, dirname, basename, resolve} from "node:path";
 import {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync} from "node:fs";
 import {timerel, type TimerelAnyDate} from "timerel";
@@ -275,7 +274,21 @@ async function fetchGoVersionInfo(modulePath: string, version: string, agentOpts
   }
 }
 
-function getInfoUrl({repository, homepage, info}: {repository: string | {[other: string]: any}, homepage: string, info: {[other: string]: any}}, registry: string, name: string): string {
+type PackageRepository = string | {
+  type: string,
+  url: string,
+  directory: string,
+}
+
+function getSubDir(url: string) {
+  if (url.startsWith("bitbucket.org")) {
+    return "src/HEAD";
+  } else {
+    return "tree/HEAD";
+  }
+}
+
+function getInfoUrl({repository, homepage, info}: {repository: PackageRepository, homepage: string, info: {[other: string]: any}}, registry: string, name: string): string {
   if (info) { // pypi
     repository =
       info.project_urls.repository ||
@@ -295,14 +308,13 @@ function getInfoUrl({repository, homepage, info}: {repository: string | {[other:
   if (registry === "https://npm.pkg.github.com") {
     return `https://github.com/${name.replace(/^@/, "")}`;
   } else if (repository) {
-    const url: string = typeof repository === "string" ? repository : repository.url;
-    const info = hostedGitInfo.fromUrl(url);
-    const browse = info?.browse?.();
-    if (browse) {
-      infoUrl = browse;
-    }
-    if (infoUrl && typeof repository !== "string" && repository.directory && info?.treepath) {
-      infoUrl = `${infoUrl}/${info.treepath}/HEAD/${repository.directory}`;
+    const url = typeof repository === "string" ? repository : repository.url;
+    infoUrl = url
+      .replace("git@", "")
+      .replace(/.+?\/\//, "https://")
+      .replace(/\.git$/, "");
+    if (infoUrl && typeof repository !== "string" && repository.directory) {
+      infoUrl = `${infoUrl}/${getSubDir(infoUrl)}/${repository.directory}`;
     }
     if (!infoUrl && typeof repository !== "string" && repository?.url && /^https?:/.test(repository.url)) {
       infoUrl = repository.url;
