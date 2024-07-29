@@ -22,7 +22,6 @@
     "@types/registry-auth-token": "4.2.4",
     "@types/semver": "7.5.8",
     "ansi-regex": "6.0.1",
-    "dot-prop": "9.0.0",
     "eslint": "8.57.0",
     "eslint-config-silverwind": "90.0.0",
     "eslint-config-silverwind-typescript": "7.0.1",

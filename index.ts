@@ -10,7 +10,6 @@ import {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync} from "
 import {timerel, type TimerelAnyDate} from "timerel";
 import supportsColor from "supports-color";
 import {magenta, red, green, disableColor} from "glowie";
-import {getProperty} from "dot-prop";
 import pAll from "p-all";
 import picomatch from "picomatch";
 import pkg from "./package.json" with {type: "json"};
@@ -172,6 +171,10 @@ function makeGoProxies(): string[] {
   } else {
     return [defaultGoProxy];
   }
+}
+
+function getProperty(obj: Record<string, any>, path: string) {
+  return path.split(".").reduce((obj: Record<string, any>, prop: string) => obj?.[prop] ?? null, obj);
 }
 
 function findUpSync(filename: string, dir: string): string | null {
