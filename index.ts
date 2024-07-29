@@ -7,15 +7,16 @@ import {parse, coerce, diff, gt, gte, lt, neq, valid, validRange} from "semver";
 import {cwd, stdout, argv, env, exit} from "node:process";
 import {join, dirname, basename, resolve} from "node:path";
 import {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync} from "node:fs";
-import {timerel, type TimerelAnyDate} from "timerel";
+import {timerel} from "timerel";
 import supportsColor from "supports-color";
 import {magenta, red, green, disableColor} from "glowie";
 import pAll from "p-all";
 import picomatch from "picomatch";
 import pkg from "./package.json" with {type: "json"};
+import {execFileSync} from "node:child_process";
 import type {AuthOptions} from "registry-auth-token";
 import type {AgentOptions} from "node:https";
-import {execFileSync} from "node:child_process";
+import type {TimerelAnyDate} from "timerel";
 
 type Npmrc = {
   registry?: string,
