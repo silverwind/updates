@@ -285,7 +285,7 @@ type PackageRepository = string | {
 }
 
 function getSubDir(url: string) {
-  if (url.startsWith("bitbucket.org")) {
+  if (url.startsWith("https://bitbucket.org")) {
     return "src/HEAD";
   } else {
     return "tree/HEAD";
