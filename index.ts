@@ -288,7 +288,7 @@ function resolvePackageJsonUrl(url: string) {
   url = url.replace("git@", "").replace(/.+?\/\//, "https://").replace(/\.git$/, "");
   if (/^[a-z]+:[a-z0-9-]\/[a-z0-9-]$/.test(url)) { // foo:user/repo
     return url.replace(/^(.+?):/, (_, p1) => `https://${p1}.com/`);
-  } else if (/^[a-z0-9-]\/[a-z0-9-]/.test(url)) { // user/repo
+  } else if (/^[a-z0-9-]\/[a-z0-9-]$/.test(url)) { // user/repo
     return `https://github.com/${url}`;
   } else {
     return url;
