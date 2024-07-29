@@ -1,7 +1,7 @@
 #!/usr/bin/env -S node --import @swc-node/register/esm-register
 import ansiRegex from "ansi-regex";
 import minimist from "minimist";
-import rat from "registry-auth-token";
+import registryAuthToken from "registry-auth-token";
 import rc from "rc";
 import {parse, coerce, diff, gt, gte, lt, neq, valid, validRange} from "semver";
 import {cwd, stdout, argv, env, exit} from "node:process";
@@ -13,7 +13,6 @@ import supportsColor from "supports-color";
 import {magenta, red, green, disableColor} from "glowie";
 import {getProperty} from "dot-prop";
 import pAll from "p-all";
-import memize from "memize";
 import picomatch from "picomatch";
 import pkg from "./package.json" with {type: "json"};
 import type {AuthOptions} from "registry-auth-token";
@@ -77,9 +76,7 @@ const partsRe = /^([^/]+)\/([^/#]+)?.*?\/([0-9a-f]+|v?[0-9]+\.[0-9]+\.[0-9]+)$/i
 const hashRe = /^[0-9a-f]{7,}$/i;
 const versionRe = /[0-9]+(\.[0-9]+)?(\.[0-9]+)?/g;
 const esc = (str: string) => str.replace(/[|\\{}()[\]^$+*?.-]/g, "\\$&");
-const gitInfo = memize(hostedGitInfo.fromUrl);
-const registryAuthToken = memize(rat);
-const normalizeUrl = memize((url: string) => url.endsWith("/") ? url.substring(0, url.length - 1) : url);
+const normalizeUrl = (url: string) => url.endsWith("/") ? url.substring(0, url.length - 1) : url;
 const packageVersion = pkg.version || "0.0.0";
 const sep = "\0";
 
@@ -165,10 +162,10 @@ function matchesAny(str: string, set: PackageArg) {
   return false;
 }
 
-const registryUrl = memize((scope: string, npmrc: Npmrc) => {
+function registryUrl(scope: string, npmrc: Npmrc) {
   const url = npmrc[`${scope}:registry`] || npmrc.registry;
   return url.endsWith("/") ? url : `${url}/`;
-});
+}
 
 function makeGoProxies(): string[] {
   if (env.GOPROXY) {
@@ -201,7 +198,7 @@ function getAuthAndRegistry(name: string, registry: string, authTokenOpts: AuthO
   }
 }
 
-const getFetchOpts = memize((agentOpts: AgentOptions, authType?: string, authToken?: string) => {
+function getFetchOpts(agentOpts: AgentOptions, authType?: string, authToken?: string) {
   return {
     ...(Object.keys(agentOpts).length && {agentOpts}),
     headers: {
@@ -209,7 +206,7 @@ const getFetchOpts = memize((agentOpts: AgentOptions, authType?: string, authTok
       ...(authToken && {Authorization: `${authType} ${authToken}`}),
     }
   };
-});
+}
 
 async function doFetch(url: string, opts: RequestInit) {
   if (args.verbose) console.error(`${magenta("fetch")} ${url}`);
@@ -299,7 +296,7 @@ function getInfoUrl({repository, homepage, info}: {repository: string | {[other:
     return `https://github.com/${name.replace(/^@/, "")}`;
   } else if (repository) {
     const url: string = typeof repository === "string" ? repository : repository.url;
-    const info = gitInfo(url);
+    const info = hostedGitInfo.fromUrl(url);
     const browse = info?.browse?.();
     if (browse) {
       infoUrl = browse;
