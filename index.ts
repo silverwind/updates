@@ -328,12 +328,6 @@ function getInfoUrl({repository, homepage, info}: {repository: PackageRepository
     if (infoUrl && typeof repository !== "string" && repository.directory) {
       infoUrl = `${infoUrl}/${getSubDir(infoUrl)}/${repository.directory}`;
     }
-    if (!infoUrl && typeof repository !== "string" && repository?.url && /^https?:/.test(repository.url)) {
-      infoUrl = repository.url;
-    }
-    if (!infoUrl && url) {
-      infoUrl = url;
-    }
   }
 
   return infoUrl || homepage || "";
