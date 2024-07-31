@@ -22,6 +22,10 @@ type Npmrc = {
   registry?: string,
   ca?: string,
   cafile?: string,
+  cert?: string,
+  certfile?: string,
+  key?: string,
+  keyfile?: string,
   [other: string]: any,
 }
 
@@ -777,8 +781,12 @@ function extractCerts(str: string): string[] {
   return Array.from(str.matchAll(/(----BEGIN CERT[^]+?IFICATE----)/g), (m: string[]) => m[0]);
 }
 
-async function getCerts(extra: string[] = []) {
-  return [...(await import("node:tls")).rootCertificates, ...extra];
+function extractKey(str: string): string[] {
+  return Array.from(str.matchAll(/(----BEGIN [^]+?PRIVATE KEY----)/g), (m: string[]) => m[0]);
+}
+
+async function appendRoots(certs: string[] = []) {
+  return [...(await import("node:tls")).rootCertificates, ...certs];
 }
 
 // convert arg from cli or config to regex
@@ -962,18 +970,25 @@ async function main() {
     const exclude = matchersToRegexSet(excludeCli, config?.exclude);
 
     const agentOpts: AgentOptions = {};
-    const npmrc: Npmrc = rc("npm", {registry: "https://registry.npmjs.org"});
+    const npmrc: Npmrc = rc("npm", {registry: "https://registry.npmjs.org"}) || {};
     const authTokenOpts = {npmrc, recursive: true};
     if (mode === "npm") {
+      // TODO: support these per-scope
       if (npmrc["strict-ssl"] === false) {
         agentOpts.rejectUnauthorized = false;
       }
-      if (npmrc?.cafile) {
-        agentOpts.ca = await getCerts(extractCerts(readFileSync(npmrc.cafile, "utf8")));
-      }
-      if (npmrc?.ca) {
-        const cas = Array.isArray(npmrc.ca) ? npmrc.ca : [npmrc.ca];
-        agentOpts.ca = await getCerts(cas.flatMap(ca => extractCerts(ca)));
+      for (const opt of ["cert", "ca", "key"] as const) {
+        const extract = (opt === "key") ? extractKey : extractCerts;
+        let strs: string[] = [];
+        if (npmrc[opt]) {
+          strs = (Array.isArray(npmrc[opt]) ? npmrc[opt] : [npmrc[opt]]).flatMap(str => extract(str));
+        }
+        if (npmrc[`${opt}file`]) {
+          strs = Array.from(extract(readFileSync(npmrc[`opt${file}`], "utf8")));
+        }
+        if (strs.length) {
+          agentOpts[opt] = opt === "ca" ? await appendRoots(strs) : strs;
+        }
       }
     }
 
