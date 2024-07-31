@@ -307,7 +307,7 @@ function getSubDir(url: string) {
   }
 }
 
-function getInfoUrl({repository, homepage, info}: {repository: PackageRepository, homepage: string, info: {[other: string]: any}}, registry: string, name: string): string {
+function getInfoUrl({repository, homepage, info}: {repository: PackageRepository, homepage: string, info: Record<string, any>}, registry: string, name: string): string {
   if (info) { // pypi
     repository =
       info.project_urls.repository ||
@@ -667,7 +667,7 @@ function fetchGitHub(url: string) {
   return doFetch(url, opts);
 }
 
-async function getLastestCommit(user: string, repo: string): Promise<{hash: string, commit: {[other: string]: any}}> {
+async function getLastestCommit(user: string, repo: string): Promise<{hash: string, commit: Record<string, any>}> {
   const url = `${githubApiUrl}/repos/${user}/${repo}/commits`;
   const res = await fetchGitHub(url);
   if (!res?.ok) return {hash: "", commit: {}};
@@ -930,8 +930,8 @@ async function main() {
   // output vars
   const deps: DepsByMode = {};
   const maybeUrlDeps: DepsByMode = {};
-  const pkgStrs: {[other: string]: string} = {};
-  const filePerMode: {[other: string]: string} = {};
+  const pkgStrs: Record<string, string> = {};
+  const filePerMode: Record<string, string> = {};
   let numDependencies = 0;
 
   const [files, explicitFiles] = resolveFiles(parseMixedArg(filesArg) as Set<string>);
@@ -944,7 +944,7 @@ async function main() {
     filePerMode[mode] = file;
     if (!deps[mode]) deps[mode] = {};
 
-    let config: {[other: string]: any} = {};
+    let config: Record<string, any> = {};
     try {
       ({default: config} = await Promise.any([
         "updates.config.js",
@@ -1021,7 +1021,7 @@ async function main() {
       }
     }
 
-    let pkg: {[other: string]: any} = {};
+    let pkg: Record<string, any> = {};
     if (mode === "go") {
       pkgStrs[mode] = execFileSync("go", [
         "list", "-m", "-f", "{{if not .Indirect}}{{.Path}}@{{.Version}}{{end}}", "all",
@@ -1053,7 +1053,7 @@ async function main() {
     }
 
     for (const depType of dependencyTypes) {
-      let obj: {[other: string]: string};
+      let obj: Record<string, string>;
       if (mode === "npm" || mode === "go") {
         obj = pkg[depType] || {};
       } else {
