@@ -1,4 +1,4 @@
-#!/usr/bin/env -S node --import @swc-node/register/esm-register
+#!/usr/bin/env -S node --experimental-strip-types
 import ansiRegex from "ansi-regex";
 import minimist from "minimist";
 import registryAuthToken from "registry-auth-token";
