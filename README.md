@@ -48,13 +48,15 @@ The module uses global `fetch` under the hood. In Node.js HTTP proxies from envi
 The config file is used to configure certain options of the module. It be placed as `updates.config.{js,ts,mjs,mts}` or `config/updates.config.{js,ts,mjs,mts}`, relative to `package.json`. For typescript to work in Node 22.6.0 and above, set `NODE_OPTIONS="--experimental-strip-types"` in your environment.
 
 ```ts
+import type {Config} from "updates";
+
 export default {
   exclude: [
     "semver",
     "@vitejs/*",
     /^react(-dom)?$/,
   ],
-};
+} satisfies Config;
 ```
 
 ### Config File Options
