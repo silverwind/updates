@@ -882,6 +882,23 @@ function resolveFiles(filesArg: Set<string>): [Set<string>, Set<string>] {
   return [resolvedFiles, explicitFiles];
 }
 
+async function loadConfig(rootDir: string): Promise<Config> {
+  let config: Config = {};
+  try {
+    ({default: config} = await Promise.any([
+      "updates.config.js",
+      "updates.config.ts",
+      "updates.config.mjs",
+      "updates.config.mts",
+      ".config/updates.js",
+      ".config/updates.ts",
+      ".config/updates.mjs",
+      ".config/updates.mts",
+    ].map(str => import(join(rootDir, ...str.split("/"))))));
+  } catch {}
+  return config;
+}
+
 async function main() {
   for (const stream of [process.stdout, process.stderr]) {
     // @ts-expect-error
@@ -951,20 +968,7 @@ async function main() {
     filePerMode[mode] = file;
     if (!deps[mode]) deps[mode] = {};
 
-    let config: Config = {};
-    try {
-      ({default: config} = await Promise.any([
-        "updates.config.js",
-        "updates.config.ts",
-        "updates.config.mjs",
-        "updates.config.mts",
-        ".config/updates.js",
-        ".config/updates.ts",
-        ".config/updates.mjs",
-        ".config/updates.mts",
-      ].map(str => import(join(projectDir, ...str.split("/"))))));
-    } catch {}
-
+    const config = await loadConfig(projectDir);
     let includeCli: string[] = [];
     let excludeCli: string[] = [];
     if (args.include && args.include !== true) { // cli
