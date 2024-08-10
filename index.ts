@@ -18,6 +18,13 @@ import type {AuthOptions} from "registry-auth-token";
 import type {AgentOptions} from "node:https";
 import type {TimerelAnyDate} from "timerel";
 
+export type Config = {
+  include?: Array<string | RegExp>;
+  exclude?: Array<string | RegExp>;
+  types?: Array<string>;
+  registry?: string;
+}
+
 type Npmrc = {
   registry?: string,
   ca?: string,
@@ -811,7 +818,7 @@ function argSetToRegexes(arg: any) {
 }
 
 // parse include/exclude into a Set of regexes
-function matchersToRegexSet(cliArgs: string[], configArgs: string[]): Set<RegExp> {
+function matchersToRegexSet(cliArgs: string[], configArgs: Array<string | RegExp>): Set<RegExp> {
   const ret = new Set();
   for (const arg of cliArgs || []) {
     ret.add(argToRegex(arg, true));
@@ -944,7 +951,7 @@ async function main() {
     filePerMode[mode] = file;
     if (!deps[mode]) deps[mode] = {};
 
-    let config: Record<string, any> = {};
+    let config: Config = {};
     try {
       ({default: config} = await Promise.any([
         "updates.config.js",
@@ -966,8 +973,8 @@ async function main() {
     if (args.exclude && args.exclude !== true) {
       excludeCli = (Array.isArray(args.exclude) ? args.exclude : [args.exclude]).flatMap(item => item.split(","));
     }
-    const include = matchersToRegexSet(includeCli, config?.include);
-    const exclude = matchersToRegexSet(excludeCli, config?.exclude);
+    const include = matchersToRegexSet(includeCli, config?.include ?? []);
+    const exclude = matchersToRegexSet(excludeCli, config?.exclude ?? []);
 
     const agentOpts: AgentOptions = {};
     const npmrc: Npmrc = rc("npm", {registry: "https://registry.npmjs.org"}) || {};

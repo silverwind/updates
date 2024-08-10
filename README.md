@@ -45,9 +45,9 @@ The module uses global `fetch` under the hood. In Node.js HTTP proxies from envi
 
 ## Config File
 
-The config file is used to configure certain options of the module. CLI arguments have precedence over options in the config file, except for `include` and `exclude` options which are merged.
+The config file is used to configure certain options of the module. It be placed as `{.config/,}updates.config.{js,ts,mjs,mts}`, relative to `package.json`. For typescript to work in Node, set `NODE_OPTIONS="--experimental-strip-types"` in your environment.
 
-```js
+```ts
 export default {
   exclude: [
     "semver",
@@ -57,20 +57,13 @@ export default {
 };
 ```
 
-### Config File Locations
-
-The config file can be placed in these locations, relative to `package.json`:
-
-- `updates.config.{js,ts,mjs,mts}`
-- `.config/updates.{js,ts,mjs,mts}`
-
-For typescript, your runtime needs to support it either natively or via a node loader.
-
 ### Config File Options
 
 - `include` *Array[String|Regexp]*: Array of dependencies to include
 - `exclude` *Array[String|Regexp]*: Array of dependencies to exclude
 - `types` *Array[String]*: Array of dependency types
 - `registry` *String*: URL to npm registry
+
+CLI arguments have precedence over options in the config file, except for `include` and `exclude` options which are merged.
 
 © [silverwind](https://github.com/silverwind), distributed under BSD licence
