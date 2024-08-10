@@ -883,18 +883,17 @@ function resolveFiles(filesArg: Set<string>): [Set<string>, Set<string>] {
 }
 
 async function loadConfig(rootDir: string): Promise<Config> {
+  const filenames: string[] = [];
+  for (const prefix of ["", ".config/"]) {
+    for (const ext of ["js", "ts", "mjs", "mts"]) {
+      filenames.push(`${prefix}updates${prefix ? "" : ".config"}.${ext}`);
+    }
+  }
   let config: Config = {};
   try {
-    ({default: config} = await Promise.any([
-      "updates.config.js",
-      "updates.config.ts",
-      "updates.config.mjs",
-      "updates.config.mts",
-      ".config/updates.js",
-      ".config/updates.ts",
-      ".config/updates.mjs",
-      ".config/updates.mts",
-    ].map(str => import(join(rootDir, ...str.split("/"))))));
+    ({default: config} = await Promise.any(filenames.map(str => {
+      return import(join(rootDir, ...str.split("/")));
+    })));
   } catch {}
   return config;
 }
