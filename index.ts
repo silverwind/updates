@@ -1,4 +1,4 @@
-#!/usr/bin/env -S node --experimental-strip-types
+#!/usr/bin/env -S node --experimental-strip-types --no-warnings
 import ansiRegex from "ansi-regex";
 import minimist from "minimist";
 import registryAuthToken from "registry-auth-token";
