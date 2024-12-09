@@ -189,6 +189,10 @@ function getProperty(obj: Record<string, any>, path: string) {
   return path.split(".").reduce((obj: Record<string, any>, prop: string) => obj?.[prop] ?? null, obj);
 }
 
+function commaSeparatedToArray(str: string) {
+  return str.split(",").filter(Boolean);
+}
+
 function findUpSync(filename: string, dir: string): string | null {
   const path = join(dir, filename);
   try { accessSync(path); return path; } catch {}
@@ -776,7 +780,7 @@ function parseMixedArg(arg: any) {
   } else if (arg === "") {
     return true;
   } else if (typeof arg === "string") {
-    return arg.includes(",") ? new Set(arg.split(",")) : new Set([arg]);
+    return arg.includes(",") ? new Set(commaSeparatedToArray(arg)) : new Set([arg]);
   } else if (Array.isArray(arg)) {
     return new Set(arg);
   } else {
@@ -971,10 +975,12 @@ async function main() {
     let includeCli: string[] = [];
     let excludeCli: string[] = [];
     if (args.include && args.include !== true) { // cli
-      includeCli = (Array.isArray(args.include) ? args.include : [args.include]).flatMap(item => item.split(","));
+      includeCli = (Array.isArray(args.include) ? args.include : [args.include])
+        .flatMap(item => commaSeparatedToArray(item));
     }
     if (args.exclude && args.exclude !== true) {
-      excludeCli = (Array.isArray(args.exclude) ? args.exclude : [args.exclude]).flatMap(item => item.split(","));
+      excludeCli = (Array.isArray(args.exclude) ? args.exclude : [args.exclude])
+        .flatMap(item => commaSeparatedToArray(item));
     }
     const include = matchersToRegexSet(includeCli, config?.include ?? []);
     const exclude = matchersToRegexSet(excludeCli, config?.exclude ?? []);
@@ -1004,7 +1010,7 @@ async function main() {
 
     let dependencyTypes: string[] = [];
     if (types) {
-      dependencyTypes = Array.isArray(types) ? types : types.split(",");
+      dependencyTypes = Array.isArray(types) ? types : commaSeparatedToArray(types);
     } else if ("types" in config && Array.isArray(config.types)) {
       dependencyTypes = config.types;
     } else {
