@@ -2,4 +2,3 @@ root: true
 reportUnusedDisableDirectives: true
 extends:
   - silverwind
-  - silverwind-typescript
