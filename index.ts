@@ -328,6 +328,7 @@ function getInfoUrl({repository, homepage, info}: {repository: PackageRepository
       info.project_urls.source ||
       info.project_urls.Source ||
       info.project_urls["source code"] ||
+      info.project_urls["Source code"] ||
       info.project_urls["Source Code"] ||
       info.project_urls.homepage ||
       info.project_urls.Homepage ||
