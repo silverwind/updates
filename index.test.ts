@@ -1,4 +1,4 @@
-import {execa} from "execa";
+import spawn from "nano-spawn";
 import restana from "restana";
 import {join, dirname} from "node:path";
 import {readFileSync, mkdtempSync} from "node:fs";
@@ -114,7 +114,7 @@ function makeTest(args: string) {
       "--githubapi", githubUrl,
       "--pypiapi", pypiUrl,
     ];
-    const {stdout} = await execa(script, argsArr, {cwd: testDir});
+    const {stdout} = await spawn(process.execPath, [script, ...argsArr], {cwd: testDir});
     const {results} = JSON.parse(stdout);
 
     // Parse results, with custom validation for the dynamic "age" property
@@ -138,7 +138,8 @@ function makeTest(args: string) {
 }
 
 test("simple", async () => {
-  const {stdout, stderr, exitCode} = await execa(script, [
+  const {stdout, stderr} = await spawn(process.execPath, [
+    script,
     "-C",
     "--githubapi", githubUrl,
     "--pypiapi", pypiUrl,
@@ -148,11 +149,11 @@ test("simple", async () => {
   expect(stderr).toEqual("");
   expect(stdout).toContain("prismjs");
   expect(stdout).toContain("https://github.com/silverwind/updates");
-  expect(exitCode).toEqual(0);
 });
 
 test("empty", async () => {
-  const {stdout, stderr, exitCode} = await execa(script, [
+  const {stdout, stderr} = await spawn(process.execPath, [
+    script,
     "-C",
     "--githubapi", githubUrl,
     "--pypiapi", pypiUrl,
@@ -160,13 +161,12 @@ test("empty", async () => {
   ]);
   expect(stderr).toEqual("");
   expect(stdout).toContain("No dependencies");
-  expect(exitCode).toEqual(0);
 });
 
 if (env.CI && !env.BUN) {
   test("global", async () => {
-    await execa("npm", ["i", "-g", "."]);
-    const {stdout, stderr, exitCode} = await execa("updates", [
+    await spawn("npm", ["i", "-g", "."]);
+    const {stdout, stderr} = await spawn("updates", [
       "-C",
       "--githubapi", githubUrl,
       "--pypiapi", pypiUrl,
@@ -175,7 +175,6 @@ if (env.CI && !env.BUN) {
     expect(stderr).toEqual("");
     expect(stdout).toContain("prismjs");
     expect(stdout).toContain("https://github.com/silverwind/updates");
-    expect(exitCode).toEqual(0);
   });
 }
 
