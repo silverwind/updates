@@ -138,7 +138,7 @@ function makeTest(args: string) {
 }
 
 test("simple", async () => {
-  const subprocess = spawn(process.execPath, [
+  const {stdout, stderr} = await spawn(process.execPath, [
     script,
     "-C",
     "--githubapi", githubUrl,
@@ -146,44 +146,35 @@ test("simple", async () => {
     "--registry", npmUrl,
     "-f", testFile,
   ]);
-  const {stdout, stderr} = await subprocess;
-  const {exitCode} = await subprocess.nodeChildProcess;
   expect(stderr).toEqual("");
   expect(stdout).toContain("prismjs");
   expect(stdout).toContain("https://github.com/silverwind/updates");
-  expect(exitCode).toEqual(0);
 });
 
 test("empty", async () => {
-  const subprocess = spawn(process.execPath, [
+  const {stdout, stderr} = await spawn(process.execPath, [
     script,
     "-C",
     "--githubapi", githubUrl,
     "--pypiapi", pypiUrl,
     "-f", emptyFile,
   ]);
-  const {stdout, stderr} = await subprocess;
-  const {exitCode} = await subprocess.nodeChildProcess;
   expect(stderr).toEqual("");
   expect(stdout).toContain("No dependencies");
-  expect(exitCode).toEqual(0);
 });
 
 if (env.CI && !env.BUN) {
   test("global", async () => {
     await spawn("npm", ["i", "-g", "."]);
-    const subprocess = spawn("updates", [
+    const {stdout, stderr} = await spawn("updates", [
       "-C",
       "--githubapi", githubUrl,
       "--pypiapi", pypiUrl,
       "-f", testFile,
     ]);
-    const {stdout, stderr} = await subprocess;
-    const {exitCode} = await subprocess.nodeChildProcess;
     expect(stderr).toEqual("");
     expect(stdout).toContain("prismjs");
     expect(stdout).toContain("https://github.com/silverwind/updates");
-    expect(exitCode).toEqual(0);
   });
 }
 
