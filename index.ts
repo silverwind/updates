@@ -6,10 +6,8 @@ import {parse, coerce, diff, gt, gte, lt, neq, valid, validRange} from "semver";
 import {cwd, stdout, argv, env, exit} from "node:process";
 import {join, dirname, basename, resolve} from "node:path";
 import {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync} from "node:fs";
-import {stripVTControlCharacters} from "node:util";
+import {stripVTControlCharacters, styleText} from "node:util";
 import {timerel} from "timerel";
-import supportsColor from "supports-color";
-import {magenta, red, green, disableColor} from "glowie";
 import pAll from "p-all";
 import picomatch from "picomatch";
 import pkg from "./package.json" with {type: "json"};
@@ -148,7 +146,8 @@ const args = minimist(argv.slice(2), {
   },
 });
 
-if (args["no-color"] || !supportsColor.stdout) disableColor();
+const [magenta, red, green] = (["magenta", "red", "green"] as const)
+  .map(color => args["no-color"] ? String : (text: string | number) => styleText(color, String(text)));
 
 type PackageArg = Set<RegExp> | boolean;
 
