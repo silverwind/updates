@@ -1,4 +1,4 @@
-import {execa} from "execa";
+import spawn from "nano-spawn";
 import restana from "restana";
 import {join, dirname} from "node:path";
 import {readFileSync, mkdtempSync} from "node:fs";
@@ -114,7 +114,7 @@ function makeTest(args: string) {
       "--githubapi", githubUrl,
       "--pypiapi", pypiUrl,
     ];
-    const {stdout} = await execa(script, argsArr, {cwd: testDir});
+    const {stdout} = await spawn(process.execPath, [script, ...argsArr], {cwd: testDir});
     const {results} = JSON.parse(stdout);
 
     // Parse results, with custom validation for the dynamic "age" property
@@ -138,13 +138,16 @@ function makeTest(args: string) {
 }
 
 test("simple", async () => {
-  const {stdout, stderr, exitCode} = await execa(script, [
+  const subprocess = spawn(process.execPath, [
+    script,
     "-C",
     "--githubapi", githubUrl,
     "--pypiapi", pypiUrl,
     "--registry", npmUrl,
     "-f", testFile,
   ]);
+  const {stdout, stderr} = await subprocess;
+  const {exitCode} = await subprocess.nodeChildProcess;
   expect(stderr).toEqual("");
   expect(stdout).toContain("prismjs");
   expect(stdout).toContain("https://github.com/silverwind/updates");
@@ -152,12 +155,15 @@ test("simple", async () => {
 });
 
 test("empty", async () => {
-  const {stdout, stderr, exitCode} = await execa(script, [
+  const subprocess = spawn(process.execPath, [
+    script,
     "-C",
     "--githubapi", githubUrl,
     "--pypiapi", pypiUrl,
     "-f", emptyFile,
   ]);
+  const {stdout, stderr} = await subprocess;
+  const {exitCode} = await subprocess.nodeChildProcess;
   expect(stderr).toEqual("");
   expect(stdout).toContain("No dependencies");
   expect(exitCode).toEqual(0);
@@ -165,13 +171,15 @@ test("empty", async () => {
 
 if (env.CI && !env.BUN) {
   test("global", async () => {
-    await execa("npm", ["i", "-g", "."]);
-    const {stdout, stderr, exitCode} = await execa("updates", [
+    await spawn("npm", ["i", "-g", "."]);
+    const subprocess = spawn("updates", [
       "-C",
       "--githubapi", githubUrl,
       "--pypiapi", pypiUrl,
       "-f", testFile,
     ]);
+    const {stdout, stderr} = await subprocess;
+    const {exitCode} = await subprocess.nodeChildProcess;
     expect(stderr).toEqual("");
     expect(stdout).toContain("prismjs");
     expect(stdout).toContain("https://github.com/silverwind/updates");
