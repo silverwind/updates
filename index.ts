@@ -260,7 +260,7 @@ async function fetchPypiInfo(name: string, type: string, agentOpts: AgentOptions
     if (res?.status && res?.statusText) {
       throw new Error(`Received ${res.status} ${res.statusText} from ${url}`);
     } else {
-      throw new Error(`Unable to fetch ${name} from PyPi`);
+      throw new Error(`Unable to fetch ${name} from ${pypiApiUrl}`);
     }
   }
 }
@@ -288,7 +288,7 @@ async function fetchGoVersionInfo(modulePath: string, version: string, agentOpts
     if (res?.status && res?.statusText) {
       throw new Error(`Received ${res.status} ${res.statusText} from ${url}`);
     } else {
-      throw new Error(`Unable to fetch ${modulePath} from PyPi`);
+      throw new Error(`Unable to fetch ${modulePath} from ${proxyUrl}`);
     }
   }
 }
