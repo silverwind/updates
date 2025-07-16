@@ -1,22 +1,22 @@
 #!/usr/bin/env -S node --experimental-strip-types --no-warnings
-import minimist from "minimist";
-import registryAuthToken from "registry-auth-token";
-import rc from "rc";
-import {parse, coerce, diff, gt, gte, lt, neq, valid, validRange} from "semver";
 import {cwd, stdout, argv, env, exit, platform, versions} from "node:process";
 import {join, dirname, basename, resolve} from "node:path";
 import {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync} from "node:fs";
 import {stripVTControlCharacters, styleText} from "node:util";
-import {rootCertificates} from "node:tls";
-import {timerel} from "timerel";
+import {execFileSync} from "node:child_process";
+import minimist from "minimist";
 import pAll from "p-all";
 import picomatch from "picomatch";
 import pkg from "./package.json" with {type: "json"};
+import rc from "rc";
+import registryAuthToken from "registry-auth-token";
 import {parse as tomlParse} from "smol-toml";
-import {execFileSync} from "node:child_process";
-import type {AuthOptions} from "registry-auth-token";
+import {parse, coerce, diff, gt, gte, lt, neq, valid, validRange} from "semver";
+import {rootCertificates} from "node:tls";
+import {timerel} from "timerel";
 import type {AgentOptions} from "node:https";
 import type {Stats} from "node:fs";
+import type {AuthOptions} from "registry-auth-token";
 import type {TimerelAnyDate} from "timerel";
 
 export type Config = {
