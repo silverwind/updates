@@ -361,7 +361,7 @@ async function doExit(err?: Error | void, exitCode?: number) {
   }
 
   // workaround https://github.com/nodejs/node/issues/56645
-  if (platform === "win32" && versions.node?.startsWith?.("24.")) {
+  if (platform === "win32" && Number(process.versions?.node?.split(".")[0]) >= 23) {
     await new Promise(resolve => setTimeout(resolve, 50));
   }
 
