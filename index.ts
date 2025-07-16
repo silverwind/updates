@@ -3,7 +3,7 @@ import minimist from "minimist";
 import registryAuthToken from "registry-auth-token";
 import rc from "rc";
 import {parse, coerce, diff, gt, gte, lt, neq, valid, validRange} from "semver";
-import {cwd, stdout, argv, env, exit} from "node:process";
+import {cwd, stdout, argv, env, exit, platform} from "node:process";
 import {join, dirname, basename, resolve} from "node:path";
 import {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync} from "node:fs";
 import {stripVTControlCharacters, styleText} from "node:util";
@@ -11,6 +11,7 @@ import {timerel} from "timerel";
 import pAll from "p-all";
 import picomatch from "picomatch";
 import pkg from "./package.json" with {type: "json"};
+import {parse as tomlParse} from "smol-toml";
 import {execFileSync} from "node:child_process";
 import type {AuthOptions} from "registry-auth-token";
 import type {AgentOptions} from "node:https";
@@ -348,17 +349,23 @@ function getInfoUrl({repository, homepage, info}: {repository: PackageRepository
   return infoUrl || homepage || "";
 }
 
-function finishWithMessage(message: string) {
+async function finishWithMessage(message: string) {
   console.info(args.json ? JSON.stringify({message}) : message);
-  doExit();
+  await doExit();
 }
 
-function doExit(err?: Error | void) {
+async function doExit(err?: Error | void, exitCode?: number) {
   if (err) {
     const error = err.stack ?? err.message;
     console.info(args.json ? JSON.stringify({error}) : red(error));
   }
-  process.exit(err ? 1 : 0);
+
+  // workaround https://github.com/nodejs/node/issues/56645
+  if (platform === "win32") {
+    await new Promise(resolve => setTimeout(resolve, 0));
+  }
+
+  exit(exitCode || err ? 1 : 0);
 }
 
 function outputDeps(deps: DepsByMode = {}) {
@@ -946,12 +953,12 @@ async function main() {
     $ updates -f package.json
     $ updates -f pyproject.toml
 `);
-    exit(0);
+    await doExit();
   }
 
   if (version) {
     console.info(packageVersion);
-    exit(0);
+    await doExit();
   }
 
   // output vars
@@ -1054,7 +1061,7 @@ async function main() {
       if (mode === "npm") {
         pkg = JSON.parse(pkgStrs[mode]);
       } else if (mode === "pypi") {
-        pkg = (await import("smol-toml")).parse(pkgStrs[mode]);
+        pkg = tomlParse(pkgStrs[mode]);
       } else {
         pkg.deps = {};
         for (const modulePathAndVersion of splitPlainText(pkgStrs[mode])) {
@@ -1201,7 +1208,6 @@ async function main() {
 
   if (numDependencies === 0) {
     finishWithMessage("No dependencies found, nothing to do.");
-    doExit();
   }
 
   let numEntries = 0;
@@ -1211,7 +1217,6 @@ async function main() {
 
   if (!numEntries) {
     finishWithMessage("All dependencies are up to date.");
-    doExit();
   }
 
   const exitCode = outputDeps(deps);
@@ -1231,7 +1236,11 @@ async function main() {
     }
   }
 
-  process.exit(exitCode);
+  await doExit(undefined, exitCode);
 }
 
-main().catch(doExit).then(doExit);
+try {
+  await main();
+} catch (err) {
+  await doExit(err);
+}

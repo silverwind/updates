@@ -6,6 +6,7 @@ export default defineConfig(nodeCli({
   url: import.meta.url,
   build: {
     target: "node20",
+    minify: false,
   },
   plugins: [
     dts({include: "index.ts"}),

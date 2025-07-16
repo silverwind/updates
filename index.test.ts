@@ -114,8 +114,16 @@ function makeTest(args: string) {
       "--githubapi", githubUrl,
       "--pypiapi", pypiUrl,
     ];
-    const {stdout} = await spawn(process.execPath, [script, ...argsArr], {cwd: testDir});
-    const {results} = JSON.parse(stdout);
+
+    let stdout: string;
+    let results: Record<string, any>;
+    try {
+      ({stdout} = await spawn(process.execPath, [script, ...argsArr], {cwd: testDir}));
+      ({results} = JSON.parse(stdout));
+    } catch (err) {
+      console.error(err);
+      throw err;
+    }
 
     // Parse results, with custom validation for the dynamic "age" property
     for (const mode of Object.keys(results || {})) {
