@@ -16,6 +16,7 @@ import {parse as tomlParse} from "smol-toml";
 import {execFileSync} from "node:child_process";
 import type {AuthOptions} from "registry-auth-token";
 import type {AgentOptions} from "node:https";
+import type {Stats} from "node:fs";
 import type {TimerelAnyDate} from "timerel";
 
 export type Config = {
@@ -178,7 +179,7 @@ function registryUrl(scope: string, npmrc: Npmrc) {
   return url.endsWith("/") ? url : `${url}/`;
 }
 
-function makeGoProxies(): string[] {
+function makeGoProxies(): Array<string> {
   if (env.GOPROXY) {
     return env.GOPROXY.split(/[,|]/).map(s => s.trim()).filter(s => (Boolean(s) && s !== "direct"));
   } else {
@@ -266,11 +267,11 @@ async function fetchPypiInfo(name: string, type: string, agentOpts: AgentOptions
   }
 }
 
-function splitPlainText(str: string): string[] {
+function splitPlainText(str: string): Array<string> {
   return str.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
 }
 
-async function fetchGoVersionInfo(modulePath: string, version: string, agentOpts: AgentOptions, proxies: string[]) {
+async function fetchGoVersionInfo(modulePath: string, version: string, agentOpts: AgentOptions, proxies: Array<string>) {
   const proxyUrl = proxies.shift();
   if (!proxyUrl) {
     throw new Error("No more go proxies available");
@@ -448,7 +449,7 @@ function highlightDiff(a: string, b: string, colorFn: (str: string) => string) {
 
 const ansiLen = (str: string): number => stripVTControlCharacters(str).length;
 
-function textTable(rows: string[][], hsep = " "): string {
+function textTable(rows: Array<Array<string>>, hsep = " "): string {
   let ret = "";
   const colSizes = new Array(rows[0].length).fill(0);
   for (const row of rows) {
@@ -479,7 +480,7 @@ function shortenGoName(moduleName: string) {
 
 function formatDeps(deps: DepsByMode) {
   const arr = [["NAME", "OLD", "NEW", "AGE", "INFO"]];
-  const seen = new Set();
+  const seen = new Set<string>();
 
   for (const mode of Object.keys(deps)) {
     for (const [key, data] of Object.entries(deps[mode])) {
@@ -556,7 +557,7 @@ function rangeToVersion(range: string) {
   }
 }
 
-function findVersion(data: any, versions: string[], {range, semvers, usePre, useRel, useGreatest}: FindVersionOpts) {
+function findVersion(data: any, versions: Array<string>, {range, semvers, usePre, useRel, useGreatest}: FindVersionOpts) {
   let tempVersion = rangeToVersion(range);
   let tempDate = 0;
   usePre = isRangePrerelease(range) || usePre;
@@ -603,7 +604,7 @@ function findNewVersion(data: any, {mode, range, useGreatest, useRel, usePre, se
   if (range === "*") return null; // ignore wildcard
   if (range.includes("||")) return null; // ignore or-chains
 
-  let versions: string[] = [];
+  let versions: Array<string> = [];
   if (mode === "pypi") {
     versions = Object.keys(data.releases).filter((version: string) => valid(version));
   } else if (mode === "npm") {
@@ -695,7 +696,7 @@ async function getLastestCommit(user: string, repo: string): Promise<{hash: stri
 
 // return list of tags sorted old to new
 // TODO: newDate support, semver matching
-async function getTags(user: string, repo: string): Promise<string[]> {
+async function getTags(user: string, repo: string): Promise<Array<string>> {
   const res = await fetchGitHub(`${githubApiUrl}/repos/${user}/${repo}/git/refs/tags`);
   if (!res?.ok) return [];
   const data = await res.json();
@@ -703,7 +704,7 @@ async function getTags(user: string, repo: string): Promise<string[]> {
   return tags;
 }
 
-function selectTag(tags: string[], oldRef: string, useGreatest: boolean) {
+function selectTag(tags: Array<string>, oldRef: string, useGreatest: boolean) {
   const oldRefBare = stripV(oldRef);
   if (!valid(oldRefBare)) return;
 
@@ -794,12 +795,12 @@ function parseMixedArg(arg: any) {
   }
 }
 
-function extractCerts(str: string): string[] {
-  return Array.from(str.matchAll(/(----BEGIN CERT[^]+?IFICATE----)/g), (m: string[]) => m[0]);
+function extractCerts(str: string): Array<string> {
+  return Array.from(str.matchAll(/(----BEGIN CERT[^]+?IFICATE----)/g), (m: Array<string>) => m[0]);
 }
 
-function extractKey(str: string): string[] {
-  return Array.from(str.matchAll(/(----BEGIN [^]+?PRIVATE KEY----)/g), (m: string[]) => m[0]);
+function extractKey(str: string): Array<string> {
+  return Array.from(str.matchAll(/(----BEGIN [^]+?PRIVATE KEY----)/g), (m: Array<string>) => m[0]);
 }
 
 // convert arg from cli or config to regex
@@ -824,7 +825,7 @@ function argSetToRegexes(arg: any) {
 }
 
 // parse include/exclude into a Set of regexes
-function matchersToRegexSet(cliArgs: string[], configArgs: Array<string | RegExp>): Set<RegExp> {
+function matchersToRegexSet(cliArgs: Array<string>, configArgs: Array<string | RegExp>): Set<RegExp> {
   const ret = new Set();
   for (const arg of cliArgs || []) {
     ret.add(argToRegex(arg, true));
@@ -853,7 +854,7 @@ function resolveFiles(filesArg: Set<string>): [Set<string>, Set<string>] {
 
   if (filesArg) { // check passed files
     for (const file of filesArg) {
-      let stat;
+      let stat: Stats;
       try {
         stat = lstatSync(file);
       } catch (err) {
@@ -867,7 +868,7 @@ function resolveFiles(filesArg: Set<string>): [Set<string>, Set<string>] {
       } else if (stat?.isDirectory()) {
         for (const filename of Object.keys(modeByFileName)) {
           const f = join(file, filename);
-          let stat;
+          let stat: Stats;
           try {
             stat = lstatSync(f);
           } catch {}
@@ -889,7 +890,7 @@ function resolveFiles(filesArg: Set<string>): [Set<string>, Set<string>] {
 }
 
 async function loadConfig(rootDir: string): Promise<Config> {
-  const filenames: string[] = [];
+  const filenames: Array<string> = [];
   for (const prefix of ["", ".config/"]) {
     for (const ext of ["js", "ts", "mjs", "mts"]) {
       filenames.push(`${prefix}updates${prefix ? "" : ".config"}.${ext}`);
@@ -974,8 +975,8 @@ async function main() {
     if (!deps[mode]) deps[mode] = {};
 
     const config = await loadConfig(projectDir);
-    let includeCli: string[] = [];
-    let excludeCli: string[] = [];
+    let includeCli: Array<string> = [];
+    let excludeCli: Array<string> = [];
     if (args.include && args.include !== true) { // cli
       includeCli = (Array.isArray(args.include) ? args.include : [args.include])
         .flatMap(item => commaSeparatedToArray(item));
@@ -1010,7 +1011,7 @@ async function main() {
       }
     }
 
-    let dependencyTypes: string[] = [];
+    let dependencyTypes: Array<string> = [];
     if (types) {
       dependencyTypes = Array.isArray(types) ? types : commaSeparatedToArray(types);
     } else if ("types" in config && Array.isArray(config.types)) {
@@ -1128,7 +1129,7 @@ async function main() {
       const usePre = typeof prerelease === "boolean" ? prerelease : matchesAny(data.name, prerelease);
       const useRel = typeof release === "boolean" ? release : matchesAny(data.name, release);
 
-      let semvers;
+      let semvers: Set<string>;
       if (patch === true || matchesAny(data.name, patch)) {
         semvers = new Set<string>(["patch"]);
       } else if (minor === true || matchesAny(data.name, minor)) {
