@@ -3,7 +3,7 @@ import minimist from "minimist";
 import registryAuthToken from "registry-auth-token";
 import rc from "rc";
 import {parse, coerce, diff, gt, gte, lt, neq, valid, validRange} from "semver";
-import {cwd, stdout, argv, env, exit, platform} from "node:process";
+import {cwd, stdout, argv, env, exit, platform, versions} from "node:process";
 import {join, dirname, basename, resolve} from "node:path";
 import {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync} from "node:fs";
 import {stripVTControlCharacters, styleText} from "node:util";
@@ -361,8 +361,8 @@ async function doExit(err?: Error | void, exitCode?: number) {
   }
 
   // workaround https://github.com/nodejs/node/issues/56645
-  if (platform === "win32") {
-    await new Promise(resolve => setTimeout(resolve, 0));
+  if (platform === "win32" && versions.node?.startsWith?.("24.")) {
+    await new Promise(resolve => setTimeout(resolve, 50));
   }
 
   exit(exitCode || err ? 1 : 0);
