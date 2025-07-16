@@ -7,6 +7,7 @@ import {cwd, stdout, argv, env, exit, platform, versions} from "node:process";
 import {join, dirname, basename, resolve} from "node:path";
 import {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync} from "node:fs";
 import {stripVTControlCharacters, styleText} from "node:util";
+import {rootCertificates} from "node:tls";
 import {timerel} from "timerel";
 import pAll from "p-all";
 import picomatch from "picomatch";
@@ -361,7 +362,7 @@ async function doExit(err?: Error | void, exitCode?: number) {
   }
 
   // workaround https://github.com/nodejs/node/issues/56645
-  if (platform === "win32" && Number(process.versions?.node?.split(".")[0]) >= 23) {
+  if (platform === "win32" && Number(versions?.node?.split(".")[0]) >= 23) {
     await new Promise(resolve => setTimeout(resolve, 50));
   }
 
@@ -416,11 +417,9 @@ function outputDeps(deps: DepsByMode = {}) {
 }
 
 // preserve file metadata on windows
-async function write(file: string, content: string) {
-  const {platform} = await import("node:os");
-  const isWindows = platform() === "win32";
-  if (isWindows) truncateSync(file, 0);
-  writeFileSync(file, content, isWindows ? {flag: "r+"} : undefined);
+function write(file: string, content: string) {
+  if (platform === "win32") truncateSync(file, 0);
+  writeFileSync(file, content, platform === "win32" ? {flag: "r+"} : undefined);
 }
 
 function highlightDiff(a: string, b: string, colorFn: (str: string) => string) {
@@ -803,10 +802,6 @@ function extractKey(str: string): string[] {
   return Array.from(str.matchAll(/(----BEGIN [^]+?PRIVATE KEY----)/g), (m: string[]) => m[0]);
 }
 
-async function appendRoots(certs: string[] = []) {
-  return [...(await import("node:tls")).rootCertificates, ...certs];
-}
-
 // convert arg from cli or config to regex
 function argToRegex(arg: string | RegExp, cli: boolean) {
   if (cli && typeof arg === "string") {
@@ -1002,15 +997,15 @@ async function main() {
       }
       for (const opt of ["cert", "ca", "key"] as const) {
         const extract = (opt === "key") ? extractKey : extractCerts;
-        let strs: string[] = [];
+        let certs: Array<string> = [];
         if (npmrc[opt]) {
-          strs = (Array.isArray(npmrc[opt]) ? npmrc[opt] : [npmrc[opt]]).flatMap(str => extract(str));
+          certs = (Array.isArray(npmrc[opt]) ? npmrc[opt] : [npmrc[opt]]).flatMap((str: string) => extract(str));
         }
         if (npmrc[`${opt}file`]) {
-          strs = Array.from(extract(readFileSync(npmrc[`opt${file}`], "utf8")));
+          certs = Array.from(extract(readFileSync(npmrc[`opt${file}`], "utf8")));
         }
-        if (strs.length) {
-          agentOpts[opt] = opt === "ca" ? await appendRoots(strs) : strs;
+        if (certs.length) {
+          agentOpts[opt] = opt === "ca" ? [...rootCertificates, ...certs] : certs;
         }
       }
     }
@@ -1226,7 +1221,7 @@ async function main() {
       if (!Object.keys(deps[mode]).length) continue;
       try {
         const fn = (mode === "npm") ? updatePackageJson : updateProjectToml;
-        await write(filePerMode[mode], fn(pkgStrs[mode], deps[mode]));
+        write(filePerMode[mode], fn(pkgStrs[mode], deps[mode]));
       } catch (err) {
         throw new Error(`Error writing ${basename(filePerMode[mode])}: ${(err as Error).message}`);
       }
