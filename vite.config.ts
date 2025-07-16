@@ -5,7 +5,7 @@ import dts from "vite-plugin-dts";
 export default defineConfig(nodeCli({
   url: import.meta.url,
   build: {
-    target: "node18",
+    target: "node20",
   },
   plugins: [
     dts({include: "index.ts"}),
