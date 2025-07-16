@@ -1185,7 +1185,7 @@ async function main() {
       }), {concurrency});
 
       for (const res of (results || []).filter(Boolean)) {
-        const {key, newRange, user, repo, oldRef, newRef, newDate} = res as CheckResult;
+        const {key, newRange, user, repo, oldRef, newRef, newDate} = res;
         deps[mode][key] = {
           // @ts-expect-error
           old: maybeUrlDeps[key].old,
