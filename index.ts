@@ -10,7 +10,7 @@ import picomatch from "picomatch";
 import pkg from "./package.json" with {type: "json"};
 import rc from "rc";
 import registryAuthToken from "registry-auth-token";
-import {parse as tomlParse} from "smol-toml";
+import {parse as parseToml} from "smol-toml";
 import {parse, coerce, diff, gt, gte, lt, neq, valid, validRange} from "semver";
 import {rootCertificates} from "node:tls";
 import {timerel} from "timerel";
@@ -781,7 +781,7 @@ function normalizeRange(range: string) {
   return range.replace(versionRe, rangeToVersion(versionMatches[0]));
 }
 
-function parseMixedArg(arg: any) {
+function parseMixedArg(arg: any): boolean | Set<string> {
   if (arg === undefined) {
     return false;
   } else if (arg === "") {
@@ -804,7 +804,7 @@ function extractKey(str: string): Array<string> {
 }
 
 // convert arg from cli or config to regex
-function argToRegex(arg: string | RegExp, cli: boolean) {
+function argToRegex(arg: string | RegExp, cli: boolean): RegExp {
   if (cli && typeof arg === "string") {
     return /\/.+\//.test(arg) ? new RegExp(arg.slice(1, -1)) : picomatch.makeRe(arg);
   } else {
@@ -813,9 +813,9 @@ function argToRegex(arg: string | RegExp, cli: boolean) {
 }
 
 // parse cli arg into regex set
-function argSetToRegexes(arg: any) {
+function argSetToRegexes(arg: any): Set<RegExp> {
   if (arg instanceof Set) {
-    const ret = new Set();
+    const ret = new Set<RegExp>();
     for (const entry of arg) {
       ret.add(argToRegex(entry, true));
     }
@@ -1057,7 +1057,7 @@ async function main() {
       if (mode === "npm") {
         pkg = JSON.parse(pkgStrs[mode]);
       } else if (mode === "pypi") {
-        pkg = tomlParse(pkgStrs[mode]);
+        pkg = parseToml(pkgStrs[mode]);
       } else {
         pkg.deps = {};
         for (const modulePathAndVersion of splitPlainText(pkgStrs[mode])) {
