@@ -12,13 +12,14 @@ import type {Service, Protocol} from "restana";
 const testFile = fileURLToPath(new URL("fixtures/npm-test/package.json", import.meta.url));
 const emptyFile = fileURLToPath(new URL("fixtures/npm-empty/package.json", import.meta.url));
 const poetryFile = fileURLToPath(new URL("fixtures/poetry/pyproject.toml", import.meta.url));
+const uvFile = fileURLToPath(new URL("fixtures/uv/pyproject.toml", import.meta.url));
 const dualFile = fileURLToPath(new URL("fixtures/dual", import.meta.url));
 
 const testPkg = JSON.parse(readFileSync(testFile, "utf8"));
 const testDir = mkdtempSync(join(tmpdir(), "updates-"));
 const script = fileURLToPath(new URL("dist/index.js", import.meta.url));
 
-const dependencyTypes = [
+const npmDependencyTypes = [
   "dependencies",
   "devDependencies",
   "peerDependencies",
@@ -26,8 +27,16 @@ const dependencyTypes = [
   "resolutions",
 ];
 
+const poetryDependencyTypes = [
+  "tool.poetry.dependencies",
+  "tool.poetry.dev-dependencies",
+  "tool.poetry.test-dependencies",
+  "tool.poetry.group.dev.dependencies",
+  "tool.poetry.group.test.dependencies",
+];
+
 const testPackages: Set<string> = new Set();
-for (const dependencyType of dependencyTypes) {
+for (const dependencyType of npmDependencyTypes) {
   for (const name of Object.keys(testPkg[dependencyType] || [])) {
     testPackages.add(name);
   }
@@ -59,7 +68,8 @@ let pypiUrl: string;
 let npmUrl: string;
 
 beforeAll(async () => {
-  let commits, tags;
+  let commits: Buffer;
+  let tags: Buffer;
 
   [npmServer, githubServer, pypiServer, commits, tags] = await Promise.all([
     restana({defaultRoute}),
@@ -128,12 +138,8 @@ function makeTest(args: string) {
     // Parse results, with custom validation for the dynamic "age" property
     for (const mode of Object.keys(results || {})) {
       for (const dependencyType of [
-        ...dependencyTypes,
-        "tool.poetry.dependencies",
-        "tool.poetry.dev-dependencies",
-        "tool.poetry.test-dependencies",
-        "tool.poetry.group.dev.dependencies",
-        "tool.poetry.group.test.dependencies",
+        ...npmDependencyTypes,
+        ...poetryDependencyTypes,
       ]) {
         for (const name of Object.keys(results?.[mode]?.[dependencyType] || {})) {
           delete results[mode][dependencyType][name].age;
@@ -198,6 +204,7 @@ test("exclude", makeTest("-j -e gulp-sourcemaps,prismjs,svgstore,html-webpack-pl
 test("exclude 2", makeTest("-j -e gulp-sourcemaps -i /react/"));
 test("exclude 3", makeTest("-j -i gulp*"));
 test("exclude 4", makeTest("-j -i /^gulp/ -P gulp*"));
-test("pypi", makeTest(`-j -f ${poetryFile}`));
+test("poetry", makeTest(`-j -f ${poetryFile}`));
+test("uv", makeTest(`-j -f ${uvFile}`));
 test("dual", makeTest(`-j -f ${dualFile}`));
 test("dual 2", makeTest(`-j -f ${dualFile} -i noty`));

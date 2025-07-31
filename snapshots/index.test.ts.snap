@@ -405,6 +405,20 @@ exports[`patch 1`] = `
 }
 `;
 
+exports[`poetry 1`] = `
+{
+  "pypi": {
+    "tool.poetry.group.dev.dependencies": {
+      "djlint": {
+        "info": "https://github.com/Riverside-Healthcare/djlint",
+        "new": "1.31.0",
+        "old": "1.30.0",
+      },
+    },
+  },
+}
+`;
+
 exports[`prerelease 1`] = `
 {
   "npm": {
@@ -477,20 +491,6 @@ exports[`prerelease 1`] = `
         "info": "https://github.com/silverwind/updates",
         "new": "^10.0.0",
         "old": "^1.0.0",
-      },
-    },
-  },
-}
-`;
-
-exports[`pypi 1`] = `
-{
-  "pypi": {
-    "tool.poetry.group.dev.dependencies": {
-      "djlint": {
-        "info": "https://github.com/Riverside-Healthcare/djlint",
-        "new": "1.31.0",
-        "old": "1.30.0",
       },
     },
   },
@@ -574,3 +574,5 @@ exports[`release 1`] = `
   },
 }
 `;
+
+exports[`uv 1`] = `undefined`;
