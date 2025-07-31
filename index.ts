@@ -18,6 +18,7 @@ import type {AgentOptions} from "node:https";
 import type {Stats} from "node:fs";
 import type {AuthOptions} from "registry-auth-token";
 import type {TimerelAnyDate} from "timerel";
+import {parseUvDependencies} from "./utils.ts";
 
 export type Config = {
   include?: Array<string | RegExp>;
@@ -38,13 +39,13 @@ type Npmrc = {
 }
 
 type Dep = {
-  "old": string,
-  "new": string,
-  "oldPrint"?: string,
-  "newPrint"?: string,
-  "oldOriginal"?: string,
-  "info"?: string,
-  "age"?: string,
+  old?: string,
+  new?: string,
+  oldPrint?: string,
+  newPrint?: string,
+  oldOriginal?: string,
+  info?: string,
+  age?: string,
 }
 
 type Deps = {
@@ -512,13 +513,19 @@ function updatePackageJson(pkgStr: string, deps: Deps) {
   return newPkgStr;
 }
 
-function updateProjectToml(pkgStr: string, deps: Deps) {
+function updatePyprojectToml(pkgStr: string, deps: Deps) {
   let newPkgStr = pkgStr;
   for (const key of Object.keys(deps)) {
     const name = key.split(sep)[1];
     const old = deps[key].oldOriginal || deps[key].old;
-    const re = new RegExp(`${esc(name)} *= *"${esc(old)}"`, "g");
-    newPkgStr = newPkgStr.replace(re, `${name} = "${deps[key].new}"`);
+    newPkgStr = newPkgStr.replace( // poetry
+      new RegExp(`${esc(name)} *= *"${esc(old)}"`, "g"),
+      `${name} = "${deps[key].new}"`,
+    );
+    newPkgStr = newPkgStr.replace( // uv
+      new RegExp(`("${esc(name)} *[<>=~]+ *)${esc(old)}(")`, "g"),
+      (_, m1, m2) => `${m1}${deps[key].new}${m2}`,
+    );
   }
   return newPkgStr;
 }
@@ -959,7 +966,7 @@ async function main() {
 
   // output vars
   const deps: DepsByMode = {};
-  const maybeUrlDeps: DepsByMode = {};
+  const maybeUrlDeps: Deps = {};
   const pkgStrs: Record<string, string> = {};
   const filePerMode: Record<string, string> = {};
   let numDependencies = 0;
@@ -1027,6 +1034,8 @@ async function main() {
         ];
       } else if (mode === "pypi") {
         dependencyTypes = [
+          "project.dependencies", // uv
+          "project.dependency-groups.dev", // uv
           "tool.poetry.dependencies",
           "tool.poetry.dev-dependencies",
           "tool.poetry.test-dependencies",
@@ -1072,31 +1081,37 @@ async function main() {
     }
 
     for (const depType of dependencyTypes) {
-      let obj: Record<string, string>;
+      let obj: Record<string, string> | Array<string>;
       if (mode === "npm" || mode === "go") {
         obj = pkg[depType] || {};
       } else {
         obj = getProperty(pkg, depType) || {};
       }
 
-      for (const [name, value] of Object.entries(obj)) {
-        if (mode !== "go" && validRange(value) && canInclude(name, mode, include, exclude)) {
-          // @ts-expect-error
+      if (Array.isArray(obj) && mode === "pypi") { // arary for uv
+        for (const {name, version} of parseUvDependencies(obj)) {
           deps[mode][`${depType}${sep}${name}`] = {
-            old: normalizeRange(value),
-            oldOriginal: value,
-          } as Partial<Dep>;
-        } else if (mode === "npm" && canInclude(name, mode, include, exclude)) {
-          // @ts-expect-error
-          maybeUrlDeps[`${depType}${sep}${name}`] = {
-            old: value,
-          } as Partial<Dep>;
-        } else if (mode === "go") {
-          // @ts-expect-error
-          deps[mode][`${depType}${sep}${name}`] = {
-            old: shortenGoVersion(value),
-            oldOriginal: value,
-          } as Partial<Dep>;
+            old: version,
+            oldOriginal: version,
+          } as Dep;
+        }
+      } else { // object for non-uv
+        for (const [name, value] of Object.entries(obj)) {
+          if (mode !== "go" && validRange(value) && canInclude(name, mode, include, exclude)) {
+            deps[mode][`${depType}${sep}${name}`] = {
+              old: normalizeRange(value),
+              oldOriginal: value,
+            } as Dep;
+          } else if (mode === "npm" && canInclude(name, mode, include, exclude)) {
+            maybeUrlDeps[`${depType}${sep}${name}`] = {
+              old: value,
+            } as Dep;
+          } else if (mode === "go") {
+            deps[mode][`${depType}${sep}${name}`] = {
+              old: shortenGoVersion(value),
+              oldOriginal: value,
+            } as Dep;
+          }
         }
       }
     }
@@ -1183,14 +1198,12 @@ async function main() {
       const results = await pAll(Object.entries(maybeUrlDeps).map(([key, dep]) => () => {
         const name = key.split(sep)[1];
         const useGreatest = typeof greatest === "boolean" ? greatest : matchesAny(name, greatest);
-        // @ts-expect-error
         return checkUrlDep(key, dep, useGreatest);
       }), {concurrency});
 
       for (const res of (results || []).filter(Boolean)) {
         const {key, newRange, user, repo, oldRef, newRef, newDate} = res;
         deps[mode][key] = {
-          // @ts-expect-error
           old: maybeUrlDeps[key].old,
           new: newRange,
           oldPrint: hashRe.test(oldRef) ? oldRef.substring(0, 7) : oldRef,
@@ -1221,7 +1234,7 @@ async function main() {
     for (const mode of Object.keys(deps)) {
       if (!Object.keys(deps[mode]).length) continue;
       try {
-        const fn = (mode === "npm") ? updatePackageJson : updateProjectToml;
+        const fn = (mode === "npm") ? updatePackageJson : updatePyprojectToml;
         write(filePerMode[mode], fn(pkgStrs[mode], deps[mode]));
       } catch (err) {
         throw new Error(`Error writing ${basename(filePerMode[mode])}: ${(err as Error).message}`);

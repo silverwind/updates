@@ -6,6 +6,7 @@
 `updates` is a CLI tool which checks for dependency updates. It is typically able to complete in less than a second. Supported dependencies are:
 
 - npm via `package.json`
+- uv via `pyproject.toml`
 - poetry via `pyproject.toml`
 - go via `go.mod` (checking only currently, disabled by default when directory is used)
 

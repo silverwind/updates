@@ -575,4 +575,17 @@ exports[`release 1`] = `
 }
 `;
 
-exports[`uv 1`] = `undefined`;
+exports[`uv 1`] = `
+{
+  "pypi": {
+    "project.dependencies": {
+      "djlint": {
+        "age": "2 years",
+        "info": "https://github.com/Riverside-Healthcare/djlint",
+        "new": "1.31.0",
+        "old": "1.30.0",
+      },
+    },
+  },
+}
+`;
