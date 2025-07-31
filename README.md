@@ -35,7 +35,7 @@ The module uses global `fetch` under the hood. In Node.js HTTP proxies from envi
 
 The config file is used to configure certain options of the module. It be placed as `updates.config.{js,ts,mjs,mts}` or `.config/updates.config.{js,ts,mjs,mts}`, relative to `package.json` / `pyproject.toml` / `go.mod`.
 
-Since Node.js v23.6.0, typescript configuration files work out of the box. For Node 22.6.0 and above, set `NODE_OPTIONS="--experimental-strip-types"` in your environment.
+Since Node.js v23.6.0, typescript configuration files work out of the box. For Node between 22.5.x and v23.6.0, set `NODE_OPTIONS="--experimental-strip-types"` in your environment.
 
 ```ts
 export default {
