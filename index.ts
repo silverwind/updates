@@ -1,5 +1,5 @@
 #!/usr/bin/env -S node --experimental-strip-types --no-warnings
-import {cwd, stdout, argv, env, exit, platform, versions} from "node:process";
+import {cwd, stdout, stderr, argv, env, exit, platform, versions} from "node:process";
 import {join, dirname, basename, resolve} from "node:path";
 import {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync} from "node:fs";
 import {stripVTControlCharacters, styleText} from "node:util";
@@ -916,7 +916,7 @@ async function main() {
   // Node.js does not guarantee that stdio streams are flushed when calling process.exit(). Prevent Node
   // from cutting off long output by setting those streams into blocking mode.
   // Ref: https://github.com/nodejs/node/issues/6379
-  for (const stream of [process.stdout, process.stderr]) {
+  for (const stream of [stdout, stderr]) {
     // @ts-expect-error -- _handle is missing in @types/node
     stream?._handle?.setBlocking?.(true);
   }
