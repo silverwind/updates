@@ -14,11 +14,11 @@ import {parse as parseToml} from "smol-toml";
 import {parse, coerce, diff, gt, gte, lt, neq, valid, validRange} from "semver";
 import {rootCertificates} from "node:tls";
 import {timerel} from "timerel";
+import {npmDependencyTypes, parseUvDependencies, poetryDependencyTypes, uvDependencyTypes} from "./utils.ts";
 import type {AgentOptions} from "node:https";
 import type {Stats} from "node:fs";
 import type {AuthOptions} from "registry-auth-token";
 import type {TimerelAnyDate} from "timerel";
-import {parseUvDependencies} from "./utils.ts";
 
 export type Config = {
   include?: Array<string | RegExp>;
@@ -1028,32 +1028,11 @@ async function main() {
       dependencyTypes = config.types;
     } else {
       if (mode === "npm") {
-        dependencyTypes = [
-          "dependencies",
-          "devDependencies",
-          "optionalDependencies",
-          "peerDependencies",
-          "resolutions",
-        ];
+        dependencyTypes = npmDependencyTypes;
       } else if (mode === "pypi") {
-        dependencyTypes = [
-          // uv
-          "project.dependencies",
-          "project.optional-dependencies",
-          "dependency-groups.dev",
-          "dependency-groups.lint",
-          "dependency-groups.test",
-          // poetry
-          "tool.poetry.dependencies",
-          "tool.poetry.dev-dependencies",
-          "tool.poetry.test-dependencies",
-          "tool.poetry.group.dev.dependencies",
-          "tool.poetry.group.test.dependencies",
-        ];
+        dependencyTypes = [...uvDependencyTypes, ...poetryDependencyTypes];
       } else if (mode === "go") {
-        dependencyTypes = [
-          "deps",
-        ];
+        dependencyTypes = ["deps"];
       }
     }
 

@@ -8,6 +8,7 @@ import {tmpdir} from "node:os";
 import {env} from "node:process";
 import type {Server} from "node:http";
 import type {Service, Protocol} from "restana";
+import {npmDependencyTypes, poetryDependencyTypes, uvDependencyTypes} from "./utils.ts";
 
 const testFile = fileURLToPath(new URL("fixtures/npm-test/package.json", import.meta.url));
 const emptyFile = fileURLToPath(new URL("fixtures/npm-empty/package.json", import.meta.url));
@@ -18,22 +19,6 @@ const dualFile = fileURLToPath(new URL("fixtures/dual", import.meta.url));
 const testPkg = JSON.parse(readFileSync(testFile, "utf8"));
 const testDir = mkdtempSync(join(tmpdir(), "updates-"));
 const script = fileURLToPath(new URL("dist/index.js", import.meta.url));
-
-const npmDependencyTypes = [
-  "dependencies",
-  "devDependencies",
-  "peerDependencies",
-  "optionalDependencies",
-  "resolutions",
-];
-
-const poetryDependencyTypes = [
-  "tool.poetry.dependencies",
-  "tool.poetry.dev-dependencies",
-  "tool.poetry.test-dependencies",
-  "tool.poetry.group.dev.dependencies",
-  "tool.poetry.group.test.dependencies",
-];
 
 const testPackages: Set<string> = new Set();
 for (const dependencyType of npmDependencyTypes) {
@@ -140,6 +125,7 @@ function makeTest(args: string) {
       for (const dependencyType of [
         ...npmDependencyTypes,
         ...poetryDependencyTypes,
+        ...uvDependencyTypes,
       ]) {
         for (const name of Object.keys(results?.[mode]?.[dependencyType] || {})) {
           delete results[mode][dependencyType][name].age;

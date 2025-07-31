@@ -9,3 +9,27 @@ export function parseUvDependencies(specs: Array<string>) {
   }
   return ret;
 }
+
+export const npmDependencyTypes = [
+  "dependencies",
+  "devDependencies",
+  "peerDependencies",
+  "optionalDependencies",
+  "resolutions",
+];
+
+export const poetryDependencyTypes = [
+  "tool.poetry.dependencies",
+  "tool.poetry.dev-dependencies",
+  "tool.poetry.test-dependencies",
+  "tool.poetry.group.dev.dependencies",
+  "tool.poetry.group.test.dependencies",
+];
+
+export const uvDependencyTypes = [
+  "project.dependencies",
+  "project.optional-dependencies",
+  "dependency-groups.dev",
+  "dependency-groups.lint",
+  "dependency-groups.test",
+];
