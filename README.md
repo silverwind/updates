@@ -27,10 +27,6 @@ If an option has a optional `pkg` argument but none is given, the option will be
 
 All `pkg` options support glob matching via [picomatch](https://github.com/micromatch/picomatch) or regex (on CLI, wrap the regex in slashes, e.g. `'/^foo/'`).
 
-## Notes
-
-The module uses global `fetch` under the hood. In Node.js HTTP proxies from environment are [not supported](https://github.com/nodejs/undici/issues/1650), but it's still possible to enable `updates` to use them by installing the `undici` dependency into your project.
-
 ## Config File
 
 The config file is used to configure certain options of the module. It be placed as `updates.config.{js,ts,mjs,mts}` or `.config/updates.config.{js,ts,mjs,mts}`, relative to `package.json` / `pyproject.toml` / `go.mod`.
