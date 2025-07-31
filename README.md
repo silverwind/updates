@@ -11,24 +11,12 @@
 
 # Usage
 
-With Node.js:
-
 ```bash
 # check for updates
 npx updates
 
 # update package.json and install new dependencies
 npx updates -u && npm i
-```
-
-With Bun:
-
-```bash
-# check for updates
-bunx updates
-
-# update package.json and install new dependencies
-bunx updates -u && bun i
 ```
 
 ## Options
