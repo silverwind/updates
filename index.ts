@@ -913,8 +913,11 @@ async function loadConfig(rootDir: string): Promise<Config> {
 }
 
 async function main() {
+  // Node.js does not guarantee that stdio streams are flushed when calling process.exit(). Prevent Node
+  // from cutting off long output by setting those streams into blocking mode.
+  // Ref: https://github.com/nodejs/node/issues/6379
   for (const stream of [process.stdout, process.stderr]) {
-    // @ts-expect-error
+    // @ts-expect-error -- _handle is missing in @types/node
     stream?._handle?.setBlocking?.(true);
   }
 
