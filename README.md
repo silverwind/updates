@@ -3,12 +3,13 @@
 
 ![](./screenshot.png)
 
-`updates` is a CLI tool which checks for dependency updates. It is typically able to complete in less than a second. Supported dependencies are:
+`updates` is a CLI tool which checks for dependency updates. It is typically able to complete in less than a second.
 
-- npm via `package.json`
-- uv via `pyproject.toml`
-- poetry via `pyproject.toml`
-- go via `go.mod` (checking only currently, disabled by default when directory is used)
+# Supported files
+
+- `package.json`: supports all npm package managers
+- `pyproject.toml`: supports formats of `uv` and `poetry`
+- `go.mod`: experimental go support. updating is not implemented and file will not be discovered in directory mode.
 
 # Usage
 
