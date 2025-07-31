@@ -43,10 +43,10 @@ export default {
 
 ### Config Options
 
-- `include` *Array[String|Regexp]*: Array of dependencies to include
-- `exclude` *Array[String|Regexp]*: Array of dependencies to exclude
-- `types` *Array[String]*: Array of dependency types
-- `registry` *String*: URL to npm registry
+- `include` *Array\<string | RegExp>*: Array of dependencies to include
+- `exclude` *Array\<string | RegExp>*: Array of dependencies to exclude
+- `types` *Array\<string>*: Array of dependency types
+- `registry` *string*: URL to npm registry
 
 CLI arguments have precedence over options in the config file, except for `include` and `exclude` options which are merged.
 
