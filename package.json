@@ -1,6 +1,6 @@
 {
   "name": "updates",
-  "version": "16.5.1",
+  "version": "16.5.2",
   "description": "Flexible npm and poetry dependency update tool",
   "author": "silverwind",
   "repository": "silverwind/updates",
