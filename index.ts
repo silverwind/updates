@@ -1037,8 +1037,13 @@ async function main() {
         ];
       } else if (mode === "pypi") {
         dependencyTypes = [
-          "project.dependencies", // uv
-          "project.dependency-groups.dev", // uv
+          // uv
+          "project.dependencies",
+          "project.optional-dependencies",
+          "dependency-groups.dev",
+          "dependency-groups.lint",
+          "dependency-groups.test",
+          // poetry
           "tool.poetry.dependencies",
           "tool.poetry.dev-dependencies",
           "tool.poetry.test-dependencies",
@@ -1094,7 +1099,7 @@ async function main() {
       if (Array.isArray(obj) && mode === "pypi") { // arary for uv
         for (const {name, version} of parseUvDependencies(obj)) {
           deps[mode][`${depType}${sep}${name}`] = {
-            old: version,
+            old: normalizeRange(version),
             oldOriginal: version,
           } as Dep;
         }

@@ -409,6 +409,11 @@ exports[`poetry 1`] = `
 {
   "pypi": {
     "tool.poetry.group.dev.dependencies": {
+      "PyYAML": {
+        "info": "https://github.com/yaml/pyyaml",
+        "new": "6.0",
+        "old": "1.0",
+      },
       "djlint": {
         "info": "https://github.com/Riverside-Healthcare/djlint",
         "new": "1.31.0",
@@ -578,6 +583,14 @@ exports[`release 1`] = `
 exports[`uv 1`] = `
 {
   "pypi": {
+    "dependency-groups.dev": {
+      "PyYAML": {
+        "age": "3 years",
+        "info": "https://github.com/yaml/pyyaml",
+        "new": "6.0",
+        "old": "1.0",
+      },
+    },
     "project.dependencies": {
       "djlint": {
         "age": "2 years",

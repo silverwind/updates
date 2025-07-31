@@ -9,4 +9,4 @@ python = "^3.8"
 
 [tool.poetry.group.dev.dependencies]
 djlint = "1.30.0"
-PyYAML = "6.0"
+PyYAML = "1.0"
