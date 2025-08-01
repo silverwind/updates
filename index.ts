@@ -39,8 +39,8 @@ type Npmrc = {
 }
 
 type Dep = {
-  old?: string,
-  new?: string,
+  old: string,
+  new: string,
   oldPrint?: string,
   newPrint?: string,
   oldOriginal?: string,
@@ -875,7 +875,7 @@ function resolveFiles(filesArg: Set<string>): [Set<string>, Set<string>] {
       } else if (stat?.isDirectory()) {
         for (const filename of Object.keys(modeByFileName)) {
           const f = join(file, filename);
-          let stat: Stats;
+          let stat: Stats | null = null;
           try {
             stat = lstatSync(f);
           } catch {}
@@ -1182,13 +1182,13 @@ async function main() {
     }
 
     if (Object.keys(maybeUrlDeps).length) {
-      const results = await pAll(Object.entries(maybeUrlDeps).map(([key, dep]) => () => {
+      const results = (await pAll(Object.entries(maybeUrlDeps).map(([key, dep]) => () => {
         const name = key.split(sep)[1];
         const useGreatest = typeof greatest === "boolean" ? greatest : matchesAny(name, greatest);
         return checkUrlDep(key, dep, useGreatest);
-      }), {concurrency});
+      }), {concurrency})).filter(v => v !== undefined);
 
-      for (const res of (results || []).filter(Boolean)) {
+      for (const res of results) {
         const {key, newRange, user, repo, oldRef, newRef, newDate} = res;
         deps[mode][key] = {
           old: maybeUrlDeps[key].old,
