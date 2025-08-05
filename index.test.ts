@@ -1,7 +1,7 @@
 import spawn from "nano-spawn";
 import restana from "restana";
-import {join, dirname} from "node:path";
-import {readFileSync, mkdtempSync} from "node:fs";
+import {join, dirname, parse} from "node:path";
+import {readFileSync, mkdtempSync, readdirSync} from "node:fs";
 import {writeFile, readFile, rm} from "node:fs/promises";
 import {fileURLToPath} from "node:url";
 import {tmpdir} from "node:os";
@@ -26,8 +26,6 @@ for (const dependencyType of npmDependencyTypes) {
     testPackages.add(name);
   }
 }
-
-const pyTestPackages = new Set(["djlint", "PyYAML"]);
 
 function makeUrl(server: Server) {
   const {port}: any = server.address();
@@ -72,9 +70,9 @@ beforeAll(async () => {
     npmServer.get(`/${urlName}`, async (_, res) => res.send(await readFile(path)));
   }
 
-  for (const pkgName of pyTestPackages) {
-    const path = join(dirname(fileURLToPath(import.meta.url)), `fixtures/pypi/${pkgName}.json`);
-    pypiServer.get(`/pypi/${pkgName}/json`, async (_, res) => res.send(await readFile(path)));
+  for (const file of readdirSync(join(dirname(fileURLToPath(import.meta.url)), `fixtures/pypi`))) {
+    const path = join(dirname(fileURLToPath(import.meta.url)), `fixtures/pypi/${file}`);
+    pypiServer.get(`/pypi/${parse(path).name}/json`, async (_, res) => res.send(await readFile(path)));
   }
 
   githubServer.get("/repos/silverwind/updates/commits", (_, res) => res.send(commits));
