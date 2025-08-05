@@ -324,7 +324,7 @@ async function findHighestGoMajor(name: string, agentOpts: AgentOptions) {
       const info = await fetchGoVersionInfo(next, "latest", agentOpts, Array.from(goProxies), {
         // proxy.golang.org takes 5+ seconds to answer requests for unknown packages with an error. If it
         // takes that long, it's likely going to fail. Subsequent requests are faster apparently as it caches.
-        signal: AbortSignal.timeout(2000),
+        signal: AbortSignal.timeout(1000),
       });
       if (info.Version) {
         lastInfo = info;
@@ -962,7 +962,7 @@ async function main() {
     stream?._handle?.setBlocking?.(true);
   }
 
-  const maxSockets = 128;
+  const maxSockets = 96;
   const concurrency = typeof args.sockets === "number" ? args.sockets : maxSockets;
   const {help, version, file: filesArg, types, update} = args;
 
