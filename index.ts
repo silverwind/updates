@@ -173,7 +173,7 @@ const release = argSetToRegexes(parseMixedArg(args.release)) as PackageArg;
 const patch = argSetToRegexes(parseMixedArg(args.patch)) as PackageArg;
 const minor = argSetToRegexes(parseMixedArg(args.minor)) as PackageArg;
 const allowDowngrade = parseMixedArg(args["allow-downgrade"]) as PackageArg;
-const enabledModes = parseMixedArg(args.modes) as Set<string> || new Set(["npm", "pypi"]);
+const enabledModes = parseMixedArg(args.modes) as Set<string> || new Set(["npm", "pypi", "go"]);
 const githubApiUrl = args.githubapi ? normalizeUrl(args.githubapi) : "https://api.github.com";
 const pypiApiUrl = args.pypiapi ? normalizeUrl(args.pypiapi) : "https://pypi.org";
 const defaultGoProxy = "https://proxy.golang.org";
@@ -962,7 +962,7 @@ async function main() {
     stream?._handle?.setBlocking?.(true);
   }
 
-  const maxSockets = 96;
+  const maxSockets = 256;
   const concurrency = typeof args.sockets === "number" ? args.sockets : maxSockets;
   const {help, version, file: filesArg, types, update} = args;
 
