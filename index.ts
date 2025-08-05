@@ -811,11 +811,11 @@ function extractKey(str: string): Array<string> {
 }
 
 // convert arg from cli or config to regex
-function argToRegex(arg: string | RegExp, cli: boolean): RegExp {
+function argToRegex(arg: string | RegExp, cli: boolean, insensitive: boolean): RegExp {
   if (cli && typeof arg === "string") {
-    return /\/.+\//.test(arg) ? new RegExp(arg.slice(1, -1)) : picomatch.makeRe(arg);
+    return /\/.+\//.test(arg) ? new RegExp(arg.slice(1, -1)) : picomatch.makeRe(arg, {nocase: insensitive});
   } else {
-    return arg instanceof RegExp ? arg : picomatch.makeRe(arg);
+    return arg instanceof RegExp ? arg : picomatch.makeRe(arg, {nocase: insensitive});
   }
 }
 
@@ -824,7 +824,7 @@ function argSetToRegexes(arg: any): Set<RegExp> {
   if (arg instanceof Set) {
     const ret = new Set<RegExp>();
     for (const entry of arg) {
-      ret.add(argToRegex(entry, true));
+      ret.add(argToRegex(entry, true, false));
     }
     return ret;
   }
@@ -835,10 +835,10 @@ function argSetToRegexes(arg: any): Set<RegExp> {
 function matchersToRegexSet(cliArgs: Array<string>, configArgs: Array<string | RegExp>): Set<RegExp> {
   const ret = new Set();
   for (const arg of cliArgs || []) {
-    ret.add(argToRegex(arg, true));
+    ret.add(argToRegex(arg, true, true));
   }
   for (const arg of configArgs || []) {
-    ret.add(argToRegex(arg, false));
+    ret.add(argToRegex(arg, false, true));
   }
   return ret as Set<RegExp>;
 }
