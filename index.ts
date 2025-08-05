@@ -1075,7 +1075,7 @@ async function main() {
         obj = getProperty(pkg, depType) || {};
       }
 
-      if (Array.isArray(obj) && mode === "pypi") { // arary for uv
+      if (Array.isArray(obj) && mode === "pypi") { // array for uv
         for (const {name, version} of parseUvDependencies(obj)) {
           if (canInclude(name, mode, include, exclude)) {
             deps[mode][`${depType}${sep}${name}`] = {
