@@ -58,8 +58,9 @@ beforeAll(async () => {
   let tags: Buffer;
   let go70: Buffer;
   let go71: Buffer;
+  let go72: Buffer;
 
-  [npmServer, githubServer, pypiServer, goProxyServer, commits, tags, go70, go71] = await Promise.all([
+  [npmServer, githubServer, pypiServer, goProxyServer, commits, tags, go70, go71, go72] = await Promise.all([
     restana({defaultRoute}),
     restana({defaultRoute}),
     restana({defaultRoute}),
@@ -68,6 +69,7 @@ beforeAll(async () => {
     readFile(fileURLToPath(new URL("fixtures/github/updates-tags.json", import.meta.url))),
     readFile(fileURLToPath(new URL("fixtures/goproxy/v70.json", import.meta.url))),
     readFile(fileURLToPath(new URL("fixtures/goproxy/v71.json", import.meta.url))),
+    readFile(fileURLToPath(new URL("fixtures/goproxy/v72.json", import.meta.url))),
   ]);
 
   for (const pkgName of testPackages) {
@@ -85,6 +87,7 @@ beforeAll(async () => {
 
   goProxyServer.get(`/github.com/google/go-github/v70/@latest`, (_, res) => res.send(go70));
   goProxyServer.get(`/github.com/google/go-github/v71/@latest`, (_, res) => res.send(go71));
+  goProxyServer.get(`/github.com/google/go-github/v72/@latest`, (_, res) => res.send(go72));
 
   githubServer.get("/repos/silverwind/updates/commits", (_, res) => res.send(commits));
   githubServer.get("/repos/silverwind/updates/git/refs/tags", (_, res) => res.send(tags));
