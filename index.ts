@@ -401,7 +401,13 @@ async function finishWithMessage(message: string) {
 async function doExit(err?: Error | void, exitCode?: number) {
   if (err) {
     const error = err.stack ?? err.message;
-    console.info(args.json ? JSON.stringify({error}) : red(error));
+    const cause = err.cause as any;
+    if (args.json) {
+      console.info(JSON.stringify({error, cause}));
+    } else {
+      console.info(red(error));
+      if (cause) console.info(red(`Caused by: ${cause}`));
+    }
   }
 
   // workaround https://github.com/nodejs/node/issues/56645
