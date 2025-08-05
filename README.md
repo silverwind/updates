@@ -31,7 +31,7 @@ All `pkg` options support glob matching via [picomatch](https://github.com/micro
 
 The config file is used to configure certain options of the module. It is placed at `updates.config.{js,ts,mjs,mts}` or `.config/updates.config.{js,ts,mjs,mts}`, relative to `package.json` / `pyproject.toml` / `go.mod`.
 
-Since Node.js v23.6.0, typescript configuration files work out of the box. For Node between 22.5.x and v23.6.0, set `NODE_OPTIONS="--experimental-strip-types"` in your environment.
+Since Node.js v22.18.0, typescript configuration files work out of the box. For older node versions, set `NODE_OPTIONS="--experimental-strip-types"` in your environment.
 
 ```ts
 export default {
