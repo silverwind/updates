@@ -81,6 +81,17 @@ type FindNewVersionOpts = {
   semvers: Set<string>,
 }
 
+type GoVersionInfo = {
+  Version: string, // 'v70.0.0'
+  Time: string, // '2025-03-17T23:43:28Z'
+  Origin: {
+    VCS: string, // 'git'
+    URL: string, // 'https://github.com/google/go-github'
+    Hash: string // '134f6b47e5470e34d3721845627a1938090c5cd7'
+    Ref: string // 'refs/tags/v70.0.0'
+  }
+}
+
 // regexes for url dependencies. does only github and only hash or exact semver
 // https://regex101.com/r/gCZzfK/2
 const stripRe = /^.*?:\/\/(.*?@)?(github\.com[:/])/i;
@@ -166,7 +177,8 @@ const enabledModes = parseMixedArg(args.modes) as Set<string> || new Set(["npm",
 const githubApiUrl = args.githubapi ? normalizeUrl(args.githubapi) : "https://api.github.com";
 const pypiApiUrl = args.pypiapi ? normalizeUrl(args.pypiapi) : "https://pypi.org";
 const defaultGoProxy = "https://proxy.golang.org";
-const goProxies = args.goproxy ? normalizeUrl(args.goproxy) : makeGoProxies();
+const goProxies = args.goproxy ? [normalizeUrl(args.goproxy)] : makeGoProxies();
+
 const stripV = (str: string) => str.replace(/^v/, "");
 
 function matchesAny(str: string, set: PackageArg) {
@@ -273,21 +285,21 @@ function splitPlainText(str: string): Array<string> {
   return str.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
 }
 
-async function fetchGoVersionInfo(modulePath: string, version: string, agentOpts: AgentOptions, proxies: Array<string>) {
+async function fetchGoVersionInfo(modulePath: string, version: string, agentOpts: AgentOptions, proxies: Array<string>, fetchOpts: RequestInit = {}): Promise<GoVersionInfo> {
   const proxyUrl = proxies.shift();
   if (!proxyUrl) {
     throw new Error("No more go proxies available");
   }
 
   const url = `${proxyUrl}/${modulePath.toLowerCase()}/${version === "latest" ? "@latest" : `@v/${version}.info`}`;
-  const res = await doFetch(url, getFetchOpts(agentOpts));
+  const res = await doFetch(url, {...getFetchOpts(agentOpts), ...fetchOpts});
 
   if ([404, 410].includes(res.status) && proxies.length) {
-    return fetchGoVersionInfo(modulePath, version, agentOpts, proxies);
+    return fetchGoVersionInfo(modulePath, version, agentOpts, proxies, fetchOpts);
   }
 
   if (res?.ok) {
-    return res.json();
+    return (await res.json()) as GoVersionInfo;
   } else {
     if (res?.status && res?.statusText) {
       throw new Error(`Received ${res.status} ${res.statusText} from ${url}`);
@@ -295,6 +307,34 @@ async function fetchGoVersionInfo(modulePath: string, version: string, agentOpts
       throw new Error(`Unable to fetch ${modulePath} from ${proxyUrl}`);
     }
   }
+}
+
+async function findHighestGoMajor(name: string, agentOpts: AgentOptions) {
+  let lastInfo: GoVersionInfo | null = null;
+  let next = name;
+  while (true) {
+    if (/\/v[0-9]+$/.test(next)) {
+      const nextMajor = Number((next.split("/").at(-1) as string).substring(1)) + 1;
+      next = next.replace(/\/v[0-9]+$/, `/${`v${nextMajor}`}`);
+    } else {
+      next = `${next}/v2`;
+    }
+
+    try {
+      const info = await fetchGoVersionInfo(next, "latest", agentOpts, Array.from(goProxies), {
+        // proxy.golang.org takes 5+ seconds to answer requests for unknown packages with an error. If it
+        // takes that long, it's likely going to fail. Subsequent requests are faster apparently as it caches.
+        signal: AbortSignal.timeout(2000),
+      });
+      if (info.Version) {
+        lastInfo = info;
+        continue;
+      }
+    } catch {
+      break;
+    }
+  }
+  return lastInfo;
 }
 
 type PackageRepository = string | {
@@ -1121,9 +1161,14 @@ async function main() {
       } else if (mode === "pypi") {
         return fetchPypiInfo(name, type, agentOpts);
       } else {
-        const proxies = Array.from(goProxies);
-        const data: Record<string, any> = await fetchGoVersionInfo(name, "latest", agentOpts, proxies);
-        return [data, "deps", null, name];
+        let info = await fetchGoVersionInfo(name, "latest", agentOpts, Array.from(goProxies));
+        const highest = await findHighestGoMajor(name, agentOpts);
+
+        if (highest && info && gt(highest.Version.substring(1), info.Version.substring(1))) {
+          info = highest;
+        }
+
+        return [info, "deps", null, name];
       }
     }), {concurrency});
 

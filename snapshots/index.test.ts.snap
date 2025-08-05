@@ -166,6 +166,8 @@ exports[`exclude 4 1`] = `
 }
 `;
 
+exports[`go 1`] = `undefined`;
+
 exports[`greatest 1`] = `
 {
   "npm": {
