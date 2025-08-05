@@ -1077,10 +1077,12 @@ async function main() {
 
       if (Array.isArray(obj) && mode === "pypi") { // arary for uv
         for (const {name, version} of parseUvDependencies(obj)) {
-          deps[mode][`${depType}${sep}${name}`] = {
-            old: normalizeRange(version),
-            oldOriginal: version,
-          } as Dep;
+          if (canInclude(name, mode, include, exclude)) {
+            deps[mode][`${depType}${sep}${name}`] = {
+              old: normalizeRange(version),
+              oldOriginal: version,
+            } as Dep;
+          }
         }
       } else { // object for non-uv
         for (const [name, value] of Object.entries(obj)) {
