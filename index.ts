@@ -530,7 +530,7 @@ function updatePyprojectToml(pkgStr: string, deps: Deps) {
   return newPkgStr;
 }
 
-function updateRange(oldRange: string, newVersion: string, oldOriginal?: string) {
+function updateNpmRange(oldRange: string, newVersion: string, oldOriginal: string | undefined) {
   let newRange = oldRange.replace(/[0-9]+\.[0-9]+\.[0-9]+(-.+)?/g, newVersion);
 
   // if old version is a range like ^5 or ~5, retain number of version parts in new range
@@ -1148,10 +1148,10 @@ async function main() {
       });
 
       let newRange: string = "";
-      if (mode === "go" && newVersion) {
+      if (["go", "pypi"].includes(mode) && newVersion) {
         newRange = newVersion;
       } else if (newVersion) {
-        newRange = updateRange(oldRange, newVersion, oldOriginal);
+        newRange = updateNpmRange(oldRange, newVersion, oldOriginal);
       }
 
       if (!newVersion || oldOriginal && (oldOriginal === newRange)) {

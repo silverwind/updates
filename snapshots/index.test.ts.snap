@@ -591,12 +591,12 @@ exports[`uv 1`] = `
       },
       "types-paramiko": {
         "info": "https://github.com/python/typeshed",
-        "new": "3.5.0.20250801.20240423",
+        "new": "3.5.0.20250801",
         "old": "3.4.0.20240423",
       },
       "types-requests": {
         "info": "https://github.com/python/typeshed",
-        "new": "2.32.4.20250611.20240622",
+        "new": "2.32.4.20250611",
         "old": "2.32.0.20240622",
       },
     },
