@@ -86,7 +86,8 @@ type FindNewVersionOpts = {
 const stripRe = /^.*?:\/\/(.*?@)?(github\.com[:/])/i;
 const partsRe = /^([^/]+)\/([^/#]+)?.*?\/([0-9a-f]+|v?[0-9]+\.[0-9]+\.[0-9]+)$/i;
 const hashRe = /^[0-9a-f]{7,}$/i;
-const versionRe = /[0-9]+(\.[0-9]+)?(\.[0-9]+)?/g;
+const npmVersionRe = /[0-9]+(\.[0-9]+)?(\.[0-9]+)?/g;
+const npmVersionRePre = /[0-9]+\.[0-9]+\.[0-9]+(-.+)?/g;
 const esc = (str: string) => str.replace(/[|\\{}()[\]^$+*?.-]/g, "\\$&");
 const normalizeUrl = (url: string) => url.endsWith("/") ? url.substring(0, url.length - 1) : url;
 const packageVersion = pkg.version || "0.0.0";
@@ -531,7 +532,7 @@ function updatePyprojectToml(pkgStr: string, deps: Deps) {
 }
 
 function updateNpmRange(oldRange: string, newVersion: string, oldOriginal: string | undefined) {
-  let newRange = oldRange.replace(/[0-9]+\.[0-9]+\.[0-9]+(-.+)?/g, newVersion);
+  let newRange = oldRange.replace(npmVersionRePre, newVersion);
 
   // if old version is a range like ^5 or ~5, retain number of version parts in new range
   if (oldOriginal && oldOriginal !== oldRange && /^[\^~]/.test(newRange)) {
@@ -783,9 +784,9 @@ function shortenGoVersion(version: string) {
 }
 
 function normalizeRange(range: string) {
-  const versionMatches = range.match(versionRe);
+  const versionMatches = range.match(npmVersionRe);
   if (versionMatches?.length !== 1) return range;
-  return range.replace(versionRe, rangeToVersion(versionMatches[0]));
+  return range.replace(npmVersionRe, rangeToVersion(versionMatches[0]));
 }
 
 function parseMixedArg(arg: any): boolean | Set<string> {
@@ -1151,6 +1152,7 @@ async function main() {
 
       let newRange: string = "";
       if (["go", "pypi"].includes(mode) && newVersion) {
+        // go has no ranges and pypi oldRange is a version at this point, not a range
         newRange = newVersion;
       } else if (newVersion) {
         newRange = updateNpmRange(oldRange, newVersion, oldOriginal);
