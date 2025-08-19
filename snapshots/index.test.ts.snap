@@ -171,7 +171,6 @@ exports[`go 1`] = `
   "go": {
     "deps": {
       "github.com/google/go-github/v70": {
-        "age": "3 months",
         "info": "https://github.com/google/go-github",
         "new": "v71.0.0",
         "old": "v70.0.0",

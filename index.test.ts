@@ -8,7 +8,7 @@ import {tmpdir} from "node:os";
 import {env} from "node:process";
 import type {Server} from "node:http";
 import type {Service, Protocol} from "restana";
-import {npmDependencyTypes, poetryDependencyTypes, uvDependencyTypes} from "./utils.ts";
+import {npmDependencyTypes, poetryDependencyTypes, uvDependencyTypes, goDependencyTypes} from "./utils.ts";
 
 const testFile = fileURLToPath(new URL("fixtures/npm-test/package.json", import.meta.url));
 const emptyFile = fileURLToPath(new URL("fixtures/npm-empty/package.json", import.meta.url));
@@ -143,6 +143,7 @@ function makeTest(args: string) {
         ...npmDependencyTypes,
         ...poetryDependencyTypes,
         ...uvDependencyTypes,
+        ...goDependencyTypes,
       ]) {
         for (const name of Object.keys(results?.[mode]?.[dependencyType] || {})) {
           delete results[mode][dependencyType][name].age;

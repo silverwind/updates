@@ -33,3 +33,7 @@ export const uvDependencyTypes = [
   "dependency-groups.lint",
   "dependency-groups.test",
 ];
+
+export const goDependencyTypes = [
+  "deps",
+];
