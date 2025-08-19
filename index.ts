@@ -242,10 +242,31 @@ function getFetchOpts(agentOpts: AgentOptions, authType?: string, authToken?: st
   };
 }
 
+function timestamp() {
+  const date = new Date();
+  return [
+    date.getFullYear(),
+    "-",
+    String(date.getMonth() + 1).padStart(2, "0"),
+    "-",
+    String(date.getDate()).padStart(2, "0"),
+    " ",
+    String(date.getHours()).padStart(2, "0"),
+    ":",
+    String(date.getMinutes()).padStart(2, "0"),
+    ":",
+    String(date.getSeconds()).padStart(2, "0"),
+  ].join("");
+}
+
+function logVerbose(message: string) {
+  console.error(`${timestamp()} ${message}`);
+}
+
 async function doFetch(url: string, opts: RequestInit) {
-  if (args.verbose) console.error(`${magenta("fetch")} ${url}`);
+  if (args.verbose) logVerbose(`${magenta("fetch")} ${url}`);
   const res = await fetch(url, opts);
-  if (args.verbose) console.error(`${res.ok ? green(res.status) : red(res.status)} ${url}`);
+  if (args.verbose) logVerbose(`${res.ok ? green(res.status) : red(res.status)} ${url}`);
   return res;
 }
 
