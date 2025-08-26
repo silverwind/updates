@@ -22,7 +22,7 @@
     "@types/registry-auth-token": "5.0.1",
     "@types/semver": "7.7.0",
     "eslint": "8.57.0",
-    "eslint-config-silverwind": "102.0.3",
+    "eslint-config-silverwind": "102.0.4",
     "minimist": "1.2.8",
     "nano-spawn": "1.0.2",
     "p-all": "5.0.0",
