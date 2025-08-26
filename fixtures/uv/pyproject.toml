@@ -5,6 +5,7 @@ description = ""
 requires-python = ">=3.12"
 dependencies = [
   "djlint==1.30.0",
+  "ty>=0.0.1a15"
 ]
 
 [dependency-groups]

@@ -3,7 +3,7 @@ export function parseUvDependencies(specs: Array<string>) {
   const ret: Array<{name: string, version: string}> = [];
   for (const spec of specs) {
     const [name, version] = spec.replaceAll(/\s+/g, "").split(/[<>=~]+/);
-    if (name && /^[0-9.]+$/.test(version)) {
+    if (name && /^[0-9.a-z]+$/.test(version)) {
       ret.push({name, version});
     }
   }

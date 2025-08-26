@@ -8,6 +8,7 @@ test("parseUvDependencies", () => {
     "mollymawk ==0.1.0",
     "types-requests==2.32.0.20240622",
     "types-paramiko==3.4.0.20240423",
+    "ty>=0.0.1a15",
   ])).toMatchInlineSnapshot(`
     [
       {
@@ -29,6 +30,10 @@ test("parseUvDependencies", () => {
       {
         "name": "types-paramiko",
         "version": "3.4.0.20240423",
+      },
+      {
+        "name": "ty",
+        "version": "0.0.1a15",
       },
     ]
   `);
