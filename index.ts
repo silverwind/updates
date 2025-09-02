@@ -308,21 +308,37 @@ function splitPlainText(str: string): Array<string> {
   return str.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
 }
 
-async function fetchGoVersionInfo(modulePath: string, version: string, agentOpts: AgentOptions, proxies: Array<string>, fetchOpts: RequestInit = {}): Promise<GoVersionInfo> {
+async function fetchGoVersionInfo(modulePath: string, version: string, agentOpts: AgentOptions, proxies: Array<string>): Promise<GoVersionInfo> {
   const proxyUrl = proxies.shift();
   if (!proxyUrl) {
     throw new Error("No more go proxies available");
   }
 
   const url = `${proxyUrl}/${modulePath.toLowerCase()}/${version === "latest" ? "@latest" : `@v/${version}.info`}`;
-  const res = await doFetch(url, {...getFetchOpts(agentOpts), ...fetchOpts});
 
-  if ([404, 410].includes(res.status) && proxies.length) {
-    return fetchGoVersionInfo(modulePath, version, agentOpts, proxies, fetchOpts);
+  let res: Response | null = null;
+  let tryNext = false;
+  try {
+    res = await doFetch(url, {
+      ...getFetchOpts(agentOpts),
+      // proxy.golang.org takes 5+ seconds to answer requests for unknown packages with an error. If it
+      // takes longer, it's likely going to fail. Subsequent requests are faster apparently as it caches.
+      signal: AbortSignal.timeout(10000),
+    });
+
+    if (res?.ok) {
+      return (await res.json()) as GoVersionInfo;
+    }
+
+    tryNext = [404, 410].includes(res.status) && Boolean(proxies.length);
+  } catch (err: any) {
+    if (err.name === "TimeoutError") {
+      tryNext = Boolean(proxies.length);
+    }
   }
 
-  if (res?.ok) {
-    return (await res.json()) as GoVersionInfo;
+  if (tryNext) {
+    return fetchGoVersionInfo(modulePath, version, agentOpts, proxies);
   } else {
     if (res?.status && res?.statusText) {
       throw new Error(`Received ${res.status} ${res.statusText} from ${url}`);
@@ -332,7 +348,7 @@ async function fetchGoVersionInfo(modulePath: string, version: string, agentOpts
   }
 }
 
-async function findHighestGoMajor(name: string, agentOpts: AgentOptions) {
+async function findHighestGoMajor(name: string, agentOpts: AgentOptions): Promise<GoVersionInfo | null> {
   let lastInfo: GoVersionInfo | null = null;
   let next = name;
   while (true) {
@@ -344,12 +360,10 @@ async function findHighestGoMajor(name: string, agentOpts: AgentOptions) {
     }
 
     try {
-      const info = await fetchGoVersionInfo(next, "latest", agentOpts, Array.from(goProxies), {
-        // proxy.golang.org takes 5+ seconds to answer requests for unknown packages with an error. If it
-        // takes that long, it's likely going to fail. Subsequent requests are faster apparently as it caches.
-        signal: AbortSignal.timeout(1000),
-      });
-      if (info.Version) {
+      const info = await fetchGoVersionInfo(next, "latest", agentOpts, Array.from(goProxies));
+      if (info === null) {
+        break;
+      } else if (info?.Version) {
         lastInfo = info;
         continue;
       }
