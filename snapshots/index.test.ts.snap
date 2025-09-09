@@ -382,11 +382,6 @@ exports[`patch 1`] = `
         "new": "2.0.1",
         "old": "2.0.0",
       },
-      "html-webpack-plugin": {
-        "info": "https://github.com/jantimon/html-webpack-plugin",
-        "new": "4.0.0-beta.11",
-        "old": "4.0.0-alpha.2",
-      },
       "noty": {
         "info": "https://github.com/needim/noty",
         "new": "3.1.4",
@@ -396,11 +391,6 @@ exports[`patch 1`] = `
         "info": "https://github.com/facebook/react/tree/HEAD/packages/react",
         "new": "18.0.0",
         "old": "18.0",
-      },
-      "svgstore": {
-        "info": "https://github.com/svgstore/svgstore",
-        "new": "^3.0.0-2",
-        "old": "^3.0.0",
       },
       "updates": {
         "info": "https://github.com/silverwind/updates",
