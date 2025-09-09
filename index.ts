@@ -6,7 +6,6 @@ import {stripVTControlCharacters, styleText} from "node:util";
 import {execFileSync} from "node:child_process";
 import minimist from "minimist";
 import pAll from "p-all";
-import picomatch from "picomatch";
 import pkg from "./package.json" with {type: "json"};
 import rc from "rc";
 import registryAuthToken from "registry-auth-token";
@@ -894,12 +893,16 @@ function extractKey(str: string): Array<string> {
   return Array.from(str.matchAll(/(----BEGIN [^]+?PRIVATE KEY----)/g), (m: Array<string>) => m[0]);
 }
 
+function globToRegex(glob: string, insensitive: boolean): RegExp {
+  return new RegExp(esc(glob).replaceAll("\\*", ".*"), insensitive ? "i" : "");
+}
+
 // convert arg from cli or config to regex
 function argToRegex(arg: string | RegExp, cli: boolean, insensitive: boolean): RegExp {
   if (cli && typeof arg === "string") {
-    return /\/.+\//.test(arg) ? new RegExp(arg.slice(1, -1)) : picomatch.makeRe(arg, {nocase: insensitive});
+    return /\/.+\//.test(arg) ? new RegExp(arg.slice(1, -1)) : globToRegex(arg, insensitive);
   } else {
-    return arg instanceof RegExp ? arg : picomatch.makeRe(arg, {nocase: insensitive});
+    return arg instanceof RegExp ? arg : globToRegex(arg, insensitive);
   }
 }
 
