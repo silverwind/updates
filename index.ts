@@ -894,7 +894,7 @@ function extractKey(str: string): Array<string> {
 }
 
 function globToRegex(glob: string, insensitive: boolean): RegExp {
-  return new RegExp(esc(glob).replaceAll("\\*", ".*"), insensitive ? "i" : "");
+  return new RegExp(`^${esc(glob).replaceAll("\\*", ".*")}$`, insensitive ? "i" : "");
 }
 
 // convert arg from cli or config to regex
