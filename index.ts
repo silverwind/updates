@@ -766,7 +766,7 @@ function findNewVersion(data: any, {mode, range, useGreatest, useRel, usePre, se
 
 function fetchGitHub(url: string) {
   const opts: RequestInit = {};
-  const token = env.UPDATES_GITHUB_API_TOKEN || env.GITHUB_API_TOKEN || env.GH_TOKEN || env.HOMEBREW_GITHUB_API_TOKEN;
+  const token = env.UPDATES_GITHUB_API_TOKEN || env.GITHUB_API_TOKEN || env.GH_TOKEN || env.GITHUB_TOKEN || env.HOMEBREW_GITHUB_API_TOKEN;
   if (token) {
     opts.headers = {Authorization: `Bearer ${token}`};
   }
