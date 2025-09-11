@@ -8,7 +8,7 @@ import {tmpdir} from "node:os";
 import {env} from "node:process";
 import type {Server} from "node:http";
 import type {Service, Protocol} from "restana";
-import {npmDependencyTypes, poetryDependencyTypes, uvDependencyTypes, goDependencyTypes} from "./utils.ts";
+import {npmTypes, poetryTypes, uvTypes, goTypes} from "./utils.ts";
 
 const testFile = fileURLToPath(new URL("fixtures/npm-test/package.json", import.meta.url));
 const emptyFile = fileURLToPath(new URL("fixtures/npm-empty/package.json", import.meta.url));
@@ -22,7 +22,7 @@ const testDir = mkdtempSync(join(tmpdir(), "updates-"));
 const script = fileURLToPath(new URL("dist/index.js", import.meta.url));
 
 const testPackages: Set<string> = new Set();
-for (const dependencyType of npmDependencyTypes) {
+for (const dependencyType of npmTypes) {
   for (const name of Object.keys(testPkg[dependencyType] || [])) {
     testPackages.add(name);
   }
@@ -140,10 +140,10 @@ function makeTest(args: string) {
     // Parse results, with custom validation for the dynamic "age" property
     for (const mode of Object.keys(results || {})) {
       for (const dependencyType of [
-        ...npmDependencyTypes,
-        ...poetryDependencyTypes,
-        ...uvDependencyTypes,
-        ...goDependencyTypes,
+        ...npmTypes,
+        ...poetryTypes,
+        ...uvTypes,
+        ...goTypes,
       ]) {
         for (const name of Object.keys(results?.[mode]?.[dependencyType] || {})) {
           delete results[mode][dependencyType][name].age;

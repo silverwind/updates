@@ -10,7 +10,7 @@ export function parseUvDependencies(specs: Array<string>) {
   return ret;
 }
 
-export const npmDependencyTypes = [
+export const npmTypes = [
   "dependencies",
   "devDependencies",
   "peerDependencies",
@@ -18,7 +18,7 @@ export const npmDependencyTypes = [
   "resolutions",
 ];
 
-export const poetryDependencyTypes = [
+export const poetryTypes = [
   "tool.poetry.dependencies",
   "tool.poetry.dev-dependencies",
   "tool.poetry.test-dependencies",
@@ -26,7 +26,7 @@ export const poetryDependencyTypes = [
   "tool.poetry.group.test.dependencies",
 ];
 
-export const uvDependencyTypes = [
+export const uvTypes = [
   "project.dependencies",
   "project.optional-dependencies",
   "dependency-groups.dev",
@@ -34,6 +34,6 @@ export const uvDependencyTypes = [
   "dependency-groups.test",
 ];
 
-export const goDependencyTypes = [
+export const goTypes = [
   "deps",
 ];

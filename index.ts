@@ -13,9 +13,7 @@ import {parse as parseToml} from "smol-toml";
 import {parse, coerce, diff, gt, gte, lt, neq, valid, validRange} from "semver";
 import {rootCertificates} from "node:tls";
 import {timerel} from "timerel";
-import {
-  npmDependencyTypes, parseUvDependencies, poetryDependencyTypes, uvDependencyTypes, goDependencyTypes,
-} from "./utils.ts";
+import {npmTypes, poetryTypes, uvTypes, goTypes, parseUvDependencies} from "./utils.ts";
 import type {AgentOptions} from "node:https";
 import type {Stats} from "node:fs";
 import type {AuthOptions} from "registry-auth-token";
@@ -1115,11 +1113,11 @@ async function main() {
       dependencyTypes = config.types;
     } else {
       if (mode === "npm") {
-        dependencyTypes = npmDependencyTypes;
+        dependencyTypes = npmTypes;
       } else if (mode === "pypi") {
-        dependencyTypes = [...uvDependencyTypes, ...poetryDependencyTypes];
+        dependencyTypes = [...uvTypes, ...poetryTypes];
       } else if (mode === "go") {
-        dependencyTypes = [...goDependencyTypes];
+        dependencyTypes = [...goTypes];
       }
     }
 
@@ -1214,7 +1212,7 @@ async function main() {
           info = highest;
         }
 
-        return [info, goDependencyTypes[0], null, name];
+        return [info, goTypes[0], null, name];
       }
     }), {concurrency});
 
