@@ -32,16 +32,11 @@ test: node_modules build
 test-update: node_modules build
 	npx vitest -u
 
-.PHONY: hashbang
-hashbang:
-	@$(SED_INPLACE) "1s/.*/\#\!\/usr\/bin\/env node/" dist/index.js
-
 .PHONY: build
 build: node_modules $(DIST_FILES)
 
 $(DIST_FILES): $(SOURCE_FILES) package-lock.json vite.config.ts
 	npx vite build
-	@$(MAKE) --no-print-directory hashbang
 	chmod +x $(DIST_FILES)
 
 .PHONY: publish
