@@ -14,6 +14,7 @@ import {parse, coerce, diff, gt, gte, lt, neq, valid, validRange} from "semver";
 import {rootCertificates} from "node:tls";
 import {timerel} from "timerel";
 import {npmTypes, poetryTypes, uvTypes, goTypes, parseUvDependencies} from "./utils.ts";
+import {availableParallelism, cpus} from "node:os";
 import type {AgentOptions} from "node:https";
 import type {Stats} from "node:fs";
 import type {AuthOptions} from "registry-auth-token";
@@ -89,6 +90,11 @@ type GoVersionInfo = {
     Hash: string // '134f6b47e5470e34d3721845627a1938090c5cd7'
     Ref: string // 'refs/tags/v70.0.0'
   }
+}
+
+const numCores = availableParallelism?.() ?? cpus().length ?? 4;
+if (versions?.uv && numCores > 4) {
+  env.UV_THREADPOOL_SIZE = String(numCores);
 }
 
 // regexes for url dependencies. does only github and only hash or exact semver
