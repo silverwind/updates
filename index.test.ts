@@ -1,6 +1,6 @@
 import spawn from "nano-spawn";
 import restana from "restana";
-import {join, dirname, parse} from "node:path";
+import {join, parse} from "node:path";
 import {readFileSync, mkdtempSync, readdirSync} from "node:fs";
 import {writeFile, readFile, rm} from "node:fs/promises";
 import {fileURLToPath} from "node:url";
@@ -76,12 +76,12 @@ beforeAll(async () => {
     const name = testPkg.resolutions[pkgName] ? resolutionsBasePackage(pkgName) : pkgName;
     const urlName = name.replace(/\//g, "%2f");
     // can not use file URLs because node stupidely throws on "%2f" in paths.
-    const path = join(dirname(fileURLToPath(import.meta.url)), `fixtures/npm/${urlName}.json`);
+    const path = join(import.meta.dirname, `fixtures/npm/${urlName}.json`);
     npmServer.get(`/${urlName}`, async (_, res) => res.send(await readFile(path)));
   }
 
-  for (const file of readdirSync(join(dirname(fileURLToPath(import.meta.url)), `fixtures/pypi`))) {
-    const path = join(dirname(fileURLToPath(import.meta.url)), `fixtures/pypi/${file}`);
+  for (const file of readdirSync(join(import.meta.dirname, `fixtures/pypi`))) {
+    const path = join(import.meta.dirname, `fixtures/pypi/${file}`);
     pypiServer.get(`/pypi/${parse(path).name}/json`, async (_, res) => res.send(await readFile(path)));
   }
 

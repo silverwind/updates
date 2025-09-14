@@ -25,7 +25,7 @@ export type Config = {
   exclude?: Array<string | RegExp>;
   types?: Array<string>;
   registry?: string;
-}
+};
 
 type Npmrc = {
   registry?: string,
@@ -36,7 +36,7 @@ type Npmrc = {
   key?: string,
   keyfile?: string,
   [other: string]: any,
-}
+};
 
 type Dep = {
   old: string,
@@ -46,15 +46,15 @@ type Dep = {
   oldOriginal?: string,
   info?: string,
   age?: string,
-}
+};
 
 type Deps = {
   [name: string]: Dep,
-}
+};
 
 type DepsByMode = {
   [mode: string]: Deps,
-}
+};
 
 type Output = {
   results: {
@@ -62,7 +62,7 @@ type Output = {
       [type: string]: Deps,
     }
   }
-}
+};
 
 type FindVersionOpts = {
   range: string,
@@ -70,7 +70,7 @@ type FindVersionOpts = {
   usePre: boolean,
   useRel: boolean,
   useGreatest: boolean,
-}
+};
 
 type FindNewVersionOpts = {
   mode: string,
@@ -79,7 +79,7 @@ type FindNewVersionOpts = {
   useRel: boolean,
   useGreatest: boolean,
   semvers: Set<string>,
-}
+};
 
 type GoVersionInfo = {
   Version: string, // 'v70.0.0'
@@ -90,7 +90,7 @@ type GoVersionInfo = {
     Hash: string // '134f6b47e5470e34d3721845627a1938090c5cd7'
     Ref: string // 'refs/tags/v70.0.0'
   }
-}
+};
 
 const numCores = availableParallelism?.() ?? cpus().length ?? 4;
 if (versions?.uv && numCores > 4) {
@@ -381,7 +381,7 @@ type PackageRepository = string | {
   type: string,
   url: string,
   directory: string,
-}
+};
 
 function resolvePackageJsonUrl(url: string) {
   url = url.replace("git@", "").replace(/.+?\/\//, "https://").replace(/\.git$/, "");
@@ -1123,7 +1123,7 @@ async function main() {
       } else if (mode === "pypi") {
         dependencyTypes = [...uvTypes, ...poetryTypes];
       } else if (mode === "go") {
-        dependencyTypes = [...goTypes];
+        dependencyTypes = Array.from(goTypes);
       }
     }
 

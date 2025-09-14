@@ -1,3 +1,0 @@
-root: true
-reportUnusedDisableDirectives: true
-extends: [silverwind]
