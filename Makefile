@@ -1,12 +1,6 @@
 SOURCE_FILES := index.ts
 DIST_FILES := dist/index.js
 
-ifeq ($(shell sed --version 2>/dev/null | grep -q GNU && echo gnu),gnu)
-	SED_INPLACE := sed -i
-else
-	SED_INPLACE := sed -i ''
-endif
-
 node_modules: package-lock.json
 	npm install --no-save
 	@touch node_modules
