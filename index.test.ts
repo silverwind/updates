@@ -54,17 +54,12 @@ let npmUrl: string;
 let goProxyUrl: string;
 
 beforeAll(async () => {
-  let commits: Buffer;
-  let tags: Buffer;
-  let go70: Buffer;
-  let go71: Buffer;
-  let go72: Buffer;
+  npmServer = restana({defaultRoute});
+  githubServer = restana({defaultRoute});
+  pypiServer = restana({defaultRoute});
+  goProxyServer = restana({defaultRoute});
 
-  [npmServer, githubServer, pypiServer, goProxyServer, commits, tags, go70, go71, go72] = await Promise.all([
-    restana({defaultRoute}),
-    restana({defaultRoute}),
-    restana({defaultRoute}),
-    restana({defaultRoute}),
+  const [commits, tags, go70, go71, go72] = await Promise.all([
     readFile(fileURLToPath(new URL("fixtures/github/updates-commits.json", import.meta.url))),
     readFile(fileURLToPath(new URL("fixtures/github/updates-tags.json", import.meta.url))),
     readFile(fileURLToPath(new URL("fixtures/goproxy/v70.json", import.meta.url))),
