@@ -34,13 +34,15 @@ The config file is used to configure certain options of the module. It is placed
 Since Node.js v22.18.0, typescript configuration files work out of the box. For older node versions, set `NODE_OPTIONS="--experimental-strip-types"` in your environment.
 
 ```ts
+import type {Config} from "updates";
+
 export default {
   exclude: [
     "semver",
     "@vitejs/*",
     /^react(-dom)?$/,
   ],
-};
+} satisfies Config;
 ```
 
 ### Config Options
