@@ -107,6 +107,11 @@ exports[`exclude 1`] = `
 {
   "npm": {
     "dependencies": {
+      "eslint-plugin-storybook": {
+        "info": "https://github.com/storybookjs/storybook/tree/HEAD/code/lib/eslint-plugin",
+        "new": "0.0.0-pr-32455-sha-2828decf",
+        "old": "10.0.0-beta.5",
+      },
       "updates": {
         "info": "https://github.com/silverwind/updates",
         "new": "537ccb7",
@@ -188,6 +193,11 @@ exports[`greatest 1`] = `
         "info": "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
         "new": "7.11.5",
         "old": "7.0.0",
+      },
+      "eslint-plugin-storybook": {
+        "info": "https://github.com/storybookjs/storybook/tree/HEAD/code/lib/eslint-plugin",
+        "new": "10.0.0-beta.6",
+        "old": "10.0.0-beta.5",
       },
       "gulp-sourcemaps": {
         "info": "https://github.com/gulp-sourcemaps/gulp-sourcemaps",
@@ -303,6 +313,11 @@ exports[`latest 1`] = `
         "info": "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
         "new": "7.11.5",
         "old": "7.0.0",
+      },
+      "eslint-plugin-storybook": {
+        "info": "https://github.com/storybookjs/storybook/tree/HEAD/code/lib/eslint-plugin",
+        "new": "0.0.0-pr-32455-sha-2828decf",
+        "old": "10.0.0-beta.5",
       },
       "gulp-sourcemaps": {
         "info": "https://github.com/gulp-sourcemaps/gulp-sourcemaps",
@@ -437,6 +452,11 @@ exports[`prerelease 1`] = `
         "new": "7.11.5",
         "old": "7.0.0",
       },
+      "eslint-plugin-storybook": {
+        "info": "https://github.com/storybookjs/storybook/tree/HEAD/code/lib/eslint-plugin",
+        "new": "10.0.0-beta.6",
+        "old": "10.0.0-beta.5",
+      },
       "gulp-sourcemaps": {
         "info": "https://github.com/gulp-sourcemaps/gulp-sourcemaps",
         "new": "2.6.5",
@@ -514,6 +534,11 @@ exports[`release 1`] = `
         "info": "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
         "new": "7.11.5",
         "old": "7.0.0",
+      },
+      "eslint-plugin-storybook": {
+        "info": "https://github.com/storybookjs/storybook/tree/HEAD/code/lib/eslint-plugin",
+        "new": "9.1.7",
+        "old": "10.0.0-beta.5",
       },
       "gulp-sourcemaps": {
         "info": "https://github.com/gulp-sourcemaps/gulp-sourcemaps",

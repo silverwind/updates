@@ -643,17 +643,18 @@ function isRangePrerelease(range: string) {
   return /[0-9]+\.[0-9]+\.[0-9]+-.+/.test(range);
 }
 
-function rangeToVersion(range: string) {
+function coerceToVersion(rangeOrVersion: string) {
   try {
-    return coerce(range)?.version ?? "";
+    return coerce(rangeOrVersion)?.version ?? "";
   } catch {
     return "";
   }
 }
 
 function findVersion(data: any, versions: Array<string>, {range, semvers, usePre, useRel, useGreatest}: FindVersionOpts) {
-  let tempVersion = rangeToVersion(range);
-  let tempDate = 0;
+  const oldVersion = coerceToVersion(range);
+  if (!oldVersion) return oldVersion;
+
   usePre = isRangePrerelease(range) || usePre;
 
   if (usePre) {
@@ -663,28 +664,32 @@ function findVersion(data: any, versions: Array<string>, {range, semvers, usePre
     if (semvers.has("major")) semvers.add("premajor");
   }
 
+  let greatestDate = 0;
+  let newVersion = oldVersion;
+
   for (const version of versions) {
     const parsed = parse(version);
-    if (!parsed || !tempVersion || parsed.prerelease.length && (!usePre || useRel)) continue;
+    if (!parsed?.version || parsed.prerelease.length && (!usePre || useRel)) continue;
+    const candidateVersion = parsed.version;
 
-    const d = diff(tempVersion, parsed.version);
+    const d = diff(newVersion, candidateVersion);
     if (!d || !semvers.has(d)) continue;
 
     // some registries like github don't have data.time available, fall back to greatest on them
     if (useGreatest || !("time" in data)) {
-      if (gte(rangeToVersion(parsed?.version), tempVersion)) {
-        tempVersion = parsed.version;
+      if (gte(coerceToVersion(candidateVersion), newVersion)) {
+        newVersion = candidateVersion;
       }
     } else {
       const date = (new Date(data.time[version])).getTime();
-      if (date >= 0 && date > tempDate) {
-        tempVersion = parsed.version;
-        tempDate = date;
+      if (date >= 0 && date > greatestDate) {
+        newVersion = candidateVersion;
+        greatestDate = date;
       }
     }
   }
 
-  return tempVersion || null;
+  return newVersion || null;
 }
 
 function findNewVersion(data: any, {mode, range, useGreatest, useRel, usePre, semvers}: FindNewVersionOpts): string | null {
@@ -714,12 +719,12 @@ function findNewVersion(data: any, {mode, range, useGreatest, useRel, usePre, se
     let originalLatestTag = "";
     if (mode === "pypi") {
       originalLatestTag = data.info.version; // may not be a 3-part semver
-      latestTag = rangeToVersion(data.info.version); // add .0 to 6.0 so semver eats it
+      latestTag = coerceToVersion(data.info.version); // add .0 to 6.0 so semver eats it
     } else {
       latestTag = data["dist-tags"].latest;
     }
 
-    const oldVersion = rangeToVersion(range);
+    const oldVersion = coerceToVersion(range);
     const oldIsPre = isRangePrerelease(range);
     const newIsPre = isVersionPrerelease(version);
     const latestIsPre = isVersionPrerelease(latestTag);
@@ -872,7 +877,7 @@ function shortenGoVersion(version: string) {
 function normalizeRange(range: string) {
   const versionMatches = range.match(npmVersionRe);
   if (versionMatches?.length !== 1) return range;
-  return range.replace(npmVersionRe, rangeToVersion(versionMatches[0]));
+  return range.replace(npmVersionRe, coerceToVersion(versionMatches[0]));
 }
 
 function parseMixedArg(arg: any): boolean | Set<string> {
