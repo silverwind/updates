@@ -29,8 +29,8 @@ test-update: node_modules build
 .PHONY: build
 build: node_modules $(DIST_FILES)
 
-$(DIST_FILES): $(SOURCE_FILES) package-lock.json vite.config.ts
-	npx vite build
+$(DIST_FILES): $(SOURCE_FILES) package-lock.json tsdown.config.ts
+	npx tsdown
 	chmod +x $(DIST_FILES)
 
 .PHONY: publish
@@ -40,7 +40,7 @@ publish: node_modules
 
 .PHONY: update
 update: node_modules
-	npx updates -cu
+	./dist/index.js -cu
 	rm -rf node_modules package-lock.json
 	npm install
 	@touch node_modules
