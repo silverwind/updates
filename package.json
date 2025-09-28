@@ -19,7 +19,6 @@
     "@types/minimist": "1.2.5",
     "@types/node": "24.5.2",
     "@types/rc": "1.2.4",
-    "@types/registry-auth-token": "5.0.1",
     "@types/semver": "7.7.1",
     "eslint": "9.36.0",
     "eslint-config-silverwind": "105.2.1",
