@@ -184,17 +184,17 @@ const pypiApiUrl = args.pypiapi ? normalizeUrl(args.pypiapi) : "https://pypi.org
 const defaultGoProxy = "https://proxy.golang.org";
 const goProxies = args.goproxy ? [normalizeUrl(args.goproxy)] : makeGoProxies();
 
-const stripV = (str: string) => str.replace(/^v/, "");
+const stripV = (str: string): string => str.replace(/^v/, "");
 
-function matchesAny(str: string, set: PackageArg) {
+function matchesAny(str: string, set: PackageArg): boolean {
   for (const re of (set instanceof Set ? set : [])) {
     if (re.test(str)) return true;
   }
   return false;
 }
 
-function registryUrl(scope: string, npmrc: Npmrc) {
-  const url = npmrc[`${scope}:registry`] || npmrc.registry;
+function registryUrl(scope: string, npmrc: Npmrc): string {
+  const url: string = npmrc[`${scope}:registry`] || npmrc.registry;
   return url.endsWith("/") ? url : `${url}/`;
 }
 
@@ -206,11 +206,11 @@ function makeGoProxies(): Array<string> {
   }
 }
 
-function getProperty(obj: Record<string, any>, path: string) {
+function getProperty(obj: Record<string, any>, path: string): Record<string, any> {
   return path.split(".").reduce((obj: Record<string, any>, prop: string) => obj?.[prop] ?? null, obj);
 }
 
-function commaSeparatedToArray(str: string) {
+function commaSeparatedToArray(str: string): Array<string> {
   return str.split(",").filter(Boolean);
 }
 
@@ -221,7 +221,17 @@ function findUpSync(filename: string, dir: string): string | null {
   return parent === dir ? null : findUpSync(filename, parent);
 }
 
-function getAuthAndRegistry(name: string, registry: string, authTokenOpts: AuthOptions, npmrc: Npmrc) {
+type AuthAndRegistry = {
+  auth: {
+    token: string,
+    type: string,
+    username?: string | undefined,
+    password?: string | undefined,
+  } | undefined,
+  registry: string,
+};
+
+function getAuthAndRegistry(name: string, registry: string, authTokenOpts: AuthOptions, npmrc: Npmrc): AuthAndRegistry {
   if (!name.startsWith("@")) {
     return {auth: registryAuthToken(registry, authTokenOpts), registry};
   } else {
@@ -237,7 +247,7 @@ function getAuthAndRegistry(name: string, registry: string, authTokenOpts: AuthO
   }
 }
 
-function getFetchOpts(agentOpts: AgentOptions, authType?: string, authToken?: string) {
+function getFetchOpts(agentOpts: AgentOptions, authType?: string, authToken?: string): RequestInit {
   return {
     ...(Object.keys(agentOpts).length && {agentOpts}),
     headers: {
@@ -247,7 +257,7 @@ function getFetchOpts(agentOpts: AgentOptions, authType?: string, authToken?: st
   };
 }
 
-function timestamp() {
+function timestamp(): string {
   const date = new Date();
   return [
     date.getFullYear(),
@@ -264,18 +274,20 @@ function timestamp() {
   ].join("");
 }
 
-function logVerbose(message: string) {
+function logVerbose(message: string): void {
   console.error(`${timestamp()} ${message}`);
 }
 
-async function doFetch(url: string, opts: RequestInit) {
+async function doFetch(url: string, opts: RequestInit): Promise<Response> {
   if (args.verbose) logVerbose(`${magenta("fetch")} ${url}`);
   const res = await fetch(url, opts);
   if (args.verbose) logVerbose(`${res.ok ? green(res.status) : red(res.status)} ${url}`);
   return res;
 }
 
-async function fetchNpmInfo(name: string, type: string, originalRegistry: string, agentOpts: AgentOptions, authTokenOpts: AuthOptions, npmrc: Npmrc) {
+type PackageInfo = [Record<string, any>, string, string | null, string];
+
+async function fetchNpmInfo(name: string, type: string, originalRegistry: string, agentOpts: AgentOptions, authTokenOpts: AuthOptions, npmrc: Npmrc): Promise<PackageInfo> {
   const {auth, registry} = getAuthAndRegistry(name, originalRegistry, authTokenOpts, npmrc);
   const packageName = type === "resolutions" ? basename(name) : name;
   const url = `${registry}/${packageName.replace(/\//g, "%2f")}`;
@@ -292,7 +304,7 @@ async function fetchNpmInfo(name: string, type: string, originalRegistry: string
   }
 }
 
-async function fetchPypiInfo(name: string, type: string, agentOpts: AgentOptions) {
+async function fetchPypiInfo(name: string, type: string, agentOpts: AgentOptions): Promise<PackageInfo> {
   const url = `${pypiApiUrl}/pypi/${name}/json`;
 
   const res = await doFetch(url, getFetchOpts(agentOpts));
@@ -383,7 +395,7 @@ type PackageRepository = string | {
   directory: string,
 };
 
-function resolvePackageJsonUrl(url: string) {
+function resolvePackageJsonUrl(url: string): string {
   url = url.replace("git@", "").replace(/.+?\/\//, "https://").replace(/\.git$/, "");
   if (/^[a-z]+:[a-z0-9-]\/[a-z0-9-]$/.test(url)) { // foo:user/repo
     return url.replace(/^(.+?):/, (_, p1) => `https://${p1}.com/`);
@@ -394,7 +406,7 @@ function resolvePackageJsonUrl(url: string) {
   }
 }
 
-function getSubDir(url: string) {
+function getSubDir(url: string): string {
   if (url.startsWith("https://bitbucket.org")) {
     return "src/HEAD";
   } else {
@@ -402,7 +414,7 @@ function getSubDir(url: string) {
   }
 }
 
-function getInfoUrl({repository, homepage, info}: {repository: PackageRepository, homepage: string, info: Record<string, any>}, registry: string, name: string): string {
+function getInfoUrl({repository, homepage, info}: {repository: PackageRepository, homepage: string, info: Record<string, any>}, registry: string | null, name: string): string {
   if (info) { // pypi
     repository =
       info.project_urls.repository ||
@@ -433,12 +445,12 @@ function getInfoUrl({repository, homepage, info}: {repository: PackageRepository
   return infoUrl || homepage || "";
 }
 
-async function finishWithMessage(message: string) {
+async function finishWithMessage(message: string): Promise<void> {
   console.info(args.json ? JSON.stringify({message}) : message);
   await doExit();
 }
 
-async function doExit(err?: Error | void, exitCode?: number) {
+async function doExit(err?: Error | void, exitCode?: number): Promise<void> {
   if (err) {
     const error = err.stack ?? err.message;
     const cause = err.cause as any;
@@ -458,7 +470,7 @@ async function doExit(err?: Error | void, exitCode?: number) {
   exit(exitCode || err ? 1 : 0);
 }
 
-function outputDeps(deps: DepsByMode = {}) {
+function outputDeps(deps: DepsByMode = {}): number {
   for (const mode of Object.keys(deps)) {
     for (const value of Object.values(deps[mode])) {
       if (typeof value.oldPrint === "string") {
@@ -506,12 +518,12 @@ function outputDeps(deps: DepsByMode = {}) {
 }
 
 // preserve file metadata on windows
-function write(file: string, content: string) {
+function write(file: string, content: string): void {
   if (platform === "win32") truncateSync(file, 0);
   writeFileSync(file, content, platform === "win32" ? {flag: "r+"} : undefined);
 }
 
-function highlightDiff(a: string, b: string, colorFn: (str: string) => string) {
+function highlightDiff(a: string, b: string, colorFn: (str: string) => string): string {
   if (a === b) return a;
   const aParts = a.split(/\./);
   const bParts = b.split(/\./);
@@ -559,14 +571,14 @@ function textTable(rows: Array<Array<string>>, hsep = " "): string {
   return ret;
 }
 
-function shortenGoName(moduleName: string) {
+function shortenGoName(moduleName: string): string {
   if (/\/v[0-9]$/.test(moduleName)) {
     moduleName = dirname(moduleName);
   }
   return moduleName;
 }
 
-function formatDeps(deps: DepsByMode) {
+function formatDeps(deps: DepsByMode): string {
   const arr = [["NAME", "OLD", "NEW", "AGE", "INFO"]];
   const seen = new Set<string>();
 
@@ -589,7 +601,7 @@ function formatDeps(deps: DepsByMode) {
   return textTable(arr);
 }
 
-function updatePackageJson(pkgStr: string, deps: Deps) {
+function updatePackageJson(pkgStr: string, deps: Deps): string {
   let newPkgStr = pkgStr;
   for (const key of Object.keys(deps)) {
     const name = key.split(sep)[1];
@@ -600,7 +612,7 @@ function updatePackageJson(pkgStr: string, deps: Deps) {
   return newPkgStr;
 }
 
-function updatePyprojectToml(pkgStr: string, deps: Deps) {
+function updatePyprojectToml(pkgStr: string, deps: Deps): string {
   let newPkgStr = pkgStr;
   for (const key of Object.keys(deps)) {
     const name = key.split(sep)[1];
@@ -617,7 +629,7 @@ function updatePyprojectToml(pkgStr: string, deps: Deps) {
   return newPkgStr;
 }
 
-function updateNpmRange(oldRange: string, newVersion: string, oldOriginal: string | undefined) {
+function updateNpmRange(oldRange: string, newVersion: string, oldOriginal: string | undefined): string {
   let newRange = oldRange.replace(npmVersionRePre, newVersion);
 
   // if old version is a range like ^5 or ~5, retain number of version parts in new range
@@ -632,18 +644,18 @@ function updateNpmRange(oldRange: string, newVersion: string, oldOriginal: strin
   return newRange;
 }
 
-function isVersionPrerelease(version: string) {
+function isVersionPrerelease(version: string): boolean {
   const parsed = parse(version);
   if (!parsed) return false;
   return Boolean(parsed.prerelease.length);
 }
 
-function isRangePrerelease(range: string) {
+function isRangePrerelease(range: string): boolean {
   // can not use coerce here because it ignores prerelease tags
   return /[0-9]+\.[0-9]+\.[0-9]+-.+/.test(range);
 }
 
-function coerceToVersion(rangeOrVersion: string) {
+function coerceToVersion(rangeOrVersion: string): string {
   try {
     return coerce(rangeOrVersion)?.version ?? "";
   } catch {
@@ -651,7 +663,7 @@ function coerceToVersion(rangeOrVersion: string) {
   }
 }
 
-function findVersion(data: any, versions: Array<string>, {range, semvers, usePre, useRel, useGreatest}: FindVersionOpts) {
+function findVersion(data: any, versions: Array<string>, {range, semvers, usePre, useRel, useGreatest}: FindVersionOpts): string | null {
   const oldVersion = coerceToVersion(range);
   if (!oldVersion) return oldVersion;
 
@@ -775,7 +787,7 @@ function findNewVersion(data: any, {mode, range, useGreatest, useRel, usePre, se
   }
 }
 
-function fetchGitHub(url: string) {
+function fetchGitHub(url: string): Promise<Response> {
   const opts: RequestInit = {};
   const token = env.UPDATES_GITHUB_API_TOKEN || env.GITHUB_API_TOKEN || env.GH_TOKEN || env.GITHUB_TOKEN || env.HOMEBREW_GITHUB_API_TOKEN;
   if (token) {
@@ -784,7 +796,12 @@ function fetchGitHub(url: string) {
   return doFetch(url, opts);
 }
 
-async function getLastestCommit(user: string, repo: string): Promise<{hash: string, commit: Record<string, any>}> {
+type CommitInfo = {
+  hash: string,
+  commit: Record<string, any>,
+};
+
+async function getLastestCommit(user: string, repo: string): Promise<CommitInfo> {
   const url = `${githubApiUrl}/repos/${user}/${repo}/commits`;
   const res = await fetchGitHub(url);
   if (!res?.ok) return {hash: "", commit: {}};
@@ -803,7 +820,7 @@ async function getTags(user: string, repo: string): Promise<Array<string>> {
   return tags;
 }
 
-function selectTag(tags: Array<string>, oldRef: string, useGreatest: boolean) {
+function selectTag(tags: Array<string>, oldRef: string, useGreatest: boolean): string | undefined {
   const oldRefBare = stripV(oldRef);
   if (!valid(oldRefBare)) return;
 
@@ -870,11 +887,11 @@ async function checkUrlDep(key: string, dep: Dep, useGreatest: boolean): Promise
 }
 
 // turn "v1.3.2-0.20230802210424-5b0b94c5c0d3" into "v1.3.2"
-function shortenGoVersion(version: string) {
+function shortenGoVersion(version: string): string {
   return version.replace(/-.*/, "");
 }
 
-function normalizeRange(range: string) {
+function normalizeRange(range: string): string {
   const versionMatches = range.match(npmVersionRe);
   if (versionMatches?.length !== 1) return range;
   return range.replace(npmVersionRe, coerceToVersion(versionMatches[0]));
@@ -1008,7 +1025,7 @@ async function loadConfig(rootDir: string): Promise<Config> {
   return config;
 }
 
-async function main() {
+async function main(): Promise<void> {
   // Node.js does not guarantee that stdio streams are flushed when calling process.exit(). Prevent Node
   // from cutting off long output by setting those streams into blocking mode.
   // Ref: https://github.com/nodejs/node/issues/6379
@@ -1223,7 +1240,7 @@ async function main() {
           info = highest;
         }
 
-        return [info, goTypes[0], null, name];
+        return [info, goTypes[0], null, name] as PackageInfo;
       }
     }), {concurrency});
 
@@ -1266,7 +1283,7 @@ async function main() {
         if (mode === "npm") {
           deps[mode][key].info = getInfoUrl(data?.versions?.[newVersion], registry, data.name);
         } else if (mode === "pypi") {
-          deps[mode][key].info = getInfoUrl(data, registry, data.info.name);
+          deps[mode][key].info = getInfoUrl(data as any, registry, data.info.name);
         } else {
           deps[mode][key].info = data?.Origin?.URL ?? `https://${name}`;
         }
