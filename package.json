@@ -32,10 +32,10 @@
     "smol-toml": "1.4.2",
     "timerel": "5.8.2",
     "tsdown": "0.15.5",
-    "tsdown-config-silverwind": "1.3.0",
+    "tsdown-config-silverwind": "1.4.0",
     "typescript": "5.9.2",
     "typescript-config-silverwind": "10.0.2",
-    "versions": "13.1.3",
+    "versions": "13.2.0",
     "vitest": "3.2.4",
     "vitest-config-silverwind": "10.2.0"
   }
