@@ -17,11 +17,11 @@
   },
   "devDependencies": {
     "@types/minimist": "1.2.5",
-    "@types/node": "24.5.2",
+    "@types/node": "24.6.0",
     "@types/rc": "1.2.4",
     "@types/semver": "7.7.1",
     "eslint": "9.36.0",
-    "eslint-config-silverwind": "105.2.1",
+    "eslint-config-silverwind": "105.2.2",
     "minimist": "1.2.8",
     "nano-spawn": "1.0.3",
     "p-all": "5.0.1",
@@ -34,8 +34,8 @@
     "tsdown": "0.15.5",
     "tsdown-config-silverwind": "1.4.0",
     "typescript": "5.9.2",
-    "typescript-config-silverwind": "10.0.2",
-    "versions": "13.2.0",
+    "typescript-config-silverwind": "11.0.0",
+    "versions": "13.2.1",
     "vitest": "3.2.4",
     "vitest-config-silverwind": "10.2.0"
   }

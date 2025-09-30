@@ -109,7 +109,7 @@ const normalizeUrl = (url: string) => url.endsWith("/") ? url.substring(0, url.l
 const packageVersion = pkg.version || "0.0.0";
 const sep = "\0";
 
-const modeByFileName = {
+const modeByFileName: Record<string, string> = {
   "package.json": "npm",
   "pyproject.toml": "pypi",
   "go.mod": "go",
@@ -820,15 +820,15 @@ async function getTags(user: string, repo: string): Promise<Array<string>> {
   return tags;
 }
 
-function selectTag(tags: Array<string>, oldRef: string, useGreatest: boolean): string | undefined {
+function selectTag(tags: Array<string>, oldRef: string, useGreatest: boolean): string | null {
   const oldRefBare = stripV(oldRef);
-  if (!valid(oldRefBare)) return;
+  if (!valid(oldRefBare)) return null;
 
   if (!useGreatest) {
     const lastTag = tags.at(-1);
-    if (!lastTag) return;
+    if (!lastTag) return null;
     const lastTagBare = stripV(lastTag);
-    if (!valid(lastTagBare)) return;
+    if (!valid(lastTagBare)) return null;
 
     if (neq(oldRefBare, lastTagBare)) {
       return lastTag;
@@ -849,6 +849,8 @@ function selectTag(tags: Array<string>, oldRef: string, useGreatest: boolean): s
       return greatestTag;
     }
   }
+
+  return null;
 }
 
 type CheckResult = {
@@ -862,14 +864,14 @@ type CheckResult = {
   newTag?: string,
 };
 
-async function checkUrlDep(key: string, dep: Dep, useGreatest: boolean): Promise<CheckResult | undefined> {
+async function checkUrlDep(key: string, dep: Dep, useGreatest: boolean): Promise<CheckResult | null> {
   const stripped = dep.old.replace(stripRe, "");
   const [_, user, repo, oldRef] = partsRe.exec(stripped) || [];
-  if (!user || !repo || !oldRef) return;
+  if (!user || !repo || !oldRef) return null;
 
   if (hashRe.test(oldRef)) {
     const {hash, commit} = await getLastestCommit(user, repo);
-    if (!hash) return;
+    if (!hash) return null;
 
     const newDate = commit?.committer?.date ?? commit?.author?.date;
     const newRef = hash.substring(0, oldRef.length);
@@ -884,6 +886,8 @@ async function checkUrlDep(key: string, dep: Dep, useGreatest: boolean): Promise
       return {key, newRange: newTag, user, repo, oldRef, newRef: newTag};
     }
   }
+
+  return null;
 }
 
 // turn "v1.3.2-0.20230802210424-5b0b94c5c0d3" into "v1.3.2"
@@ -956,7 +960,7 @@ function matchersToRegexSet(cliArgs: Array<string>, configArgs: Array<string | R
   return ret as Set<RegExp>;
 }
 
-function canInclude(name: string, mode: string, include: Set<RegExp>, exclude: Set<RegExp>) {
+function canInclude(name: string, mode: string, include: Set<RegExp>, exclude: Set<RegExp>): boolean {
   if (mode === "pypi" && name === "python") return false;
   if (!include.size && !exclude.size) return true;
   for (const re of exclude) {
@@ -1091,7 +1095,7 @@ async function main(): Promise<void> {
 
   for (const file of files) {
     const projectDir = dirname(resolve(file));
-    const filename = basename(file) as keyof typeof modeByFileName;
+    const filename = basename(file);
     const mode = modeByFileName[filename];
     if (!enabledModes.has(mode) && !explicitFiles.has(file)) continue;
     filePerMode[mode] = file;
@@ -1307,7 +1311,7 @@ async function main(): Promise<void> {
         const name = key.split(sep)[1];
         const useGreatest = typeof greatest === "boolean" ? greatest : matchesAny(name, greatest);
         return checkUrlDep(key, dep, useGreatest);
-      }), {concurrency})).filter(v => v !== undefined);
+      }), {concurrency})).filter(r => r !== null);
 
       for (const res of results) {
         const {key, newRange, user, repo, oldRef, newRef, newDate} = res;
