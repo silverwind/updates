@@ -18,13 +18,18 @@ import {availableParallelism, cpus} from "node:os";
 import type {AgentOptions} from "node:https";
 import type {Stats} from "node:fs";
 import type {AuthOptions} from "registry-auth-token";
-import type {TimerelAnyDate} from "timerel";
 
 export type Config = {
+  /** Array of packages to include */
   include?: Array<string | RegExp>;
+  /** Array of packages to exclude */
   exclude?: Array<string | RegExp>;
+  /** Array of package types to use */
   types?: Array<string>;
+  /** URL to npm registry */
   registry?: string;
+  /** Minimum package age in hours */
+  minAge?: number,
 };
 
 type Npmrc = {
@@ -46,6 +51,7 @@ type Dep = {
   oldOriginal?: string,
   info?: string,
   age?: string,
+  date?: string,
 };
 
 type Deps = {
@@ -137,11 +143,13 @@ const args = minimist(argv.slice(2), {
     "R", "release",
     "r", "registry",
     "t", "types",
+    "s", "sockets",
     "githubapi", // undocumented, only for tests
     "pypiapi", // undocumented, only for tests
     "goproxy", // undocumented, only for tests
   ],
   alias: {
+    a: "min-age",
     d: "allow-downgrade",
     E: "error-on-outdated",
     U: "error-on-unchanged",
@@ -472,18 +480,18 @@ async function doExit(err?: Error | void, exitCode?: number): Promise<void> {
 
 function outputDeps(deps: DepsByMode = {}): number {
   for (const mode of Object.keys(deps)) {
-    for (const value of Object.values(deps[mode])) {
-      if (typeof value.oldPrint === "string") {
-        value.old = value.oldPrint;
-        delete value.oldPrint;
+    for (const props of Object.values(deps[mode])) {
+      if (typeof props.oldPrint === "string") {
+        props.old = props.oldPrint;
       }
-      if (typeof value.newPrint === "string") {
-        value.new = value.newPrint;
-        delete value.newPrint;
+      if (typeof props.newPrint === "string") {
+        props.new = props.newPrint;
       }
-      if (typeof value.oldOriginal === "string") {
-        value.old = value.oldOriginal;
-        delete value.oldOriginal;
+      if (typeof props.oldOriginal === "string") {
+        props.old = props.oldOriginal;
+      }
+      for (const key of ["oldPrint", "newPrint", "oldOriginal", "date"]) {
+        delete props[key];
       }
     }
   }
@@ -972,6 +980,12 @@ function canInclude(name: string, mode: string, include: Set<RegExp>, exclude: S
   return include.size ? false : true;
 }
 
+export function canIncludeByDate(date: string | undefined, minAge: number, now: number) {
+  if (!date || !minAge) return true;
+  const diffHours = (now - Date.parse(date)) / 3600000;
+  return diffHours >= minAge;
+}
+
 function resolveFiles(filesArg: Set<string>): [Set<string>, Set<string>] {
   const resolvedFiles = new Set<string>();
   const explicitFiles = new Set<string>();
@@ -1057,6 +1071,7 @@ async function main(): Promise<void> {
     -P, --patch [<pkg,...>]            Consider only up to semver-patch
     -m, --minor [<pkg,...>]            Consider only up to semver-minor
     -d, --allow-downgrade [<pkg,...>]  Allow version downgrades when using latest version
+    -a, --min-age <num>                Minimum package age in hours
     -E, --error-on-outdated            Exit with code 2 when updates are available and 0 when not
     -U, --error-on-unchanged           Exit with code 0 when updates are available and 2 when not
     -r, --registry <url>               Override npm registry URL
@@ -1084,11 +1099,11 @@ async function main(): Promise<void> {
     await doExit();
   }
 
-  // output vars
   const deps: DepsByMode = {};
   const maybeUrlDeps: Deps = {};
   const pkgStrs: Record<string, string> = {};
   const filePerMode: Record<string, string> = {};
+  const now = Date.now();
   let numDependencies = 0;
 
   const [files, explicitFiles] = resolveFiles(parseMixedArg(filesArg) as Set<string>);
@@ -1102,6 +1117,7 @@ async function main(): Promise<void> {
     if (!deps[mode]) deps[mode] = {};
 
     const config = await loadConfig(projectDir);
+
     let includeCli: Array<string> = [];
     let excludeCli: Array<string> = [];
     if (args.include && args.include !== true) { // cli
@@ -1281,28 +1297,31 @@ async function main(): Promise<void> {
 
       if (!newVersion || oldOriginal && (oldOriginal === newRange)) {
         delete deps[mode][key];
+        continue;
+      }
+
+      let date: string = "";
+      if (mode === "npm" && data.time?.[newVersion]) { // npm
+        date = data.time[newVersion];
+      } else if (mode === "pypi" && data.releases?.[newVersion]?.[0]?.upload_time_iso_8601) {
+        date = data.releases[newVersion][0].upload_time_iso_8601;
+      } else if (mode === "go" && data.Time) {
+        date = data.Time;
+      }
+
+      deps[mode][key].new = newRange;
+
+      if (mode === "npm") {
+        deps[mode][key].info = getInfoUrl(data?.versions?.[newVersion], registry, data.name);
+      } else if (mode === "pypi") {
+        deps[mode][key].info = getInfoUrl(data as any, registry, data.info.name);
       } else {
-        deps[mode][key].new = newRange;
+        deps[mode][key].info = data?.Origin?.URL ?? `https://${name}`;
+      }
 
-        if (mode === "npm") {
-          deps[mode][key].info = getInfoUrl(data?.versions?.[newVersion], registry, data.name);
-        } else if (mode === "pypi") {
-          deps[mode][key].info = getInfoUrl(data as any, registry, data.info.name);
-        } else {
-          deps[mode][key].info = data?.Origin?.URL ?? `https://${name}`;
-        }
-
-        let date: TimerelAnyDate = "";
-        if (mode === "npm" && data.time?.[newVersion]) { // npm
-          date = data.time[newVersion];
-        } else if (mode === "pypi" && data.releases?.[newVersion]?.[0]?.upload_time_iso_8601) {
-          date = data.releases[newVersion][0].upload_time_iso_8601;
-        } else if (mode === "go" && data.Time) {
-          date = data.Time;
-        }
-        if (date) {
-          deps[mode][key].age = timerel(date, {noAffix: true});
-        }
+      if (date) {
+        deps[mode][key].date = date;
+        deps[mode][key].age = timerel(date, {noAffix: true});
       }
     }
 
@@ -1315,6 +1334,7 @@ async function main(): Promise<void> {
 
       for (const res of results) {
         const {key, newRange, user, repo, oldRef, newRef, newDate} = res;
+
         deps[mode][key] = {
           old: maybeUrlDeps[key].old,
           new: newRange,
@@ -1323,6 +1343,18 @@ async function main(): Promise<void> {
           info: `https://github.com/${user}/${repo}`,
           ...(newDate ? {age: timerel(newDate, {noAffix: true})} : {}),
         };
+      }
+    }
+
+    const minAge = args["min-age"] ?? config.minAge;
+    if (minAge) {
+      for (const mode of Object.keys(deps)) {
+        for (const [key, {date}] of Object.entries(deps[mode])) {
+          if (!canIncludeByDate(date, minAge, now)) {
+            delete deps[mode][key];
+            continue;
+          }
+        }
       }
     }
   }

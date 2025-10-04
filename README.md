@@ -47,11 +47,12 @@ export default {
 
 ### Config Options
 
-- `include` *Array\<string | RegExp>*: Array of dependencies to include
-- `exclude` *Array\<string | RegExp>*: Array of dependencies to exclude
-- `types` *Array\<string>*: Array of dependency types
+- `include` *Array\<string | RegExp>*: Array of packages to include
+- `exclude` *Array\<string | RegExp>*: Array of packages to exclude
+- `types` *Array\<string>*: Array of package types to use
 - `registry` *string*: URL to npm registry
+- `minAge` *number*: Minimum package age in hours
 
-CLI arguments have precedence over options in the config file, except for `include` and `exclude` options which are merged.
+CLI arguments have precedence over options in the config file. `include` and `exclude` options are merged.
 
 © [silverwind](https://github.com/silverwind), distributed under BSD licence
