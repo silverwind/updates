@@ -33,16 +33,16 @@ $(DIST_FILES): $(SOURCE_FILES) package-lock.json tsdown.config.ts
 	npx tsdown
 	chmod +x $(DIST_FILES)
 
-.PHONY: publish
-publish: node_modules
-	npm publish --provenance --access public
-
 .PHONY: update
 update: node_modules
 	./dist/index.js -cu
 	rm -rf node_modules package-lock.json
 	npm install
 	@touch node_modules
+
+.PHONY: publish
+publish: node_modules
+	npm publish --provenance --access public
 
 .PHONY: path
 patch: node_modules lint test
