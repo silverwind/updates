@@ -44,7 +44,7 @@ update: node_modules
 publish: node_modules
 	npm publish --provenance --access public
 
-.PHONY: path
+.PHONY: patch
 patch: node_modules lint test
 	npx versions patch package.json package-lock.json
 	git push -u --tags origin master
