@@ -10,7 +10,7 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{matrix.os}}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/setup-go@v5
         with:
           go-version: "1.24"
@@ -23,7 +23,7 @@ jobs:
           bun-version: ${{matrix.js[1]}}
           no-cache: true
         if: ${{matrix.js[0] == 'bun'}}
-      - run: make lint test
+      - run: make deps lint test
         if: ${{matrix.js[0] == 'node'}}
       - run: bun install && bunx tsdown && chmod +x dist/index.js && bun test
         if: ${{matrix.js[0] == 'bun'}}
