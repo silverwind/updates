@@ -5,7 +5,7 @@ import {readFileSync, mkdtempSync, readdirSync} from "node:fs";
 import {writeFile, readFile, rm} from "node:fs/promises";
 import {fileURLToPath} from "node:url";
 import {tmpdir} from "node:os";
-import {env} from "node:process";
+import {env, versions} from "node:process";
 import type {Server} from "node:http";
 import type {Service, Protocol} from "restana";
 import {npmTypes, poetryTypes, uvTypes, goTypes} from "./utils.ts";
@@ -178,7 +178,7 @@ test("empty", async () => {
   expect(stdout).toContain("No dependencies");
 });
 
-if (env.CI && !env.BUN) {
+if (env.CI && !versions.bun) {
   test("global", async () => {
     await spawn("npm", ["i", "-g", "."]);
     const {stdout, stderr} = await spawn("updates", [
