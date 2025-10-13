@@ -16,13 +16,11 @@
     "node": ">=20"
   },
   "devDependencies": {
-    "@types/minimist": "1.2.5",
     "@types/node": "24.6.2",
     "@types/rc": "1.2.4",
     "@types/semver": "7.7.1",
     "eslint": "9.37.0",
     "eslint-config-silverwind": "105.2.2",
-    "minimist": "1.2.8",
     "nano-spawn": "1.0.3",
     "p-all": "5.0.1",
     "rc": "1.2.8",

@@ -1,10 +1,9 @@
 #!/usr/bin/env node
-import {cwd, stdout, stderr, argv, env, exit, platform, versions} from "node:process";
+import {cwd, stdout, stderr, env, exit, platform, versions} from "node:process";
 import {join, dirname, basename, resolve} from "node:path";
 import {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync} from "node:fs";
-import {stripVTControlCharacters, styleText} from "node:util";
+import {stripVTControlCharacters, styleText, parseArgs, type ParseArgsOptionsConfig} from "node:util";
 import {execFileSync} from "node:child_process";
-import minimist from "minimist";
 import pAll from "p-all";
 import pkg from "./package.json" with {type: "json"};
 import rc from "rc";
@@ -33,7 +32,7 @@ export type Config = {
 };
 
 type Npmrc = {
-  registry?: string,
+  registry: string,
   ca?: string,
   cafile?: string,
   cert?: string,
@@ -121,80 +120,108 @@ const modeByFileName: Record<string, string> = {
   "go.mod": "go",
 };
 
-const args = minimist(argv.slice(2), {
-  boolean: [
-    "E", "error-on-outdated",
-    "U", "error-on-unchanged",
-    "h", "help",
-    "j", "json",
-    "n", "no-color",
-    "u", "update",
-    "v", "version",
-    "V", "verbose",
-  ],
-  string: [
-    "d", "allow-downgrade",
-    "f", "file",
-    "g", "greatest",
-    "m", "minor",
-    "M", "modes",
-    "P", "patch",
-    "p", "prerelease",
-    "R", "release",
-    "r", "registry",
-    "t", "types",
-    "s", "sockets",
-    "githubapi", // undocumented, only for tests
-    "pypiapi", // undocumented, only for tests
-    "goproxy", // undocumented, only for tests
-  ],
-  alias: {
-    a: "min-age",
-    d: "allow-downgrade",
-    E: "error-on-outdated",
-    U: "error-on-unchanged",
-    e: "exclude",
-    f: "file",
-    g: "greatest",
-    h: "help",
-    i: "include",
-    j: "json",
-    m: "minor",
-    M: "modes",
-    n: "no-color",
-    P: "patch",
-    p: "prerelease",
-    r: "registry",
-    R: "release",
-    s: "semver",
-    S: "sockets",
-    t: "types",
-    u: "update",
-    v: "version",
-    V: "verbose",
-  },
+const options: ParseArgsOptionsConfig = {
+  "allow-downgrade": {short: "d", type: "string", multiple: true},
+  "error-on-outdated": {short: "E", type: "boolean"},
+  "error-on-unchanged": {short: "U", type: "boolean"},
+  "exclude": {short: "e", type: "string", multiple: true},
+  "file": {short: "f", type: "string", multiple: true},
+  "githubapi": {type: "string"}, // undocumented, only for tests
+  "goproxy": {type: "string"}, // undocumented, only for tests
+  "greatest": {short: "g", type: "string", multiple: true},
+  "help": {short: "h", type: "boolean"},
+  "include": {short: "i", type: "string", multiple: true},
+  "json": {short: "j", type: "boolean"},
+  "min-age": {short: "a", type: "string"},
+  "minor": {short: "m", type: "string", multiple: true},
+  "modes": {short: "M", type: "string", multiple: true},
+  "color": {short: "c", type: "boolean"},
+  "no-color": {short: "n", type: "boolean"},
+  "patch": {short: "P", type: "string", multiple: true},
+  "prerelease": {short: "p", type: "string", multiple: true},
+  "pypiapi": {type: "string"}, // undocumented, only for tests
+  "registry": {short: "r", type: "string"},
+  "release": {short: "R", type: "string", multiple: true},
+  "sockets": {short: "s", type: "string"},
+  "types": {short: "t", type: "string", multiple: true},
+  "update": {short: "u", type: "boolean"},
+  "verbose": {short: "V", type: "boolean"},
+  "version": {short: "v", type: "boolean"},
+};
+
+type Arg = string | boolean | Array<string | boolean> | undefined;
+
+function parseMixedArg(arg: Arg): boolean | Set<string> {
+  if (Array.isArray(arg) && arg.every(a => a === true)) {
+    return true;
+  } else if (Array.isArray(arg)) {
+    return new Set(arg.flatMap(val => {
+      return typeof val === "string" ? commaSeparatedToArray(val) : "";
+    }).filter(Boolean));
+  } else if (typeof arg === "string") {
+    return new Set([arg]);
+  } else if (typeof arg === "boolean") {
+    return arg;
+  } else {
+    return false;
+  }
+}
+
+function getOptionKey(name: string): string {
+  for (const [key, {short}] of Object.entries(options)) {
+    if (key === name) return key;
+    if (short === name) return key;
+  }
+  return "";
+}
+
+const result = parseArgs({
+  strict: false,
+  allowPositionals: true,
+  tokens: true,
+  options,
 });
+
+// fix parseArgs defect parsing "-a -b" as {a: "-b"} when a is string
+for (const [index, token] of result.tokens.entries()) {
+  if (token.kind === "option" && token.value?.startsWith("-")) {
+    const key = getOptionKey(token.value.substring(1));
+    const next = result.tokens[index + 1];
+    // @ts-expect-error
+    result.values[token.name] = [true];
+    // @ts-expect-error
+    if (!result.values[key]) result.values[key] = [];
+    if (next.kind === "positional" && next.value) {
+      // @ts-expect-error
+      result.values[key].push(next.value);
+    } else {
+      // @ts-expect-error
+      result.values[key].push(true);
+    }
+  }
+}
+
+const args = result.values;
+// console.log(args)
 
 const [magenta, red, green] = (["magenta", "red", "green"] as const)
   .map(color => args["no-color"] ? String : (text: string | number) => styleText(color, String(text)));
 
-type PackageArg = Set<RegExp> | boolean;
-
-const greatest = argSetToRegexes(parseMixedArg(args.greatest)) as PackageArg;
-const prerelease = argSetToRegexes(parseMixedArg(args.prerelease)) as PackageArg;
-const release = argSetToRegexes(parseMixedArg(args.release)) as PackageArg;
-const patch = argSetToRegexes(parseMixedArg(args.patch)) as PackageArg;
-const minor = argSetToRegexes(parseMixedArg(args.minor)) as PackageArg;
-const allowDowngrade = parseMixedArg(args["allow-downgrade"]) as PackageArg;
+const greatest = argSetToRegexes(parseMixedArg(args.greatest));
+const prerelease = argSetToRegexes(parseMixedArg(args.prerelease));
+const release = argSetToRegexes(parseMixedArg(args.release));
+const patch = argSetToRegexes(parseMixedArg(args.patch));
+const minor = argSetToRegexes(parseMixedArg(args.minor));
+const allowDowngrade = argSetToRegexes(parseMixedArg(args["allow-downgrade"]));
 const enabledModes = parseMixedArg(args.modes) as Set<string> || new Set(["npm", "pypi"]);
-const githubApiUrl = args.githubapi ? normalizeUrl(args.githubapi) : "https://api.github.com";
-const pypiApiUrl = args.pypiapi ? normalizeUrl(args.pypiapi) : "https://pypi.org";
+const githubApiUrl = typeof args.githubapi === "string" ? normalizeUrl(args.githubapi) : "https://api.github.com";
+const pypiApiUrl = typeof args.pypiapi === "string" ? normalizeUrl(args.pypiapi) : "https://pypi.org";
 const defaultGoProxy = "https://proxy.golang.org";
-const goProxies = args.goproxy ? [normalizeUrl(args.goproxy)] : makeGoProxies();
+const goProxies = typeof args.goproxy === "string" ? [normalizeUrl(args.goproxy)] : makeGoProxies();
 
 const stripV = (str: string): string => str.replace(/^v/, "");
 
-function matchesAny(str: string, set: PackageArg): boolean {
+function matchesAny(str: string, set: Set<RegExp> | boolean): boolean {
   for (const re of (set instanceof Set ? set : [])) {
     if (re.test(str)) return true;
   }
@@ -909,20 +936,6 @@ function normalizeRange(range: string): string {
   return range.replace(npmVersionRe, coerceToVersion(versionMatches[0]));
 }
 
-function parseMixedArg(arg: any): boolean | Set<string> {
-  if (arg === undefined) {
-    return false;
-  } else if (arg === "") {
-    return true;
-  } else if (typeof arg === "string") {
-    return arg.includes(",") ? new Set(commaSeparatedToArray(arg)) : new Set([arg]);
-  } else if (Array.isArray(arg)) {
-    return new Set(arg);
-  } else {
-    return false;
-  }
-}
-
 function extractCerts(str: string): Array<string> {
   return Array.from(str.matchAll(/(----BEGIN CERT[^]+?IFICATE----)/g), (m: Array<string>) => m[0]);
 }
@@ -945,7 +958,7 @@ function argToRegex(arg: string | RegExp, cli: boolean, insensitive: boolean): R
 }
 
 // parse cli arg into regex set
-function argSetToRegexes(arg: any): Set<RegExp> {
+function argSetToRegexes(arg: Set<string> | boolean): Set<RegExp> | boolean {
   if (arg instanceof Set) {
     const ret = new Set<RegExp>();
     for (const entry of arg) {
@@ -1120,13 +1133,11 @@ async function main(): Promise<void> {
 
     let includeCli: Array<string> = [];
     let excludeCli: Array<string> = [];
-    if (args.include && args.include !== true) { // cli
-      includeCli = (Array.isArray(args.include) ? args.include : [args.include])
-        .flatMap(item => commaSeparatedToArray(item));
+    if (Array.isArray(args.include)) { // cli
+      includeCli = args.include.filter(v => typeof v === "string").flatMap(item => commaSeparatedToArray(item));
     }
-    if (args.exclude && args.exclude !== true) {
-      excludeCli = (Array.isArray(args.exclude) ? args.exclude : [args.exclude])
-        .flatMap(item => commaSeparatedToArray(item));
+    if (Array.isArray(args.exclude)) {
+      excludeCli = args.exclude.filter(v => typeof v === "string").flatMap(item => commaSeparatedToArray(item));
     }
     const include = matchersToRegexSet(includeCli, config?.include ?? []);
     const exclude = matchersToRegexSet(excludeCli, config?.exclude ?? []);
@@ -1155,8 +1166,8 @@ async function main(): Promise<void> {
     }
 
     let dependencyTypes: Array<string> = [];
-    if (types) {
-      dependencyTypes = Array.isArray(types) ? types : commaSeparatedToArray(types);
+    if (Array.isArray(types)) {
+      dependencyTypes = types.filter(v => typeof v === "string");
     } else if ("types" in config && Array.isArray(config.types)) {
       dependencyTypes = config.types;
     } else {
@@ -1243,7 +1254,7 @@ async function main(): Promise<void> {
 
     let registry: string;
     if (mode === "npm") {
-      registry = normalizeUrl(args.registry || config.registry || npmrc.registry);
+      registry = normalizeUrl((typeof args.registry === "string" ? args.registry : false) || config.registry || npmrc.registry);
     }
 
     const entries = await pAll(Object.keys(deps[mode]).map(key => async () => {
@@ -1350,7 +1361,7 @@ async function main(): Promise<void> {
     if (minAge) {
       for (const mode of Object.keys(deps)) {
         for (const [key, {date}] of Object.entries(deps[mode])) {
-          if (!canIncludeByDate(date, minAge, now)) {
+          if (!canIncludeByDate(date, Number(minAge), now)) {
             delete deps[mode][key];
             continue;
           }
