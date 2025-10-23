@@ -1,7 +1,12 @@
 name: release
+
 on:
   push:
     tags: ["*"]
+
+permissions:
+  id-token: write
+  contents: read
 
 jobs:
   release:
@@ -18,5 +23,3 @@ jobs:
       - run: make deps
       - run: make build
       - run: make publish
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

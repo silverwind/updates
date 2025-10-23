@@ -42,7 +42,7 @@ update: node_modules
 
 .PHONY: publish
 publish: node_modules
-	npm publish --provenance --access public
+	npm publish
 
 .PHONY: patch
 patch: node_modules lint test
