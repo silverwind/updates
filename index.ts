@@ -202,7 +202,6 @@ for (const [index, token] of result.tokens.entries()) {
 }
 
 const args = result.values;
-// console.log(args)
 
 const [magenta, red, green] = (["magenta", "red", "green"] as const)
   .map(color => args["no-color"] ? String : (text: string | number) => styleText(color, String(text)));
@@ -986,7 +985,7 @@ function matchersToRegexSet(cliArgs: Array<string>, configArgs: Array<string | R
   return ret as Set<RegExp>;
 }
 
-function canInclude(name: string, mode: string, include: Set<RegExp>, exclude: Set<RegExp>, depType?: string): boolean {
+function canInclude(name: string, mode: string, include: Set<RegExp>, exclude: Set<RegExp>, depType: string): boolean {
   if (depType === "engines" && nonPackageEngines.includes(name)) return false;
   if (mode === "pypi" && name === "python") return false;
   if (!include.size && !exclude.size) return true;
@@ -1227,7 +1226,7 @@ async function main(): Promise<void> {
 
       if (Array.isArray(obj) && mode === "pypi") { // array for uv
         for (const {name, version} of parseUvDependencies(obj)) {
-          if (canInclude(name, mode, include, exclude)) {
+          if (canInclude(name, mode, include, exclude, depType)) {
             deps[mode][`${depType}${sep}${name}`] = {
               old: normalizeRange(version),
               oldOriginal: version,
@@ -1243,7 +1242,7 @@ async function main(): Promise<void> {
           } as Dep;
         } else { // object
           for (const [name, value] of Object.entries(obj)) {
-            if (mode !== "go" && validRange(value) && canInclude(name, mode, include, exclude)) {
+            if (mode !== "go" && validRange(value) && canInclude(name, mode, include, exclude, depType)) {
               deps[mode][`${depType}${sep}${name}`] = {
                 old: normalizeRange(value),
                 oldOriginal: value,
