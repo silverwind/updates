@@ -21,7 +21,7 @@ const testPkg = JSON.parse(readFileSync(testFile, "utf8"));
 const testDir = mkdtempSync(join(tmpdir(), "updates-"));
 const script = fileURLToPath(new URL("dist/index.js", import.meta.url));
 
-const testPackages: Set<string> = new Set();
+const testPackages: Set<string> = new Set(["npm"]);
 for (const dependencyType of npmTypes) {
   for (const name of Object.keys(testPkg[dependencyType] || [])) {
     testPackages.add(name);
@@ -255,6 +255,13 @@ test("latest", async () => {
             "old": "6941e05",
           },
         },
+        "packageManager": {
+          "npm": {
+            "info": "https://github.com/npm/cli",
+            "new": "11.6.2",
+            "old": "11.6.0",
+          },
+        },
         "peerDependencies": {
           "@babel/preset-env": {
             "info": "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
@@ -333,6 +340,13 @@ test("greatest", async () => {
             "info": "https://github.com/silverwind/updates",
             "new": "537ccb7",
             "old": "6941e05",
+          },
+        },
+        "packageManager": {
+          "npm": {
+            "info": "https://github.com/npm/cli",
+            "new": "11.6.2",
+            "old": "11.6.0",
           },
         },
         "peerDependencies": {
@@ -420,6 +434,13 @@ test("prerelease", async () => {
             "old": "6941e05",
           },
         },
+        "packageManager": {
+          "npm": {
+            "info": "https://github.com/npm/cli",
+            "new": "11.6.2",
+            "old": "11.6.0",
+          },
+        },
         "peerDependencies": {
           "@babel/preset-env": {
             "info": "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
@@ -505,6 +526,13 @@ test("release", async () => {
             "old": "6941e05",
           },
         },
+        "packageManager": {
+          "npm": {
+            "info": "https://github.com/npm/cli",
+            "new": "11.6.2",
+            "old": "11.6.0",
+          },
+        },
         "peerDependencies": {
           "@babel/preset-env": {
             "info": "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
@@ -555,6 +583,13 @@ test("patch", async () => {
             "old": "6941e05",
           },
         },
+        "packageManager": {
+          "npm": {
+            "info": "https://github.com/npm/cli",
+            "new": "11.6.2",
+            "old": "11.6.0",
+          },
+        },
         "resolutions": {
           "versions/updates": {
             "info": "https://github.com/silverwind/updates",
@@ -578,6 +613,13 @@ test("include", async () => {
             "old": "3.1.0",
           },
         },
+        "packageManager": {
+          "npm": {
+            "info": "https://github.com/npm/cli",
+            "new": "11.6.2",
+            "old": "11.6.0",
+          },
+        },
       },
     }
   `);
@@ -594,6 +636,13 @@ test("include 2", async () => {
             "old": "3.1.0",
           },
         },
+        "packageManager": {
+          "npm": {
+            "info": "https://github.com/npm/cli",
+            "new": "11.6.2",
+            "old": "11.6.0",
+          },
+        },
       },
     }
   `);
@@ -608,6 +657,29 @@ test("include 3", async () => {
             "info": "https://github.com/needim/noty",
             "new": "3.2.0-beta",
             "old": "3.1.0",
+          },
+        },
+        "packageManager": {
+          "npm": {
+            "info": "https://github.com/npm/cli",
+            "new": "11.6.2",
+            "old": "11.6.0",
+          },
+        },
+      },
+    }
+  `);
+});
+
+test("packageManager", async () => {
+  expect(await makeTest("-j -i npm")()).toMatchInlineSnapshot(`
+    {
+      "npm": {
+        "packageManager": {
+          "npm": {
+            "info": "https://github.com/npm/cli",
+            "new": "11.6.2",
+            "old": "11.6.0",
           },
         },
       },
@@ -629,6 +701,13 @@ test("exclude", async () => {
             "info": "https://github.com/silverwind/updates",
             "new": "537ccb7",
             "old": "6941e05",
+          },
+        },
+        "packageManager": {
+          "npm": {
+            "info": "https://github.com/npm/cli",
+            "new": "11.6.2",
+            "old": "11.6.0",
           },
         },
         "peerDependencies": {
@@ -654,6 +733,13 @@ test("exclude 2", async () => {
             "old": "18.0",
           },
         },
+        "packageManager": {
+          "npm": {
+            "info": "https://github.com/npm/cli",
+            "new": "11.6.2",
+            "old": "11.6.0",
+          },
+        },
       },
     }
   `);
@@ -670,6 +756,13 @@ test("exclude 3", async () => {
             "old": "2.0.0",
           },
         },
+        "packageManager": {
+          "npm": {
+            "info": "https://github.com/npm/cli",
+            "new": "11.6.2",
+            "old": "11.6.0",
+          },
+        },
       },
     }
   `);
@@ -684,6 +777,13 @@ test("exclude 4", async () => {
             "info": "https://github.com/floridoo/gulp-sourcemaps",
             "new": "2.0.1",
             "old": "2.0.0",
+          },
+        },
+        "packageManager": {
+          "npm": {
+            "info": "https://github.com/npm/cli",
+            "new": "11.6.2",
+            "old": "11.6.0",
           },
         },
       },

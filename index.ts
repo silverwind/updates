@@ -638,26 +638,31 @@ function formatDeps(deps: DepsByMode): string {
 
 function updatePackageJson(pkgStr: string, deps: Deps): string {
   let newPkgStr = pkgStr;
-  for (const key of Object.keys(deps)) {
-    const name = key.split(sep)[1];
-    const old = deps[key].oldOriginal || deps[key].old;
-    const re = new RegExp(`"${esc(name)}": *"${esc(old)}"`, "g");
-    newPkgStr = newPkgStr.replace(re, `"${name}": "${deps[key].new}"`);
+  for (const [key, {old, oldOriginal}] of Object.entries(deps)) {
+    const [depType, name] = key.split(sep);
+    const oldValue = oldOriginal || old;
+    if (depType === "packageManager") {
+      const re = new RegExp(`"${esc(depType)}": *"${name}@${esc(oldValue)}"`, "g");
+      newPkgStr = newPkgStr.replace(re, `"${depType}": "${name}@${deps[key].new}"`);
+    } else {
+      const re = new RegExp(`"${esc(name)}": *"${esc(oldValue)}"`, "g");
+      newPkgStr = newPkgStr.replace(re, `"${name}": "${deps[key].new}"`);
+    }
   }
   return newPkgStr;
 }
 
 function updatePyprojectToml(pkgStr: string, deps: Deps): string {
   let newPkgStr = pkgStr;
-  for (const key of Object.keys(deps)) {
-    const name = key.split(sep)[1];
-    const old = deps[key].oldOriginal || deps[key].old;
+  for (const [key, {old, oldOriginal}] of Object.entries(deps)) {
+    const [_depType, name] = key.split(sep);
+    const oldValue = oldOriginal || old;
     newPkgStr = newPkgStr.replace( // poetry
-      new RegExp(`${esc(name)} *= *"${esc(old)}"`, "g"),
+      new RegExp(`${esc(name)} *= *"${esc(oldValue)}"`, "g"),
       `${name} = "${deps[key].new}"`,
     );
     newPkgStr = newPkgStr.replace( // uv
-      new RegExp(`("${esc(name)} *[<>=~]+ *)${esc(old)}(")`, "g"),
+      new RegExp(`("${esc(name)} *[<>=~]+ *)${esc(oldValue)}(")`, "g"),
       (_, m1, m2) => `${m1}${deps[key].new}${m2}`,
     );
   }
@@ -1212,7 +1217,7 @@ async function main(): Promise<void> {
     }
 
     for (const depType of dependencyTypes) {
-      let obj: Record<string, string> | Array<string>;
+      let obj: Record<string, string> | Array<string> | string;
       if (mode === "npm" || mode === "go") {
         obj = pkg[depType] || {};
       } else {
@@ -1228,22 +1233,30 @@ async function main(): Promise<void> {
             } as Dep;
           }
         }
-      } else { // object for non-uv
-        for (const [name, value] of Object.entries(obj)) {
-          if (mode !== "go" && validRange(value) && canInclude(name, mode, include, exclude)) {
-            deps[mode][`${depType}${sep}${name}`] = {
-              old: normalizeRange(value),
-              oldOriginal: value,
-            } as Dep;
-          } else if (mode === "npm" && canInclude(name, mode, include, exclude)) {
-            maybeUrlDeps[`${depType}${sep}${name}`] = {
-              old: value,
-            } as Dep;
-          } else if (mode === "go") {
-            deps[mode][`${depType}${sep}${name}`] = {
-              old: shortenGoVersion(value),
-              oldOriginal: value,
-            } as Dep;
+      } else {
+        if (typeof obj === "string") { // string (packageManager)
+          const [name, value] = obj.split("@");
+          deps[mode][`${depType}${sep}${name}`] = {
+            old: normalizeRange(value),
+            oldOriginal: value,
+          } as Dep;
+        } else { // object
+          for (const [name, value] of Object.entries(obj)) {
+            if (mode !== "go" && validRange(value) && canInclude(name, mode, include, exclude)) {
+              deps[mode][`${depType}${sep}${name}`] = {
+                old: normalizeRange(value),
+                oldOriginal: value,
+              } as Dep;
+            } else if (mode === "npm" && canInclude(name, mode, include, exclude)) {
+              maybeUrlDeps[`${depType}${sep}${name}`] = {
+                old: value,
+              } as Dep;
+            } else if (mode === "go") {
+              deps[mode][`${depType}${sep}${name}`] = {
+                old: shortenGoVersion(value),
+                oldOriginal: value,
+              } as Dep;
+            }
           }
         }
       }

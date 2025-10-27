@@ -16,6 +16,7 @@ export const npmTypes = [
   "peerDependencies",
   "optionalDependencies",
   "resolutions",
+  "packageManager",
 ];
 
 export const poetryTypes = [
