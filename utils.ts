@@ -17,6 +17,9 @@ export const npmTypes = [
   "optionalDependencies",
   "resolutions",
   "packageManager",
+];
+
+export const optionalNpmTypes = [
   "engines",
 ];
 

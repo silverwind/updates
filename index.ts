@@ -1085,7 +1085,7 @@ async function main(): Promise<void> {
     -p, --prerelease [<pkg,...>]       Consider prerelease versions
     -R, --release [<pkg,...>]          Only use release versions, may downgrade
     -g, --greatest [<pkg,...>]         Prefer greatest over latest version
-    -t, --types <type,...>             Check only given dependency types
+    -t, --types <type,...>             Dependency types to update
     -P, --patch [<pkg,...>]            Consider only up to semver-patch
     -m, --minor [<pkg,...>]            Consider only up to semver-minor
     -d, --allow-downgrade [<pkg,...>]  Allow version downgrades when using latest version

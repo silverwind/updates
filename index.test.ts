@@ -255,13 +255,6 @@ test("latest", async () => {
             "old": "6941e05",
           },
         },
-        "engines": {
-          "npm": {
-            "info": "https://github.com/npm/cli",
-            "new": ">= 11.6.2",
-            "old": ">= 11.6.0",
-          },
-        },
         "packageManager": {
           "npm": {
             "info": "https://github.com/npm/cli",
@@ -347,13 +340,6 @@ test("greatest", async () => {
             "info": "https://github.com/silverwind/updates",
             "new": "537ccb7",
             "old": "6941e05",
-          },
-        },
-        "engines": {
-          "npm": {
-            "info": "https://github.com/npm/cli",
-            "new": ">= 11.6.2",
-            "old": ">= 11.6.0",
           },
         },
         "packageManager": {
@@ -448,13 +434,6 @@ test("prerelease", async () => {
             "old": "6941e05",
           },
         },
-        "engines": {
-          "npm": {
-            "info": "https://github.com/npm/cli",
-            "new": ">= 11.6.2",
-            "old": ">= 11.6.0",
-          },
-        },
         "packageManager": {
           "npm": {
             "info": "https://github.com/npm/cli",
@@ -547,13 +526,6 @@ test("release", async () => {
             "old": "6941e05",
           },
         },
-        "engines": {
-          "npm": {
-            "info": "https://github.com/npm/cli",
-            "new": ">= 11.6.2",
-            "old": ">= 11.6.0",
-          },
-        },
         "packageManager": {
           "npm": {
             "info": "https://github.com/npm/cli",
@@ -609,13 +581,6 @@ test("patch", async () => {
             "info": "https://github.com/silverwind/updates",
             "new": "537ccb7",
             "old": "6941e05",
-          },
-        },
-        "engines": {
-          "npm": {
-            "info": "https://github.com/npm/cli",
-            "new": ">= 11.6.2",
-            "old": ">= 11.6.0",
           },
         },
         "packageManager": {
@@ -710,13 +675,6 @@ test("packageManager", async () => {
   expect(await makeTest("-j -i npm")()).toMatchInlineSnapshot(`
     {
       "npm": {
-        "engines": {
-          "npm": {
-            "info": "https://github.com/npm/cli",
-            "new": ">= 11.6.2",
-            "old": ">= 11.6.0",
-          },
-        },
         "packageManager": {
           "npm": {
             "info": "https://github.com/npm/cli",
@@ -743,13 +701,6 @@ test("exclude", async () => {
             "info": "https://github.com/silverwind/updates",
             "new": "537ccb7",
             "old": "6941e05",
-          },
-        },
-        "engines": {
-          "npm": {
-            "info": "https://github.com/npm/cli",
-            "new": ">= 11.6.2",
-            "old": ">= 11.6.0",
           },
         },
         "packageManager": {
