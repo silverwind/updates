@@ -1,5 +1,8 @@
 {
   "packageManager": "npm@11.6.0",
+  "engines": {
+    "npm": ">= 11.6.0"
+  },
   "dependencies": {
     "gulp-sourcemaps": "2.0.0",
     "prismjs": "1.0.0",

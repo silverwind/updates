@@ -12,7 +12,7 @@ import {parse as parseToml} from "smol-toml";
 import {parse, coerce, diff, gt, gte, lt, neq, valid, validRange} from "semver";
 import {rootCertificates} from "node:tls";
 import {timerel} from "timerel";
-import {npmTypes, poetryTypes, uvTypes, goTypes, parseUvDependencies} from "./utils.ts";
+import {npmTypes, poetryTypes, uvTypes, goTypes, parseUvDependencies, nonPackageEngines} from "./utils.ts";
 import {availableParallelism, cpus} from "node:os";
 import type {AgentOptions} from "node:https";
 import type {Stats} from "node:fs";
@@ -986,7 +986,8 @@ function matchersToRegexSet(cliArgs: Array<string>, configArgs: Array<string | R
   return ret as Set<RegExp>;
 }
 
-function canInclude(name: string, mode: string, include: Set<RegExp>, exclude: Set<RegExp>): boolean {
+function canInclude(name: string, mode: string, include: Set<RegExp>, exclude: Set<RegExp>, depType?: string): boolean {
+  if (depType === "engines" && nonPackageEngines.includes(name)) return false;
   if (mode === "pypi" && name === "python") return false;
   if (!include.size && !exclude.size) return true;
   for (const re of exclude) {
@@ -1247,7 +1248,7 @@ async function main(): Promise<void> {
                 old: normalizeRange(value),
                 oldOriginal: value,
               } as Dep;
-            } else if (mode === "npm" && canInclude(name, mode, include, exclude)) {
+            } else if (mode === "npm" && canInclude(name, mode, include, exclude, depType)) {
               maybeUrlDeps[`${depType}${sep}${name}`] = {
                 old: value,
               } as Dep;

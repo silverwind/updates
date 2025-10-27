@@ -17,6 +17,13 @@ export const npmTypes = [
   "optionalDependencies",
   "resolutions",
   "packageManager",
+  "engines",
+];
+
+export const nonPackageEngines = [
+  "node",
+  "deno",
+  "bun",
 ];
 
 export const poetryTypes = [
