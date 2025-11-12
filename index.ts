@@ -516,9 +516,10 @@ function outputDeps(deps: DepsByMode = {}): number {
       if (typeof props.oldOriginal === "string") {
         props.old = props.oldOriginal;
       }
-      for (const key of ["oldPrint", "newPrint", "oldOriginal", "date"]) {
-        delete props[key];
-      }
+      delete props.oldPrint;
+      delete props.newPrint;
+      delete props.oldOriginal;
+      delete props.date;
     }
   }
 
