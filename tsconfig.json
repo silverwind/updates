@@ -1,9 +1,6 @@
 {
   "extends": "typescript-config-silverwind",
   "compilerOptions": {
-    "exactOptionalPropertyTypes": true,
-    "strictNullChecks": true,
-    "noImplicitAny": true,
     "types": [
       "jest-extended",
       "vite/client",
