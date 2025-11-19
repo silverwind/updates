@@ -481,10 +481,10 @@ function getInfoUrl({repository, homepage, info}: {repository: PackageRepository
 
 async function finishWithMessage(message: string): Promise<void> {
   console.info(args.json ? JSON.stringify({message}) : message);
-  await doExit();
+  await end();
 }
 
-async function doExit(err?: Error | void, exitCode?: number): Promise<void> {
+async function end(err?: Error | void, exitCode?: number): Promise<void> {
   if (err) {
     const error = err.stack ?? err.message;
     const cause = err.cause as any;
@@ -1110,12 +1110,12 @@ async function main(): Promise<void> {
     $ updates -f package.json
     $ updates -f pyproject.toml
 `);
-    await doExit();
+    await end();
   }
 
   if (version) {
     console.info(packageVersion);
-    await doExit();
+    await end();
   }
 
   const deps: DepsByMode = {};
@@ -1414,11 +1414,11 @@ async function main(): Promise<void> {
     }
   }
 
-  await doExit(undefined, exitCode);
+  await end(undefined, exitCode);
 }
 
 try {
   await main();
 } catch (err) {
-  await doExit(err);
+  await end(err);
 }
