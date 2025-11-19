@@ -1,4 +1,4 @@
-import {parseUvDependencies} from "./utils.ts";
+import {parseUvDependencies, makeGoProxies} from "./utils.ts";
 
 test("parseUvDependencies", () => {
   expect(parseUvDependencies([
@@ -35,6 +35,58 @@ test("parseUvDependencies", () => {
         "name": "ty",
         "version": "0.0.1a15",
       },
+    ]
+  `);
+});
+
+test("makeGoProxies", () => {
+  expect(makeGoProxies(undefined, "https://bar.com")).toMatchInlineSnapshot(`
+    [
+      "https://bar.com",
+    ]
+  `);
+  expect(makeGoProxies("", "https://bar.com")).toMatchInlineSnapshot(`
+    [
+      "https://bar.com",
+    ]
+  `);
+  expect(makeGoProxies("foo.com", "https://bar.com")).toMatchInlineSnapshot(`
+    [
+      "https://foo.com",
+    ]
+  `);
+  expect(makeGoProxies("foo.com,baz.com", "https://bar.com")).toMatchInlineSnapshot(`
+    [
+      "https://foo.com",
+      "https://baz.com",
+    ]
+  `);
+  expect(makeGoProxies("foo.com|baz.com", "https://bar.com")).toMatchInlineSnapshot(`
+    [
+      "https://foo.com",
+      "https://baz.com",
+    ]
+  `);
+  expect(makeGoProxies("foo.com,direct", "https://bar.com")).toMatchInlineSnapshot(`
+    [
+      "https://foo.com",
+    ]
+  `);
+  expect(makeGoProxies("foo.com|direct", "https://bar.com")).toMatchInlineSnapshot(`
+    [
+      "https://foo.com",
+    ]
+  `);
+  expect(makeGoProxies("direct", "https://bar.com")).toMatchInlineSnapshot(`[]`);
+  expect(makeGoProxies("off|direct", "https://bar.com")).toMatchInlineSnapshot(`[]`);
+  expect(makeGoProxies("foo.com|off|direct", "https://bar.com")).toMatchInlineSnapshot(`
+    [
+      "https://foo.com",
+    ]
+  `);
+  expect(makeGoProxies("http://foo.com", "https://bar.com")).toMatchInlineSnapshot(`
+    [
+      "http://foo.com",
     ]
   `);
 });

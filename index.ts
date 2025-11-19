@@ -12,7 +12,7 @@ import {parse as parseToml} from "smol-toml";
 import {parse, coerce, diff, gt, gte, lt, neq, valid, validRange} from "semver";
 import {rootCertificates} from "node:tls";
 import {timerel} from "timerel";
-import {npmTypes, poetryTypes, uvTypes, goTypes, parseUvDependencies, nonPackageEngines} from "./utils.ts";
+import {npmTypes, poetryTypes, uvTypes, goTypes, parseUvDependencies, nonPackageEngines, makeGoProxies} from "./utils.ts";
 import {availableParallelism, cpus} from "node:os";
 import type {AgentOptions} from "node:https";
 import type {Stats} from "node:fs";
@@ -215,8 +215,7 @@ const allowDowngrade = argSetToRegexes(parseMixedArg(args["allow-downgrade"]));
 const enabledModes = parseMixedArg(args.modes) as Set<string> || new Set(["npm", "pypi"]);
 const githubApiUrl = typeof args.githubapi === "string" ? normalizeUrl(args.githubapi) : "https://api.github.com";
 const pypiApiUrl = typeof args.pypiapi === "string" ? normalizeUrl(args.pypiapi) : "https://pypi.org";
-const defaultGoProxy = "https://proxy.golang.org";
-const goProxies = typeof args.goproxy === "string" ? [normalizeUrl(args.goproxy)] : makeGoProxies();
+const goProxies = typeof args.goproxy === "string" ? [normalizeUrl(args.goproxy)] : makeGoProxies(env.GOPROXY, "https://proxy.golang.org");
 
 const stripV = (str: string): string => str.replace(/^v/, "");
 
@@ -230,14 +229,6 @@ function matchesAny(str: string, set: Set<RegExp> | boolean): boolean {
 function registryUrl(scope: string, npmrc: Npmrc): string {
   const url: string = npmrc[`${scope}:registry`] || npmrc.registry;
   return url.endsWith("/") ? url : `${url}/`;
-}
-
-function makeGoProxies(): Array<string> {
-  if (env.GOPROXY) {
-    return env.GOPROXY.split(/[,|]/).map(s => s.trim()).filter(s => (Boolean(s) && s !== "direct"));
-  } else {
-    return [defaultGoProxy];
-  }
 }
 
 function getProperty(obj: Record<string, any>, path: string): Record<string, any> {
