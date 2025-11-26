@@ -21,7 +21,7 @@ const testPkg = JSON.parse(readFileSync(testFile, "utf8"));
 const testDir = mkdtempSync(join(tmpdir(), "updates-"));
 const script = fileURLToPath(new URL("dist/index.js", import.meta.url));
 
-const testPackages: Set<string> = new Set(["npm"]);
+const testPackages = new Set<string>(["npm"]);
 for (const dependencyType of npmTypes) {
   for (const name of Object.keys(testPkg[dependencyType] || [])) {
     testPackages.add(name);
