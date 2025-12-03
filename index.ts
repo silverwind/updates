@@ -12,11 +12,13 @@ import {parse as parseToml} from "smol-toml";
 import {parse, coerce, diff, gt, gte, lt, neq, valid, validRange} from "semver";
 import {rootCertificates} from "node:tls";
 import {timerel} from "timerel";
-import {npmTypes, poetryTypes, uvTypes, goTypes, parseUvDependencies, nonPackageEngines, makeGoProxies} from "./utils.ts";
-import {availableParallelism, cpus} from "node:os";
+import {npmTypes, poetryTypes, uvTypes, goTypes, parseUvDependencies, nonPackageEngines} from "./utils.ts";
+import {availableParallelism, cpus, EOL} from "node:os";
 import type {AgentOptions} from "node:https";
 import type {Stats} from "node:fs";
 import type {AuthOptions} from "registry-auth-token";
+
+(await import("node:util")).inspect.defaultOptions.depth = 4;
 
 export type Config = {
   /** Array of packages to include */
@@ -86,17 +88,6 @@ type FindNewVersionOpts = {
   semvers: Set<string>,
 };
 
-type GoVersionInfo = {
-  Version: string, // 'v70.0.0'
-  Time: string, // '2025-03-17T23:43:28Z'
-  Origin: {
-    VCS: string, // 'git'
-    URL: string, // 'https://github.com/google/go-github'
-    Hash: string // '134f6b47e5470e34d3721845627a1938090c5cd7'
-    Ref: string // 'refs/tags/v70.0.0'
-  }
-};
-
 const numCores = availableParallelism?.() ?? cpus().length ?? 4;
 if (versions?.uv && numCores > 4) {
   env.UV_THREADPOOL_SIZE = String(numCores);
@@ -127,7 +118,6 @@ const options: ParseArgsOptionsConfig = {
   "exclude": {short: "e", type: "string", multiple: true},
   "file": {short: "f", type: "string", multiple: true},
   "githubapi": {type: "string"}, // undocumented, only for tests
-  "goproxy": {type: "string"}, // undocumented, only for tests
   "greatest": {short: "g", type: "string", multiple: true},
   "help": {short: "h", type: "boolean"},
   "include": {short: "i", type: "string", multiple: true},
@@ -215,7 +205,6 @@ const allowDowngrade = argSetToRegexes(parseMixedArg(args["allow-downgrade"]));
 const enabledModes = parseMixedArg(args.modes) as Set<string> || new Set(["npm", "pypi"]);
 const githubApiUrl = typeof args.githubapi === "string" ? normalizeUrl(args.githubapi) : "https://api.github.com";
 const pypiApiUrl = typeof args.pypiapi === "string" ? normalizeUrl(args.pypiapi) : "https://pypi.org";
-const goProxies = typeof args.goproxy === "string" ? [normalizeUrl(args.goproxy)] : makeGoProxies(env.GOPROXY, "https://proxy.golang.org");
 
 const stripV = (str: string): string => str.replace(/^v/, "");
 
@@ -348,71 +337,49 @@ function splitPlainText(str: string): Array<string> {
   return str.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
 }
 
-async function fetchGoVersionInfo(modulePath: string, version: string, agentOpts: AgentOptions, proxies: Array<string>): Promise<GoVersionInfo> {
-  const proxyUrl = proxies.shift();
-  if (!proxyUrl) {
-    throw new Error("No more go proxies available");
+type GoListInfo = {
+  Path: string, // "github.com/redis/go-redis/v9",
+  Version: string, // "v9.17.1",
+  Main?: boolean, // true
+  Indirect?: boolean, // true
+  Time: string, // "2025-11-26T10:20:20Z",
+  Update?: {
+    Path: string, // "github.com/redis/go-redis/v9",
+    Version: string, // "v9.17.2",
+    Time: string, //"2025-12-01T13:57:40Z"
+  },
+  Dir: string, // "/Users/silverwind/go/pkg/mod/github.com/redis/go-redis/v9@v9.17.1",
+  GoMod: string // "/Users/silverwind/go/pkg/mod/cache/download/github.com/redis/go-redis/v9/@v/v9.17.1.mod",
+  GoVersion: string // "1.18",
+  Sum: string // "h1:7tl732FjYPRT9H9aNfyTwKg9iTETjWjGKEJ2t/5iWTs=",
+  GoModSum: string // "h1:u410H11HMLoB+TP67dz8rL9s6QW2j76l0//kSOd3370="
+};
+
+function getGoUpgrades(deps: DepsByMode, projectDir: string) {
+  const modules = Object.keys(deps.go).map(key => key.split(sep)[1]);
+  const stdout = execFileSync("go", [
+    "list",
+    "-u",
+    "-mod=readonly",
+    "-json",
+    "-m",
+    ...modules,
+  ], {stdio: "pipe", encoding: "utf8", cwd: projectDir});
+
+  const json = `[${stdout.replaceAll(`${EOL}}`, `${EOL}},`)}]`.replaceAll(`},${EOL}]`, `}${EOL}]`);
+
+  const ret: Array<PackageInfo> = [];
+  for (const {Main, Indirect, Version, Update, Path, Time} of JSON.parse(json) as Array<GoListInfo>) {
+    if (Main || Indirect) continue;
+    ret.push([{
+      old: Version,
+      new: Update?.Version || Version,
+      Time: Update?.Time || Time,
+    }, "deps", null, Path]);
   }
-
-  const url = `${proxyUrl}/${modulePath.toLowerCase()}/${version === "latest" ? "@latest" : `@v/${version}.info`}`;
-
-  let res: Response | null = null;
-  let tryNext = false;
-  try {
-    res = await doFetch(url, {
-      ...getFetchOpts(agentOpts),
-      // proxy.golang.org takes 5+ seconds to answer requests for unknown packages with an error. If it
-      // takes longer, it's likely going to fail. Subsequent requests are faster apparently as it caches.
-      signal: AbortSignal.timeout(10000),
-    });
-
-    if (res?.ok) {
-      return (await res.json()) as GoVersionInfo;
-    }
-
-    tryNext = [404, 410].includes(res.status) && Boolean(proxies.length);
-  } catch (err: any) {
-    if (err.name === "TimeoutError") {
-      tryNext = Boolean(proxies.length);
-    }
-  }
-
-  if (tryNext) {
-    return fetchGoVersionInfo(modulePath, version, agentOpts, proxies);
-  } else {
-    if (res?.status && res?.statusText) {
-      throw new Error(`Received ${res.status} ${res.statusText} from ${url}`);
-    } else {
-      throw new Error(`Unable to fetch ${modulePath} from ${proxyUrl}`);
-    }
-  }
+  return ret;
 }
 
-async function findHighestGoMajor(name: string, agentOpts: AgentOptions): Promise<GoVersionInfo | null> {
-  let lastInfo: GoVersionInfo | null = null;
-  let next = name;
-  while (true) {
-    if (/\/v[0-9]+$/.test(next)) {
-      const nextMajor = Number((next.split("/").at(-1) as string).substring(1)) + 1;
-      next = next.replace(/\/v[0-9]+$/, `/${`v${nextMajor}`}`);
-    } else {
-      next = `${next}/v2`;
-    }
-
-    try {
-      const info = await fetchGoVersionInfo(next, "latest", agentOpts, Array.from(goProxies));
-      if (info === null) {
-        break;
-      } else if (info?.Version) {
-        lastInfo = info;
-        continue;
-      }
-    } catch {
-      break;
-    }
-  }
-  return lastInfo;
-}
 
 type PackageRepository = string | {
   type: string,
@@ -736,13 +703,6 @@ function findVersion(data: any, versions: Array<string>, {range, semvers, usePre
 }
 
 function findNewVersion(data: any, {mode, range, useGreatest, useRel, usePre, semvers}: FindNewVersionOpts): string | null {
-  if (mode === "go") {
-    if (gt(stripV(data.Version), stripV(range))) {
-      return data.Version;
-    } else {
-      return null;
-    }
-  }
   if (range === "*") return null; // ignore wildcard
   if (range.includes("||")) return null; // ignore or-chains
 
@@ -751,6 +711,8 @@ function findNewVersion(data: any, {mode, range, useGreatest, useRel, usePre, se
     versions = Object.keys(data.releases).filter((version: string) => valid(version));
   } else if (mode === "npm") {
     versions = Object.keys(data.versions).filter((version: string) => valid(version));
+  } else if (mode === "go") {
+    return data.new;
   }
   const version = findVersion(data, versions, {range, semvers, usePre, useRel, useGreatest});
   if (!version) return null;
@@ -947,7 +909,7 @@ function globToRegex(glob: string, insensitive: boolean): RegExp {
 // convert arg from cli or config to regex
 function argToRegex(arg: string | RegExp, cli: boolean, insensitive: boolean): RegExp {
   if (cli && typeof arg === "string") {
-    return /\/.+\//.test(arg) ? new RegExp(arg.slice(1, -1)) : globToRegex(arg, insensitive);
+    return /^\/.+\/$/.test(arg) ? new RegExp(arg.slice(1, -1)) : globToRegex(arg, insensitive);
   } else {
     return arg instanceof RegExp ? arg : globToRegex(arg, insensitive);
   }
@@ -1243,7 +1205,7 @@ async function main(): Promise<void> {
               maybeUrlDeps[`${depType}${sep}${name}`] = {
                 old: value,
               } as Dep;
-            } else if (mode === "go") {
+            } else if (mode === "go" && canInclude(name, mode, include, exclude, depType)) {
               deps[mode][`${depType}${sep}${name}`] = {
                 old: shortenGoVersion(value),
                 oldOriginal: value,
@@ -1262,23 +1224,22 @@ async function main(): Promise<void> {
       registry = normalizeUrl((typeof args.registry === "string" ? args.registry : false) || config.registry || npmrc.registry);
     }
 
-    const entries = await pAll(Object.keys(deps[mode]).map(key => async () => {
-      const [type, name] = key.split(sep);
-      if (mode === "npm") {
-        return fetchNpmInfo(name, type, registry, agentOpts, authTokenOpts, npmrc);
-      } else if (mode === "pypi") {
-        return fetchPypiInfo(name, type, agentOpts);
-      } else {
-        let info = await fetchGoVersionInfo(name, "latest", agentOpts, Array.from(goProxies));
-        const highest = await findHighestGoMajor(name, agentOpts);
+    let entries: Array<PackageInfo> = [];
 
-        if (highest && info && gt(highest.Version.substring(1), info.Version.substring(1))) {
-          info = highest;
+    if (mode === "go") {
+      entries = getGoUpgrades(deps, projectDir);
+    } else {
+      entries = (await pAll(Object.keys(deps[mode]).map(key => async () => {
+        const [type, name] = key.split(sep);
+        if (mode === "npm") {
+          return fetchNpmInfo(name, type, registry, agentOpts, authTokenOpts, npmrc);
+        } else if (mode === "pypi") {
+          return fetchPypiInfo(name, type, agentOpts);
+        } else {
+          return null as any;
         }
-
-        return [info, goTypes[0], null, name] as PackageInfo;
-      }
-    }), {concurrency});
+      }), {concurrency})).filter(Boolean);
+    }
 
     for (const [data, type, registry, name] of entries) {
       if (data?.error) throw new Error(data.error);
@@ -1331,8 +1292,8 @@ async function main(): Promise<void> {
         deps[mode][key].info = getInfoUrl(data?.versions?.[newVersion], registry, data.name);
       } else if (mode === "pypi") {
         deps[mode][key].info = getInfoUrl(data as any, registry, data.info.name);
-      } else {
-        deps[mode][key].info = data?.Origin?.URL ?? `https://${name}`;
+      } else if (mode === "go") {
+        deps[mode][key].info = `https://${name.replace(/\/v[0-9]+$/, "")}`;
       }
 
       if (date) {

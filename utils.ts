@@ -10,18 +10,6 @@ export function parseUvDependencies(specs: Array<string>) {
   return ret;
 }
 
-export function makeGoProxies(GOPROXY: string | undefined, defaultGoProxy: string): Array<string> {
-  if (GOPROXY) {
-    return GOPROXY.split(/[,|]/).map(s => s.trim()).filter(s => {
-      return Boolean(s) && s !== "direct" && s !== "off";
-    }).map(s => {
-      return !/^(file|https|http):\/\//.test(s) ? `https://${s}` : s;
-    });
-  } else {
-    return [defaultGoProxy];
-  }
-}
-
 export const npmTypes = [
   "dependencies",
   "devDependencies",
