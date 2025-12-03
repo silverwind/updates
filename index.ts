@@ -941,7 +941,7 @@ function canInclude(name: string, mode: string, include: Set<RegExp>, exclude: S
   return include.size ? false : true;
 }
 
-export function canIncludeByDate(date: string | undefined, cooldownDays: number, now: number) {
+function canIncludeByDate(date: string | undefined, cooldownDays: number, now: number) {
   if (!date || !cooldownDays) return true;
   const diffDays = (now - Date.parse(date)) / (24 * 3600 * 1000);
   return diffDays >= cooldownDays;
