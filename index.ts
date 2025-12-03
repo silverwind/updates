@@ -122,7 +122,7 @@ const options: ParseArgsOptionsConfig = {
   "help": {short: "h", type: "boolean"},
   "include": {short: "i", type: "string", multiple: true},
   "json": {short: "j", type: "boolean"},
-  "min-age": {short: "a", type: "string"},
+  "cooldown": {short: "c", type: "string"},
   "minor": {short: "m", type: "string", multiple: true},
   "modes": {short: "M", type: "string", multiple: true},
   "color": {short: "c", type: "boolean"},
@@ -952,10 +952,10 @@ function canInclude(name: string, mode: string, include: Set<RegExp>, exclude: S
   return include.size ? false : true;
 }
 
-export function canIncludeByDate(date: string | undefined, minAge: number, now: number) {
-  if (!date || !minAge) return true;
-  const diffHours = (now - Date.parse(date)) / 3600000;
-  return diffHours >= minAge;
+export function canIncludeByDate(date: string | undefined, cooldownDays: number, now: number) {
+  if (!date || !cooldownDays) return true;
+  const diffDays = (now - Date.parse(date)) / (24 * 3600 * 1000);
+  return diffDays >= cooldownDays;
 }
 
 function resolveFiles(filesArg: Set<string>): [Set<string>, Set<string>] {
@@ -1043,7 +1043,7 @@ async function main(): Promise<void> {
     -P, --patch [<pkg,...>]            Consider only up to semver-patch
     -m, --minor [<pkg,...>]            Consider only up to semver-minor
     -d, --allow-downgrade [<pkg,...>]  Allow version downgrades when using latest version
-    -a, --min-age <num>                Minimum package age in hours
+    -c, --cooldown <days>              Minimum package age in days
     -E, --error-on-outdated            Exit with code 2 when updates are available and 0 when not
     -U, --error-on-unchanged           Exit with code 0 when updates are available and 2 when not
     -r, --registry <url>               Override npm registry URL
@@ -1323,7 +1323,7 @@ async function main(): Promise<void> {
       }
     }
 
-    const minAge = args["min-age"] ?? config.minAge;
+    const minAge = args.cooldown ?? config.minAge;
     if (minAge) {
       for (const mode of Object.keys(deps)) {
         for (const [key, {date}] of Object.entries(deps[mode])) {
