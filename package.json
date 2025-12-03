@@ -20,7 +20,7 @@
     "@types/rc": "1.2.4",
     "@types/semver": "7.7.1",
     "eslint": "9.39.1",
-    "eslint-config-silverwind": "112.0.1",
+    "eslint-config-silverwind": "112.1.0",
     "nano-spawn": "2.0.0",
     "p-all": "5.0.1",
     "rc": "1.2.8",
@@ -30,11 +30,11 @@
     "smol-toml": "1.5.2",
     "timerel": "5.8.3",
     "tsdown": "0.16.7",
-    "tsdown-config-silverwind": "1.5.3",
+    "tsdown-config-silverwind": "1.5.4",
     "typescript": "5.9.3",
     "typescript-config-silverwind": "14.0.0",
     "versions": "14.0.3",
-    "vitest": "4.0.14",
+    "vitest": "4.0.15",
     "vitest-config-silverwind": "10.4.2"
   }
 }

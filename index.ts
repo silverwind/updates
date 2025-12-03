@@ -29,8 +29,8 @@ export type Config = {
   types?: Array<string>;
   /** URL to npm registry */
   registry?: string;
-  /** Minimum package age in hours */
-  minAge?: number,
+  /** Minimum package age in days */
+  cooldown?: number,
 };
 
 type Npmrc = {
@@ -1293,7 +1293,7 @@ async function main(): Promise<void> {
       } else if (mode === "pypi") {
         deps[mode][key].info = getInfoUrl(data as any, registry, data.info.name);
       } else if (mode === "go") {
-        deps[mode][key].info = `https://${name.replace(/\/v[0-9]+$/, "")}`;
+        deps[mode][key].info = `https://${shortenGoName(name)}`;
       }
 
       if (date) {
@@ -1323,11 +1323,11 @@ async function main(): Promise<void> {
       }
     }
 
-    const minAge = args.cooldown ?? config.minAge;
-    if (minAge) {
+    const cooldown = args.cooldown ?? config.cooldown;
+    if (cooldown) {
       for (const mode of Object.keys(deps)) {
         for (const [key, {date}] of Object.entries(deps[mode])) {
-          if (!canIncludeByDate(date, Number(minAge), now)) {
+          if (!canIncludeByDate(date, Number(cooldown), now)) {
             delete deps[mode][key];
             continue;
           }

@@ -5,7 +5,7 @@ import {readFileSync, mkdtempSync, readdirSync} from "node:fs";
 import {writeFile, readFile, rm} from "node:fs/promises";
 import {fileURLToPath} from "node:url";
 import {tmpdir} from "node:os";
-import {env, versions} from "node:process";
+import {env, versions, execPath} from "node:process";
 import type {Server} from "node:http";
 import type {Service, Protocol} from "restana";
 import {npmTypes, poetryTypes, uvTypes, goTypes} from "./utils.ts";
@@ -111,7 +111,7 @@ function makeTest(args: string) {
     let stdout: string;
     let results: Record<string, any>;
     try {
-      ({stdout} = await nanoSpawn(process.execPath, [script, ...argsArr], {cwd: testDir}));
+      ({stdout} = await nanoSpawn(execPath, [script, ...argsArr], {cwd: testDir}));
       ({results} = JSON.parse(stdout));
     } catch (err) {
       console.error(err);
@@ -234,7 +234,7 @@ test("latest", async () => {
           },
           "updates": {
             "info": "https://github.com/silverwind/updates",
-            "new": "537ccb7",
+            "new": "3e565f3",
             "old": "6941e05",
           },
         },
@@ -413,7 +413,7 @@ test("prerelease", async () => {
           },
           "updates": {
             "info": "https://github.com/silverwind/updates",
-            "new": "537ccb7",
+            "new": "3e565f3",
             "old": "6941e05",
           },
         },
@@ -682,7 +682,7 @@ test("exclude", async () => {
           },
           "updates": {
             "info": "https://github.com/silverwind/updates",
-            "new": "537ccb7",
+            "new": "3e565f3",
             "old": "6941e05",
           },
         },
@@ -885,7 +885,7 @@ test("dual", async () => {
           },
           "updates": {
             "info": "https://github.com/silverwind/updates",
-            "new": "537ccb7",
+            "new": "3e565f3",
             "old": "6941e05",
           },
         },
@@ -908,7 +908,7 @@ test("dual", async () => {
         "dependencies": {
           "updates": {
             "info": "https://github.com/silverwind/updates",
-            "new": "537ccb7",
+            "new": "3e565f3",
             "old": "6941e05",
           },
         },
