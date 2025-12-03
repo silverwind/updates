@@ -1,19 +1,16 @@
 #!/usr/bin/env node
 import {cwd, stdout, stderr, env, exit, platform, versions} from "node:process";
 import {join, dirname, basename, resolve} from "node:path";
-import {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync} from "node:fs";
+import {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync, type Stats} from "node:fs";
 import {stripVTControlCharacters, styleText, parseArgs, type ParseArgsOptionsConfig} from "node:util";
 import {execFileSync} from "node:child_process";
 import {availableParallelism, cpus, EOL} from "node:os";
 import pAll from "p-all";
 import pkg from "./package.json" with {type: "json"};
-import registryAuthToken from "registry-auth-token";
+import registryAuthToken, {type AuthOptions} from "registry-auth-token";
 import {parse, coerce, diff, gt, gte, lt, neq, valid, validRange} from "semver";
 import {timerel} from "timerel";
 import {npmTypes, poetryTypes, uvTypes, goTypes, parseUvDependencies, nonPackageEngines} from "./utils.ts";
-import type {AgentOptions} from "node:https";
-import type {Stats} from "node:fs";
-import type {AuthOptions} from "registry-auth-token";
 
 export type Config = {
   /** Array of packages to include */
@@ -256,9 +253,8 @@ function getAuthAndRegistry(name: string, registry: string, authTokenOpts: AuthO
   }
 }
 
-function getFetchOpts(agentOpts: AgentOptions, authType?: string, authToken?: string): RequestInit {
+function getFetchOpts(authType?: string, authToken?: string): RequestInit {
   return {
-    ...(Object.keys(agentOpts).length && {agentOpts}),
     headers: {
       "user-agent": `updates/${packageVersion}`,
       ...(authToken && {Authorization: `${authType} ${authToken}`}),
@@ -287,7 +283,7 @@ function logVerbose(message: string): void {
   console.error(`${timestamp()} ${message}`);
 }
 
-async function doFetch(url: string, opts: RequestInit): Promise<Response> {
+async function doFetch(url: string, opts?: RequestInit): Promise<Response> {
   if (args.verbose) logVerbose(`${magenta("fetch")} ${url}`);
   const res = await fetch(url, opts);
   if (args.verbose) logVerbose(`${res.ok ? green(res.status) : red(res.status)} ${url}`);
@@ -296,12 +292,12 @@ async function doFetch(url: string, opts: RequestInit): Promise<Response> {
 
 type PackageInfo = [Record<string, any>, string, string | null, string];
 
-async function fetchNpmInfo(name: string, type: string, originalRegistry: string, agentOpts: AgentOptions, authTokenOpts: AuthOptions, npmrc: Npmrc): Promise<PackageInfo> {
+async function fetchNpmInfo(name: string, type: string, originalRegistry: string, authTokenOpts: AuthOptions, npmrc: Npmrc): Promise<PackageInfo> {
   const {auth, registry} = getAuthAndRegistry(name, originalRegistry, authTokenOpts, npmrc);
   const packageName = type === "resolutions" ? basename(name) : name;
   const url = `${registry}/${packageName.replace(/\//g, "%2f")}`;
 
-  const res = await doFetch(url, getFetchOpts(agentOpts, auth?.type, auth?.token));
+  const res = await doFetch(url, getFetchOpts(auth?.type, auth?.token));
   if (res?.ok) {
     return [await res.json(), type, registry, name];
   } else {
@@ -313,10 +309,10 @@ async function fetchNpmInfo(name: string, type: string, originalRegistry: string
   }
 }
 
-async function fetchPypiInfo(name: string, type: string, agentOpts: AgentOptions): Promise<PackageInfo> {
+async function fetchPypiInfo(name: string, type: string): Promise<PackageInfo> {
   const url = `${pypiApiUrl}/pypi/${name}/json`;
 
-  const res = await doFetch(url, getFetchOpts(agentOpts));
+  const res = await doFetch(url);
   if (res?.ok) {
     return [await res.json(), type, null, name];
   } else {
@@ -895,14 +891,6 @@ function normalizeRange(range: string): string {
   return range.replace(npmVersionRe, coerceToVersion(versionMatches[0]));
 }
 
-function extractCerts(str: string): Array<string> {
-  return Array.from(str.matchAll(/(----BEGIN CERT[^]+?IFICATE----)/g), (m: Array<string>) => m[0]);
-}
-
-function extractKey(str: string): Array<string> {
-  return Array.from(str.matchAll(/(----BEGIN [^]+?PRIVATE KEY----)/g), (m: Array<string>) => m[0]);
-}
-
 function globToRegex(glob: string, insensitive: boolean): RegExp {
   return new RegExp(`^${esc(glob).replaceAll("\\*", ".*")}$`, insensitive ? "i" : "");
 }
@@ -1104,30 +1092,9 @@ async function main(): Promise<void> {
     const include = matchersToRegexSet(includeCli, config?.include ?? []);
     const exclude = matchersToRegexSet(excludeCli, config?.exclude ?? []);
 
-    const agentOpts: AgentOptions = {};
     const {default: rc} = await import("rc");
     const npmrc: Npmrc = rc("npm", {registry: "https://registry.npmjs.org"}) || {};
     const authTokenOpts = {npmrc, recursive: true};
-    if (mode === "npm") {
-      // TODO: support these per-scope
-      if (npmrc["strict-ssl"] === false) {
-        agentOpts.rejectUnauthorized = false;
-      }
-      for (const opt of ["cert", "ca", "key"] as const) {
-        const extract = (opt === "key") ? extractKey : extractCerts;
-        let certs: Array<string> = [];
-        if (npmrc[opt]) {
-          certs = (Array.isArray(npmrc[opt]) ? npmrc[opt] : [npmrc[opt]]).flatMap((str: string) => extract(str));
-        }
-        if (npmrc[`${opt}file`]) {
-          certs = Array.from(extract(readFileSync(npmrc[`opt${file}`], "utf8")));
-        }
-        if (certs.length) {
-          const {rootCertificates} = await import("node:tls");
-          agentOpts[opt] = opt === "ca" ? [...rootCertificates, ...certs] : certs;
-        }
-      }
-    }
 
     let dependencyTypes: Array<string> = [];
     if (Array.isArray(types)) {
@@ -1238,9 +1205,9 @@ async function main(): Promise<void> {
       entries = (await pAll(Object.keys(deps[mode]).map(key => async () => {
         const [type, name] = key.split(sep);
         if (mode === "npm") {
-          return fetchNpmInfo(name, type, registry, agentOpts, authTokenOpts, npmrc);
+          return fetchNpmInfo(name, type, registry, authTokenOpts, npmrc);
         } else if (mode === "pypi") {
-          return fetchPypiInfo(name, type, agentOpts);
+          return fetchPypiInfo(name, type);
         } else {
           return null as any;
         }
