@@ -1049,7 +1049,7 @@ async function main(): Promise<void> {
     -P, --patch [<pkg,...>]            Consider only up to semver-patch
     -m, --minor [<pkg,...>]            Consider only up to semver-minor
     -d, --allow-downgrade [<pkg,...>]  Allow version downgrades when using latest version
-    -c, --cooldown <days>              Minimum package age in days
+    -C, --cooldown <days>              Minimum package age in days
     -E, --error-on-outdated            Exit with code 2 when updates are available and 0 when not
     -U, --error-on-unchanged           Exit with code 0 when updates are available and 2 when not
     -r, --registry <url>               Override npm registry URL
@@ -1064,10 +1064,12 @@ async function main(): Promise<void> {
   Examples:
     $ updates
     $ updates -u
-    $ updates -e '@vitejs/*'
+    $ updates -C 7
+    $ updates -e react,react-dom
     $ updates -e '/^react-(dom)?/'
     $ updates -f package.json
     $ updates -f pyproject.toml
+    $ updates -f go.mod
 `);
     await end();
   }
