@@ -15,8 +15,6 @@ import type {AgentOptions} from "node:https";
 import type {Stats} from "node:fs";
 import type {AuthOptions} from "registry-auth-token";
 
-(await import("node:util")).inspect.defaultOptions.depth = 4;
-
 export type Config = {
   /** Array of packages to include */
   include?: Array<string | RegExp>;
