@@ -234,7 +234,7 @@ test("latest", async () => {
           },
           "updates": {
             "info": "https://github.com/silverwind/updates",
-            "new": "3e565f3",
+            "new": "537ccb7",
             "old": "6941e05",
           },
         },
@@ -413,7 +413,7 @@ test("prerelease", async () => {
           },
           "updates": {
             "info": "https://github.com/silverwind/updates",
-            "new": "3e565f3",
+            "new": "537ccb7",
             "old": "6941e05",
           },
         },
@@ -682,7 +682,7 @@ test("exclude", async () => {
           },
           "updates": {
             "info": "https://github.com/silverwind/updates",
-            "new": "3e565f3",
+            "new": "537ccb7",
             "old": "6941e05",
           },
         },
@@ -885,7 +885,7 @@ test("dual", async () => {
           },
           "updates": {
             "info": "https://github.com/silverwind/updates",
-            "new": "3e565f3",
+            "new": "537ccb7",
             "old": "6941e05",
           },
         },
@@ -908,7 +908,7 @@ test("dual", async () => {
         "dependencies": {
           "updates": {
             "info": "https://github.com/silverwind/updates",
-            "new": "3e565f3",
+            "new": "537ccb7",
             "old": "6941e05",
           },
         },

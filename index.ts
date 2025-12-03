@@ -122,7 +122,7 @@ const options: ParseArgsOptionsConfig = {
   "help": {short: "h", type: "boolean"},
   "include": {short: "i", type: "string", multiple: true},
   "json": {short: "j", type: "boolean"},
-  "cooldown": {short: "c", type: "string"},
+  "cooldown": {short: "C", type: "string"},
   "minor": {short: "m", type: "string", multiple: true},
   "modes": {short: "M", type: "string", multiple: true},
   "color": {short: "c", type: "boolean"},
@@ -782,7 +782,13 @@ function findNewVersion(data: any, {mode, range, useGreatest, useRel, usePre, se
 
 function fetchGitHub(url: string): Promise<Response> {
   const opts: RequestInit = {};
-  const token = env.UPDATES_GITHUB_API_TOKEN || env.GITHUB_API_TOKEN || env.GH_TOKEN || env.GITHUB_TOKEN || env.HOMEBREW_GITHUB_API_TOKEN;
+  const token =
+    env.UPDATES_GITHUB_API_TOKEN ||
+    env.GITHUB_API_TOKEN ||
+    env.GH_TOKEN ||
+    env.GITHUB_TOKEN ||
+    env.HOMEBREW_GITHUB_API_TOKEN;
+
   if (token) {
     opts.headers = {Authorization: `Bearer ${token}`};
   }
