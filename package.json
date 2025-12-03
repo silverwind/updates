@@ -1,7 +1,7 @@
 {
   "name": "updates",
   "version": "17.0.1",
-  "description": "Flexible npm and poetry dependency update tool",
+  "description": " Flexible dependency update tool",
   "author": "silverwind",
   "repository": "silverwind/updates",
   "license": "BSD-2-Clause",

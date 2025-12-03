@@ -4,16 +4,13 @@ import {join, dirname, basename, resolve} from "node:path";
 import {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync} from "node:fs";
 import {stripVTControlCharacters, styleText, parseArgs, type ParseArgsOptionsConfig} from "node:util";
 import {execFileSync} from "node:child_process";
+import {availableParallelism, cpus, EOL} from "node:os";
 import pAll from "p-all";
 import pkg from "./package.json" with {type: "json"};
-import rc from "rc";
 import registryAuthToken from "registry-auth-token";
-import {parse as parseToml} from "smol-toml";
 import {parse, coerce, diff, gt, gte, lt, neq, valid, validRange} from "semver";
-import {rootCertificates} from "node:tls";
 import {timerel} from "timerel";
 import {npmTypes, poetryTypes, uvTypes, goTypes, parseUvDependencies, nonPackageEngines} from "./utils.ts";
-import {availableParallelism, cpus, EOL} from "node:os";
 import type {AgentOptions} from "node:https";
 import type {Stats} from "node:fs";
 import type {AuthOptions} from "registry-auth-token";
@@ -1110,6 +1107,7 @@ async function main(): Promise<void> {
     const exclude = matchersToRegexSet(excludeCli, config?.exclude ?? []);
 
     const agentOpts: AgentOptions = {};
+    const {default: rc} = await import("rc");
     const npmrc: Npmrc = rc("npm", {registry: "https://registry.npmjs.org"}) || {};
     const authTokenOpts = {npmrc, recursive: true};
     if (mode === "npm") {
@@ -1127,6 +1125,7 @@ async function main(): Promise<void> {
           certs = Array.from(extract(readFileSync(npmrc[`opt${file}`], "utf8")));
         }
         if (certs.length) {
+          const {rootCertificates} = await import("node:tls");
           agentOpts[opt] = opt === "ca" ? [...rootCertificates, ...certs] : certs;
         }
       }
@@ -1164,7 +1163,8 @@ async function main(): Promise<void> {
       if (mode === "npm") {
         pkg = JSON.parse(pkgStrs[mode]);
       } else if (mode === "pypi") {
-        pkg = parseToml(pkgStrs[mode]);
+        const {parse} = await import("smol-toml");
+        pkg = parse(pkgStrs[mode]);
       } else {
         pkg.deps = {};
         for (const modulePathAndVersion of splitPlainText(pkgStrs[mode])) {
