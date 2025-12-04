@@ -1237,7 +1237,7 @@ async function main(): Promise<void> {
         usePre, useRel, useGreatest, semvers, range: oldRange, mode,
       });
 
-      let newRange: string = "";
+      let newRange = "";
       if (["go", "pypi"].includes(mode) && newVersion) {
         // go has no ranges and pypi oldRange is a version at this point, not a range
         newRange = newVersion;
@@ -1250,7 +1250,7 @@ async function main(): Promise<void> {
         continue;
       }
 
-      let date: string = "";
+      let date = "";
       if (mode === "npm" && data.time?.[newVersion]) { // npm
         date = data.time[newVersion];
       } else if (mode === "pypi" && data.releases?.[newVersion]?.[0]?.upload_time_iso_8601) {
