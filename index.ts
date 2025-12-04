@@ -237,19 +237,32 @@ type AuthAndRegistry = {
   registry: string,
 };
 
-function getAuthAndRegistry(name: string, registry: string, authTokenOpts: AuthOptions, npmrc: Npmrc): AuthAndRegistry {
+const defaultRegistry = "https://registry.npmjs.org";
+let authOpts: AuthOptions | null = null;
+
+let npmrc: Npmrc | null = null;
+
+async function getNpmrc() {
+  if (npmrc) return npmrc;
+  return (await import("rc")).default("npm", {registry: defaultRegistry});
+}
+
+async function getAuthAndRegistry(name: string, registry: string): Promise<AuthAndRegistry> {
+  if (!npmrc) npmrc = await getNpmrc();
+  if (!authOpts) authOpts = {npmrc, recursive: true};
+
   if (!name.startsWith("@")) {
-    return {auth: registryAuthToken(registry, authTokenOpts), registry};
+    return {auth: registryAuthToken(registry, authOpts), registry};
   } else {
     const scope = (/@[a-z0-9][\w-.]+/.exec(name) || [""])[0];
     const url = normalizeUrl(registryUrl(scope, npmrc));
     if (url !== registry) {
       try {
-        const newAuth = registryAuthToken(url, authTokenOpts);
+        const newAuth = registryAuthToken(url, authOpts);
         if (newAuth?.token) return {auth: newAuth, registry: url};
       } catch {}
     }
-    return {auth: registryAuthToken(registry, authTokenOpts), registry};
+    return {auth: registryAuthToken(registry, authOpts), registry};
   }
 }
 
@@ -292,8 +305,13 @@ async function doFetch(url: string, opts?: RequestInit): Promise<Response> {
 
 type PackageInfo = [Record<string, any>, string, string | null, string];
 
-async function fetchNpmInfo(name: string, type: string, originalRegistry: string, authTokenOpts: AuthOptions, npmrc: Npmrc): Promise<PackageInfo> {
-  const {auth, registry} = getAuthAndRegistry(name, originalRegistry, authTokenOpts, npmrc);
+async function fetchNpmInfo(name: string, type: string, config: Config): Promise<PackageInfo> {
+  if (!npmrc) npmrc = await getNpmrc();
+  const originalRegistry = normalizeUrl((typeof args.registry === "string" ? args.registry : false) ||
+    config.registry || npmrc.registry || defaultRegistry,
+  );
+
+  const {auth, registry} = await getAuthAndRegistry(name, originalRegistry);
   const packageName = type === "resolutions" ? basename(name) : name;
   const url = `${registry}/${packageName.replace(/\//g, "%2f")}`;
 
@@ -1092,10 +1110,6 @@ async function main(): Promise<void> {
     const include = matchersToRegexSet(includeCli, config?.include ?? []);
     const exclude = matchersToRegexSet(excludeCli, config?.exclude ?? []);
 
-    const {default: rc} = await import("rc");
-    const npmrc: Npmrc = rc("npm", {registry: "https://registry.npmjs.org"}) || {};
-    const authTokenOpts = {npmrc, recursive: true};
-
     let dependencyTypes: Array<string> = [];
     if (Array.isArray(types)) {
       dependencyTypes = types.filter(v => typeof v === "string");
@@ -1192,11 +1206,6 @@ async function main(): Promise<void> {
     numDependencies += Object.keys(deps[mode]).length + Object.keys(maybeUrlDeps).length;
     if (!numDependencies) continue;
 
-    let registry: string;
-    if (mode === "npm") {
-      registry = normalizeUrl((typeof args.registry === "string" ? args.registry : false) || config.registry || npmrc.registry);
-    }
-
     let entries: Array<PackageInfo> = [];
 
     if (mode === "go") {
@@ -1205,7 +1214,7 @@ async function main(): Promise<void> {
       entries = (await pAll(Object.keys(deps[mode]).map(key => async () => {
         const [type, name] = key.split(sep);
         if (mode === "npm") {
-          return fetchNpmInfo(name, type, registry, authTokenOpts, npmrc);
+          return fetchNpmInfo(name, type, config);
         } else if (mode === "pypi") {
           return fetchPypiInfo(name, type);
         } else {
