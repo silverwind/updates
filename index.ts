@@ -7,10 +7,10 @@ import {execFileSync} from "node:child_process";
 import {availableParallelism, cpus, EOL} from "node:os";
 import pAll from "p-all";
 import pkg from "./package.json" with {type: "json"};
-import registryAuthToken, {type AuthOptions} from "registry-auth-token";
 import {parse, coerce, diff, gt, gte, lt, neq, valid, validRange} from "semver";
 import {timerel} from "timerel";
 import {npmTypes, poetryTypes, uvTypes, goTypes, parseUvDependencies, nonPackageEngines} from "./utils.ts";
+import type {default as registryAuthToken, AuthOptions} from "registry-auth-token";
 
 export type Config = {
   /** Array of packages to include */
@@ -239,8 +239,8 @@ type AuthAndRegistry = {
 
 const defaultRegistry = "https://registry.npmjs.org";
 let authOpts: AuthOptions | null = null;
-
 let npmrc: Npmrc | null = null;
+let rat: typeof registryAuthToken | null = null;
 
 async function getNpmrc() {
   if (npmrc) return npmrc;
@@ -250,19 +250,20 @@ async function getNpmrc() {
 async function getAuthAndRegistry(name: string, registry: string): Promise<AuthAndRegistry> {
   if (!npmrc) npmrc = await getNpmrc();
   if (!authOpts) authOpts = {npmrc, recursive: true};
+  if (!rat) rat = (await import("registry-auth-token")).default;
 
   if (!name.startsWith("@")) {
-    return {auth: registryAuthToken(registry, authOpts), registry};
+    return {auth: rat(registry, authOpts), registry};
   } else {
     const scope = (/@[a-z0-9][\w-.]+/.exec(name) || [""])[0];
     const url = normalizeUrl(registryUrl(scope, npmrc));
     if (url !== registry) {
       try {
-        const newAuth = registryAuthToken(url, authOpts);
+        const newAuth = rat(url, authOpts);
         if (newAuth?.token) return {auth: newAuth, registry: url};
       } catch {}
     }
-    return {auth: registryAuthToken(registry, authOpts), registry};
+    return {auth: rat(registry, authOpts), registry};
   }
 }
 
