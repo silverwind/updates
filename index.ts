@@ -41,7 +41,7 @@ type Dep = {
   new: string,
   oldPrint?: string,
   newPrint?: string,
-  oldOriginal?: string,
+  oldOrig?: string,
   info?: string,
   age?: string,
   date?: string,
@@ -94,7 +94,7 @@ const npmVersionRe = /[0-9]+(\.[0-9]+)?(\.[0-9]+)?/g;
 const npmVersionRePre = /[0-9]+\.[0-9]+\.[0-9]+(-.+)?/g;
 const esc = (str: string) => str.replace(/[|\\{}()[\]^$+*?.-]/g, "\\$&");
 const normalizeUrl = (url: string) => url.endsWith("/") ? url.substring(0, url.length - 1) : url;
-const packageVersion = pkg.version || "0.0.0";
+const packageVersion = pkg.version;
 const sep = "\0";
 
 const modeByFileName: Record<string, string> = {
@@ -366,16 +366,9 @@ type GoListInfo = {
 };
 
 function getGoUpgrades(deps: DepsByMode, projectDir: string) {
-  const modules = Object.keys(deps.go).map(key => key.split(sep)[1]);
   const stdout = execFileSync("go", [
-    "list",
-    "-u",
-    "-mod=readonly",
-    "-json",
-    "-m",
-    ...modules,
+    "list", "-u", "-mod=readonly", "-json", "-m", ...Object.keys(deps.go).map(key => key.split(sep)[1]),
   ], {stdio: "pipe", encoding: "utf8", cwd: projectDir});
-
   const json = `[${stdout.replaceAll(`${EOL}}`, `${EOL}},`)}]`.replaceAll(`},${EOL}]`, `}${EOL}]`);
 
   const ret: Array<PackageInfo> = [];
@@ -389,7 +382,6 @@ function getGoUpgrades(deps: DepsByMode, projectDir: string) {
   }
   return ret;
 }
-
 
 type PackageRepository = string | {
   type: string,
@@ -481,12 +473,12 @@ function outputDeps(deps: DepsByMode = {}): number {
       if (typeof props.newPrint === "string") {
         props.new = props.newPrint;
       }
-      if (typeof props.oldOriginal === "string") {
-        props.old = props.oldOriginal;
+      if (typeof props.oldOrig === "string") {
+        props.old = props.oldOrig;
       }
       delete props.oldPrint;
       delete props.newPrint;
-      delete props.oldOriginal;
+      delete props.oldOrig;
       delete props.date;
     }
   }
@@ -606,9 +598,9 @@ function formatDeps(deps: DepsByMode): string {
 
 function updatePackageJson(pkgStr: string, deps: Deps): string {
   let newPkgStr = pkgStr;
-  for (const [key, {old, oldOriginal}] of Object.entries(deps)) {
+  for (const [key, {old, oldOrig}] of Object.entries(deps)) {
     const [depType, name] = key.split(sep);
-    const oldValue = oldOriginal || old;
+    const oldValue = oldOrig || old;
     if (depType === "packageManager") {
       const re = new RegExp(`"${esc(depType)}": *"${name}@${esc(oldValue)}"`, "g");
       newPkgStr = newPkgStr.replace(re, `"${depType}": "${name}@${deps[key].new}"`);
@@ -622,9 +614,9 @@ function updatePackageJson(pkgStr: string, deps: Deps): string {
 
 function updatePyprojectToml(pkgStr: string, deps: Deps): string {
   let newPkgStr = pkgStr;
-  for (const [key, {old, oldOriginal}] of Object.entries(deps)) {
+  for (const [key, {old, oldOrig}] of Object.entries(deps)) {
     const [_depType, name] = key.split(sep);
-    const oldValue = oldOriginal || old;
+    const oldValue = oldOrig || old;
     newPkgStr = newPkgStr.replace( // poetry
       new RegExp(`${esc(name)} *= *"${esc(oldValue)}"`, "g"),
       `${name} = "${deps[key].new}"`,
@@ -637,12 +629,12 @@ function updatePyprojectToml(pkgStr: string, deps: Deps): string {
   return newPkgStr;
 }
 
-function updateNpmRange(oldRange: string, newVersion: string, oldOriginal: string | undefined): string {
+function updateNpmRange(oldRange: string, newVersion: string, oldOrig: string | undefined): string {
   let newRange = oldRange.replace(npmVersionRePre, newVersion);
 
   // if old version is a range like ^5 or ~5, retain number of version parts in new range
-  if (oldOriginal && oldOriginal !== oldRange && /^[\^~]/.test(newRange)) {
-    const oldParts = oldOriginal.substring(1).split(".");
+  if (oldOrig && oldOrig !== oldRange && /^[\^~]/.test(newRange)) {
+    const oldParts = oldOrig.substring(1).split(".");
     const newParts = newRange.substring(1).split(".");
     if (oldParts.length !== newParts.length) {
       newRange = `${newRange[0]}${newParts.slice(0, oldParts.length).join(".")}`;
@@ -1091,13 +1083,13 @@ async function main(): Promise<void> {
   const [files, explicitFiles] = resolveFiles(parseMixedArg(filesArg) as Set<string>);
 
   for (const file of files) {
-    const projectDir = dirname(resolve(file));
     const filename = basename(file);
     const mode = modeByFileName[filename];
     if (!enabledModes.has(mode) && !explicitFiles.has(file)) continue;
     filePerMode[mode] = file;
     if (!deps[mode]) deps[mode] = {};
 
+    const projectDir = dirname(resolve(file));
     const config = await loadConfig(projectDir);
 
     let includeCli: Array<string> = [];
@@ -1171,7 +1163,7 @@ async function main(): Promise<void> {
           if (canInclude(name, mode, include, exclude, depType)) {
             deps[mode][`${depType}${sep}${name}`] = {
               old: normalizeRange(version),
-              oldOriginal: version,
+              oldOrig: version,
             } as Dep;
           }
         }
@@ -1180,14 +1172,14 @@ async function main(): Promise<void> {
           const [name, value] = obj.split("@");
           deps[mode][`${depType}${sep}${name}`] = {
             old: normalizeRange(value),
-            oldOriginal: value,
+            oldOrig: value,
           } as Dep;
         } else { // object
           for (const [name, value] of Object.entries(obj)) {
             if (mode !== "go" && validRange(value) && canInclude(name, mode, include, exclude, depType)) {
               deps[mode][`${depType}${sep}${name}`] = {
                 old: normalizeRange(value),
-                oldOriginal: value,
+                oldOrig: value,
               } as Dep;
             } else if (mode === "npm" && canInclude(name, mode, include, exclude, depType)) {
               maybeUrlDeps[`${depType}${sep}${name}`] = {
@@ -1196,7 +1188,7 @@ async function main(): Promise<void> {
             } else if (mode === "go" && canInclude(name, mode, include, exclude, depType)) {
               deps[mode][`${depType}${sep}${name}`] = {
                 old: shortenGoVersion(value),
-                oldOriginal: value,
+                oldOrig: value,
               } as Dep;
             }
           }
@@ -1240,7 +1232,7 @@ async function main(): Promise<void> {
 
       const key = `${type}${sep}${name}`;
       const oldRange = deps[mode][key].old;
-      const oldOriginal = deps[mode][key].oldOriginal;
+      const oldOrig = deps[mode][key].oldOrig;
       const newVersion = findNewVersion(data, {
         usePre, useRel, useGreatest, semvers, range: oldRange, mode,
       });
@@ -1250,10 +1242,10 @@ async function main(): Promise<void> {
         // go has no ranges and pypi oldRange is a version at this point, not a range
         newRange = newVersion;
       } else if (newVersion) {
-        newRange = updateNpmRange(oldRange, newVersion, oldOriginal);
+        newRange = updateNpmRange(oldRange, newVersion, oldOrig);
       }
 
-      if (!newVersion || oldOriginal && (oldOriginal === newRange)) {
+      if (!newVersion || oldOrig && (oldOrig === newRange)) {
         delete deps[mode][key];
         continue;
       }
