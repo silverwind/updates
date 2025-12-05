@@ -5,7 +5,7 @@ import {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync, type S
 import {stripVTControlCharacters, styleText, parseArgs, type ParseArgsOptionsConfig} from "node:util";
 import {execFileSync} from "node:child_process";
 import {availableParallelism, cpus, EOL} from "node:os";
-import pAll from "p-all";
+import pMap from "p-map";
 import pkg from "./package.json" with {type: "json"};
 import {parse, coerce, diff, gt, gte, lt, neq, valid, validRange} from "semver";
 import {timerel} from "timerel";
@@ -1212,16 +1212,14 @@ async function main(): Promise<void> {
     if (mode === "go") {
       entries = getGoUpgrades(deps, projectDir);
     } else {
-      entries = (await pAll(Object.keys(deps[mode]).map(key => async () => {
+      entries = await pMap(Object.keys(deps[mode]), async (key) => {
         const [type, name] = key.split(sep);
         if (mode === "npm") {
           return fetchNpmInfo(name, type, config);
-        } else if (mode === "pypi") {
-          return fetchPypiInfo(name, type);
         } else {
-          return null as any;
+          return fetchPypiInfo(name, type);
         }
-      }), {concurrency})).filter(Boolean);
+      }, {concurrency});
     }
 
     for (const [data, type, registry, name] of entries) {
@@ -1286,11 +1284,11 @@ async function main(): Promise<void> {
     }
 
     if (Object.keys(maybeUrlDeps).length) {
-      const results = (await pAll(Object.entries(maybeUrlDeps).map(([key, dep]) => () => {
+      const results = (await pMap(Object.entries(maybeUrlDeps), ([key, dep]) => {
         const name = key.split(sep)[1];
         const useGreatest = typeof greatest === "boolean" ? greatest : matchesAny(name, greatest);
         return checkUrlDep(key, dep, useGreatest);
-      }), {concurrency})).filter(r => r !== null);
+      }, {concurrency})).filter(r => r !== null);
 
       for (const res of results) {
         const {key, newRange, user, repo, oldRef, newRef, newDate} = res;

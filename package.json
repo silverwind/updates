@@ -23,7 +23,7 @@
     "eslint": "9.39.1",
     "eslint-config-silverwind": "112.2.1",
     "nano-spawn": "2.0.0",
-    "p-all": "5.0.1",
+    "p-map": "7.0.4",
     "rc": "1.2.8",
     "registry-auth-token": "5.1.0",
     "restana": "5.1.0",
