@@ -4,7 +4,6 @@ import {join, dirname, basename, resolve} from "node:path";
 import {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync, type Stats} from "node:fs";
 import {stripVTControlCharacters, styleText, parseArgs, type ParseArgsOptionsConfig} from "node:util";
 import {execFileSync} from "node:child_process";
-import {availableParallelism, cpus, EOL} from "node:os";
 import pMap from "p-map";
 import pkg from "./package.json" with {type: "json"};
 import {parse, coerce, diff, gt, gte, lt, neq, valid, validRange} from "semver";
@@ -79,11 +78,6 @@ type FindNewVersionOpts = {
   useGreatest: boolean,
   semvers: Set<string>,
 };
-
-const numCores = availableParallelism?.() ?? cpus().length ?? 4;
-if (versions?.uv && numCores > 4) {
-  env.UV_THREADPOOL_SIZE = String(numCores);
-}
 
 // regexes for url dependencies. does only github and only hash or exact semver
 // https://regex101.com/r/gCZzfK/2
@@ -198,7 +192,7 @@ const enabledModes = parseMixedArg(args.modes) as Set<string> || new Set(["npm",
 const githubApiUrl = typeof args.githubapi === "string" ? normalizeUrl(args.githubapi) : "https://api.github.com";
 const pypiApiUrl = typeof args.pypiapi === "string" ? normalizeUrl(args.pypiapi) : "https://pypi.org";
 
-const stripV = (str: string): string => str.replace(/^v/, "");
+const stripv = (str: string): string => str.replace(/^v/, "");
 
 function matchesAny(str: string, set: Set<RegExp> | boolean): boolean {
   for (const re of (set instanceof Set ? set : [])) {
@@ -369,7 +363,7 @@ function getGoUpgrades(deps: DepsByMode, projectDir: string) {
   const stdout = execFileSync("go", [
     "list", "-u", "-mod=readonly", "-json", "-m", ...Object.keys(deps.go).map(key => key.split(sep)[1]),
   ], {stdio: "pipe", encoding: "utf8", cwd: projectDir});
-  const json = `[${stdout.replaceAll(`${EOL}}`, `${EOL}},`)}]`.replaceAll(`},${EOL}]`, `}${EOL}]`);
+  const json = `[${stdout.replaceAll(/\r?\n\}/g, "},")}]`.replaceAll(/\},\r?\n\]/g, "}]");
 
   const ret: Array<PackageInfo> = [];
   for (const {Main, Indirect, Version, Update, Path, Time} of JSON.parse(json) as Array<GoListInfo>) {
@@ -566,11 +560,8 @@ function textTable(rows: Array<Array<string>>, hsep = " "): string {
   return ret;
 }
 
-function shortenGoName(moduleName: string): string {
-  if (/\/v[0-9]$/.test(moduleName)) {
-    moduleName = dirname(moduleName);
-  }
-  return moduleName;
+function shortenGoModule(module: string): string {
+  return /\/v[0-9]$/.test(module) ? dirname(module) : module;
 }
 
 function formatDeps(deps: DepsByMode): string {
@@ -584,7 +575,7 @@ function formatDeps(deps: DepsByMode): string {
       if (seen.has(id)) continue;
       seen.add(id);
       arr.push([
-        mode === "go" ? shortenGoName(name) : name,
+        mode === "go" ? shortenGoModule(name) : name,
         highlightDiff(data.old, data.new, red),
         highlightDiff(data.new, data.old, green),
         data.age || "",
@@ -822,13 +813,13 @@ async function getTags(user: string, repo: string): Promise<Array<string>> {
 }
 
 function selectTag(tags: Array<string>, oldRef: string, useGreatest: boolean): string | null {
-  const oldRefBare = stripV(oldRef);
+  const oldRefBare = stripv(oldRef);
   if (!valid(oldRefBare)) return null;
 
   if (!useGreatest) {
     const lastTag = tags.at(-1);
     if (!lastTag) return null;
-    const lastTagBare = stripV(lastTag);
+    const lastTagBare = stripv(lastTag);
     if (!valid(lastTagBare)) return null;
 
     if (neq(oldRefBare, lastTagBare)) {
@@ -836,10 +827,10 @@ function selectTag(tags: Array<string>, oldRef: string, useGreatest: boolean): s
     }
   } else {
     let greatestTag = oldRef;
-    let greatestTagBare = stripV(oldRef);
+    let greatestTagBare = stripv(oldRef);
 
     for (const tag of tags) {
-      const tagBare = stripV(tag);
+      const tagBare = stripv(tag);
       if (!valid(tagBare)) continue;
       if (!greatestTag || gt(tagBare, greatestTagBare)) {
         greatestTag = tag;
@@ -1266,7 +1257,7 @@ async function main(): Promise<void> {
       } else if (mode === "pypi") {
         deps[mode][key].info = getInfoUrl(data as any, registry, data.info.name);
       } else if (mode === "go") {
-        deps[mode][key].info = `https://${shortenGoName(name)}`;
+        deps[mode][key].info = `https://${shortenGoModule(name)}`;
       }
 
       if (date) {
