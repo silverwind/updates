@@ -433,6 +433,19 @@ function getInfoUrl({repository, homepage, info}: {repository: PackageRepository
   return infoUrl || homepage || "";
 }
 
+function getGoInfoUrl(name: string) {
+  const str = `https://${shortenGoModule(name)}`;
+  const url = new URL(str);
+  const pathParts = url.pathname.split("/");
+  if (pathParts.length > 2) {
+    const [_empty, user, repo, ...other] = pathParts;
+    url.pathname = `/${user}/${repo}/${getSubDir(str)}/${other.join("/")}`;
+    return url.toString();
+  } else {
+    return str;
+  }
+}
+
 async function finishWithMessage(message: string): Promise<void> {
   console.info(args.json ? JSON.stringify({message}) : message);
   await end();
@@ -1257,7 +1270,7 @@ async function main(): Promise<void> {
       } else if (mode === "pypi") {
         deps[mode][key].info = getInfoUrl(data as any, registry, data.info.name);
       } else if (mode === "go") {
-        deps[mode][key].info = `https://${shortenGoModule(name)}`;
+        deps[mode][key].info = getGoInfoUrl(name);
       }
 
       if (date) {
