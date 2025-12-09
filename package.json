@@ -16,10 +16,10 @@
     "node": ">=22"
   },
   "devDependencies": {
-    "@types/node": "24.10.1",
+    "@types/node": "24.10.2",
     "@types/rc": "1.2.4",
     "@types/semver": "7.7.1",
-    "@typescript/native-preview": "7.0.0-dev.20251204.1",
+    "@typescript/native-preview": "7.0.0-dev.20251209.1",
     "eslint": "9.39.1",
     "eslint-config-silverwind": "112.2.1",
     "nano-spawn": "2.0.0",
@@ -30,7 +30,7 @@
     "semver": "7.7.3",
     "smol-toml": "1.5.2",
     "timerel": "5.8.5",
-    "tsdown": "0.17.0",
+    "tsdown": "0.17.2",
     "tsdown-config-silverwind": "1.6.1",
     "typescript": "5.9.3",
     "typescript-config-silverwind": "14.0.0",
