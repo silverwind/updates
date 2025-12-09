@@ -436,8 +436,8 @@ function getInfoUrl({repository, homepage, info}: {repository: PackageRepository
 function getGoInfoUrl(name: string) {
   const str = `https://${shortenGoModule(name)}`;
   const url = new URL(str);
-  const pathParts = url.pathname.split("/");
-  if (pathParts.length > 2) {
+  const pathParts = url.pathname.split("/"); // ["", "user", "repo"]
+  if (pathParts.length > 3) {
     const [_empty, user, repo, ...other] = pathParts;
     url.pathname = `/${user}/${repo}/${getSubDir(str)}/${other.join("/")}`;
     return url.toString();
