@@ -369,8 +369,8 @@ function getGoUpgrades(deps: DepsByMode, projectDir: string) {
   for (const {Main, Indirect, Version, Update, Path, Time} of JSON.parse(json) as Array<GoListInfo>) {
     if (Main || Indirect) continue;
     ret.push([{
-      old: Version,
-      new: Update?.Version || Version,
+      old: stripv(Version),
+      new: stripv(Update?.Version || Version),
       Time: Update?.Time || Time,
     }, "deps", null, Path]);
   }
@@ -1192,7 +1192,7 @@ async function main(): Promise<void> {
             } else if (mode === "go" && canInclude(name, mode, include, exclude, depType)) {
               deps[mode][`${depType}${sep}${name}`] = {
                 old: shortenGoVersion(value),
-                oldOrig: value,
+                oldOrig: stripv(value),
               } as Dep;
             }
           }
