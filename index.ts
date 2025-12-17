@@ -9,7 +9,7 @@ import pkg from "./package.json" with {type: "json"};
 import {parse, coerce, diff, gt, gte, lt, neq, valid, validRange} from "semver";
 import {timerel} from "timerel";
 import {npmTypes, poetryTypes, uvTypes, goTypes, parseUvDependencies, nonPackageEngines} from "./utils.ts";
-import type {default as registryAuthToken} from "registry-auth-token";
+import type {default as registryAuthToken, AuthOptions} from "registry-auth-token";
 
 export type Config = {
   /** Array of packages to include */
@@ -22,6 +22,17 @@ export type Config = {
   registry?: string;
   /** Minimum package age in days */
   cooldown?: number,
+};
+
+type Npmrc = {
+  registry: string,
+  ca?: string,
+  cafile?: string,
+  cert?: string,
+  certfile?: string,
+  key?: string,
+  keyfile?: string,
+  [other: string]: any,
 };
 
 type Dep = {
@@ -79,7 +90,6 @@ const esc = (str: string) => str.replace(/[|\\{}()[\]^$+*?.-]/g, "\\$&");
 const normalizeUrl = (url: string) => url.endsWith("/") ? url.substring(0, url.length - 1) : url;
 const packageVersion = pkg.version;
 const sep = "\0";
-const defaultRegistry = "https://registry.npmjs.org";
 
 const modeByFileName: Record<string, string> = {
   "package.json": "npm",
@@ -191,6 +201,11 @@ function matchesAny(str: string, set: Set<RegExp> | boolean): boolean {
   return false;
 }
 
+function registryUrl(scope: string, npmrc: Npmrc): string {
+  const url: string = npmrc[`${scope}:registry`] || npmrc.registry;
+  return url.endsWith("/") ? url : `${url}/`;
+}
+
 function getProperty(obj: Record<string, any>, path: string): Record<string, any> {
   return path.split(".").reduce((obj: Record<string, any>, prop: string) => obj?.[prop] ?? null, obj);
 }
@@ -216,38 +231,33 @@ type AuthAndRegistry = {
   registry: string,
 };
 
-type Conf = {config: {get: (key: string) => string | undefined}};
-let conf: Conf | undefined;
-let rat: typeof registryAuthToken | undefined;
+const defaultRegistry = "https://registry.npmjs.org";
+let authOpts: AuthOptions | null = null;
+let npmrc: Npmrc | null = null;
+let rat: typeof registryAuthToken | null = null;
 
-async function getRegistry(scope?: string): Promise<string> {
-  if (!conf) conf = (await import("@pnpm/npm-conf")).default();
-
-  let url: string | undefined;
-  if (scope) {
-    url = conf!.config.get(`${scope}:registry`) || conf!.config.get(`registry`) || defaultRegistry;
-  } else {
-    url = conf!.config.get(`registry`) || defaultRegistry;
-  }
-
-  return url.endsWith("/") ? url : `${url}/`;
+async function getNpmrc() {
+  if (npmrc) return npmrc;
+  return (await import("rc")).default("npm", {registry: defaultRegistry});
 }
 
 async function getAuthAndRegistry(name: string, registry: string): Promise<AuthAndRegistry> {
+  if (!npmrc) npmrc = await getNpmrc();
+  if (!authOpts) authOpts = {npmrc, recursive: true};
   if (!rat) rat = (await import("registry-auth-token")).default;
 
   if (!name.startsWith("@")) {
-    return {auth: rat(registry, {recursive: true}), registry};
+    return {auth: rat(registry, authOpts), registry};
   } else {
     const scope = (/@[a-z0-9][\w-.]+/.exec(name) || [""])[0];
-    const url = normalizeUrl(await getRegistry(scope));
+    const url = normalizeUrl(registryUrl(scope, npmrc));
     if (url !== registry) {
       try {
-        const newAuth = rat(url, {recursive: true});
+        const newAuth = rat(url, authOpts);
         if (newAuth?.token) return {auth: newAuth, registry: url};
       } catch {}
     }
-    return {auth: rat(registry, {recursive: true}), registry};
+    return {auth: rat(registry, authOpts), registry};
   }
 }
 
@@ -291,8 +301,9 @@ async function doFetch(url: string, opts?: RequestInit): Promise<Response> {
 type PackageInfo = [Record<string, any>, string, string | null, string];
 
 async function fetchNpmInfo(name: string, type: string, config: Config): Promise<PackageInfo> {
+  if (!npmrc) npmrc = await getNpmrc();
   const originalRegistry = normalizeUrl((typeof args.registry === "string" ? args.registry : false) ||
-    config.registry || (await getRegistry()),
+    config.registry || npmrc.registry || defaultRegistry,
   );
 
   const {auth, registry} = await getAuthAndRegistry(name, originalRegistry);
