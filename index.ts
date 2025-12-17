@@ -220,8 +220,8 @@ type Conf = {config: {get: (key: string) => string | undefined}};
 let conf: Conf | undefined;
 let rat: typeof registryAuthToken | undefined;
 
-function getRegistry(scope?: string): string {
-  if (!conf) conf = require("@pnpm/npm-conf")(); // eslint-disable-line @typescript-eslint/no-require-imports -- workaround bun bug with import()
+async function getRegistry(scope?: string): Promise<string> {
+  if (!conf) conf = (await import("@pnpm/npm-conf")).default();
 
   let url: string | undefined;
   if (scope) {
@@ -240,7 +240,7 @@ async function getAuthAndRegistry(name: string, registry: string): Promise<AuthA
     return {auth: rat(registry, {recursive: true}), registry};
   } else {
     const scope = (/@[a-z0-9][\w-.]+/.exec(name) || [""])[0];
-    const url = normalizeUrl(getRegistry(scope));
+    const url = normalizeUrl(await getRegistry(scope));
     if (url !== registry) {
       try {
         const newAuth = rat(url, {recursive: true});
@@ -292,7 +292,7 @@ type PackageInfo = [Record<string, any>, string, string | null, string];
 
 async function fetchNpmInfo(name: string, type: string, config: Config): Promise<PackageInfo> {
   const originalRegistry = normalizeUrl((typeof args.registry === "string" ? args.registry : false) ||
-    config.registry || getRegistry(),
+    config.registry || (await getRegistry()),
   );
 
   const {auth, registry} = await getAuthAndRegistry(name, originalRegistry);
