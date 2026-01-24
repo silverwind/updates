@@ -16,12 +16,12 @@
     "node": ">=22"
   },
   "devDependencies": {
-    "@types/node": "25.0.9",
+    "@types/node": "25.0.10",
     "@types/rc": "1.2.4",
     "@types/semver": "7.7.1",
-    "@typescript/native-preview": "7.0.0-dev.20260119.1",
+    "@typescript/native-preview": "7.0.0-dev.20260123.3",
     "eslint": "9.39.2",
-    "eslint-config-silverwind": "117.0.3",
+    "eslint-config-silverwind": "118.0.0",
     "nano-spawn": "2.0.0",
     "p-map": "7.0.4",
     "rc": "1.2.8",
@@ -30,12 +30,12 @@
     "semver": "7.7.3",
     "smol-toml": "1.6.0",
     "timerel": "5.8.5",
-    "tsdown": "0.18.0",
-    "tsdown-config-silverwind": "1.6.3",
+    "tsdown": "0.20.1",
+    "tsdown-config-silverwind": "1.7.3",
     "typescript": "5.9.3",
     "typescript-config-silverwind": "14.0.0",
     "versions": "14.0.3",
-    "vitest": "4.0.17",
-    "vitest-config-silverwind": "10.6.0"
+    "vitest": "4.0.18",
+    "vitest-config-silverwind": "10.6.1"
   }
 }
