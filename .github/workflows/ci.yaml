@@ -25,5 +25,5 @@ jobs:
         if: ${{matrix.js[0] == 'bun'}}
       - run: make deps lint test
         if: ${{matrix.js[0] == 'node'}}
-      - run: bun install && bunx tsdown && chmod +x dist/index.js && bun test
+      - run: bun install && bunx tsdown && bun test
         if: ${{matrix.js[0] == 'bun'}}
