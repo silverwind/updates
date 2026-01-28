@@ -1,4 +1,4 @@
-SOURCE_FILES := index.ts
+SOURCE_FILES := index.ts registryAuthToken.ts
 DIST_FILES := dist/index.js
 
 node_modules: package-lock.json
