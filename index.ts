@@ -1138,18 +1138,17 @@ async function main(): Promise<void> {
 
     let pkg: Record<string, any> = {};
     if (mode === "go") {
-      pkgStrs[mode] = execFileSync("go", [
-        "list", "-m", "-f", "{{if not .Indirect}}{{.Path}}@{{.Version}}{{end}}", "all",
-      ], {stdio: "pipe", encoding: "utf8", cwd: projectDir});
-
-      // For go.mod files, we need to read the actual file content for updates
-      // Store it in a separate variable since pkgStrs[mode] contains go list output
+      // For go.mod files, read file content if updating, otherwise use go list output
       if (update) {
         try {
           pkgStrs[mode] = readFileSync(file, "utf8");
         } catch (err) {
           throw new Error(`Unable to open ${file}: ${(err as Error).message}`);
         }
+      } else {
+        pkgStrs[mode] = execFileSync("go", [
+          "list", "-m", "-f", "{{if not .Indirect}}{{.Path}}@{{.Version}}{{end}}", "all",
+        ], {stdio: "pipe", encoding: "utf8", cwd: projectDir});
       }
     } else {
       try {
@@ -1167,11 +1166,12 @@ async function main(): Promise<void> {
         pkg = parse(pkgStrs[mode]);
       } else {
         pkg.deps = {};
-        // For go mode, use the go list output to get module info
-        const goListOutput = (mode === "go" && !update) ? pkgStrs[mode] :
-          (mode === "go") ? execFileSync("go", [
+        // For go mode, always use go list output to get module info
+        const goListOutput = (mode === "go" && update) ?
+          execFileSync("go", [
             "list", "-m", "-f", "{{if not .Indirect}}{{.Path}}@{{.Version}}{{end}}", "all",
-          ], {stdio: "pipe", encoding: "utf8", cwd: projectDir}) : pkgStrs[mode];
+          ], {stdio: "pipe", encoding: "utf8", cwd: projectDir}) :
+          pkgStrs[mode];
 
         for (const modulePathAndVersion of splitPlainText(goListOutput)) {
           const [modulePath, version] = modulePathAndVersion.split("@");
