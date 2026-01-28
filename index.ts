@@ -240,6 +240,7 @@ function replaceEnvironmentVariable(token: string): string {
 function getBearerToken(tok: string | undefined): NpmCredentials | undefined {
   if (!tok) return undefined;
   const token = replaceEnvironmentVariable(tok);
+  if (!token) return undefined;
   return {token, type: "Bearer"};
 }
 
@@ -260,6 +261,7 @@ function getTokenForUsernameAndPassword(username: string | undefined, password: 
 function getLegacyAuthToken(tok: string | undefined): NpmCredentials | undefined {
   if (!tok) return undefined;
   const token = replaceEnvironmentVariable(tok);
+  if (!token) return undefined;
   return {token, type: "Basic"};
 }
 
@@ -288,6 +290,7 @@ function getAuthInfoForUrl(regUrl: string, npmrc: Npmrc): NpmCredentials | undef
 function getLegacyAuthInfo(npmrc: Npmrc): NpmCredentials | undefined {
   if (!npmrc._auth) return undefined;
   const token = replaceEnvironmentVariable(npmrc._auth);
+  if (!token) return undefined;
   return {token, type: "Basic"};
 }
 
@@ -305,6 +308,8 @@ function urlResolve(from: string, to: string): string {
 }
 
 function getRegistryAuthInfo(checkUrl: string, options: AuthOptions): NpmCredentials | undefined {
+  if (!options.npmrc) return undefined;
+
   const parsed = new URL(checkUrl.startsWith("//") ? `http:${checkUrl}` : checkUrl);
   let pathname: string | undefined;
 
@@ -312,7 +317,7 @@ function getRegistryAuthInfo(checkUrl: string, options: AuthOptions): NpmCredent
     pathname = parsed.pathname || "/";
 
     const regUrl = `//${parsed.host}${pathname.replace(/\/$/, "")}`;
-    const authInfo = getAuthInfoForUrl(regUrl, options.npmrc!);
+    const authInfo = getAuthInfoForUrl(regUrl, options.npmrc);
     if (authInfo) return authInfo;
 
     // break if not recursive
@@ -329,7 +334,8 @@ function getRegistryAuthInfo(checkUrl: string, options: AuthOptions): NpmCredent
 }
 
 function registryAuthToken(checkUrl: string, options: AuthOptions): NpmCredentials | undefined {
-  return getRegistryAuthInfo(checkUrl, options) || getLegacyAuthInfo(options.npmrc!);
+  if (!options.npmrc) return undefined;
+  return getRegistryAuthInfo(checkUrl, options) || getLegacyAuthInfo(options.npmrc);
 }
 
 type AuthAndRegistry = {
