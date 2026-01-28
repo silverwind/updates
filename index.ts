@@ -1141,7 +1141,7 @@ async function main(): Promise<void> {
       pkgStrs[mode] = execFileSync("go", [
         "list", "-m", "-f", "{{if not .Indirect}}{{.Path}}@{{.Version}}{{end}}", "all",
       ], {stdio: "pipe", encoding: "utf8", cwd: projectDir});
-      
+
       // For go.mod files, we need to read the actual file content for updates
       // Store it in a separate variable since pkgStrs[mode] contains go list output
       if (update) {
@@ -1168,11 +1168,11 @@ async function main(): Promise<void> {
       } else {
         pkg.deps = {};
         // For go mode, use the go list output to get module info
-        const goListOutput = (mode === "go" && !update) ? pkgStrs[mode] : 
+        const goListOutput = (mode === "go" && !update) ? pkgStrs[mode] :
           (mode === "go") ? execFileSync("go", [
             "list", "-m", "-f", "{{if not .Indirect}}{{.Path}}@{{.Version}}{{end}}", "all",
           ], {stdio: "pipe", encoding: "utf8", cwd: projectDir}) : pkgStrs[mode];
-        
+
         for (const modulePathAndVersion of splitPlainText(goListOutput)) {
           const [modulePath, version] = modulePathAndVersion.split("@");
           if (version) { // current module has no version
