@@ -293,7 +293,7 @@ test("latest", async () => {
           },
           "noty": {
             "info": "https://github.com/needim/noty",
-            "new": "3.2.0-beta",
+            "new": "3.1.4",
             "old": "3.1.0",
           },
           "prismjs": {
@@ -313,7 +313,7 @@ test("latest", async () => {
           },
           "svgstore": {
             "info": "https://github.com/svgstore/svgstore",
-            "new": "^3.0.0-2",
+            "new": "^2.0.3",
             "old": "^3.0.0",
           },
           "updates": {
@@ -676,7 +676,7 @@ test("include", async () => {
         "dependencies": {
           "noty": {
             "info": "https://github.com/needim/noty",
-            "new": "3.2.0-beta",
+            "new": "3.1.4",
             "old": "3.1.0",
           },
         },
@@ -699,7 +699,7 @@ test("include 2", async () => {
         "dependencies": {
           "noty": {
             "info": "https://github.com/needim/noty",
-            "new": "3.2.0-beta",
+            "new": "3.1.4",
             "old": "3.1.0",
           },
         },
@@ -722,7 +722,7 @@ test("include 3", async () => {
         "dependencies": {
           "noty": {
             "info": "https://github.com/needim/noty",
-            "new": "3.2.0-beta",
+            "new": "3.1.4",
             "old": "3.1.0",
           },
         },
@@ -944,7 +944,7 @@ test("dual", async () => {
           },
           "noty": {
             "info": "https://github.com/needim/noty",
-            "new": "3.2.0-beta",
+            "new": "3.1.4",
             "old": "3.1.0",
           },
           "prismjs": {
@@ -964,7 +964,7 @@ test("dual", async () => {
           },
           "svgstore": {
             "info": "https://github.com/svgstore/svgstore",
-            "new": "^3.0.0-2",
+            "new": "^2.0.3",
             "old": "^3.0.0",
           },
           "updates": {
@@ -1015,8 +1015,83 @@ test("dual 2", async () => {
         "dependencies": {
           "noty": {
             "info": "https://github.com/needim/noty",
+            "new": "3.1.4",
+            "old": "3.1.0",
+          },
+        },
+      },
+    }
+  `);
+});
+
+test("issue #76: don't upgrade to prerelease from latest dist-tag by default", async () => {
+  // Test that we don't upgrade from stable to prerelease when latest dist-tag is a prerelease
+  // noty: 3.1.0 -> should suggest 3.1.4 (not 3.2.0-beta which is on latest dist-tag)
+  expect(await makeTest("-j -i noty")()).toMatchInlineSnapshot(`
+    {
+      "npm": {
+        "dependencies": {
+          "noty": {
+            "info": "https://github.com/needim/noty",
+            "new": "3.1.4",
+            "old": "3.1.0",
+          },
+        },
+        "packageManager": {
+          "npm": {
+            "info": "https://github.com/npm/cli",
+            "new": "11.6.2",
+            "old": "11.6.0",
+          },
+        },
+      },
+    }
+  `);
+});
+
+test("issue #76: allow upgrade to prerelease with -p flag", async () => {
+  // Test that we DO upgrade to prerelease when explicitly requested with -p flag
+  // noty: 3.1.0 -> should suggest 3.2.0-beta (from latest dist-tag) when -p is used
+  expect(await makeTest("-j -i noty -p")()).toMatchInlineSnapshot(`
+    {
+      "npm": {
+        "dependencies": {
+          "noty": {
+            "info": "https://github.com/needim/noty",
             "new": "3.2.0-beta",
             "old": "3.1.0",
+          },
+        },
+        "packageManager": {
+          "npm": {
+            "info": "https://github.com/npm/cli",
+            "new": "11.6.2",
+            "old": "11.6.0",
+          },
+        },
+      },
+    }
+  `);
+});
+
+test("issue #76: allow upgrade from prerelease to prerelease without -p flag", async () => {
+  // Test that upgrading from prerelease to prerelease works without -p flag
+  // eslint-plugin-storybook: 10.0.0-beta.5 -> should allow upgrade to another prerelease
+  expect(await makeTest("-j -i eslint-plugin-storybook")()).toMatchInlineSnapshot(`
+    {
+      "npm": {
+        "dependencies": {
+          "eslint-plugin-storybook": {
+            "info": "https://github.com/storybookjs/storybook/tree/HEAD/code/lib/eslint-plugin",
+            "new": "0.0.0-pr-32455-sha-2828decf",
+            "old": "10.0.0-beta.5",
+          },
+        },
+        "packageManager": {
+          "npm": {
+            "info": "https://github.com/npm/cli",
+            "new": "11.6.2",
+            "old": "11.6.0",
           },
         },
       },
