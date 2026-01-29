@@ -32,10 +32,7 @@ function createSimpleServer(defaultHandler: RouteHandler) {
 
     // Add send method to response for convenience
     (res as any).send = (data: any) => {
-      if (typeof data === "number") {
-        res.statusCode = data;
-        res.end();
-      } else if (Buffer.isBuffer(data)) {
+      if (Buffer.isBuffer(data)) {
         res.setHeader("Content-Type", "application/json");
         res.end(data);
       } else if (typeof data === "object") {
@@ -98,7 +95,8 @@ function makeUrl(server: ReturnType<typeof createSimpleServer>) {
 
 function defaultRoute(req: any, res: any) {
   console.error(`default handler hit for ${req.url}`);
-  res.send(404);
+  res.statusCode = 404;
+  res.end();
 }
 
 function resolutionsBasePackage(name: string) {
