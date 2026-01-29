@@ -236,6 +236,8 @@ let authOpts: AuthOptions | null = null;
 let npmrc: Npmrc | null = null;
 let rat: typeof registryAuthToken | null = null;
 
+const authCache = new Map<string, AuthAndRegistry>();
+
 async function getNpmrc() {
   if (npmrc) return npmrc;
   return (await import("rc")).default("npm", {registry: defaultRegistry});
@@ -246,25 +248,37 @@ async function getAuthAndRegistry(name: string, registry: string): Promise<AuthA
   if (!authOpts) authOpts = {npmrc, recursive: true};
   if (!rat) rat = (await import("registry-auth-token")).default;
 
+  const scope = name.startsWith("@") ? (/@[a-z0-9][\w-.]+/.exec(name) || [""])[0] : "";
+  const cacheKey = `${scope}:${registry}`;
+  const cached = authCache.get(cacheKey);
+  if (cached) return cached;
+
+  let result: AuthAndRegistry;
   if (!name.startsWith("@")) {
-    return {auth: rat(registry, authOpts), registry};
+    result = {auth: rat(registry, authOpts), registry};
   } else {
-    const scope = (/@[a-z0-9][\w-.]+/.exec(name) || [""])[0];
     const url = normalizeUrl(registryUrl(scope, npmrc));
     if (url !== registry) {
       try {
         const newAuth = rat(url, authOpts);
-        if (newAuth?.token) return {auth: newAuth, registry: url};
-      } catch {}
+        result = newAuth?.token ? {auth: newAuth, registry: url} : {auth: rat(registry, authOpts), registry};
+      } catch {
+        result = {auth: rat(registry, authOpts), registry};
+      }
+    } else {
+      result = {auth: rat(registry, authOpts), registry};
     }
-    return {auth: rat(registry, authOpts), registry};
   }
+
+  authCache.set(cacheKey, result);
+  return result;
 }
 
 function getFetchOpts(authType?: string, authToken?: string): RequestInit {
   return {
     headers: {
       "user-agent": `updates/${packageVersion}`,
+      "accept-encoding": "gzip, deflate, br",
       ...(authToken && {Authorization: `${authType} ${authToken}`}),
     }
   };
@@ -325,7 +339,7 @@ async function fetchNpmInfo(name: string, type: string, config: Config): Promise
 async function fetchPypiInfo(name: string, type: string): Promise<PackageInfo> {
   const url = `${pypiApiUrl}/pypi/${name}/json`;
 
-  const res = await doFetch(url);
+  const res = await doFetch(url, {headers: {"accept-encoding": "gzip, deflate, br"}});
   if (res?.ok) {
     return [await res.json(), type, null, name];
   } else {
@@ -787,7 +801,7 @@ function findNewVersion(data: any, {mode, range, useGreatest, useRel, usePre, se
 }
 
 function fetchGitHub(url: string): Promise<Response> {
-  const opts: RequestInit = {};
+  const opts: RequestInit = {headers: {"accept-encoding": "gzip, deflate, br"}};
   const token =
     env.UPDATES_GITHUB_API_TOKEN ||
     env.GITHUB_API_TOKEN ||
@@ -796,7 +810,7 @@ function fetchGitHub(url: string): Promise<Response> {
     env.HOMEBREW_GITHUB_API_TOKEN;
 
   if (token) {
-    opts.headers = {Authorization: `Bearer ${token}`};
+    opts.headers = {...opts.headers, Authorization: `Bearer ${token}`};
   }
   return doFetch(url, opts);
 }

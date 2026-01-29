@@ -6,6 +6,7 @@ import {writeFile, readFile, rm} from "node:fs/promises";
 import {fileURLToPath} from "node:url";
 import {tmpdir} from "node:os";
 import {env, versions, execPath} from "node:process";
+import {gzipSync} from "node:zlib";
 import type {Server} from "node:http";
 import {npmTypes, poetryTypes, uvTypes, goTypes} from "./utils.ts";
 
@@ -22,6 +23,10 @@ const script = fileURLToPath(new URL("dist/index.js", import.meta.url));
 
 type RouteHandler = (req: any, res: any) => void | Promise<void>;
 
+function parseAcceptEncoding(header: string): Array<string> {
+  return header.split(",").map(s => s.trim().split(";")[0]).filter(Boolean);
+}
+
 function createSimpleServer(defaultHandler: RouteHandler) {
   const routes = new Map<string, RouteHandler>();
 
@@ -30,14 +35,34 @@ function createSimpleServer(defaultHandler: RouteHandler) {
     const handler = routes.get(url) || defaultHandler;
 
     (res as any).send = (data: any) => {
+      const acceptEncoding = req.headers["accept-encoding"] || "";
+      const encodings = parseAcceptEncoding(acceptEncoding);
+      const shouldCompress = encodings.includes("gzip");
+
       if (Buffer.isBuffer(data)) {
         res.setHeader("Content-Type", "application/json");
-        res.end(data);
+        if (shouldCompress) {
+          res.setHeader("Content-Encoding", "gzip");
+          res.end(gzipSync(data));
+        } else {
+          res.end(data);
+        }
       } else if (typeof data === "object") {
         res.setHeader("Content-Type", "application/json");
-        res.end(JSON.stringify(data));
+        const json = JSON.stringify(data);
+        if (shouldCompress) {
+          res.setHeader("Content-Encoding", "gzip");
+          res.end(gzipSync(json));
+        } else {
+          res.end(json);
+        }
       } else {
-        res.end(data);
+        if (shouldCompress) {
+          res.setHeader("Content-Encoding", "gzip");
+          res.end(gzipSync(String(data)));
+        } else {
+          res.end(data);
+        }
       }
     };
 
