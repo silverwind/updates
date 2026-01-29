@@ -1030,7 +1030,7 @@ async function loadConfig(rootDir: string): Promise<Config> {
   // Try to import each config file
   for (const filename of filenames) {
     const fullPath = join(rootDir, ...filename.split("/"));
-    
+
     // Check if file exists before trying to import
     let fileExists = false;
     try {
