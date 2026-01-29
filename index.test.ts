@@ -22,7 +22,6 @@ const script = fileURLToPath(new URL("dist/index.js", import.meta.url));
 
 type RouteHandler = (req: any, res: any) => void | Promise<void>;
 
-// Simple HTTP server wrapper that provides restana-like API using node:http
 function createSimpleServer(defaultHandler: RouteHandler) {
   const routes = new Map<string, RouteHandler>();
 
@@ -30,7 +29,6 @@ function createSimpleServer(defaultHandler: RouteHandler) {
     const url = req.url || "/";
     const handler = routes.get(url) || defaultHandler;
 
-    // Add send method to response for convenience
     (res as any).send = (data: any) => {
       if (Buffer.isBuffer(data)) {
         res.setHeader("Content-Type", "application/json");
