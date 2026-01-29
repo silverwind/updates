@@ -22,6 +22,7 @@ const script = fileURLToPath(new URL("dist/index.js", import.meta.url));
 
 type RouteHandler = (req: any, res: any) => void | Promise<void>;
 
+// Simple HTTP server wrapper that provides restana-like API using node:http
 function createSimpleServer(defaultHandler: RouteHandler) {
   const routes = new Map<string, RouteHandler>();
 
@@ -45,7 +46,15 @@ function createSimpleServer(defaultHandler: RouteHandler) {
       }
     };
 
-    await handler(req, res);
+    try {
+      await handler(req, res);
+    } catch (err) {
+      console.error("Error in request handler:", err);
+      if (!res.headersSent) {
+        res.statusCode = 500;
+        res.end("Internal Server Error");
+      }
+    }
   });
 
   return {
@@ -79,7 +88,11 @@ for (const dependencyType of npmTypes) {
 }
 
 function makeUrl(server: ReturnType<typeof createSimpleServer>) {
-  const {port}: any = server.address();
+  const addr = server.address();
+  if (!addr || typeof addr === "string") {
+    throw new Error("Server address is not available");
+  }
+  const {port}: any = addr;
   return Object.assign(new URL("http://localhost"), {port}).toString();
 }
 
