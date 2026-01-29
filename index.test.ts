@@ -379,11 +379,6 @@ test("latest", async () => {
             "new": ">=2.6.5",
             "old": ">=2.0.0",
           },
-          "noty": {
-            "info": "https://github.com/needim/noty",
-            "new": ">= 3.2",
-            "old": ">= 3.1",
-          },
           "typescript": {
             "info": "https://github.com/Microsoft/TypeScript",
             "new": "^5",
@@ -763,13 +758,6 @@ test("include", async () => {
             "old": "11.6.0",
           },
         },
-        "peerDependencies": {
-          "noty": {
-            "info": "https://github.com/needim/noty",
-            "new": ">= 3.2",
-            "old": ">= 3.1",
-          },
-        },
       },
     }
   `);
@@ -793,13 +781,6 @@ test("include 2", async () => {
             "old": "11.6.0",
           },
         },
-        "peerDependencies": {
-          "noty": {
-            "info": "https://github.com/needim/noty",
-            "new": ">= 3.2",
-            "old": ">= 3.1",
-          },
-        },
       },
     }
   `);
@@ -821,13 +802,6 @@ test("include 3", async () => {
             "info": "https://github.com/npm/cli",
             "new": "11.6.2",
             "old": "11.6.0",
-          },
-        },
-        "peerDependencies": {
-          "noty": {
-            "info": "https://github.com/needim/noty",
-            "new": ">= 3.2",
-            "old": ">= 3.1",
           },
         },
       },
@@ -1178,6 +1152,13 @@ test("issue #76: allow upgrade to prerelease with -p flag", async () => {
             "info": "https://github.com/npm/cli",
             "new": "11.6.2",
             "old": "11.6.0",
+          },
+        },
+        "peerDependencies": {
+          "noty": {
+            "info": "https://github.com/needim/noty",
+            "new": ">= 3.2",
+            "old": ">= 3.1",
           },
         },
       },
