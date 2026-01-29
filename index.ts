@@ -516,7 +516,7 @@ function outputDeps(deps: DepsByMode = {}): number {
         const [type, name] = key.split(sep);
         if (!output.results[mode]) output.results[mode] = {};
         if (!output.results[mode][type]) output.results[mode][type] = {};
-        output.results[mode][type][name] = {...value, mode};
+        output.results[mode][type][name] = value;
       }
     }
     console.info(JSON.stringify(output));
