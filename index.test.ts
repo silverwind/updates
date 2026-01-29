@@ -1,5 +1,5 @@
 import nanoSpawn from "nano-spawn";
-import restana from "restana";
+import {createServer} from "node:http";
 import {join, parse} from "node:path";
 import {readFileSync, mkdtempSync, readdirSync} from "node:fs";
 import {writeFile, readFile, rm} from "node:fs/promises";
@@ -7,7 +7,6 @@ import {fileURLToPath} from "node:url";
 import {tmpdir} from "node:os";
 import {env, versions, execPath} from "node:process";
 import type {Server} from "node:http";
-import type {Service, Protocol} from "restana";
 import {npmTypes, poetryTypes, uvTypes, goTypes} from "./utils.ts";
 
 const testFile = fileURLToPath(new URL("fixtures/npm-test/package.json", import.meta.url));
@@ -21,6 +20,57 @@ const testPkg = JSON.parse(readFileSync(testFile, "utf8"));
 const testDir = mkdtempSync(join(tmpdir(), "updates-"));
 const script = fileURLToPath(new URL("dist/index.js", import.meta.url));
 
+type RouteHandler = (req: any, res: any) => void | Promise<void>;
+
+function createSimpleServer(defaultHandler: RouteHandler) {
+  const routes = new Map<string, RouteHandler>();
+
+  const server = createServer(async (req, res) => {
+    const url = req.url || "/";
+    const handler = routes.get(url) || defaultHandler;
+
+    // Add send method to response for convenience
+    (res as any).send = (data: any) => {
+      if (typeof data === "number") {
+        res.statusCode = data;
+        res.end();
+      } else if (Buffer.isBuffer(data)) {
+        res.setHeader("Content-Type", "application/json");
+        res.end(data);
+      } else if (typeof data === "object") {
+        res.setHeader("Content-Type", "application/json");
+        res.end(JSON.stringify(data));
+      } else {
+        res.end(data);
+      }
+    };
+
+    await handler(req, res);
+  });
+
+  return {
+    get: (path: string, handler: RouteHandler) => {
+      routes.set(path, handler);
+    },
+    start: (port: number) => {
+      return new Promise<Server>((resolve) => {
+        server.listen(port, () => {
+          resolve(server);
+        });
+      });
+    },
+    close: () => {
+      return new Promise<void>((resolve, reject) => {
+        server.close((err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+    },
+    address: () => server.address(),
+  };
+}
+
 const testPackages = new Set<string>(["npm"]);
 for (const dependencyType of npmTypes) {
   for (const name of Object.keys(testPkg[dependencyType] || [])) {
@@ -28,7 +78,7 @@ for (const dependencyType of npmTypes) {
   }
 }
 
-function makeUrl(server: Server) {
+function makeUrl(server: ReturnType<typeof createSimpleServer>) {
   const {port}: any = server.address();
   return Object.assign(new URL("http://localhost"), {port}).toString();
 }
@@ -43,18 +93,18 @@ function resolutionsBasePackage(name: string) {
   return packages[packages.length - 1];
 }
 
-let npmServer: Service<Protocol.HTTP> | Server;
-let githubServer: Service<Protocol.HTTP> | Server;
-let pypiServer: Service<Protocol.HTTP> | Server;
+let npmServer: ReturnType<typeof createSimpleServer>;
+let githubServer: ReturnType<typeof createSimpleServer>;
+let pypiServer: ReturnType<typeof createSimpleServer>;
 
 let githubUrl: string;
 let pypiUrl: string;
 let npmUrl: string;
 
 beforeAll(async () => {
-  npmServer = restana({defaultRoute});
-  githubServer = restana({defaultRoute});
-  pypiServer = restana({defaultRoute});
+  npmServer = createSimpleServer(defaultRoute);
+  githubServer = createSimpleServer(defaultRoute);
+  pypiServer = createSimpleServer(defaultRoute);
 
   const [commits, tags] = await Promise.all([
     readFile(fileURLToPath(new URL("fixtures/github/updates-commits.json", import.meta.url))),
@@ -77,7 +127,7 @@ beforeAll(async () => {
   githubServer.get("/repos/silverwind/updates/commits", (_, res) => res.send(commits));
   githubServer.get("/repos/silverwind/updates/git/refs/tags", (_, res) => res.send(tags));
 
-  [githubServer, pypiServer, npmServer] = await Promise.all([
+  await Promise.all([
     githubServer.start(0),
     pypiServer.start(0),
     npmServer.start(0),
