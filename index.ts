@@ -1029,17 +1029,27 @@ async function loadConfig(rootDir: string): Promise<Config> {
 
   // Try to import each config file
   for (const filename of filenames) {
+    const fullPath = join(rootDir, ...filename.split("/"));
+    
+    // Check if file exists before trying to import
+    let fileExists = false;
     try {
-      const fullPath = join(rootDir, ...filename.split("/"));
-      ({default: config} = await import(pathToFileURL(fullPath).href));
-      break; // Successfully loaded a config file
-    } catch (err: any) {
-      // If file doesn't exist, try the next one
-      if (err?.code === "ERR_MODULE_NOT_FOUND") {
-        continue;
+      accessSync(fullPath);
+      fileExists = true;
+    } catch {
+      // File doesn't exist, try next one
+      continue;
+    }
+
+    // File exists, try to import it
+    if (fileExists) {
+      try {
+        ({default: config} = await import(pathToFileURL(fullPath).href));
+        break; // Successfully loaded a config file
+      } catch (err: any) {
+        // Any error when file exists should be reported
+        throw new Error(`Unable to parse config file ${filename}: ${err.message}`);
       }
-      // Any other error (e.g., syntax error) should be reported
-      throw new Error(`Unable to parse config file ${filename}: ${err.message}`);
     }
   }
 
