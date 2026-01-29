@@ -97,6 +97,12 @@ const modeByFileName: Record<string, string> = {
   "go.mod": "go",
 };
 
+interface StreamWithHandle {
+  _handle?: {
+    setBlocking?: (blocking: boolean) => void;
+  };
+}
+
 const options: ParseArgsOptionsConfig = {
   "allow-downgrade": {short: "d", type: "string", multiple: true},
   "error-on-outdated": {short: "E", type: "boolean"},
@@ -158,26 +164,25 @@ const result = parseArgs({
   options,
 });
 
+// Cast to a more permissive type to allow modification
+const values = result.values as Record<string, string | boolean | Array<string | boolean> | undefined>;
+
 // fix parseArgs defect parsing "-a -b" as {a: "-b"} when a is string
 for (const [index, token] of result.tokens.entries()) {
   if (token.kind === "option" && token.value?.startsWith("-")) {
     const key = getOptionKey(token.value.substring(1));
     const next = result.tokens[index + 1];
-    // @ts-expect-error
-    result.values[token.name] = [true];
-    // @ts-expect-error
-    if (!result.values[key]) result.values[key] = [];
+    values[token.name] = [true];
+    if (!values[key]) values[key] = [];
     if (next.kind === "positional" && next.value) {
-      // @ts-expect-error
-      result.values[key].push(next.value);
+      (values[key] as Array<string | boolean>).push(next.value);
     } else {
-      // @ts-expect-error
-      result.values[key].push(true);
+      (values[key] as Array<string | boolean>).push(true);
     }
   }
 }
 
-const args = result.values;
+const args = values;
 
 const [magenta, red, green] = (["magenta", "red", "green"] as const)
   .map(color => args["no-color"] ? String : (text: string | number) => styleText(color, String(text)));
@@ -1038,8 +1043,7 @@ async function main(): Promise<void> {
   // from cutting off long output by setting those streams into blocking mode.
   // Ref: https://github.com/nodejs/node/issues/6379
   for (const stream of [stdout, stderr]) {
-    // @ts-expect-error -- _handle is missing in @types/node
-    stream?._handle?.setBlocking?.(true);
+    (stream as StreamWithHandle)?._handle?.setBlocking?.(true);
   }
 
   const maxSockets = 96;
