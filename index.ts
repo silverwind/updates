@@ -164,25 +164,24 @@ const result = parseArgs({
   options,
 });
 
-// Cast to a more permissive type to allow modification
-const values = result.values as Record<string, string | boolean | Array<string | boolean> | undefined>;
-
 // fix parseArgs defect parsing "-a -b" as {a: "-b"} when a is string
 for (const [index, token] of result.tokens.entries()) {
   if (token.kind === "option" && token.value?.startsWith("-")) {
     const key = getOptionKey(token.value.substring(1));
     const next = result.tokens[index + 1];
-    values[token.name] = [true];
-    if (!values[key]) values[key] = [];
+    (result.values as Record<string, string | boolean | Array<string | boolean> | undefined>)[token.name] = [true];
+    if (!(result.values as Record<string, string | boolean | Array<string | boolean> | undefined>)[key]) {
+      (result.values as Record<string, string | boolean | Array<string | boolean> | undefined>)[key] = [];
+    }
     if (next.kind === "positional" && next.value) {
-      (values[key] as Array<string | boolean>).push(next.value);
+      ((result.values as Record<string, string | boolean | Array<string | boolean> | undefined>)[key] as Array<string | boolean>).push(next.value);
     } else {
-      (values[key] as Array<string | boolean>).push(true);
+      ((result.values as Record<string, string | boolean | Array<string | boolean> | undefined>)[key] as Array<string | boolean>).push(true);
     }
   }
 }
 
-const args = values;
+const args = result.values;
 
 const [magenta, red, green] = (["magenta", "red", "green"] as const)
   .map(color => args["no-color"] ? String : (text: string | number) => styleText(color, String(text)));
