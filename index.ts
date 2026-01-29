@@ -1032,24 +1032,20 @@ async function loadConfig(rootDir: string): Promise<Config> {
     const fullPath = join(rootDir, ...filename.split("/"));
 
     // Check if file exists before trying to import
-    let fileExists = false;
     try {
       accessSync(fullPath);
-      fileExists = true;
     } catch {
       // File doesn't exist, try next one
       continue;
     }
 
     // File exists, try to import it
-    if (fileExists) {
-      try {
-        ({default: config} = await import(pathToFileURL(fullPath).href));
-        break; // Successfully loaded a config file
-      } catch (err: any) {
-        // Any error when file exists should be reported
-        throw new Error(`Unable to parse config file ${filename}: ${err.message}`);
-      }
+    try {
+      ({default: config} = await import(pathToFileURL(fullPath).href));
+      break; // Successfully loaded a config file
+    } catch (err: any) {
+      // Any error when file exists should be reported
+      throw new Error(`Unable to parse config file ${filename}: ${err.message}`);
     }
   }
 
