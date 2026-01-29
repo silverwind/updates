@@ -108,6 +108,7 @@ const options: ParseArgsOptionsConfig = {
   "help": {short: "h", type: "boolean"},
   "include": {short: "i", type: "string", multiple: true},
   "json": {short: "j", type: "boolean"},
+  "jsrapi": {type: "string"}, // undocumented, only for tests
   "cooldown": {short: "C", type: "string"},
   "minor": {short: "m", type: "string", multiple: true},
   "modes": {short: "M", type: "string", multiple: true},
@@ -191,6 +192,7 @@ const allowDowngrade = argSetToRegexes(parseMixedArg(args["allow-downgrade"]));
 const enabledModes = parseMixedArg(args.modes) as Set<string> || new Set(["npm", "pypi"]);
 const githubApiUrl = typeof args.githubapi === "string" ? normalizeUrl(args.githubapi) : "https://api.github.com";
 const pypiApiUrl = typeof args.pypiapi === "string" ? normalizeUrl(args.pypiapi) : "https://pypi.org";
+const jsrApiUrl = typeof args.jsrapi === "string" ? normalizeUrl(args.jsrapi) : "https://jsr.io";
 
 const stripv = (str: string): string => str.replace(/^v/, "");
 
@@ -395,7 +397,7 @@ async function fetchJsrInfo(packageName: string, type: string): Promise<PackageI
     throw new Error(`Invalid JSR package name: ${packageName}`);
   }
   const [, scope, name] = match;
-  const url = `https://jsr.io/@${scope}/${name}/meta.json`;
+  const url = `${jsrApiUrl}/@${scope}/${name}/meta.json`;
 
   const res = await doFetch(url, {headers: {"accept-encoding": "gzip, deflate, br"}});
   if (res?.ok) {
@@ -418,7 +420,7 @@ async function fetchJsrInfo(packageName: string, type: string): Promise<PackageI
         Object.entries(data.versions as Record<string, any>).map(([v, m]: [string, any]) => [v, m.createdAt])
       ),
     };
-    return [transformedData, type, "https://jsr.io", packageName];
+    return [transformedData, type, jsrApiUrl, packageName];
   } else {
     if (res?.status && res?.statusText) {
       throw new Error(`Received ${res.status} ${res.statusText} from ${url}`);
@@ -571,7 +573,8 @@ function outputDeps(deps: DepsByMode = {}): number {
       if (typeof props.newPrint === "string") {
         props.new = props.newPrint;
       }
-      if (typeof props.oldOrig === "string") {
+      // Don't overwrite old with oldOrig for JSR dependencies
+      if (typeof props.oldOrig === "string" && !isJsrDependency(props.oldOrig)) {
         props.old = props.oldOrig;
       }
       delete props.oldPrint;
@@ -1283,7 +1286,7 @@ async function main(): Promise<void> {
                 old: normalizeRange(value),
                 oldOrig: value,
               } as Dep;
-            } else if (mode === "npm" && canInclude(name, mode, include, exclude, depType)) {
+            } else if (mode === "npm" && !isJsrDependency(value) && canInclude(name, mode, include, exclude, depType)) {
               maybeUrlDeps[`${depType}${sep}${name}`] = {
                 old: value,
               } as Dep;
@@ -1349,7 +1352,25 @@ async function main(): Promise<void> {
         // go has no ranges and pypi oldRange is a version at this point, not a range
         newRange = newVersion;
       } else if (newVersion) {
-        newRange = updateNpmRange(oldRange, newVersion, oldOrig);
+        // Check if this is a JSR dependency
+        if (oldOrig && isJsrDependency(oldOrig)) {
+          // Reconstruct JSR format with new version
+          if (oldOrig.startsWith("npm:@jsr/")) {
+            const match = oldOrig.match(/^(npm:@jsr\/[^@]+@)(.+)$/);
+            if (match) {
+              newRange = match[1] + newVersion;
+            }
+          } else if (oldOrig.startsWith("jsr:@")) {
+            const match = oldOrig.match(/^(jsr:@[^@]+@)(.+)$/);
+            if (match) {
+              newRange = match[1] + newVersion;
+            }
+          } else if (oldOrig.startsWith("jsr:")) {
+            newRange = "jsr:" + newVersion;
+          }
+        } else {
+          newRange = updateNpmRange(oldRange, newVersion, oldOrig);
+        }
       }
 
       if (!newVersion || oldOrig && (oldOrig === newRange)) {
@@ -1367,6 +1388,11 @@ async function main(): Promise<void> {
       }
 
       deps[mode][key].new = newRange;
+
+      // For JSR dependencies, set newPrint to show just the version
+      if (oldOrig && isJsrDependency(oldOrig)) {
+        deps[mode][key].newPrint = newVersion;
+      }
 
       if (mode === "npm") {
         deps[mode][key].info = getInfoUrl(data?.versions?.[newVersion], registry, data.name);

@@ -1,0 +1,8 @@
+{
+  "dependencies": {
+    "@std/semver": "npm:@jsr/std__semver@1.0.5"
+  },
+  "devDependencies": {
+    "@std/path": "jsr:@std/path@1.0.0"
+  }
+}

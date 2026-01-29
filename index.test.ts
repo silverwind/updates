@@ -12,6 +12,7 @@ import {npmTypes, poetryTypes, uvTypes, goTypes} from "./utils.ts";
 
 const testFile = fileURLToPath(new URL("fixtures/npm-test/package.json", import.meta.url));
 const emptyFile = fileURLToPath(new URL("fixtures/npm-empty/package.json", import.meta.url));
+const jsrFile = fileURLToPath(new URL("fixtures/npm-jsr/package.json", import.meta.url));
 const poetryFile = fileURLToPath(new URL("fixtures/poetry/pyproject.toml", import.meta.url));
 const uvFile = fileURLToPath(new URL("fixtures/uv/pyproject.toml", import.meta.url));
 // const goFile = fileURLToPath(new URL("fixtures/go/go.mod", import.meta.url));
@@ -130,15 +131,18 @@ function resolutionsBasePackage(name: string) {
 let npmServer: ReturnType<typeof createSimpleServer>;
 let githubServer: ReturnType<typeof createSimpleServer>;
 let pypiServer: ReturnType<typeof createSimpleServer>;
+let jsrServer: ReturnType<typeof createSimpleServer>;
 
 let githubUrl: string;
 let pypiUrl: string;
 let npmUrl: string;
+let jsrUrl: string;
 
 beforeAll(async () => {
   npmServer = createSimpleServer(defaultRoute);
   githubServer = createSimpleServer(defaultRoute);
   pypiServer = createSimpleServer(defaultRoute);
+  jsrServer = createSimpleServer(defaultRoute);
 
   const [commits, tags] = await Promise.all([
     readFile(fileURLToPath(new URL("fixtures/github/updates-commits.json", import.meta.url))),
@@ -158,6 +162,13 @@ beforeAll(async () => {
     pypiServer.get(`/pypi/${parse(path).name}/json`, async (_, res) => res.send(await readFile(path)));
   }
 
+  for (const file of readdirSync(join(import.meta.dirname, `fixtures/jsr`))) {
+    const path = join(import.meta.dirname, `fixtures/jsr/${file}`);
+    const pkgName = parse(path).name; // e.g., "@std__semver"
+    const [scope, name] = pkgName.replace("@", "").split("__");
+    jsrServer.get(`/@${scope}/${name}/meta.json`, async (_, res) => res.send(await readFile(path)));
+  }
+
   githubServer.get("/repos/silverwind/updates/commits", (_, res) => res.send(commits));
   githubServer.get("/repos/silverwind/updates/git/refs/tags", (_, res) => res.send(tags));
 
@@ -165,11 +176,13 @@ beforeAll(async () => {
     githubServer.start(0),
     pypiServer.start(0),
     npmServer.start(0),
+    jsrServer.start(0),
   ]);
 
   githubUrl = makeUrl(githubServer);
   npmUrl = makeUrl(npmServer);
   pypiUrl = makeUrl(pypiServer);
+  jsrUrl = makeUrl(jsrServer);
 
   await writeFile(join(testDir, ".npmrc"), `registry=${npmUrl}`); // Fake registry
   await writeFile(join(testDir, "package.json"), JSON.stringify(testPkg, null, 2)); // Copy fixture
@@ -181,6 +194,7 @@ afterAll(async () => {
     npmServer?.close(),
     githubServer?.close(),
     pypiServer?.close(),
+    jsrServer?.close(),
   ]);
 });
 
@@ -190,6 +204,7 @@ function makeTest(args: string) {
       ...args.split(/\s+/), "-c",
       "--githubapi", githubUrl,
       "--pypiapi", pypiUrl,
+      "--jsrapi", jsrUrl,
     ];
 
     let stdout: string;
@@ -245,6 +260,27 @@ test("empty", async () => {
   expect(stderr).toEqual("");
   expect(stdout).toContain("No dependencies");
 });
+
+test("jsr", async () => {
+  const {stdout, stderr} = await nanoSpawn(process.execPath, [
+    script,
+    "-C",
+    "-j",
+    "--githubapi", githubUrl,
+    "--pypiapi", pypiUrl,
+    "--jsrapi", jsrUrl,
+    "-f", jsrFile,
+  ]);
+  expect(stderr).toEqual("");
+  const {results} = JSON.parse(stdout);
+  expect(results.npm.dependencies["@std/semver"]).toBeDefined();
+  expect(results.npm.dependencies["@std/semver"].old).toBe("1.0.5");
+  expect(results.npm.dependencies["@std/semver"].new).toBe("1.0.8");
+  expect(results.npm.devDependencies["@std/path"]).toBeDefined();
+  expect(results.npm.devDependencies["@std/path"].old).toBe("1.0.0");
+  expect(results.npm.devDependencies["@std/path"].new).toBe("1.0.8");
+});
+
 
 if (env.CI && !versions.bun) {
   test("global", async () => {
