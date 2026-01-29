@@ -5,7 +5,7 @@ import {readFileSync, mkdtempSync, readdirSync} from "node:fs";
 import {writeFile, readFile, rm} from "node:fs/promises";
 import {fileURLToPath} from "node:url";
 import {tmpdir} from "node:os";
-import {env, versions, execPath} from "node:process";
+import {execPath} from "node:process";
 import {gzipSync} from "node:zlib";
 import type {Server} from "node:http";
 import {npmTypes, poetryTypes, uvTypes, goTypes} from "./utils.ts";
@@ -246,9 +246,9 @@ test("empty", async () => {
   expect(stdout).toContain("No dependencies");
 });
 
-if (env.CI && !versions.bun) {
-  test("global", async () => {
-    await nanoSpawn("npm", ["i", "-g", "."]);
+test("global", async () => {
+  await nanoSpawn("npm", ["i", "-g", "."]);
+  try {
     const {stdout, stderr} = await nanoSpawn("updates", [
       "-C",
       "--githubapi", githubUrl,
@@ -258,8 +258,11 @@ if (env.CI && !versions.bun) {
     expect(stderr).toEqual("");
     expect(stdout).toContain("prismjs");
     expect(stdout).toContain("https://github.com/silverwind/updates");
-  });
-}
+  } finally {
+    await nanoSpawn("npm", ["uninstall", "-g", "updates"]);
+  }
+});
+
 
 test("latest", async () => {
   expect(await makeTest("-j")()).toMatchInlineSnapshot(`
