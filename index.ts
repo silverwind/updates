@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import {cwd, stdout, stderr, env, exit, platform, versions} from "node:process";
 import {join, dirname, basename, resolve} from "node:path";
+import {pathToFileURL} from "node:url";
 import {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync, type Stats} from "node:fs";
 import {stripVTControlCharacters, styleText, parseArgs, type ParseArgsOptionsConfig} from "node:util";
 import {execFileSync} from "node:child_process";
@@ -1030,7 +1031,7 @@ async function loadConfig(rootDir: string): Promise<Config> {
   for (const filename of filenames) {
     try {
       const fullPath = join(rootDir, ...filename.split("/"));
-      ({default: config} = await import(fullPath));
+      ({default: config} = await import(pathToFileURL(fullPath).href));
       break; // Successfully loaded a config file
     } catch (err: any) {
       // If file doesn't exist, try the next one
