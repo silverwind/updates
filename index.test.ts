@@ -335,6 +335,16 @@ test("latest", async () => {
             "new": "~7.11.5",
             "old": "~6.0.0",
           },
+          "gulp-sourcemaps": {
+            "info": "https://github.com/gulp-sourcemaps/gulp-sourcemaps",
+            "new": ">=2.6.5",
+            "old": ">=2.0.0",
+          },
+          "noty": {
+            "info": "https://github.com/needim/noty",
+            "new": ">=3.2",
+            "old": ">=3.1",
+          },
           "typescript": {
             "info": "https://github.com/Microsoft/TypeScript",
             "new": "^5",
@@ -421,6 +431,11 @@ test("greatest", async () => {
             "info": "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
             "new": "~7.11.5",
             "old": "~6.0.0",
+          },
+          "gulp-sourcemaps": {
+            "info": "https://github.com/gulp-sourcemaps/gulp-sourcemaps",
+            "new": ">=2.6.5",
+            "old": ">=2.0.0",
           },
           "typescript": {
             "info": "https://github.com/Microsoft/TypeScript",
@@ -514,6 +529,16 @@ test("prerelease", async () => {
             "new": "~7.11.5",
             "old": "~6.0.0",
           },
+          "gulp-sourcemaps": {
+            "info": "https://github.com/gulp-sourcemaps/gulp-sourcemaps",
+            "new": ">=2.6.5",
+            "old": ">=2.0.0",
+          },
+          "noty": {
+            "info": "https://github.com/needim/noty",
+            "new": ">=3.2",
+            "old": ">=3.1",
+          },
           "typescript": {
             "info": "https://github.com/Microsoft/TypeScript",
             "new": "^5",
@@ -606,6 +631,11 @@ test("release", async () => {
             "new": "~7.11.5",
             "old": "~6.0.0",
           },
+          "gulp-sourcemaps": {
+            "info": "https://github.com/gulp-sourcemaps/gulp-sourcemaps",
+            "new": ">=2.6.5",
+            "old": ">=2.0.0",
+          },
           "typescript": {
             "info": "https://github.com/Microsoft/TypeScript",
             "new": "^5",
@@ -657,6 +687,13 @@ test("patch", async () => {
             "old": "11.6.0",
           },
         },
+        "peerDependencies": {
+          "gulp-sourcemaps": {
+            "info": "https://github.com/floridoo/gulp-sourcemaps",
+            "new": ">=2.0.1",
+            "old": ">=2.0.0",
+          },
+        },
         "resolutions": {
           "versions/updates": {
             "info": "https://github.com/silverwind/updates",
@@ -687,6 +724,13 @@ test("include", async () => {
             "old": "11.6.0",
           },
         },
+        "peerDependencies": {
+          "noty": {
+            "info": "https://github.com/needim/noty",
+            "new": ">=3.2",
+            "old": ">=3.1",
+          },
+        },
       },
     }
   `);
@@ -710,6 +754,13 @@ test("include 2", async () => {
             "old": "11.6.0",
           },
         },
+        "peerDependencies": {
+          "noty": {
+            "info": "https://github.com/needim/noty",
+            "new": ">=3.2",
+            "old": ">=3.1",
+          },
+        },
       },
     }
   `);
@@ -731,6 +782,13 @@ test("include 3", async () => {
             "info": "https://github.com/npm/cli",
             "new": "11.6.2",
             "old": "11.6.0",
+          },
+        },
+        "peerDependencies": {
+          "noty": {
+            "info": "https://github.com/needim/noty",
+            "new": ">=3.2",
+            "old": ">=3.1",
           },
         },
       },
@@ -830,6 +888,13 @@ test("exclude 3", async () => {
             "old": "11.6.0",
           },
         },
+        "peerDependencies": {
+          "gulp-sourcemaps": {
+            "info": "https://github.com/gulp-sourcemaps/gulp-sourcemaps",
+            "new": ">=2.6.5",
+            "old": ">=2.0.0",
+          },
+        },
       },
     }
   `);
@@ -851,6 +916,13 @@ test("exclude 4", async () => {
             "info": "https://github.com/npm/cli",
             "new": "11.6.2",
             "old": "11.6.0",
+          },
+        },
+        "peerDependencies": {
+          "gulp-sourcemaps": {
+            "info": "https://github.com/floridoo/gulp-sourcemaps",
+            "new": ">=2.0.1",
+            "old": ">=2.0.0",
           },
         },
       },
