@@ -1,6 +1,6 @@
 {
   "name": "updates",
-  "version": "17.0.8",
+  "version": "17.0.9",
   "description": " Flexible dependency update tool",
   "author": "silverwind",
   "repository": "silverwind/updates",
