@@ -516,7 +516,7 @@ function outputDeps(deps: DepsByMode = {}): number {
         const [type, name] = key.split(sep);
         if (!output.results[mode]) output.results[mode] = {};
         if (!output.results[mode][type]) output.results[mode][type] = {};
-        output.results[mode][type][name] = value;
+        output.results[mode][type][name] = {...value, mode};
       }
     }
     console.info(JSON.stringify(output));
@@ -592,22 +592,37 @@ function shortenGoModule(module: string): string {
 }
 
 function formatDeps(deps: DepsByMode): string {
-  const arr = [["NAME", "OLD", "NEW", "AGE", "INFO"]];
+  // Check if there are multiple modes
+  const modes = Object.keys(deps);
+  const hasMultipleModes = modes.length > 1;
+  
+  const header = hasMultipleModes 
+    ? ["NAME", "MODE", "OLD", "NEW", "AGE", "INFO"]
+    : ["NAME", "OLD", "NEW", "AGE", "INFO"];
+  const arr = [header];
   const seen = new Set<string>();
 
-  for (const mode of Object.keys(deps)) {
+  for (const mode of modes) {
     for (const [key, data] of Object.entries(deps[mode])) {
-      const name = key.split(sep)[1];
+      const [type, name] = key.split(sep);
       const id = `${mode}|${name}`;
       if (seen.has(id)) continue;
       seen.add(id);
-      arr.push([
+      const row = hasMultipleModes ? [
+        mode === "go" ? shortenGoModule(name) : name,
+        mode,
+        highlightDiff(data.old, data.new, red),
+        highlightDiff(data.new, data.old, green),
+        data.age || "",
+        data.info || "",
+      ] : [
         mode === "go" ? shortenGoModule(name) : name,
         highlightDiff(data.old, data.new, red),
         highlightDiff(data.new, data.old, green),
         data.age || "",
         data.info || "",
-      ]);
+      ];
+      arr.push(row);
     }
   }
 

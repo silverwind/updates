@@ -268,56 +268,67 @@ test("latest", async () => {
         "dependencies": {
           "@babel/preset-env": {
             "info": "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
+            "mode": "npm",
             "new": "7.11.5",
             "old": "7.0.0",
           },
           "eslint-plugin-storybook": {
             "info": "https://github.com/storybookjs/storybook/tree/HEAD/code/lib/eslint-plugin",
+            "mode": "npm",
             "new": "0.0.0-pr-32455-sha-2828decf",
             "old": "10.0.0-beta.5",
           },
           "gulp-sourcemaps": {
             "info": "https://github.com/gulp-sourcemaps/gulp-sourcemaps",
+            "mode": "npm",
             "new": "2.6.5",
             "old": "2.0.0",
           },
           "html-webpack-plugin": {
             "info": "https://github.com/jantimon/html-webpack-plugin",
+            "mode": "npm",
             "new": "4.0.0-beta.11",
             "old": "4.0.0-alpha.2",
           },
           "jpeg-buffer-orientation": {
             "info": "https://github.com/fisker/jpeg-buffer-orientation",
+            "mode": "npm",
             "new": "2.0.3",
             "old": "0.0.0",
           },
           "noty": {
             "info": "https://github.com/needim/noty",
+            "mode": "npm",
             "new": "3.2.0-beta",
             "old": "3.1.0",
           },
           "prismjs": {
             "info": "https://github.com/LeaVerou/prism",
+            "mode": "npm",
             "new": "1.17.1",
             "old": "1.0.0",
           },
           "react": {
             "info": "https://github.com/facebook/react/tree/HEAD/packages/react",
+            "mode": "npm",
             "new": "18.2.0",
             "old": "18.0",
           },
           "styled-components": {
             "info": "https://github.com/styled-components/styled-components",
+            "mode": "npm",
             "new": "5.0.0-rc.2",
             "old": "2.5.0-1",
           },
           "svgstore": {
             "info": "https://github.com/svgstore/svgstore",
+            "mode": "npm",
             "new": "^3.0.0-2",
             "old": "^3.0.0",
           },
           "updates": {
             "info": "https://github.com/silverwind/updates",
+            "mode": "npm",
             "new": "537ccb7",
             "old": "6941e05",
           },
@@ -325,6 +336,7 @@ test("latest", async () => {
         "packageManager": {
           "npm": {
             "info": "https://github.com/npm/cli",
+            "mode": "npm",
             "new": "11.6.2",
             "old": "11.6.0",
           },
@@ -332,11 +344,13 @@ test("latest", async () => {
         "peerDependencies": {
           "@babel/preset-env": {
             "info": "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
+            "mode": "npm",
             "new": "~7.11.5",
             "old": "~6.0.0",
           },
           "typescript": {
             "info": "https://github.com/Microsoft/TypeScript",
+            "mode": "npm",
             "new": "^5",
             "old": "^4",
           },
@@ -344,6 +358,7 @@ test("latest", async () => {
         "resolutions": {
           "versions/updates": {
             "info": "https://github.com/silverwind/updates",
+            "mode": "npm",
             "new": "^10.0.0",
             "old": "^1.0.0",
           },
@@ -360,51 +375,61 @@ test("greatest", async () => {
         "dependencies": {
           "@babel/preset-env": {
             "info": "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
+            "mode": "npm",
             "new": "7.11.5",
             "old": "7.0.0",
           },
           "eslint-plugin-storybook": {
             "info": "https://github.com/storybookjs/storybook/tree/HEAD/code/lib/eslint-plugin",
+            "mode": "npm",
             "new": "10.0.0-beta.6",
             "old": "10.0.0-beta.5",
           },
           "gulp-sourcemaps": {
             "info": "https://github.com/gulp-sourcemaps/gulp-sourcemaps",
+            "mode": "npm",
             "new": "2.6.5",
             "old": "2.0.0",
           },
           "html-webpack-plugin": {
             "info": "https://github.com/jantimon/html-webpack-plugin",
+            "mode": "npm",
             "new": "4.0.0-beta.11",
             "old": "4.0.0-alpha.2",
           },
           "jpeg-buffer-orientation": {
             "info": "https://github.com/fisker/jpeg-buffer-orientation",
+            "mode": "npm",
             "new": "2.0.3",
             "old": "0.0.0",
           },
           "noty": {
             "info": "https://github.com/needim/noty",
+            "mode": "npm",
             "new": "3.1.4",
             "old": "3.1.0",
           },
           "prismjs": {
             "info": "https://github.com/LeaVerou/prism",
+            "mode": "npm",
             "new": "1.17.1",
             "old": "1.0.0",
           },
           "react": {
             "info": "https://github.com/facebook/react/tree/HEAD/packages/react",
+            "mode": "npm",
             "new": "18.2.0",
             "old": "18.0",
           },
           "styled-components": {
             "info": "https://github.com/styled-components/styled-components",
+            "mode": "npm",
             "new": "5.0.0-rc.2",
             "old": "2.5.0-1",
           },
           "updates": {
             "info": "https://github.com/silverwind/updates",
+            "mode": "npm",
             "new": "537ccb7",
             "old": "6941e05",
           },
@@ -412,6 +437,7 @@ test("greatest", async () => {
         "packageManager": {
           "npm": {
             "info": "https://github.com/npm/cli",
+            "mode": "npm",
             "new": "11.6.2",
             "old": "11.6.0",
           },
@@ -419,11 +445,13 @@ test("greatest", async () => {
         "peerDependencies": {
           "@babel/preset-env": {
             "info": "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
+            "mode": "npm",
             "new": "~7.11.5",
             "old": "~6.0.0",
           },
           "typescript": {
             "info": "https://github.com/Microsoft/TypeScript",
+            "mode": "npm",
             "new": "^5",
             "old": "^4",
           },
@@ -431,6 +459,7 @@ test("greatest", async () => {
         "resolutions": {
           "versions/updates": {
             "info": "https://github.com/silverwind/updates",
+            "mode": "npm",
             "new": "^10.0.0",
             "old": "^1.0.0",
           },
@@ -447,56 +476,67 @@ test("prerelease", async () => {
         "dependencies": {
           "@babel/preset-env": {
             "info": "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
+            "mode": "npm",
             "new": "7.11.5",
             "old": "7.0.0",
           },
           "eslint-plugin-storybook": {
             "info": "https://github.com/storybookjs/storybook/tree/HEAD/code/lib/eslint-plugin",
+            "mode": "npm",
             "new": "10.0.0-beta.6",
             "old": "10.0.0-beta.5",
           },
           "gulp-sourcemaps": {
             "info": "https://github.com/gulp-sourcemaps/gulp-sourcemaps",
+            "mode": "npm",
             "new": "2.6.5",
             "old": "2.0.0",
           },
           "html-webpack-plugin": {
             "info": "https://github.com/jantimon/html-webpack-plugin",
+            "mode": "npm",
             "new": "4.0.0-beta.11",
             "old": "4.0.0-alpha.2",
           },
           "jpeg-buffer-orientation": {
             "info": "https://github.com/fisker/jpeg-buffer-orientation",
+            "mode": "npm",
             "new": "2.0.3",
             "old": "0.0.0",
           },
           "noty": {
             "info": "https://github.com/needim/noty",
+            "mode": "npm",
             "new": "3.2.0-beta",
             "old": "3.1.0",
           },
           "prismjs": {
             "info": "https://github.com/LeaVerou/prism",
+            "mode": "npm",
             "new": "1.17.1",
             "old": "1.0.0",
           },
           "react": {
             "info": "https://github.com/facebook/react/tree/HEAD/packages/react",
+            "mode": "npm",
             "new": "18.3.0-next-d1e35c703-20221110",
             "old": "18.0",
           },
           "styled-components": {
             "info": "https://github.com/styled-components/styled-components",
+            "mode": "npm",
             "new": "5.0.0-rc.2",
             "old": "2.5.0-1",
           },
           "svgstore": {
             "info": "https://github.com/svgstore/svgstore",
+            "mode": "npm",
             "new": "^3.0.0-2",
             "old": "^3.0.0",
           },
           "updates": {
             "info": "https://github.com/silverwind/updates",
+            "mode": "npm",
             "new": "537ccb7",
             "old": "6941e05",
           },
@@ -504,6 +544,7 @@ test("prerelease", async () => {
         "packageManager": {
           "npm": {
             "info": "https://github.com/npm/cli",
+            "mode": "npm",
             "new": "11.6.2",
             "old": "11.6.0",
           },
@@ -511,11 +552,13 @@ test("prerelease", async () => {
         "peerDependencies": {
           "@babel/preset-env": {
             "info": "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
+            "mode": "npm",
             "new": "~7.11.5",
             "old": "~6.0.0",
           },
           "typescript": {
             "info": "https://github.com/Microsoft/TypeScript",
+            "mode": "npm",
             "new": "^5",
             "old": "^4",
           },
@@ -523,6 +566,7 @@ test("prerelease", async () => {
         "resolutions": {
           "versions/updates": {
             "info": "https://github.com/silverwind/updates",
+            "mode": "npm",
             "new": "^10.0.0",
             "old": "^1.0.0",
           },
@@ -539,56 +583,67 @@ test("release", async () => {
         "dependencies": {
           "@babel/preset-env": {
             "info": "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
+            "mode": "npm",
             "new": "7.11.5",
             "old": "7.0.0",
           },
           "eslint-plugin-storybook": {
             "info": "https://github.com/storybookjs/storybook/tree/HEAD/code/lib/eslint-plugin",
+            "mode": "npm",
             "new": "9.1.7",
             "old": "10.0.0-beta.5",
           },
           "gulp-sourcemaps": {
             "info": "https://github.com/gulp-sourcemaps/gulp-sourcemaps",
+            "mode": "npm",
             "new": "2.6.5",
             "old": "2.0.0",
           },
           "html-webpack-plugin": {
             "info": "https://github.com/jantimon/html-webpack-plugin",
+            "mode": "npm",
             "new": "3.2.0",
             "old": "4.0.0-alpha.2",
           },
           "jpeg-buffer-orientation": {
             "info": "https://github.com/fisker/jpeg-buffer-orientation",
+            "mode": "npm",
             "new": "2.0.3",
             "old": "0.0.0",
           },
           "noty": {
             "info": "https://github.com/needim/noty",
+            "mode": "npm",
             "new": "3.1.4",
             "old": "3.1.0",
           },
           "prismjs": {
             "info": "https://github.com/LeaVerou/prism",
+            "mode": "npm",
             "new": "1.17.1",
             "old": "1.0.0",
           },
           "react": {
             "info": "https://github.com/facebook/react/tree/HEAD/packages/react",
+            "mode": "npm",
             "new": "18.2.0",
             "old": "18.0",
           },
           "styled-components": {
             "info": "https://github.com/styled-components/styled-components",
+            "mode": "npm",
             "new": "4.4.1",
             "old": "2.5.0-1",
           },
           "svgstore": {
             "info": "https://github.com/svgstore/svgstore",
+            "mode": "npm",
             "new": "^2.0.3",
             "old": "^3.0.0",
           },
           "updates": {
             "info": "https://github.com/silverwind/updates",
+            "mode": "npm",
             "new": "537ccb7",
             "old": "6941e05",
           },
@@ -596,6 +651,7 @@ test("release", async () => {
         "packageManager": {
           "npm": {
             "info": "https://github.com/npm/cli",
+            "mode": "npm",
             "new": "11.6.2",
             "old": "11.6.0",
           },
@@ -603,11 +659,13 @@ test("release", async () => {
         "peerDependencies": {
           "@babel/preset-env": {
             "info": "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
+            "mode": "npm",
             "new": "~7.11.5",
             "old": "~6.0.0",
           },
           "typescript": {
             "info": "https://github.com/Microsoft/TypeScript",
+            "mode": "npm",
             "new": "^5",
             "old": "^4",
           },
@@ -615,6 +673,7 @@ test("release", async () => {
         "resolutions": {
           "versions/updates": {
             "info": "https://github.com/silverwind/updates",
+            "mode": "npm",
             "new": "^10.0.0",
             "old": "^1.0.0",
           },
@@ -631,21 +690,25 @@ test("patch", async () => {
         "dependencies": {
           "gulp-sourcemaps": {
             "info": "https://github.com/floridoo/gulp-sourcemaps",
+            "mode": "npm",
             "new": "2.0.1",
             "old": "2.0.0",
           },
           "noty": {
             "info": "https://github.com/needim/noty",
+            "mode": "npm",
             "new": "3.1.4",
             "old": "3.1.0",
           },
           "react": {
             "info": "https://github.com/facebook/react/tree/HEAD/packages/react",
+            "mode": "npm",
             "new": "18.0.0",
             "old": "18.0",
           },
           "updates": {
             "info": "https://github.com/silverwind/updates",
+            "mode": "npm",
             "new": "537ccb7",
             "old": "6941e05",
           },
@@ -653,6 +716,7 @@ test("patch", async () => {
         "packageManager": {
           "npm": {
             "info": "https://github.com/npm/cli",
+            "mode": "npm",
             "new": "11.6.2",
             "old": "11.6.0",
           },
@@ -660,6 +724,7 @@ test("patch", async () => {
         "resolutions": {
           "versions/updates": {
             "info": "https://github.com/silverwind/updates",
+            "mode": "npm",
             "new": "^1.0.6",
             "old": "^1.0.0",
           },
@@ -676,6 +741,7 @@ test("include", async () => {
         "dependencies": {
           "noty": {
             "info": "https://github.com/needim/noty",
+            "mode": "npm",
             "new": "3.2.0-beta",
             "old": "3.1.0",
           },
@@ -683,6 +749,7 @@ test("include", async () => {
         "packageManager": {
           "npm": {
             "info": "https://github.com/npm/cli",
+            "mode": "npm",
             "new": "11.6.2",
             "old": "11.6.0",
           },
@@ -699,6 +766,7 @@ test("include 2", async () => {
         "dependencies": {
           "noty": {
             "info": "https://github.com/needim/noty",
+            "mode": "npm",
             "new": "3.2.0-beta",
             "old": "3.1.0",
           },
@@ -706,6 +774,7 @@ test("include 2", async () => {
         "packageManager": {
           "npm": {
             "info": "https://github.com/npm/cli",
+            "mode": "npm",
             "new": "11.6.2",
             "old": "11.6.0",
           },
@@ -722,6 +791,7 @@ test("include 3", async () => {
         "dependencies": {
           "noty": {
             "info": "https://github.com/needim/noty",
+            "mode": "npm",
             "new": "3.2.0-beta",
             "old": "3.1.0",
           },
@@ -729,6 +799,7 @@ test("include 3", async () => {
         "packageManager": {
           "npm": {
             "info": "https://github.com/npm/cli",
+            "mode": "npm",
             "new": "11.6.2",
             "old": "11.6.0",
           },
@@ -745,6 +816,7 @@ test("packageManager", async () => {
         "packageManager": {
           "npm": {
             "info": "https://github.com/npm/cli",
+            "mode": "npm",
             "new": "11.6.2",
             "old": "11.6.0",
           },
@@ -761,11 +833,13 @@ test("exclude", async () => {
         "dependencies": {
           "eslint-plugin-storybook": {
             "info": "https://github.com/storybookjs/storybook/tree/HEAD/code/lib/eslint-plugin",
+            "mode": "npm",
             "new": "0.0.0-pr-32455-sha-2828decf",
             "old": "10.0.0-beta.5",
           },
           "updates": {
             "info": "https://github.com/silverwind/updates",
+            "mode": "npm",
             "new": "537ccb7",
             "old": "6941e05",
           },
@@ -773,6 +847,7 @@ test("exclude", async () => {
         "packageManager": {
           "npm": {
             "info": "https://github.com/npm/cli",
+            "mode": "npm",
             "new": "11.6.2",
             "old": "11.6.0",
           },
@@ -780,6 +855,7 @@ test("exclude", async () => {
         "peerDependencies": {
           "typescript": {
             "info": "https://github.com/Microsoft/TypeScript",
+            "mode": "npm",
             "new": "^5",
             "old": "^4",
           },
@@ -796,6 +872,7 @@ test("exclude 2", async () => {
         "dependencies": {
           "react": {
             "info": "https://github.com/facebook/react/tree/HEAD/packages/react",
+            "mode": "npm",
             "new": "18.2.0",
             "old": "18.0",
           },
@@ -803,6 +880,7 @@ test("exclude 2", async () => {
         "packageManager": {
           "npm": {
             "info": "https://github.com/npm/cli",
+            "mode": "npm",
             "new": "11.6.2",
             "old": "11.6.0",
           },
@@ -819,6 +897,7 @@ test("exclude 3", async () => {
         "dependencies": {
           "gulp-sourcemaps": {
             "info": "https://github.com/gulp-sourcemaps/gulp-sourcemaps",
+            "mode": "npm",
             "new": "2.6.5",
             "old": "2.0.0",
           },
@@ -826,6 +905,7 @@ test("exclude 3", async () => {
         "packageManager": {
           "npm": {
             "info": "https://github.com/npm/cli",
+            "mode": "npm",
             "new": "11.6.2",
             "old": "11.6.0",
           },
@@ -842,6 +922,7 @@ test("exclude 4", async () => {
         "dependencies": {
           "gulp-sourcemaps": {
             "info": "https://github.com/floridoo/gulp-sourcemaps",
+            "mode": "npm",
             "new": "2.0.1",
             "old": "2.0.0",
           },
@@ -849,6 +930,7 @@ test("exclude 4", async () => {
         "packageManager": {
           "npm": {
             "info": "https://github.com/npm/cli",
+            "mode": "npm",
             "new": "11.6.2",
             "old": "11.6.0",
           },
@@ -865,11 +947,13 @@ test("poetry", async () => {
         "tool.poetry.group.dev.dependencies": {
           "PyYAML": {
             "info": "https://github.com/yaml/pyyaml",
+            "mode": "pypi",
             "new": "6.0",
             "old": "1.0",
           },
           "djlint": {
             "info": "https://github.com/Riverside-Healthcare/djlint",
+            "mode": "pypi",
             "new": "1.31.0",
             "old": "1.30.0",
           },
@@ -886,16 +970,19 @@ test("uv", async () => {
         "dependency-groups.dev": {
           "PyYAML": {
             "info": "https://github.com/yaml/pyyaml",
+            "mode": "pypi",
             "new": "6.0",
             "old": "1.0",
           },
           "types-paramiko": {
             "info": "https://github.com/python/typeshed",
+            "mode": "pypi",
             "new": "3.5.0.20250801",
             "old": "3.4.0.20240423",
           },
           "types-requests": {
             "info": "https://github.com/python/typeshed",
+            "mode": "pypi",
             "new": "2.32.4.20250611",
             "old": "2.32.0.20240622",
           },
@@ -903,11 +990,13 @@ test("uv", async () => {
         "project.dependencies": {
           "djlint": {
             "info": "https://github.com/Riverside-Healthcare/djlint",
+            "mode": "pypi",
             "new": "1.31.0",
             "old": "1.30.0",
           },
           "ty": {
             "info": "https://github.com/astral-sh/ty",
+            "mode": "pypi",
             "new": "0.0.1a19",
             "old": "0.0.1a15",
           },
@@ -924,51 +1013,61 @@ test("dual", async () => {
         "dependencies": {
           "@babel/preset-env": {
             "info": "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
+            "mode": "npm",
             "new": "7.11.5",
             "old": "7.0.0",
           },
           "gulp-sourcemaps": {
             "info": "https://github.com/gulp-sourcemaps/gulp-sourcemaps",
+            "mode": "npm",
             "new": "2.6.5",
             "old": "2.0.0",
           },
           "html-webpack-plugin": {
             "info": "https://github.com/jantimon/html-webpack-plugin",
+            "mode": "npm",
             "new": "4.0.0-beta.11",
             "old": "4.0.0-alpha.2",
           },
           "jpeg-buffer-orientation": {
             "info": "https://github.com/fisker/jpeg-buffer-orientation",
+            "mode": "npm",
             "new": "2.0.3",
             "old": "0.0.0",
           },
           "noty": {
             "info": "https://github.com/needim/noty",
+            "mode": "npm",
             "new": "3.2.0-beta",
             "old": "3.1.0",
           },
           "prismjs": {
             "info": "https://github.com/LeaVerou/prism",
+            "mode": "npm",
             "new": "1.17.1",
             "old": "1.0.0",
           },
           "react": {
             "info": "https://github.com/facebook/react/tree/HEAD/packages/react",
+            "mode": "npm",
             "new": "18.2.0",
             "old": "18.0",
           },
           "styled-components": {
             "info": "https://github.com/styled-components/styled-components",
+            "mode": "npm",
             "new": "5.0.0-rc.2",
             "old": "2.5.0-1",
           },
           "svgstore": {
             "info": "https://github.com/svgstore/svgstore",
+            "mode": "npm",
             "new": "^3.0.0-2",
             "old": "^3.0.0",
           },
           "updates": {
             "info": "https://github.com/silverwind/updates",
+            "mode": "npm",
             "new": "537ccb7",
             "old": "6941e05",
           },
@@ -976,6 +1075,7 @@ test("dual", async () => {
         "peerDependencies": {
           "@babel/preset-env": {
             "info": "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
+            "mode": "npm",
             "new": "~7.11.5",
             "old": "~6.0.0",
           },
@@ -983,6 +1083,7 @@ test("dual", async () => {
         "resolutions": {
           "versions/updates": {
             "info": "https://github.com/silverwind/updates",
+            "mode": "npm",
             "new": "^10.0.0",
             "old": "^1.0.0",
           },
@@ -992,6 +1093,7 @@ test("dual", async () => {
         "dependencies": {
           "updates": {
             "info": "https://github.com/silverwind/updates",
+            "mode": "pypi",
             "new": "537ccb7",
             "old": "6941e05",
           },
@@ -999,6 +1101,7 @@ test("dual", async () => {
         "tool.poetry.group.dev.dependencies": {
           "djlint": {
             "info": "https://github.com/Riverside-Healthcare/djlint",
+            "mode": "pypi",
             "new": "1.31.0",
             "old": "1.30.0",
           },
@@ -1015,6 +1118,7 @@ test("dual 2", async () => {
         "dependencies": {
           "noty": {
             "info": "https://github.com/needim/noty",
+            "mode": "npm",
             "new": "3.2.0-beta",
             "old": "3.1.0",
           },
