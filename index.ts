@@ -608,20 +608,13 @@ function formatDeps(deps: DepsByMode): string {
       const id = `${mode}|${name}`;
       if (seen.has(id)) continue;
       seen.add(id);
-      const row = hasMultipleModes ? [
-        mode === "go" ? shortenGoModule(name) : name,
-        mode,
-        highlightDiff(data.old, data.new, red),
-        highlightDiff(data.new, data.old, green),
-        data.age || "",
-        data.info || "",
-      ] : [
-        mode === "go" ? shortenGoModule(name) : name,
-        highlightDiff(data.old, data.new, red),
-        highlightDiff(data.new, data.old, green),
-        data.age || "",
-        data.info || "",
-      ];
+      const row = [];
+      row.push(mode === "go" ? shortenGoModule(name) : name);
+      if (hasMultipleModes) row.push(mode);
+      row.push(highlightDiff(data.old, data.new, red));
+      row.push(highlightDiff(data.new, data.old, green));
+      row.push(data.age || "");
+      row.push(data.info || "");
       arr.push(row);
     }
   }
