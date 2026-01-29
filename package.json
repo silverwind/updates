@@ -16,14 +16,15 @@
     "node": ">=22"
   },
   "devDependencies": {
-    "@pnpm/npm-conf": "3.0.2",
     "@types/node": "25.0.10",
+    "@types/rc": "1.2.4",
     "@types/semver": "7.7.1",
     "@typescript/native-preview": "7.0.0-dev.20260123.3",
     "eslint": "9.39.2",
     "eslint-config-silverwind": "118.0.0",
     "nano-spawn": "2.0.0",
     "p-map": "7.0.4",
+    "rc": "1.2.8",
     "registry-auth-token": "5.1.1",
     "restana": "5.1.0",
     "semver": "7.7.3",

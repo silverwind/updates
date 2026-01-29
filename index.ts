@@ -238,22 +238,19 @@ let rat: typeof registryAuthToken | null = null;
 
 async function getNpmrc() {
   if (npmrc) return npmrc;
-  const npmConf = (await import("@pnpm/npm-conf")).default;
-  const {config} = npmConf();
-  // Convert config object to plain object for compatibility with registry-auth-token
-  return {...config.root, ...Object.assign({}, ...config.list)};
+  return (await import("rc")).default("npm", {registry: defaultRegistry});
 }
 
 async function getAuthAndRegistry(name: string, registry: string): Promise<AuthAndRegistry> {
   if (!npmrc) npmrc = await getNpmrc();
-  if (!authOpts) authOpts = {npmrc: npmrc!, recursive: true};
+  if (!authOpts) authOpts = {npmrc, recursive: true};
   if (!rat) rat = (await import("registry-auth-token")).default;
 
   if (!name.startsWith("@")) {
     return {auth: rat(registry, authOpts), registry};
   } else {
     const scope = (/@[a-z0-9][\w-.]+/.exec(name) || [""])[0];
-    const url = normalizeUrl(registryUrl(scope, npmrc!));
+    const url = normalizeUrl(registryUrl(scope, npmrc));
     if (url !== registry) {
       try {
         const newAuth = rat(url, authOpts);
@@ -306,7 +303,7 @@ type PackageInfo = [Record<string, any>, string, string | null, string];
 async function fetchNpmInfo(name: string, type: string, config: Config): Promise<PackageInfo> {
   if (!npmrc) npmrc = await getNpmrc();
   const originalRegistry = normalizeUrl((typeof args.registry === "string" ? args.registry : false) ||
-    config.registry || npmrc!.registry || defaultRegistry,
+    config.registry || npmrc.registry || defaultRegistry,
   );
 
   const {auth, registry} = await getAuthAndRegistry(name, originalRegistry);
