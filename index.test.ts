@@ -294,7 +294,6 @@ test("global", async () => {
     expect(stdout).toContain("prismjs");
     expect(stdout).toContain("https://github.com/silverwind/updates");
   } finally {
-    await nanoSpawn("npm", ["uninstall", "-g", "updates"]);
     await nanoSpawn("npm", ["install", "-g", "updates@latest"]);
   }
 });
