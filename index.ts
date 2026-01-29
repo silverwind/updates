@@ -1027,21 +1027,29 @@ async function loadConfig(rootDir: string): Promise<Config> {
   }
   let config: Config = {};
 
-  for (const filename of filenames) {
-    const fullPath = join(rootDir, ...filename.split("/"));
-    const fileUrl = pathToFileURL(fullPath);
+  try {
+    ({default: config} = await Promise.any(filenames.map(async (filename) => {
+      const fullPath = join(rootDir, ...filename.split("/"));
+      const fileUrl = pathToFileURL(fullPath);
 
-    try {
-      accessSync(fileUrl);
-    } catch {
-      continue;
-    }
+      try {
+        accessSync(fileUrl);
+      } catch {
+        throw new Error(`File not found: ${filename}`);
+      }
 
-    try {
-      ({default: config} = await import(fileUrl.href));
-      break;
-    } catch (err) {
-      throw new Error(`Unable to parse config file ${filename}: ${err.message}`);
+      try {
+        return await import(fileUrl.href);
+      } catch (err) {
+        throw new Error(`Unable to parse config file ${filename}: ${err.message}`);
+      }
+    })));
+  } catch (err) {
+    if (err instanceof AggregateError) {
+      const parseErrors = err.errors.filter(e => e.message.startsWith("Unable to parse"));
+      if (parseErrors.length > 0) {
+        throw parseErrors[0];
+      }
     }
   }
 
