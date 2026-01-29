@@ -1025,11 +1025,23 @@ async function loadConfig(rootDir: string): Promise<Config> {
     }
   }
   let config: Config = {};
-  try {
-    ({default: config} = await Promise.any(filenames.map(str => {
-      return import(join(rootDir, ...str.split("/")));
-    })));
-  } catch {}
+
+  // Try to import each config file
+  for (const filename of filenames) {
+    try {
+      const fullPath = join(rootDir, ...filename.split("/"));
+      ({default: config} = await import(fullPath));
+      break; // Successfully loaded a config file
+    } catch (err: any) {
+      // If file doesn't exist, try the next one
+      if (err?.code === "ERR_MODULE_NOT_FOUND") {
+        continue;
+      }
+      // Any other error (e.g., syntax error) should be reported
+      throw new Error(`Unable to parse config file ${filename}: ${err.message}`);
+    }
+  }
+
   return config;
 }
 
