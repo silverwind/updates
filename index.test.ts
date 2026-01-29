@@ -12,6 +12,7 @@ import {npmTypes, poetryTypes, uvTypes, goTypes} from "./utils.ts";
 
 const testFile = fileURLToPath(new URL("fixtures/npm-test/package.json", import.meta.url));
 const emptyFile = fileURLToPath(new URL("fixtures/npm-empty/package.json", import.meta.url));
+const jsrFile = fileURLToPath(new URL("fixtures/npm-jsr/package.json", import.meta.url));
 const poetryFile = fileURLToPath(new URL("fixtures/poetry/pyproject.toml", import.meta.url));
 const uvFile = fileURLToPath(new URL("fixtures/uv/pyproject.toml", import.meta.url));
 // const goFile = fileURLToPath(new URL("fixtures/go/go.mod", import.meta.url));
@@ -130,15 +131,18 @@ function resolutionsBasePackage(name: string) {
 let npmServer: ReturnType<typeof createSimpleServer>;
 let githubServer: ReturnType<typeof createSimpleServer>;
 let pypiServer: ReturnType<typeof createSimpleServer>;
+let jsrServer: ReturnType<typeof createSimpleServer>;
 
 let githubUrl: string;
 let pypiUrl: string;
 let npmUrl: string;
+let jsrUrl: string;
 
 beforeAll(async () => {
   npmServer = createSimpleServer(defaultRoute);
   githubServer = createSimpleServer(defaultRoute);
   pypiServer = createSimpleServer(defaultRoute);
+  jsrServer = createSimpleServer(defaultRoute);
 
   const [commits, tags] = await Promise.all([
     readFile(fileURLToPath(new URL("fixtures/github/updates-commits.json", import.meta.url))),
@@ -158,6 +162,13 @@ beforeAll(async () => {
     pypiServer.get(`/pypi/${parse(path).name}/json`, async (_, res) => res.send(await readFile(path)));
   }
 
+  for (const file of readdirSync(join(import.meta.dirname, `fixtures/jsr`))) {
+    const path = join(import.meta.dirname, `fixtures/jsr/${file}`);
+    const pkgName = parse(path).name; // e.g., "@std__semver"
+    const [scope, name] = pkgName.replace("@", "").split("__");
+    jsrServer.get(`/@${scope}/${name}/meta.json`, async (_, res) => res.send(await readFile(path)));
+  }
+
   githubServer.get("/repos/silverwind/updates/commits", (_, res) => res.send(commits));
   githubServer.get("/repos/silverwind/updates/git/refs/tags", (_, res) => res.send(tags));
 
@@ -165,11 +176,13 @@ beforeAll(async () => {
     githubServer.start(0),
     pypiServer.start(0),
     npmServer.start(0),
+    jsrServer.start(0),
   ]);
 
   githubUrl = makeUrl(githubServer);
   npmUrl = makeUrl(npmServer);
   pypiUrl = makeUrl(pypiServer);
+  jsrUrl = makeUrl(jsrServer);
 
   await writeFile(join(testDir, ".npmrc"), `registry=${npmUrl}`); // Fake registry
   await writeFile(join(testDir, "package.json"), JSON.stringify(testPkg, null, 2)); // Copy fixture
@@ -181,6 +194,7 @@ afterAll(async () => {
     npmServer?.close(),
     githubServer?.close(),
     pypiServer?.close(),
+    jsrServer?.close(),
   ]);
 });
 
@@ -190,6 +204,7 @@ function makeTest(args: string) {
       ...args.split(/\s+/), "-c",
       "--githubapi", githubUrl,
       "--pypiapi", pypiUrl,
+      "--jsrapi", jsrUrl,
     ];
 
     let stdout: string;
@@ -246,6 +261,26 @@ test("empty", async () => {
   expect(stdout).toContain("No dependencies");
 });
 
+test("jsr", async () => {
+  const {stdout, stderr} = await nanoSpawn(process.execPath, [
+    script,
+    "-C",
+    "-j",
+    "--githubapi", githubUrl,
+    "--pypiapi", pypiUrl,
+    "--jsrapi", jsrUrl,
+    "-f", jsrFile,
+  ]);
+  expect(stderr).toEqual("");
+  const {results} = JSON.parse(stdout);
+  expect(results.npm.dependencies["@std/semver"]).toBeDefined();
+  expect(results.npm.dependencies["@std/semver"].old).toBe("1.0.5");
+  expect(results.npm.dependencies["@std/semver"].new).toBe("1.0.8");
+  expect(results.npm.devDependencies["@std/path"]).toBeDefined();
+  expect(results.npm.devDependencies["@std/path"].old).toBe("1.0.0");
+  expect(results.npm.devDependencies["@std/path"].new).toBe("1.0.8");
+});
+
 test("global", async () => {
   await nanoSpawn("npm", ["i", "-g", "."]);
   try {
@@ -297,7 +332,7 @@ test("latest", async () => {
           },
           "noty": {
             "info": "https://github.com/needim/noty",
-            "new": "3.2.0-beta",
+            "new": "3.1.4",
             "old": "3.1.0",
           },
           "prismjs": {
@@ -317,7 +352,7 @@ test("latest", async () => {
           },
           "svgstore": {
             "info": "https://github.com/svgstore/svgstore",
-            "new": "^3.0.0-2",
+            "new": "^2.0.3",
             "old": "^3.0.0",
           },
           "updates": {
@@ -717,7 +752,7 @@ test("include", async () => {
         "dependencies": {
           "noty": {
             "info": "https://github.com/needim/noty",
-            "new": "3.2.0-beta",
+            "new": "3.1.4",
             "old": "3.1.0",
           },
         },
@@ -747,7 +782,7 @@ test("include 2", async () => {
         "dependencies": {
           "noty": {
             "info": "https://github.com/needim/noty",
-            "new": "3.2.0-beta",
+            "new": "3.1.4",
             "old": "3.1.0",
           },
         },
@@ -777,7 +812,7 @@ test("include 3", async () => {
         "dependencies": {
           "noty": {
             "info": "https://github.com/needim/noty",
-            "new": "3.2.0-beta",
+            "new": "3.1.4",
             "old": "3.1.0",
           },
         },
@@ -1020,7 +1055,7 @@ test("dual", async () => {
           },
           "noty": {
             "info": "https://github.com/needim/noty",
-            "new": "3.2.0-beta",
+            "new": "3.1.4",
             "old": "3.1.0",
           },
           "prismjs": {
@@ -1040,7 +1075,7 @@ test("dual", async () => {
           },
           "svgstore": {
             "info": "https://github.com/svgstore/svgstore",
-            "new": "^3.0.0-2",
+            "new": "^2.0.3",
             "old": "^3.0.0",
           },
           "updates": {
@@ -1091,8 +1126,83 @@ test("dual 2", async () => {
         "dependencies": {
           "noty": {
             "info": "https://github.com/needim/noty",
+            "new": "3.1.4",
+            "old": "3.1.0",
+          },
+        },
+      },
+    }
+  `);
+});
+
+test("issue #76: don't upgrade to prerelease from latest dist-tag by default", async () => {
+  // Test that we don't upgrade from stable to prerelease when latest dist-tag is a prerelease
+  // noty: 3.1.0 -> should suggest 3.1.4 (not 3.2.0-beta which is on latest dist-tag)
+  expect(await makeTest("-j -i noty")()).toMatchInlineSnapshot(`
+    {
+      "npm": {
+        "dependencies": {
+          "noty": {
+            "info": "https://github.com/needim/noty",
+            "new": "3.1.4",
+            "old": "3.1.0",
+          },
+        },
+        "packageManager": {
+          "npm": {
+            "info": "https://github.com/npm/cli",
+            "new": "11.6.2",
+            "old": "11.6.0",
+          },
+        },
+      },
+    }
+  `);
+});
+
+test("issue #76: allow upgrade to prerelease with -p flag", async () => {
+  // Test that we DO upgrade to prerelease when explicitly requested with -p flag
+  // noty: 3.1.0 -> should suggest 3.2.0-beta (from latest dist-tag) when -p is used
+  expect(await makeTest("-j -i noty -p")()).toMatchInlineSnapshot(`
+    {
+      "npm": {
+        "dependencies": {
+          "noty": {
+            "info": "https://github.com/needim/noty",
             "new": "3.2.0-beta",
             "old": "3.1.0",
+          },
+        },
+        "packageManager": {
+          "npm": {
+            "info": "https://github.com/npm/cli",
+            "new": "11.6.2",
+            "old": "11.6.0",
+          },
+        },
+      },
+    }
+  `);
+});
+
+test("issue #76: allow upgrade from prerelease to prerelease without -p flag", async () => {
+  // Test that upgrading from prerelease to prerelease works without -p flag
+  // eslint-plugin-storybook: 10.0.0-beta.5 -> should allow upgrade to another prerelease
+  expect(await makeTest("-j -i eslint-plugin-storybook")()).toMatchInlineSnapshot(`
+    {
+      "npm": {
+        "dependencies": {
+          "eslint-plugin-storybook": {
+            "info": "https://github.com/storybookjs/storybook/tree/HEAD/code/lib/eslint-plugin",
+            "new": "0.0.0-pr-32455-sha-2828decf",
+            "old": "10.0.0-beta.5",
+          },
+        },
+        "packageManager": {
+          "npm": {
+            "info": "https://github.com/npm/cli",
+            "new": "11.6.2",
+            "old": "11.6.0",
           },
         },
       },
