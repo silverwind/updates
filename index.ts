@@ -795,6 +795,11 @@ function findNewVersion(data: any, {mode, range, useGreatest, useRel, usePre, se
       }
     }
 
+    // prevent upgrading from non-prerelease to prerelease from latest dist-tag by default
+    if (!oldIsPre && latestIsPre && !usePre) {
+      return version;
+    }
+
     // in all other cases, return latest dist-tag
     return originalLatestTag || latestTag;
   }
