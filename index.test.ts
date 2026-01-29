@@ -5,7 +5,7 @@ import {readFileSync, mkdtempSync, readdirSync} from "node:fs";
 import {writeFile, readFile, rm} from "node:fs/promises";
 import {fileURLToPath} from "node:url";
 import {tmpdir} from "node:os";
-import {execPath} from "node:process";
+import {execPath, versions} from "node:process";
 import {gzipSync} from "node:zlib";
 import type {Server} from "node:http";
 import {npmTypes, poetryTypes, uvTypes, goTypes} from "./utils.ts";
@@ -281,22 +281,24 @@ test("jsr", async () => {
   expect(results.npm.devDependencies["@std/path"].new).toBe("1.0.8");
 });
 
-test("global", async () => {
-  await nanoSpawn("npm", ["i", "-g", "."]);
-  try {
-    const {stdout, stderr} = await nanoSpawn("updates", [
-      "-C",
-      "--githubapi", githubUrl,
-      "--pypiapi", pypiUrl,
-      "-f", testFile,
-    ]);
-    expect(stderr).toEqual("");
-    expect(stdout).toContain("prismjs");
-    expect(stdout).toContain("https://github.com/silverwind/updates");
-  } finally {
-    await nanoSpawn("npm", ["install", "-g", "updates@latest"]);
-  }
-});
+if (!versions.bun) {
+  test("global", async () => {
+    await nanoSpawn("npm", ["i", "-g", "."]);
+    try {
+      const {stdout, stderr} = await nanoSpawn("updates", [
+        "-C",
+        "--githubapi", githubUrl,
+        "--pypiapi", pypiUrl,
+        "-f", testFile,
+      ]);
+      expect(stderr).toEqual("");
+      expect(stdout).toContain("prismjs");
+      expect(stdout).toContain("https://github.com/silverwind/updates");
+    } finally {
+      await nanoSpawn("npm", ["install", "-g", "updates@latest"]);
+    }
+  });
+}
 
 
 test("latest", async () => {
