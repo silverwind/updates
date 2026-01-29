@@ -179,7 +179,7 @@ for (const [index, token] of result.tokens.entries()) {
 
 const args = result.values;
 
-const [magenta, red, green, yellow] = (["magenta", "red", "green", "yellow"] as const)
+const [magenta, red, green] = (["magenta", "red", "green"] as const)
   .map(color => args["no-color"] ? String : (text: string | number) => styleText(color, String(text)));
 
 const greatest = argSetToRegexes(parseMixedArg(args.greatest));
@@ -236,7 +236,6 @@ let authOpts: AuthOptions | null = null;
 let npmrc: Npmrc | null = null;
 let rat: typeof registryAuthToken | null = null;
 
-// Cache for auth results to avoid redundant lookups
 const authCache = new Map<string, AuthAndRegistry>();
 
 async function getNpmrc() {
@@ -249,7 +248,6 @@ async function getAuthAndRegistry(name: string, registry: string): Promise<AuthA
   if (!authOpts) authOpts = {npmrc, recursive: true};
   if (!rat) rat = (await import("registry-auth-token")).default;
 
-  // Check cache first
   const scope = name.startsWith("@") ? (/@[a-z0-9][\w-.]+/.exec(name) || [""])[0] : "";
   const cacheKey = `${scope}:${registry}`;
   const cached = authCache.get(cacheKey);
@@ -276,7 +274,6 @@ async function getAuthAndRegistry(name: string, registry: string): Promise<AuthA
     }
   }
 
-  // Cache the result
   authCache.set(cacheKey, result);
   return result;
 }
@@ -312,44 +309,11 @@ function logVerbose(message: string): void {
   console.error(`${timestamp()} ${message}`);
 }
 
-async function doFetch(url: string, opts?: RequestInit, retries = 2): Promise<Response> {
-  const timeout = 30000; // 30 second timeout
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeout);
-
-  const fetchOpts: RequestInit = {
-    ...opts,
-    signal: controller.signal,
-  };
-
-  try {
-    if (args.verbose) logVerbose(`${magenta("fetch")} ${url}`);
-    const res = await fetch(url, fetchOpts);
-    clearTimeout(timeoutId);
-    if (args.verbose) logVerbose(`${res.ok ? green(res.status) : red(res.status)} ${url}`);
-
-    // Retry on 5xx errors or 429 (rate limit)
-    if (retries > 0 && (res.status >= 500 || res.status === 429)) {
-      const delay = (3 - retries) * 1000; // Exponential backoff: 1s, 2s
-      if (args.verbose) logVerbose(`${yellow("retry")} ${url} in ${delay}ms (${retries} left)`);
-      await new Promise(resolve => setTimeout(resolve, delay));
-      return doFetch(url, opts, retries - 1);
-    }
-
-    return res;
-  } catch (err: any) {
-    clearTimeout(timeoutId);
-
-    // Retry on network errors or timeouts
-    if (retries > 0 && (err.name === "AbortError" || err.cause?.code === "ECONNRESET" || err.cause?.code === "ETIMEDOUT")) {
-      const delay = (3 - retries) * 1000; // Exponential backoff: 1s, 2s
-      if (args.verbose) logVerbose(`${yellow("retry")} ${url} in ${delay}ms (${retries} left) - ${err.message}`);
-      await new Promise(resolve => setTimeout(resolve, delay));
-      return doFetch(url, opts, retries - 1);
-    }
-
-    throw err;
-  }
+async function doFetch(url: string, opts?: RequestInit): Promise<Response> {
+  if (args.verbose) logVerbose(`${magenta("fetch")} ${url}`);
+  const res = await fetch(url, opts);
+  if (args.verbose) logVerbose(`${res.ok ? green(res.status) : red(res.status)} ${url}`);
+  return res;
 }
 
 type PackageInfo = [Record<string, any>, string, string | null, string];
