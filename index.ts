@@ -351,6 +351,83 @@ async function fetchPypiInfo(name: string, type: string): Promise<PackageInfo> {
   }
 }
 
+// Check if a dependency value is a JSR dependency
+function isJsrDependency(value: string): boolean {
+  return value.startsWith("npm:@jsr/") || value.startsWith("jsr:");
+}
+
+// Parse JSR dependency value and extract package name and version
+// Examples:
+// - "npm:@jsr/std__semver@1.0.5" -> { scope: "std", name: "semver", version: "1.0.5" }
+// - "jsr:@std/semver@1.0.5" -> { scope: "std", name: "semver", version: "1.0.5" }
+// - "jsr:1.0.5" (when package name is known) -> { scope: null, name: null, version: "1.0.5" }
+function parseJsrDependency(value: string, packageName?: string): {scope: string | null, name: string | null, version: string} {
+  if (value.startsWith("npm:@jsr/")) {
+    // Format: npm:@jsr/std__semver@1.0.5
+    const match = value.match(/^npm:@jsr\/([^_]+)__([^@]+)@(.+)$/);
+    if (match) {
+      return {scope: match[1], name: match[2], version: match[3]};
+    }
+  } else if (value.startsWith("jsr:@")) {
+    // Format: jsr:@std/semver@1.0.5
+    const match = value.match(/^jsr:@([^/]+)\/([^@]+)@(.+)$/);
+    if (match) {
+      return {scope: match[1], name: match[2], version: match[3]};
+    }
+  } else if (value.startsWith("jsr:")) {
+    // Format: jsr:1.0.5 (short form when package name is in the dependency key)
+    const version = value.substring(4);
+    if (packageName?.startsWith("@")) {
+      const match = packageName.match(/^@([^/]+)\/(.+)$/);
+      if (match) {
+        return {scope: match[1], name: match[2], version};
+      }
+    }
+  }
+  return {scope: null, name: null, version: ""};
+}
+
+// Fetch JSR package metadata
+async function fetchJsrInfo(packageName: string, type: string): Promise<PackageInfo> {
+  // Parse package name to get scope and name
+  const match = packageName.match(/^@([^/]+)\/(.+)$/);
+  if (!match) {
+    throw new Error(`Invalid JSR package name: ${packageName}`);
+  }
+  const [, scope, name] = match;
+  const url = `https://jsr.io/@${scope}/${name}/meta.json`;
+
+  const res = await doFetch(url, {headers: {"accept-encoding": "gzip, deflate, br"}});
+  if (res?.ok) {
+    const data = await res.json();
+    // Transform JSR format to match npm-like format for compatibility
+    const versions: Record<string, any> = {};
+    for (const [version, metadata] of Object.entries(data.versions as Record<string, any>)) {
+      versions[version] = {
+        version,
+        time: metadata.createdAt,
+      };
+    }
+    const transformedData = {
+      name: packageName,
+      "dist-tags": {
+        latest: data.latest,
+      },
+      versions,
+      time: Object.fromEntries(
+        Object.entries(data.versions as Record<string, any>).map(([v, m]: [string, any]) => [v, m.createdAt])
+      ),
+    };
+    return [transformedData, type, "https://jsr.io", packageName];
+  } else {
+    if (res?.status && res?.statusText) {
+      throw new Error(`Received ${res.status} ${res.statusText} from ${url}`);
+    } else {
+      throw new Error(`Unable to fetch ${packageName} from JSR`);
+    }
+  }
+}
+
 function splitPlainText(str: string): Array<string> {
   return str.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
 }
@@ -1194,7 +1271,14 @@ async function main(): Promise<void> {
           } as Dep;
         } else { // object
           for (const [name, value] of Object.entries(obj)) {
-            if (mode !== "go" && validRange(value) && canInclude(name, mode, include, exclude, depType)) {
+            if (mode === "npm" && isJsrDependency(value) && canInclude(name, mode, include, exclude, depType)) {
+              // Handle JSR dependencies
+              const parsed = parseJsrDependency(value, name);
+              deps[mode][`${depType}${sep}${name}`] = {
+                old: parsed.version,
+                oldOrig: value,
+              } as Dep;
+            } else if (mode !== "go" && validRange(value) && canInclude(name, mode, include, exclude, depType)) {
               deps[mode][`${depType}${sep}${name}`] = {
                 old: normalizeRange(value),
                 oldOrig: value,
@@ -1225,6 +1309,11 @@ async function main(): Promise<void> {
       entries = await pMap(Object.keys(deps[mode]), async (key) => {
         const [type, name] = key.split(sep);
         if (mode === "npm") {
+          // Check if this dependency is a JSR dependency
+          const depValue = deps[mode][key].oldOrig;
+          if (depValue && isJsrDependency(depValue)) {
+            return fetchJsrInfo(name, type);
+          }
           return fetchNpmInfo(name, type, config);
         } else {
           return fetchPypiInfo(name, type);
