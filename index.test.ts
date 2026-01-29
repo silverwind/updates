@@ -342,8 +342,8 @@ test("latest", async () => {
           },
           "noty": {
             "info": "https://github.com/needim/noty",
-            "new": ">=3.2",
-            "old": ">=3.1",
+            "new": ">= 3.2",
+            "old": ">= 3.1",
           },
           "typescript": {
             "info": "https://github.com/Microsoft/TypeScript",
@@ -536,8 +536,8 @@ test("prerelease", async () => {
           },
           "noty": {
             "info": "https://github.com/needim/noty",
-            "new": ">=3.2",
-            "old": ">=3.1",
+            "new": ">= 3.2",
+            "old": ">= 3.1",
           },
           "typescript": {
             "info": "https://github.com/Microsoft/TypeScript",
@@ -727,8 +727,8 @@ test("include", async () => {
         "peerDependencies": {
           "noty": {
             "info": "https://github.com/needim/noty",
-            "new": ">=3.2",
-            "old": ">=3.1",
+            "new": ">= 3.2",
+            "old": ">= 3.1",
           },
         },
       },
@@ -757,8 +757,8 @@ test("include 2", async () => {
         "peerDependencies": {
           "noty": {
             "info": "https://github.com/needim/noty",
-            "new": ">=3.2",
-            "old": ">=3.1",
+            "new": ">= 3.2",
+            "old": ">= 3.1",
           },
         },
       },
@@ -787,8 +787,8 @@ test("include 3", async () => {
         "peerDependencies": {
           "noty": {
             "info": "https://github.com/needim/noty",
-            "new": ">=3.2",
-            "old": ">=3.1",
+            "new": ">= 3.2",
+            "old": ">= 3.1",
           },
         },
       },

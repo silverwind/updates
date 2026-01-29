@@ -659,12 +659,16 @@ function updateNpmRange(oldRange: string, newVersion: string, oldOrig: string | 
     }
   }
 
-  // if old version is a range like >=5, retain number of version parts in new range
+  // if old version is a range like >=5 or >= 5, retain number of version parts in new range
   if (oldOrig && oldOrig !== oldRange && newRange.startsWith(">=")) {
-    const oldParts = oldOrig.substring(2).split(".");
-    const newParts = newRange.substring(2).split(".");
+    const hasSpace = /^>=\s/.test(newRange);
+    const prefix = hasSpace ? ">= " : ">=";
+    const oldVersion = oldOrig.replace(/^>=\s*/, "");
+    const newVersion = newRange.replace(/^>=\s*/, "");
+    const oldParts = oldVersion.split(".");
+    const newParts = newVersion.split(".");
     if (oldParts.length !== newParts.length) {
-      newRange = `>=${newParts.slice(0, oldParts.length).join(".")}`;
+      newRange = `${prefix}${newParts.slice(0, oldParts.length).join(".")}`;
     }
   }
 
