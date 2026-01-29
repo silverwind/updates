@@ -23,6 +23,10 @@ const script = fileURLToPath(new URL("dist/index.js", import.meta.url));
 
 type RouteHandler = (req: any, res: any) => void | Promise<void>;
 
+function parseAcceptEncoding(header: string): Array<string> {
+  return header.split(",").map(s => s.trim().split(";")[0]).filter(Boolean);
+}
+
 function createSimpleServer(defaultHandler: RouteHandler) {
   const routes = new Map<string, RouteHandler>();
 
@@ -32,7 +36,8 @@ function createSimpleServer(defaultHandler: RouteHandler) {
 
     (res as any).send = (data: any) => {
       const acceptEncoding = req.headers["accept-encoding"] || "";
-      const shouldCompress = acceptEncoding.includes("gzip");
+      const encodings = parseAcceptEncoding(acceptEncoding);
+      const shouldCompress = encodings.includes("gzip");
 
       if (Buffer.isBuffer(data)) {
         res.setHeader("Content-Type", "application/json");

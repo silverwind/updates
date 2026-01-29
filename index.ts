@@ -261,11 +261,7 @@ async function getAuthAndRegistry(name: string, registry: string): Promise<AuthA
     if (url !== registry) {
       try {
         const newAuth = rat(url, authOpts);
-        if (newAuth?.token) {
-          result = {auth: newAuth, registry: url};
-        } else {
-          result = {auth: rat(registry, authOpts), registry};
-        }
+        result = newAuth?.token ? {auth: newAuth, registry: url} : {auth: rat(registry, authOpts), registry};
       } catch {
         result = {auth: rat(registry, authOpts), registry};
       }
@@ -343,11 +339,7 @@ async function fetchNpmInfo(name: string, type: string, config: Config): Promise
 async function fetchPypiInfo(name: string, type: string): Promise<PackageInfo> {
   const url = `${pypiApiUrl}/pypi/${name}/json`;
 
-  const res = await doFetch(url, {
-    headers: {
-      "accept-encoding": "gzip, deflate, br",
-    }
-  });
+  const res = await doFetch(url, {headers: {"accept-encoding": "gzip, deflate, br"}});
   if (res?.ok) {
     return [await res.json(), type, null, name];
   } else {
@@ -809,11 +801,7 @@ function findNewVersion(data: any, {mode, range, useGreatest, useRel, usePre, se
 }
 
 function fetchGitHub(url: string): Promise<Response> {
-  const opts: RequestInit = {
-    headers: {
-      "accept-encoding": "gzip, deflate, br",
-    }
-  };
+  const opts: RequestInit = {headers: {"accept-encoding": "gzip, deflate, br"}};
   const token =
     env.UPDATES_GITHUB_API_TOKEN ||
     env.GITHUB_API_TOKEN ||
