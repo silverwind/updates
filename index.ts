@@ -179,7 +179,7 @@ for (const [index, token] of result.tokens.entries()) {
 
 const args = result.values;
 
-const [magenta, red, green] = (["magenta", "red", "green"] as const)
+const [magenta, red, green, yellow] = (["magenta", "red", "green", "yellow"] as const)
   .map(color => args["no-color"] ? String : (text: string | number) => styleText(color, String(text)));
 
 const greatest = argSetToRegexes(parseMixedArg(args.greatest));
@@ -326,7 +326,7 @@ async function doFetch(url: string, opts?: RequestInit, retries = 2): Promise<Re
     const res = await fetch(url, fetchOpts);
     clearTimeout(timeoutId);
     if (args.verbose) logVerbose(`${res.ok ? green(res.status) : red(res.status)} ${url}`);
-    
+
     // Retry on 5xx errors or 429 (rate limit)
     if (retries > 0 && (res.status >= 500 || res.status === 429)) {
       const delay = (3 - retries) * 1000; // Exponential backoff: 1s, 2s
@@ -334,11 +334,11 @@ async function doFetch(url: string, opts?: RequestInit, retries = 2): Promise<Re
       await new Promise(resolve => setTimeout(resolve, delay));
       return doFetch(url, opts, retries - 1);
     }
-    
+
     return res;
   } catch (err: any) {
     clearTimeout(timeoutId);
-    
+
     // Retry on network errors or timeouts
     if (retries > 0 && (err.name === "AbortError" || err.cause?.code === "ECONNRESET" || err.cause?.code === "ETIMEDOUT")) {
       const delay = (3 - retries) * 1000; // Exponential backoff: 1s, 2s
@@ -346,7 +346,7 @@ async function doFetch(url: string, opts?: RequestInit, retries = 2): Promise<Re
       await new Promise(resolve => setTimeout(resolve, delay));
       return doFetch(url, opts, retries - 1);
     }
-    
+
     throw err;
   }
 }
