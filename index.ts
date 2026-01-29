@@ -366,13 +366,13 @@ function isJsrDependency(value: string): boolean {
 function parseJsrDependency(value: string, packageName?: string): {scope: string | null, name: string | null, version: string} {
   if (value.startsWith("npm:@jsr/")) {
     // Format: npm:@jsr/std__semver@1.0.5
-    const match = value.match(/^npm:@jsr\/([^_]+)__([^@]+)@(.+)$/);
+    const match = /^npm:@jsr\/([^_]+)__([^@]+)@(.+)$/.exec(value);
     if (match) {
       return {scope: match[1], name: match[2], version: match[3]};
     }
   } else if (value.startsWith("jsr:@")) {
     // Format: jsr:@std/semver@1.0.5
-    const match = value.match(/^jsr:@([^/]+)\/([^@]+)@(.+)$/);
+    const match = /^jsr:@([^/]+)\/([^@]+)@(.+)$/.exec(value);
     if (match) {
       return {scope: match[1], name: match[2], version: match[3]};
     }
@@ -380,7 +380,7 @@ function parseJsrDependency(value: string, packageName?: string): {scope: string
     // Format: jsr:1.0.5 (short form when package name is in the dependency key)
     const version = value.substring(4);
     if (packageName?.startsWith("@")) {
-      const match = packageName.match(/^@([^/]+)\/(.+)$/);
+      const match = /^@([^/]+)\/(.+)$/.exec(packageName);
       if (match) {
         return {scope: match[1], name: match[2], version};
       }
@@ -392,7 +392,7 @@ function parseJsrDependency(value: string, packageName?: string): {scope: string
 // Fetch JSR package metadata
 async function fetchJsrInfo(packageName: string, type: string): Promise<PackageInfo> {
   // Parse package name to get scope and name
-  const match = packageName.match(/^@([^/]+)\/(.+)$/);
+  const match = /^@([^/]+)\/(.+)$/.exec(packageName);
   if (!match) {
     throw new Error(`Invalid JSR package name: ${packageName}`);
   }
@@ -1356,17 +1356,17 @@ async function main(): Promise<void> {
         if (oldOrig && isJsrDependency(oldOrig)) {
           // Reconstruct JSR format with new version
           if (oldOrig.startsWith("npm:@jsr/")) {
-            const match = oldOrig.match(/^(npm:@jsr\/[^@]+@)(.+)$/);
+            const match = /^(npm:@jsr\/[^@]+@)(.+)$/.exec(oldOrig);
             if (match) {
-              newRange = match[1] + newVersion;
+              newRange = `${match[1]}${newVersion}`;
             }
           } else if (oldOrig.startsWith("jsr:@")) {
-            const match = oldOrig.match(/^(jsr:@[^@]+@)(.+)$/);
+            const match = /^(jsr:@[^@]+@)(.+)$/.exec(oldOrig);
             if (match) {
-              newRange = match[1] + newVersion;
+              newRange = `${match[1]}${newVersion}`;
             }
           } else if (oldOrig.startsWith("jsr:")) {
-            newRange = "jsr:" + newVersion;
+            newRange = `jsr:${newVersion}`;
           }
         } else {
           newRange = updateNpmRange(oldRange, newVersion, oldOrig);
