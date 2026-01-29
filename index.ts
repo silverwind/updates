@@ -285,6 +285,7 @@ function getFetchOpts(authType?: string, authToken?: string): RequestInit {
   return {
     headers: {
       "user-agent": `updates/${packageVersion}`,
+      "accept-encoding": "gzip, deflate, br",
       ...(authToken && {Authorization: `${authType} ${authToken}`}),
     }
   };
@@ -378,7 +379,11 @@ async function fetchNpmInfo(name: string, type: string, config: Config): Promise
 async function fetchPypiInfo(name: string, type: string): Promise<PackageInfo> {
   const url = `${pypiApiUrl}/pypi/${name}/json`;
 
-  const res = await doFetch(url);
+  const res = await doFetch(url, {
+    headers: {
+      "accept-encoding": "gzip, deflate, br",
+    }
+  });
   if (res?.ok) {
     return [await res.json(), type, null, name];
   } else {
@@ -840,7 +845,11 @@ function findNewVersion(data: any, {mode, range, useGreatest, useRel, usePre, se
 }
 
 function fetchGitHub(url: string): Promise<Response> {
-  const opts: RequestInit = {};
+  const opts: RequestInit = {
+    headers: {
+      "accept-encoding": "gzip, deflate, br",
+    }
+  };
   const token =
     env.UPDATES_GITHUB_API_TOKEN ||
     env.GITHUB_API_TOKEN ||
@@ -849,7 +858,7 @@ function fetchGitHub(url: string): Promise<Response> {
     env.HOMEBREW_GITHUB_API_TOKEN;
 
   if (token) {
-    opts.headers = {Authorization: `Bearer ${token}`};
+    opts.headers = {...opts.headers, Authorization: `Bearer ${token}`};
   }
   return doFetch(url, opts);
 }
