@@ -15,6 +15,7 @@ const emptyFile = fileURLToPath(new URL("fixtures/npm-empty/package.json", impor
 const poetryFile = fileURLToPath(new URL("fixtures/poetry/pyproject.toml", import.meta.url));
 const uvFile = fileURLToPath(new URL("fixtures/uv/pyproject.toml", import.meta.url));
 const goFile = fileURLToPath(new URL("fixtures/go/go.mod", import.meta.url));
+const goUpdateFile = fileURLToPath(new URL("fixtures/go-update/go.mod", import.meta.url));
 const dualFile = fileURLToPath(new URL("fixtures/dual", import.meta.url));
 
 const testPkg = JSON.parse(readFileSync(testFile, "utf8"));
@@ -957,22 +958,14 @@ test("go", async () => {
 });
 
 test("go update", async () => {
-  // Create a temporary go.mod with an old version for testing
-  const testGoModDir = join(testDir, "test-go");
+  const testGoModDir = join(testDir, "test-go-update");
   mkdirSync(testGoModDir, {recursive: true});
-  await writeFile(join(testGoModDir, "go.mod"), `module example.com/test
 
-go 1.24
+  const goUpdateContent = readFileSync(goUpdateFile, "utf8");
+  await writeFile(join(testGoModDir, "go.mod"), goUpdateContent);
 
-require (
-  github.com/google/uuid v1.5.0
-)
-`);
-
-  // Initialize the go module
   await nanoSpawn("go", ["mod", "download"], {cwd: testGoModDir});
 
-  // Run updates with -u flag
   await nanoSpawn(execPath, [
     script,
     "-u",
@@ -980,115 +973,13 @@ require (
     "-c",
   ], {cwd: testGoModDir});
 
-  // Read the updated file
   const updatedContent = await readFile(join(testGoModDir, "go.mod"), "utf8");
 
-  // Verify the version was updated
-  expect(updatedContent).toContain("github.com/google/uuid v1.6.0");
-  expect(updatedContent).not.toContain("v1.5.0");
-});
-
-test("go update - single-line format", async () => {
-  // Create a temporary go.mod with single-line require format
-  const testGoModDir = join(testDir, "test-go-single");
-  mkdirSync(testGoModDir, {recursive: true});
-  await writeFile(join(testGoModDir, "go.mod"), `module example.com/test
-
-go 1.24
-
-require github.com/google/uuid v1.5.0
-`);
-
-  // Initialize the go module
-  await nanoSpawn("go", ["mod", "download"], {cwd: testGoModDir});
-
-  // Run updates with -u flag
-  await nanoSpawn(execPath, [
-    script,
-    "-u",
-    "-f", join(testGoModDir, "go.mod"),
-    "-c",
-  ], {cwd: testGoModDir});
-
-  // Read the updated file
-  const updatedContent = await readFile(join(testGoModDir, "go.mod"), "utf8");
-
-  // Verify the version was updated
-  expect(updatedContent).toContain("require github.com/google/uuid v1.6.0");
-  expect(updatedContent).not.toContain("v1.5.0");
-});
-
-test("go update - multiple same dependencies", async () => {
-  // Create a temporary go.mod with duplicate dependencies
-  const testGoModDir = join(testDir, "test-go-multiple");
-  mkdirSync(testGoModDir, {recursive: true});
-  await writeFile(join(testGoModDir, "go.mod"), `module example.com/test
-
-go 1.24
-
-require (
-  github.com/google/uuid v1.5.0
-)
-
-require (
-  github.com/google/uuid v1.5.0
-)
-`);
-
-  // Initialize the go module
-  await nanoSpawn("go", ["mod", "download"], {cwd: testGoModDir});
-
-  // Run updates with -u flag
-  await nanoSpawn(execPath, [
-    script,
-    "-u",
-    "-f", join(testGoModDir, "go.mod"),
-    "-c",
-  ], {cwd: testGoModDir});
-
-  // Read the updated file
-  const updatedContent = await readFile(join(testGoModDir, "go.mod"), "utf8");
-
-  // Verify all occurrences were updated
-  expect(updatedContent).toContain("github.com/google/uuid v1.6.0");
-  expect(updatedContent).not.toContain("v1.5.0");
-  // Count occurrences of the updated version
-  const matches = updatedContent.match(/github\.com\/google\/uuid v1\.6\.0/g);
-  expect(matches).toBeTruthy();
-  expect(matches?.length).toBe(2);
-});
-
-test("go update - mixed with other dependencies", async () => {
-  // Create a temporary go.mod with multiple dependencies
-  const testGoModDir = join(testDir, "test-go-mixed");
-  mkdirSync(testGoModDir, {recursive: true});
-  await writeFile(join(testGoModDir, "go.mod"), `module example.com/test
-
-go 1.24
-
-require (
-  github.com/google/go-github/v70 v70.0.0
-  github.com/google/uuid v1.5.0
-)
-`);
-
-  // Initialize the go module
-  await nanoSpawn("go", ["mod", "download"], {cwd: testGoModDir});
-
-  // Run updates with -u flag
-  await nanoSpawn(execPath, [
-    script,
-    "-u",
-    "-f", join(testGoModDir, "go.mod"),
-    "-c",
-  ], {cwd: testGoModDir});
-
-  // Read the updated file
-  const updatedContent = await readFile(join(testGoModDir, "go.mod"), "utf8");
-
-  // Verify only uuid was updated (go-github/v70 is at v70.0.0 which is latest)
   expect(updatedContent).toContain("github.com/google/uuid v1.6.0");
   expect(updatedContent).not.toContain("uuid v1.5.0");
-  // Verify other dependency remained unchanged
   expect(updatedContent).toContain("github.com/google/go-github/v70 v70.0.0");
+
+  const matches = updatedContent.match(/github\.com\/google\/uuid v1\.6\.0/g);
+  expect(matches).toBeTruthy();
+  expect(matches?.length).toBe(4);
 });
