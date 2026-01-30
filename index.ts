@@ -176,7 +176,7 @@ function parseCliArgs(argv?: Array<string>) {
       result.values[token.name] = [true];
       // @ts-expect-error
       if (!result.values[key]) result.values[key] = [];
-      if (next.kind === "positional" && next.value) {
+      if (next && next.kind === "positional" && next.value) {
         // @ts-expect-error
         result.values[key].push(next.value);
       } else {
@@ -190,7 +190,7 @@ function parseCliArgs(argv?: Array<string>) {
 }
 
 // These are initialized in main()
-let args: any;
+let args: Record<string, any>;
 let magenta: (text: string | number) => string;
 let red: (text: string | number) => string;
 let green: (text: string | number) => string;
@@ -204,6 +204,8 @@ let enabledModes: Set<string>;
 let githubApiUrl: string;
 let pypiApiUrl: string;
 let jsrApiUrl: string;
+
+let skipExit = false;
 
 const stripv = (str: string): string => str.replace(/^v/, "");
 
@@ -575,9 +577,6 @@ async function finishWithMessage(message: string): Promise<void> {
   await end();
 }
 
-let exitCode_ = 0;
-let skipExit = false;
-
 async function end(err?: Error | void, exitCode?: number): Promise<void> {
   if (err) {
     const error = err.stack ?? err.message;
@@ -595,9 +594,8 @@ async function end(err?: Error | void, exitCode?: number): Promise<void> {
     await new Promise(resolve => setTimeout(resolve, 50));
   }
 
-  exitCode_ = exitCode || err ? 1 : 0;
   if (!skipExit) {
-    exit(exitCode_);
+    exit(exitCode || err ? 1 : 0);
   }
 }
 
@@ -1217,7 +1215,7 @@ async function loadConfig(rootDir: string): Promise<Config> {
 }
 
 export async function main(argv?: Array<string>): Promise<void> {
-  // When argv is provided, we're being called from tests, so don't exit
+  // Reset state for test isolation
   if (argv) {
     skipExit = true;
   }
