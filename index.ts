@@ -672,22 +672,30 @@ function shortenGoModule(module: string): string {
 }
 
 function formatDeps(deps: DepsByMode): string {
-  const arr = [["NAME", "OLD", "NEW", "AGE", "INFO"]];
+  // Check if there are multiple modes
+  const modes = Object.keys(deps);
+  const hasMultipleModes = modes.length > 1;
+
+  const header = hasMultipleModes ?
+    ["NAME", "MODE", "OLD", "NEW", "AGE", "INFO"] :
+    ["NAME", "OLD", "NEW", "AGE", "INFO"];
+  const arr = [header];
   const seen = new Set<string>();
 
-  for (const mode of Object.keys(deps)) {
+  for (const mode of modes) {
     for (const [key, data] of Object.entries(deps[mode])) {
-      const name = key.split(sep)[1];
+      const [_type, name] = key.split(sep);
       const id = `${mode}|${name}`;
       if (seen.has(id)) continue;
       seen.add(id);
-      arr.push([
-        mode === "go" ? shortenGoModule(name) : name,
-        highlightDiff(data.old, data.new, red),
-        highlightDiff(data.new, data.old, green),
-        data.age || "",
-        data.info || "",
-      ]);
+      const row = [];
+      row.push(mode === "go" ? shortenGoModule(name) : name);
+      if (hasMultipleModes) row.push(mode);
+      row.push(highlightDiff(data.old, data.new, red));
+      row.push(highlightDiff(data.new, data.old, green));
+      row.push(data.age || "");
+      row.push(data.info || "");
+      arr.push(row);
     }
   }
 
