@@ -196,7 +196,7 @@ const patch = argSetToRegexes(parseMixedArg(args.patch));
 const minor = argSetToRegexes(parseMixedArg(args.minor));
 const allowDowngrade = argSetToRegexes(parseMixedArg(args["allow-downgrade"]));
 const enabledModes = parseMixedArg(args.modes) as Set<string> || new Set(["npm", "pypi"]);
-const githubApiUrl = typeof args.forgeapi === "string" ? normalizeUrl(args.forgeapi) : "https://api.github.com";
+const forgeApiUrl = typeof args.forgeapi === "string" ? normalizeUrl(args.forgeapi) : "https://api.github.com";
 const pypiApiUrl = typeof args.pypiapi === "string" ? normalizeUrl(args.pypiapi) : "https://pypi.org";
 const jsrApiUrl = typeof args.jsrapi === "string" ? normalizeUrl(args.jsrapi) : "https://jsr.io";
 
@@ -379,31 +379,28 @@ async function fetchPypiInfo(name: string, type: string): Promise<PackageInfo> {
   }
 }
 
-// Check if a dependency value is a JSR dependency
-function isJsrDependency(value: string): boolean {
+function isJsr(value: string): boolean {
   return value.startsWith("npm:@jsr/") || value.startsWith("jsr:");
 }
 
-// Parse JSR dependency value and extract package name and version
-// Examples:
 // - "npm:@jsr/std__semver@1.0.5" -> { scope: "std", name: "semver", version: "1.0.5" }
 // - "jsr:@std/semver@1.0.5" -> { scope: "std", name: "semver", version: "1.0.5" }
 // - "jsr:1.0.5" (when package name is known) -> { scope: null, name: null, version: "1.0.5" }
 function parseJsrDependency(value: string, packageName?: string): {scope: string | null, name: string | null, version: string} {
   if (value.startsWith("npm:@jsr/")) {
-    // Format: npm:@jsr/std__semver@1.0.5
+    // npm:@jsr/std__semver@1.0.5
     const match = /^npm:@jsr\/([^_]+)__([^@]+)@(.+)$/.exec(value);
     if (match) {
       return {scope: match[1], name: match[2], version: match[3]};
     }
   } else if (value.startsWith("jsr:@")) {
-    // Format: jsr:@std/semver@1.0.5
+    // jsr:@std/semver@1.0.5
     const match = /^jsr:@([^/]+)\/([^@]+)@(.+)$/.exec(value);
     if (match) {
       return {scope: match[1], name: match[2], version: match[3]};
     }
   } else if (value.startsWith("jsr:")) {
-    // Format: jsr:1.0.5 (short form when package name is in the dependency key)
+    // jsr:1.0.5
     const version = value.substring(4);
     if (packageName?.startsWith("@")) {
       const match = /^@([^/]+)\/(.+)$/.exec(packageName);
@@ -415,9 +412,7 @@ function parseJsrDependency(value: string, packageName?: string): {scope: string
   return {scope: null, name: null, version: ""};
 }
 
-// Fetch JSR package metadata
 async function fetchJsrInfo(packageName: string, type: string): Promise<PackageInfo> {
-  // Parse package name to get scope and name
   const match = /^@([^/]+)\/(.+)$/.exec(packageName);
   if (!match) {
     throw new Error(`Invalid JSR package name: ${packageName}`);
@@ -600,7 +595,7 @@ function outputDeps(deps: DepsByMode = {}): number {
         props.new = props.newPrint;
       }
       // Don't overwrite old with oldOrig for JSR dependencies
-      if (typeof props.oldOrig === "string" && !isJsrDependency(props.oldOrig)) {
+      if (typeof props.oldOrig === "string" && !isJsr(props.oldOrig)) {
         props.old = props.oldOrig;
       }
       delete props.oldPrint;
@@ -950,7 +945,7 @@ function findNewVersion(data: any, {mode, range, useGreatest, useRel, usePre, se
   }
 }
 
-function fetchGitHub(url: string): Promise<Response> {
+function fetchForge(url: string): Promise<Response> {
   const opts: RequestInit = {headers: {"accept-encoding": "gzip, deflate, br"}};
   const token =
     env.UPDATES_GITHUB_API_TOKEN ||
@@ -971,8 +966,7 @@ type CommitInfo = {
 };
 
 async function getLastestCommit(user: string, repo: string): Promise<CommitInfo> {
-  const url = `${githubApiUrl}/repos/${user}/${repo}/commits`;
-  const res = await fetchGitHub(url);
+  const res = await fetchForge(`${forgeApiUrl}/repos/${user}/${repo}/commits`);
   if (!res?.ok) return {hash: "", commit: {}};
   const data = await res.json();
   const {sha: hash, commit} = data[0];
@@ -982,7 +976,7 @@ async function getLastestCommit(user: string, repo: string): Promise<CommitInfo>
 // return list of tags sorted old to new
 // TODO: newDate support, semver matching
 async function getTags(user: string, repo: string): Promise<Array<string>> {
-  const res = await fetchGitHub(`${githubApiUrl}/repos/${user}/${repo}/git/refs/tags`);
+  const res = await fetchForge(`${forgeApiUrl}/repos/${user}/${repo}/git/refs/tags`);
   if (!res?.ok) return [];
   const data = await res.json();
   const tags = data.map((entry: {ref: string}) => entry.ref.replace(/^refs\/tags\//, ""));
@@ -1286,7 +1280,7 @@ async function main(): Promise<void> {
 
     let includeCli: Array<string> = [];
     let excludeCli: Array<string> = [];
-    if (Array.isArray(args.include)) { // cli
+    if (Array.isArray(args.include)) {
       includeCli = args.include.filter(v => typeof v === "string").flatMap(item => commaSeparatedToArray(item));
     }
     if (Array.isArray(args.exclude)) {
@@ -1372,7 +1366,7 @@ async function main(): Promise<void> {
           } as Dep;
         } else { // object
           for (const [name, value] of Object.entries(obj)) {
-            if (mode === "npm" && isJsrDependency(value) && canInclude(name, mode, include, exclude, depType)) {
+            if (mode === "npm" && isJsr(value) && canInclude(name, mode, include, exclude, depType)) {
               // Handle JSR dependencies
               const parsed = parseJsrDependency(value, name);
               deps[mode][`${depType}${fieldSep}${name}`] = {
@@ -1384,7 +1378,7 @@ async function main(): Promise<void> {
                 old: normalizeRange(value),
                 oldOrig: value,
               } as Dep;
-            } else if (mode === "npm" && !isJsrDependency(value) && canInclude(name, mode, include, exclude, depType)) {
+            } else if (mode === "npm" && !isJsr(value) && canInclude(name, mode, include, exclude, depType)) {
               maybeUrlDeps[`${depType}${fieldSep}${name}`] = {
                 old: value,
               } as Dep;
@@ -1411,8 +1405,8 @@ async function main(): Promise<void> {
         const [type, name] = key.split(fieldSep);
         if (mode === "npm") {
           // Check if this dependency is a JSR dependency
-          const depValue = deps[mode][key].oldOrig;
-          if (depValue && isJsrDependency(depValue)) {
+          const {oldOrig} = deps[mode][key];
+          if (oldOrig && isJsr(oldOrig)) {
             return fetchJsrInfo(name, type);
           }
           return fetchNpmInfo(name, type, config);
@@ -1452,7 +1446,7 @@ async function main(): Promise<void> {
         newRange = newVersion;
       } else if (newVersion) {
         // Check if this is a JSR dependency
-        if (oldOrig && isJsrDependency(oldOrig)) {
+        if (oldOrig && isJsr(oldOrig)) {
           // Reconstruct JSR format with new version
           if (oldOrig.startsWith("npm:@jsr/")) {
             const match = /^(npm:@jsr\/[^@]+@)(.+)$/.exec(oldOrig);
@@ -1489,7 +1483,7 @@ async function main(): Promise<void> {
       deps[mode][key].new = newRange;
 
       // For JSR dependencies, set newPrint to show just the version
-      if (oldOrig && isJsrDependency(oldOrig)) {
+      if (oldOrig && isJsr(oldOrig)) {
         deps[mode][key].newPrint = newVersion;
       }
 
