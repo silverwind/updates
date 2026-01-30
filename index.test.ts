@@ -8,6 +8,7 @@ import {tmpdir} from "node:os";
 import {execPath, versions} from "node:process";
 import {gzipSync} from "node:zlib";
 import type {Server} from "node:http";
+import {satisfies} from "semver";
 import {npmTypes, poetryTypes, uvTypes, goTypes} from "./utils.ts";
 
 const testFile = fileURLToPath(new URL("fixtures/npm-test/package.json", import.meta.url));
@@ -1254,13 +1255,11 @@ test("pin", async () => {
   // prismjs should be updated but only within the ^1.0.0 range
   expect(results.npm.dependencies.prismjs).toBeDefined();
   const prismjsNew = results.npm.dependencies.prismjs.new;
-  // Check that the new version is within ^1.0.0 range (1.x.x but not 2.x.x)
-  expect(prismjsNew).toMatch(/^1\./);
+  expect(satisfies(prismjsNew, "^1.0.0")).toBe(true);
 
   // react should not be updated beyond ^18.0.0 range
   expect(results.npm.dependencies.react).toBeDefined();
   const reactNew = results.npm.dependencies.react.new;
-  // Check that the new version is within ^18.0.0 range (18.x.x but not 19.x.x)
-  expect(reactNew).toMatch(/^18\./);
+  expect(satisfies(reactNew, "^18.0.0")).toBe(true);
 });
 

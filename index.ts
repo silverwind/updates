@@ -226,15 +226,15 @@ function parsePinArg(arg: Arg): Record<string, string> {
   if (Array.isArray(arg)) {
     for (const val of arg) {
       if (typeof val === "string") {
-        const [pkg, range] = val.split("=");
-        if (pkg && range) {
+        const [pkg, range] = val.split("=", 2);
+        if (pkg && range && validRange(range)) {
           result[pkg] = range;
         }
       }
     }
   } else if (typeof arg === "string") {
-    const [pkg, range] = arg.split("=");
-    if (pkg && range) {
+    const [pkg, range] = arg.split("=", 2);
+    if (pkg && range && validRange(range)) {
       result[pkg] = range;
     }
   }
@@ -1267,7 +1267,6 @@ async function main(): Promise<void> {
     // Merge pin options from CLI and config
     const pinCli = parsePinArg(args.pin);
     const pin: Record<string, string> = {...config?.pin, ...pinCli};
-
 
     let dependencyTypes: Array<string> = [];
     if (Array.isArray(types)) {
