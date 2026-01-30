@@ -1048,30 +1048,34 @@ async function getTagForCommit(user: string, repo: string, sha: string): Promise
 
 function selectTag(tags: Array<string>, oldRef: string, useGreatest: boolean): string | null {
   const oldRefBare = stripv(oldRef);
-  if (!valid(oldRefBare)) return null;
+  const oldRefCoerced = coerce(oldRefBare);
+  if (!oldRefCoerced) return null;
 
   if (!useGreatest) {
     const lastTag = tags.at(-1);
     if (!lastTag) return null;
     const lastTagBare = stripv(lastTag);
-    if (!valid(lastTagBare)) return null;
+    const lastTagCoerced = coerce(lastTagBare);
+    if (!lastTagCoerced) return null;
 
-    if (neq(oldRefBare, lastTagBare)) {
+    if (neq(oldRefCoerced.version, lastTagCoerced.version)) {
       return lastTag;
     }
   } else {
-    let greatestTag = oldRef;
-    let greatestTagBare = stripv(oldRef);
+    let greatestTag: string | null = null;
+    let greatestVersion: string | null = null;
 
     for (const tag of tags) {
       const tagBare = stripv(tag);
-      if (!valid(tagBare)) continue;
-      if (!greatestTag || gt(tagBare, greatestTagBare)) {
+      const tagCoerced = coerce(tagBare);
+      if (!tagCoerced) continue;
+      if (!greatestVersion || gt(tagCoerced.version, greatestVersion)) {
         greatestTag = tag;
-        greatestTagBare = tagBare;
+        greatestVersion = tagCoerced.version;
       }
     }
-    if (neq(oldRefBare, greatestTagBare)) {
+
+    if (greatestTag && greatestVersion && neq(oldRefCoerced.version, greatestVersion)) {
       return greatestTag;
     }
   }
@@ -1194,7 +1198,7 @@ async function checkActionDep(action: ActionDep, useGreatest: boolean): Promise<
     if (args.verbose) {
       console.error(`DEBUG: ${owner}/${repo} has ${tags.length} tags, checking hash comment version ${commentVersion}, display: ${displayVersion}`);
     }
-    const newTag = selectActionTag(tags, commentVersion, useGreatest);
+    const newTag = selectTag(tags, commentVersion, useGreatest);
 
     if (newTag && newTag !== commentVersion) {
       return {oldVersion: version, displayVersion, newVersion: newTag};
@@ -1209,52 +1213,13 @@ async function checkActionDep(action: ActionDep, useGreatest: boolean): Promise<
       console.error(`DEBUG: ${owner}/${repo} has ${tags.length} tags, checking version ${version}, useGreatest=${useGreatest}`);
       console.error(`DEBUG: Last few tags: ${tags.slice(-5).join(", ")}`);
     }
-    const newTag = selectActionTag(tags, version, useGreatest);
+    const newTag = selectTag(tags, version, useGreatest);
     if (args.verbose) {
-      console.error(`DEBUG: selectActionTag returned: ${newTag}`);
+      console.error(`DEBUG: selectTag returned: ${newTag}`);
     }
 
     if (newTag && newTag !== version) {
       return {oldVersion: version, displayVersion: null, newVersion: newTag};
-    }
-  }
-
-  return null;
-}
-
-function selectActionTag(tags: Array<string>, oldRef: string, useGreatest: boolean): string | null {
-  const oldRefBare = stripv(oldRef);
-  const oldRefCoerced = coerce(oldRefBare);
-  if (!oldRefCoerced) return null;
-
-  if (!useGreatest) {
-    // Find the latest tag
-    const lastTag = tags.at(-1);
-    if (!lastTag) return null;
-    const lastTagBare = stripv(lastTag);
-    const lastTagCoerced = coerce(lastTagBare);
-    if (!lastTagCoerced) return null;
-
-    if (neq(oldRefCoerced.version, lastTagCoerced.version)) {
-      return lastTag;
-    }
-  } else {
-    // Find the greatest tag
-    let greatestTag: string | null = null;
-    let greatestVersion: string | null = null;
-
-    for (const tag of tags) {
-      const tagBare = stripv(tag);
-      const tagCoerced = coerce(tagBare);
-      if (!tagCoerced) continue;
-      if (!greatestVersion || gt(tagCoerced.version, greatestVersion)) {
-        greatestTag = tag;
-        greatestVersion = tagCoerced.version;
-      }
-    }
-
-    if (greatestTag && greatestVersion && neq(oldRefCoerced.version, greatestVersion)) {
-      return greatestTag;
     }
   }
 
