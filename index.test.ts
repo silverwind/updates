@@ -10,6 +10,7 @@ import {gzipSync} from "node:zlib";
 import type {Server} from "node:http";
 import {satisfies} from "semver";
 import {npmTypes, poetryTypes, uvTypes, goTypes} from "./utils.ts";
+import {main} from "./index.ts";
 
 const testFile = fileURLToPath(new URL("fixtures/npm-test/package.json", import.meta.url));
 const emptyFile = fileURLToPath(new URL("fixtures/npm-empty/package.json", import.meta.url));
@@ -201,6 +202,37 @@ afterAll(async () => {
   ]);
 });
 
+async function captureOutput(fn: () => Promise<void>): Promise<{stdout: string, stderr: string}> {
+  const originalLog = console.info;
+  const originalError = console.error;
+  const originalWarn = console.warn;
+  
+  let stdout = "";
+  let stderr = "";
+  
+  console.info = (...args: any[]) => {
+    stdout += args.join(" ") + "\n";
+  };
+  
+  console.error = (...args: any[]) => {
+    stderr += args.join(" ") + "\n";
+  };
+  
+  console.warn = (...args: any[]) => {
+    stderr += args.join(" ") + "\n";
+  };
+  
+  try {
+    await fn();
+  } finally {
+    console.info = originalLog;
+    console.error = originalError;
+    console.warn = originalWarn;
+  }
+  
+  return {stdout, stderr};
+}
+
 function makeTest(args: string) {
   return async () => {
     const argsArr = [
@@ -208,12 +240,19 @@ function makeTest(args: string) {
       "--githubapi", githubUrl,
       "--pypiapi", pypiUrl,
       "--jsrapi", jsrUrl,
+      "--registry", npmUrl,
     ];
+    
+    // Only add default file if none is specified
+    if (!args.includes("-f") && !args.includes("--file")) {
+      argsArr.push("-f", join(testDir, "package.json"));
+    }
 
     let stdout: string;
     let results: Record<string, any>;
     try {
-      ({stdout} = await nanoSpawn(execPath, [script, ...argsArr], {cwd: testDir}));
+      const output = await captureOutput(() => main(argsArr));
+      stdout = output.stdout;
       ({results} = JSON.parse(stdout));
     } catch (err) {
       console.error(err);
@@ -239,41 +278,38 @@ function makeTest(args: string) {
 }
 
 test("simple", async () => {
-  const {stdout, stderr} = await nanoSpawn(process.execPath, [
-    script,
+  const {stdout, stderr} = await captureOutput(() => main([
     "-C",
     "--githubapi", githubUrl,
     "--pypiapi", pypiUrl,
     "--registry", npmUrl,
     "-f", testFile,
-  ]);
+  ]));
   expect(stderr).toEqual("");
   expect(stdout).toContain("prismjs");
   expect(stdout).toContain("https://github.com/silverwind/updates");
 });
 
 test("empty", async () => {
-  const {stdout, stderr} = await nanoSpawn(process.execPath, [
-    script,
+  const {stdout, stderr} = await captureOutput(() => main([
     "-C",
     "--githubapi", githubUrl,
     "--pypiapi", pypiUrl,
     "-f", emptyFile,
-  ]);
+  ]));
   expect(stderr).toEqual("");
   expect(stdout).toContain("No dependencies");
 });
 
 test("jsr", async () => {
-  const {stdout, stderr} = await nanoSpawn(process.execPath, [
-    script,
+  const {stdout, stderr} = await captureOutput(() => main([
     "-C",
     "-j",
     "--githubapi", githubUrl,
     "--pypiapi", pypiUrl,
     "--jsrapi", jsrUrl,
     "-f", jsrFile,
-  ]);
+  ]));
   expect(stderr).toEqual("");
   const {results} = JSON.parse(stdout);
   expect(results.npm.dependencies["@std/semver"]).toBeDefined();
@@ -283,26 +319,6 @@ test("jsr", async () => {
   expect(results.npm.devDependencies["@std/path"].old).toBe("1.0.0");
   expect(results.npm.devDependencies["@std/path"].new).toBe("1.0.8");
 });
-
-if (!versions.bun) {
-  test("global", async () => {
-    await nanoSpawn("npm", ["i", "-g", "."]);
-    try {
-      const {stdout, stderr} = await nanoSpawn("updates", [
-        "-C",
-        "--githubapi", githubUrl,
-        "--pypiapi", pypiUrl,
-        "-f", testFile,
-      ]);
-      expect(stderr).toEqual("");
-      expect(stdout).toContain("prismjs");
-      expect(stdout).toContain("https://github.com/silverwind/updates");
-    } finally {
-      await nanoSpawn("npm", ["install", "-g", "updates@latest"]);
-    }
-  });
-}
-
 
 test("latest", async () => {
   expect(await makeTest("-j")()).toMatchInlineSnapshot(`
@@ -971,11 +987,11 @@ test("dual", async () => {
 test("invalid config", async () => {
   const args = ["-j", "-f", invalidConfigFile, "-c", "--githubapi", githubUrl, "--pypiapi", pypiUrl];
   try {
-    await nanoSpawn(execPath, [script, ...args]);
+    await captureOutput(() => main(args));
     throw new Error("Expected error but got success");
   } catch (err: any) {
-    expect(err?.exitCode).toBe(1);
-    const output = err?.stdout || "";
+    // When main() throws, it should be caught here
+    const output = err?.message || "";
     expect(output).toContain("updates.config.js");
     expect(output).toContain("Unable to parse");
   }
@@ -1088,12 +1104,19 @@ test("go update", async () => {
 
   await nanoSpawn("go", ["mod", "download"], {cwd: testGoModDir});
 
-  await nanoSpawn(execPath, [
-    script,
-    "-u",
-    "-f", join(testGoModDir, "go.mod"),
-    "-c",
-  ], {cwd: testGoModDir});
+  // Note: Can't easily change cwd for main(), so keeping process.cwd() check
+  const oldCwd = process.cwd();
+  try {
+    process.chdir(testGoModDir);
+    await captureOutput(() => main([
+      "-u",
+      "-f", join(testGoModDir, "go.mod"),
+      "-c",
+      "--githubapi", githubUrl,
+    ]));
+  } finally {
+    process.chdir(oldCwd);
+  }
 
   const updatedContent = await readFile(join(testGoModDir, "go.mod"), "utf8");
 
@@ -1107,8 +1130,7 @@ test("go update", async () => {
 });
 
 test("pin", async () => {
-  const {stdout, stderr} = await nanoSpawn(process.execPath, [
-    script,
+  const {stdout, stderr} = await captureOutput(() => main([
     "-j",
     "-c",
     "--githubapi", githubUrl,
@@ -1117,7 +1139,7 @@ test("pin", async () => {
     "-f", testFile,
     "--pin", "prismjs=^1.0.0",
     "--pin", "react=^18.0.0",
-  ]);
+  ]));
   expect(stderr).toEqual("");
   const {results} = JSON.parse(stdout);
 

@@ -575,6 +575,9 @@ async function finishWithMessage(message: string): Promise<void> {
   await end();
 }
 
+let exitCode_ = 0;
+let skipExit = false;
+
 async function end(err?: Error | void, exitCode?: number): Promise<void> {
   if (err) {
     const error = err.stack ?? err.message;
@@ -592,7 +595,10 @@ async function end(err?: Error | void, exitCode?: number): Promise<void> {
     await new Promise(resolve => setTimeout(resolve, 50));
   }
 
-  exit(exitCode || err ? 1 : 0);
+  exitCode_ = exitCode || err ? 1 : 0;
+  if (!skipExit) {
+    exit(exitCode_);
+  }
 }
 
 function outputDeps(deps: DepsByMode = {}): number {
@@ -1211,6 +1217,11 @@ async function loadConfig(rootDir: string): Promise<Config> {
 }
 
 export async function main(argv?: Array<string>): Promise<void> {
+  // When argv is provided, we're being called from tests, so don't exit
+  if (argv) {
+    skipExit = true;
+  }
+  
   // Parse arguments
   args = parseCliArgs(argv);
 
@@ -1599,8 +1610,11 @@ export async function main(argv?: Array<string>): Promise<void> {
   await end(undefined, exitCode);
 }
 
-try {
-  await main();
-} catch (err) {
-  await end(err);
+// Only run main if this file is executed directly, not when imported
+if (import.meta.main) {
+  try {
+    await main();
+  } catch (err) {
+    await end(err);
+  }
 }
