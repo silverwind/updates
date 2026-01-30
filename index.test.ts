@@ -1260,7 +1260,7 @@ test("actions", async () => {
           new: expect.stringMatching(/^v[6-9]\./),
         },
         "tj-actions/changed-files": {
-          old: "87697c0dca7dd44e37a2b79a79489332556ff1f3 # v37.6.0",
+          old: "87697c0", // Shortened hash (7 chars) when no tag found for commit
           new: expect.stringMatching(/^v[0-9]+\./),
         },
       },

@@ -573,13 +573,16 @@ function outputDeps(deps: DepsByMode = {}): number {
       if (typeof props.newPrint === "string") {
         props.new = props.newPrint;
       }
-      // Don't overwrite old with oldOrig for JSR dependencies
-      if (typeof props.oldOrig === "string" && !isJsrDependency(props.oldOrig)) {
+      // Don't overwrite old with oldOrig for JSR dependencies or actions with displayVersion
+      if (typeof props.oldOrig === "string" && !isJsrDependency(props.oldOrig) && mode !== "actions") {
         props.old = props.oldOrig;
       }
       delete props.oldPrint;
       delete props.newPrint;
-      delete props.oldOrig;
+      // Don't delete oldOrig for actions mode, it's needed for updates
+      if (mode !== "actions") {
+        delete props.oldOrig;
+      }
       delete props.date;
     }
   }
@@ -978,6 +981,29 @@ async function getTags(user: string, repo: string): Promise<Array<string>> {
   return tags;
 }
 
+// Get tags pointing to a specific commit SHA
+// Returns the first version-like tag found, or null if none found
+async function getTagForCommit(user: string, repo: string, sha: string): Promise<string | null> {
+  // Use the GitHub API to list tags for the repository
+  const res = await fetchGitHub(`${githubApiUrl}/repos/${user}/${repo}/tags`);
+  if (!res?.ok) return null;
+  const tags = await res.json();
+  
+  // Find tags that point to this commit
+  for (const tag of tags) {
+    const tagSha = tag.commit?.sha;
+    if (tagSha === sha) {
+      const tagName = tag.name;
+      // Check if tag looks like a version (contains digits)
+      if (/\d/.test(tagName)) {
+        return tagName;
+      }
+    }
+  }
+  
+  return null;
+}
+
 function selectTag(tags: Array<string>, oldRef: string, useGreatest: boolean): string | null {
   const oldRefBare = stripv(oldRef);
   if (!valid(oldRefBare)) return null;
@@ -1109,21 +1135,30 @@ async function parseActionsFromYaml(yamlContent: string): Promise<Array<ActionDe
   return actions;
 }
 
-async function checkActionDep(action: ActionDep, useGreatest: boolean): Promise<{oldVersion: string, newVersion: string | null} | null> {
+async function checkActionDep(action: ActionDep, useGreatest: boolean): Promise<{oldVersion: string, displayVersion: string | null, newVersion: string | null} | null> {
   const {owner, repo, version} = action;
 
   // Handle hash with version comment format
   const hashCommentMatch = /^([0-9a-f]{40})\s*#\s*(v?[\d.]+)$/.exec(version);
   if (hashCommentMatch) {
-    const [, _hash, versionTag] = hashCommentMatch;
+    const [, hash, commentVersion] = hashCommentMatch;
+    
+    // Try to get the tag for this commit
+    const tagForCommit = await getTagForCommit(owner, repo, hash);
+    const displayVersion = tagForCommit || hash.substring(0, 7);
+    
+    // Use the comment version to find updates
     const tags = await getTags(owner, repo);
     if (args.verbose) {
-      console.error(`DEBUG: ${owner}/${repo} has ${tags.length} tags, checking hash comment version ${versionTag}`);
+      console.error(`DEBUG: ${owner}/${repo} has ${tags.length} tags, checking hash comment version ${commentVersion}, display: ${displayVersion}`);
     }
-    const newTag = selectActionTag(tags, versionTag, useGreatest);
+    const newTag = selectActionTag(tags, commentVersion, useGreatest);
 
-    if (newTag && newTag !== versionTag) {
-      return {oldVersion: version, newVersion: newTag};
+    if (newTag && newTag !== commentVersion) {
+      return {oldVersion: version, displayVersion, newVersion: newTag};
+    } else {
+      // No update, but still return displayVersion for proper display
+      return {oldVersion: version, displayVersion, newVersion: null};
     }
   } else {
     // Handle standard semver tag format (including major-only like v2, v3)
@@ -1138,7 +1173,7 @@ async function checkActionDep(action: ActionDep, useGreatest: boolean): Promise<
     }
 
     if (newTag && newTag !== version) {
-      return {oldVersion: version, newVersion: newTag};
+      return {oldVersion: version, displayVersion: null, newVersion: newTag};
     }
   }
 
@@ -1500,6 +1535,13 @@ async function main(): Promise<void> {
         }
 
         const dep = deps[mode][key];
+        
+        // If there's a displayVersion, use it for the old version display
+        if (result?.displayVersion) {
+          dep.old = result.displayVersion;
+          dep.oldOrig = version; // Keep the original for updates
+        }
+        
         const newVersion = result?.newVersion;
         if (newVersion) {
           dep.new = newVersion;
@@ -1509,6 +1551,7 @@ async function main(): Promise<void> {
             console.error(`DEBUG: Added update for ${fullName}: ${version} -> ${newVersion}`);
           }
         } else {
+          // No update found, remove from deps
           delete deps[mode][key];
           if (verbose) {
             console.error(`DEBUG: Deleted ${fullName} (no update)`);
