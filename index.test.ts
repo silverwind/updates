@@ -5,7 +5,7 @@ import {readFileSync, mkdtempSync, readdirSync} from "node:fs";
 import {writeFile, readFile, rm} from "node:fs/promises";
 import {fileURLToPath} from "node:url";
 import {tmpdir} from "node:os";
-import {env, versions, execPath} from "node:process";
+import {execPath, versions} from "node:process";
 import {gzipSync} from "node:zlib";
 import type {Server} from "node:http";
 import {npmTypes, poetryTypes, uvTypes, goTypes} from "./utils.ts";
@@ -281,21 +281,25 @@ test("jsr", async () => {
   expect(results.npm.devDependencies["@std/path"].new).toBe("1.0.8");
 });
 
-
-if (env.CI && !versions.bun) {
+if (!versions.bun) {
   test("global", async () => {
     await nanoSpawn("npm", ["i", "-g", "."]);
-    const {stdout, stderr} = await nanoSpawn("updates", [
-      "-C",
-      "--githubapi", githubUrl,
-      "--pypiapi", pypiUrl,
-      "-f", testFile,
-    ]);
-    expect(stderr).toEqual("");
-    expect(stdout).toContain("prismjs");
-    expect(stdout).toContain("https://github.com/silverwind/updates");
+    try {
+      const {stdout, stderr} = await nanoSpawn("updates", [
+        "-C",
+        "--githubapi", githubUrl,
+        "--pypiapi", pypiUrl,
+        "-f", testFile,
+      ]);
+      expect(stderr).toEqual("");
+      expect(stdout).toContain("prismjs");
+      expect(stdout).toContain("https://github.com/silverwind/updates");
+    } finally {
+      await nanoSpawn("npm", ["install", "-g", "updates@latest"]);
+    }
   });
 }
+
 
 test("latest", async () => {
   expect(await makeTest("-j")()).toMatchInlineSnapshot(`
@@ -370,6 +374,11 @@ test("latest", async () => {
             "info": "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
             "new": "~7.11.5",
             "old": "~6.0.0",
+          },
+          "gulp-sourcemaps": {
+            "info": "https://github.com/gulp-sourcemaps/gulp-sourcemaps",
+            "new": ">=2.6.5",
+            "old": ">=2.0.0",
           },
           "typescript": {
             "info": "https://github.com/Microsoft/TypeScript",
@@ -457,6 +466,11 @@ test("greatest", async () => {
             "info": "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
             "new": "~7.11.5",
             "old": "~6.0.0",
+          },
+          "gulp-sourcemaps": {
+            "info": "https://github.com/gulp-sourcemaps/gulp-sourcemaps",
+            "new": ">=2.6.5",
+            "old": ">=2.0.0",
           },
           "typescript": {
             "info": "https://github.com/Microsoft/TypeScript",
@@ -550,6 +564,16 @@ test("prerelease", async () => {
             "new": "~7.11.5",
             "old": "~6.0.0",
           },
+          "gulp-sourcemaps": {
+            "info": "https://github.com/gulp-sourcemaps/gulp-sourcemaps",
+            "new": ">=2.6.5",
+            "old": ">=2.0.0",
+          },
+          "noty": {
+            "info": "https://github.com/needim/noty",
+            "new": ">= 3.2",
+            "old": ">= 3.1",
+          },
           "typescript": {
             "info": "https://github.com/Microsoft/TypeScript",
             "new": "^5",
@@ -642,6 +666,11 @@ test("release", async () => {
             "new": "~7.11.5",
             "old": "~6.0.0",
           },
+          "gulp-sourcemaps": {
+            "info": "https://github.com/gulp-sourcemaps/gulp-sourcemaps",
+            "new": ">=2.6.5",
+            "old": ">=2.0.0",
+          },
           "typescript": {
             "info": "https://github.com/Microsoft/TypeScript",
             "new": "^5",
@@ -691,6 +720,13 @@ test("patch", async () => {
             "info": "https://github.com/npm/cli",
             "new": "11.6.2",
             "old": "11.6.0",
+          },
+        },
+        "peerDependencies": {
+          "gulp-sourcemaps": {
+            "info": "https://github.com/floridoo/gulp-sourcemaps",
+            "new": ">=2.0.1",
+            "old": ">=2.0.0",
           },
         },
         "resolutions": {
@@ -866,6 +902,13 @@ test("exclude 3", async () => {
             "old": "11.6.0",
           },
         },
+        "peerDependencies": {
+          "gulp-sourcemaps": {
+            "info": "https://github.com/gulp-sourcemaps/gulp-sourcemaps",
+            "new": ">=2.6.5",
+            "old": ">=2.0.0",
+          },
+        },
       },
     }
   `);
@@ -887,6 +930,13 @@ test("exclude 4", async () => {
             "info": "https://github.com/npm/cli",
             "new": "11.6.2",
             "old": "11.6.0",
+          },
+        },
+        "peerDependencies": {
+          "gulp-sourcemaps": {
+            "info": "https://github.com/floridoo/gulp-sourcemaps",
+            "new": ">=2.0.1",
+            "old": ">=2.0.0",
           },
         },
       },
@@ -1103,6 +1153,13 @@ test("issue #76: allow upgrade to prerelease with -p flag", async () => {
             "info": "https://github.com/npm/cli",
             "new": "11.6.2",
             "old": "11.6.0",
+          },
+        },
+        "peerDependencies": {
+          "noty": {
+            "info": "https://github.com/needim/noty",
+            "new": ">= 3.2",
+            "old": ">= 3.1",
           },
         },
       },
