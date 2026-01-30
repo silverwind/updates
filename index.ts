@@ -988,7 +988,7 @@ async function getTagForCommit(user: string, repo: string, sha: string): Promise
   const res = await fetchGitHub(`${githubApiUrl}/repos/${user}/${repo}/tags`);
   if (!res?.ok) return null;
   const tags = await res.json();
-  
+
   // Find tags that point to this commit
   for (const tag of tags) {
     const tagSha = tag.commit?.sha;
@@ -1000,7 +1000,7 @@ async function getTagForCommit(user: string, repo: string, sha: string): Promise
       }
     }
   }
-  
+
   return null;
 }
 
@@ -1142,11 +1142,11 @@ async function checkActionDep(action: ActionDep, useGreatest: boolean): Promise<
   const hashCommentMatch = /^([0-9a-f]{40})\s*#\s*(v?[\d.]+)$/.exec(version);
   if (hashCommentMatch) {
     const [, hash, commentVersion] = hashCommentMatch;
-    
+
     // Try to get the tag for this commit
     const tagForCommit = await getTagForCommit(owner, repo, hash);
     const displayVersion = tagForCommit || hash.substring(0, 7);
-    
+
     // Use the comment version to find updates
     const tags = await getTags(owner, repo);
     if (args.verbose) {
@@ -1535,13 +1535,13 @@ async function main(): Promise<void> {
         }
 
         const dep = deps[mode][key];
-        
+
         // If there's a displayVersion, use it for the old version display
         if (result?.displayVersion) {
           dep.old = result.displayVersion;
           dep.oldOrig = version; // Keep the original for updates
         }
-        
+
         const newVersion = result?.newVersion;
         if (newVersion) {
           dep.new = newVersion;
