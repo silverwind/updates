@@ -1262,4 +1262,3 @@ test("pin", async () => {
   const reactNew = results.npm.dependencies.react.new;
   expect(satisfies(reactNew, "^18.0.0")).toBe(true);
 });
-
