@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 import {cwd, stdout, stderr, env, exit, platform, versions} from "node:process";
 import {join, dirname, basename, resolve} from "node:path";
+import {pathToFileURL} from "node:url";
 import {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync, readdirSync, type Stats} from "node:fs";
 import {stripVTControlCharacters, styleText, parseArgs, type ParseArgsOptionsConfig} from "node:util";
 import {execFileSync} from "node:child_process";
 import pMap from "p-map";
 import pkg from "./package.json" with {type: "json"};
-import {parse, coerce, diff, gt, gte, lt, neq, valid, validRange} from "semver";
+import {parse, coerce, diff, gt, gte, lt, neq, valid, validRange, satisfies} from "semver";
 import {timerel} from "timerel";
 import {npmTypes, poetryTypes, uvTypes, goTypes, parseUvDependencies, nonPackageEngines} from "./utils.ts";
 import type {default as registryAuthToken, AuthOptions} from "registry-auth-token";
@@ -22,6 +23,8 @@ export type Config = {
   registry?: string;
   /** Minimum package age in days */
   cooldown?: number,
+  /** Pin packages to semver ranges */
+  pin?: Record<string, string>,
 };
 
 type Npmrc = {
@@ -68,6 +71,7 @@ type FindVersionOpts = {
   usePre: boolean,
   useRel: boolean,
   useGreatest: boolean,
+  pinnedRange?: string,
 };
 
 type FindNewVersionOpts = {
@@ -77,6 +81,7 @@ type FindNewVersionOpts = {
   useRel: boolean,
   useGreatest: boolean,
   semvers: Set<string>,
+  pinnedRange?: string,
 };
 
 // regexes for url dependencies. does only github and only hash or exact semver
@@ -115,6 +120,7 @@ const options: ParseArgsOptionsConfig = {
   "color": {short: "c", type: "boolean"},
   "no-color": {short: "n", type: "boolean"},
   "patch": {short: "P", type: "string", multiple: true},
+  "pin": {short: "l", type: "string", multiple: true},
   "prerelease": {short: "p", type: "string", multiple: true},
   "pypiapi": {type: "string"}, // undocumented, only for tests
   "registry": {short: "r", type: "string"},
@@ -214,6 +220,26 @@ function getProperty(obj: Record<string, any>, path: string): Record<string, any
 
 function commaSeparatedToArray(str: string): Array<string> {
   return str.split(",").filter(Boolean);
+}
+
+function parsePinArg(arg: Arg): Record<string, string> {
+  const result: Record<string, string> = {};
+  if (Array.isArray(arg)) {
+    for (const val of arg) {
+      if (typeof val === "string") {
+        const [pkg, range] = val.split("=", 2);
+        if (pkg && range && validRange(range)) {
+          result[pkg] = range;
+        }
+      }
+    }
+  } else if (typeof arg === "string") {
+    const [pkg, range] = arg.split("=", 2);
+    if (pkg && range && validRange(range)) {
+      result[pkg] = range;
+    }
+  }
+  return result;
 }
 
 function findUpSync(filename: string, dir: string): string | null {
@@ -678,10 +704,17 @@ function shortenGoModule(module: string): string {
 }
 
 function formatDeps(deps: DepsByMode): string {
-  const arr = [["NAME", "OLD", "NEW", "AGE", "INFO"]];
+  // Check if there are multiple modes
+  const modes = Object.keys(deps);
+  const hasMultipleModes = modes.length > 1;
+
+  const header = hasMultipleModes ?
+    ["NAME", "MODE", "OLD", "NEW", "AGE", "INFO"] :
+    ["NAME", "OLD", "NEW", "AGE", "INFO"];
+  const arr = [header];
   const seen = new Set<string>();
 
-  for (const mode of Object.keys(deps)) {
+  for (const mode of modes) {
     for (const [key, data] of Object.entries(deps[mode])) {
       if (!key || !data) continue; // Skip if key or data is missing
       const parts = key.split(sep);
@@ -690,13 +723,14 @@ function formatDeps(deps: DepsByMode): string {
       const id = `${mode}|${name}`;
       if (seen.has(id)) continue;
       seen.add(id);
-      arr.push([
-        mode === "go" ? shortenGoModule(name) : name,
-        highlightDiff(data.old, data.new, red),
-        highlightDiff(data.new, data.old, green),
-        data.age || "",
-        data.info || "",
-      ]);
+      const row = [];
+      row.push(mode === "go" ? shortenGoModule(name) : name);
+      if (hasMultipleModes) row.push(mode);
+      row.push(highlightDiff(data.old, data.new, red));
+      row.push(highlightDiff(data.new, data.old, green));
+      row.push(data.age || "");
+      row.push(data.info || "");
+      arr.push(row);
     }
   }
 
@@ -818,7 +852,7 @@ function coerceToVersion(rangeOrVersion: string): string {
   }
 }
 
-function findVersion(data: any, versions: Array<string>, {range, semvers, usePre, useRel, useGreatest}: FindVersionOpts): string | null {
+function findVersion(data: any, versions: Array<string>, {range, semvers, usePre, useRel, useGreatest, pinnedRange}: FindVersionOpts): string | null {
   const oldVersion = coerceToVersion(range);
   if (!oldVersion) return oldVersion;
 
@@ -838,6 +872,9 @@ function findVersion(data: any, versions: Array<string>, {range, semvers, usePre
     const parsed = parse(version);
     if (!parsed?.version || parsed.prerelease.length && (!usePre || useRel)) continue;
     const candidateVersion = parsed.version;
+
+    // If a pinned range is specified, only consider versions that satisfy it
+    if (pinnedRange && !satisfies(candidateVersion, pinnedRange)) continue;
 
     const d = diff(newVersion, candidateVersion);
     if (!d || !semvers.has(d)) continue;
@@ -859,7 +896,7 @@ function findVersion(data: any, versions: Array<string>, {range, semvers, usePre
   return newVersion || null;
 }
 
-function findNewVersion(data: any, {mode, range, useGreatest, useRel, usePre, semvers}: FindNewVersionOpts): string | null {
+function findNewVersion(data: any, {mode, range, useGreatest, useRel, usePre, semvers, pinnedRange}: FindNewVersionOpts): string | null {
   if (range === "*") return null; // ignore wildcard
   if (range.includes("||")) return null; // ignore or-chains
 
@@ -871,7 +908,7 @@ function findNewVersion(data: any, {mode, range, useGreatest, useRel, usePre, se
   } else if (mode === "go") {
     return data.new;
   }
-  const version = findVersion(data, versions, {range, semvers, usePre, useRel, useGreatest});
+  const version = findVersion(data, versions, {range, semvers, usePre, useRel, useGreatest, pinnedRange});
   if (!version) return null;
 
   if (useGreatest) {
@@ -934,6 +971,11 @@ function findNewVersion(data: any, {mode, range, useGreatest, useRel, usePre, se
 
     // prevent upgrading from non-prerelease to prerelease from latest dist-tag by default
     if (!oldIsPre && latestIsPre && !usePre) {
+      return version;
+    }
+
+    // If a pinned range is specified and latestTag doesn't satisfy it, return version
+    if (pinnedRange && !satisfies(latestTag, pinnedRange)) {
       return version;
     }
 
@@ -1359,11 +1401,33 @@ async function loadConfig(rootDir: string): Promise<Config> {
     }
   }
   let config: Config = {};
+
   try {
-    ({default: config} = await Promise.any(filenames.map(str => {
-      return import(join(rootDir, ...str.split("/")));
+    ({default: config} = await Promise.any(filenames.map(async (filename) => {
+      const fullPath = join(rootDir, ...filename.split("/"));
+      const fileUrl = pathToFileURL(fullPath);
+
+      try {
+        accessSync(fullPath);
+      } catch {
+        throw new Error(`File not found: ${filename}`);
+      }
+
+      try {
+        return await import(fileUrl.href);
+      } catch (err) {
+        throw new Error(`Unable to parse config file ${filename}: ${err.message}`);
+      }
     })));
-  } catch {}
+  } catch (err) {
+    if (err instanceof AggregateError) {
+      const parseErrors = err.errors.filter(e => e.message.startsWith("Unable to parse"));
+      if (parseErrors.length > 0) {
+        throw parseErrors[0];
+      }
+    }
+  }
+
   return config;
 }
 
@@ -1396,6 +1460,7 @@ async function main(): Promise<void> {
     -m, --minor [<pkg,...>]            Consider only up to semver-minor
     -d, --allow-downgrade [<pkg,...>]  Allow version downgrades when using latest version
     -C, --cooldown <days>              Minimum package age in days
+    -l, --pin <pkg=range>              Pin package to given semver range
     -E, --error-on-outdated            Exit with code 2 when updates are available and 0 when not
     -U, --error-on-unchanged           Exit with code 0 when updates are available and 2 when not
     -r, --registry <url>               Override npm registry URL
@@ -1416,6 +1481,7 @@ async function main(): Promise<void> {
     $ updates -f package.json
     $ updates -f pyproject.toml
     $ updates -f go.mod
+    $ updates -l typescript=^5.0.0
 `);
     await end();
   }
@@ -1480,6 +1546,10 @@ async function main(): Promise<void> {
     }
     const include = matchersToRegexSet(includeCli, config?.include ?? []);
     const exclude = matchersToRegexSet(excludeCli, config?.exclude ?? []);
+
+    // Merge pin options from CLI and config
+    const pinCli = parsePinArg(args.pin);
+    const pin: Record<string, string> = {...config?.pin, ...pinCli};
 
     let dependencyTypes: Array<string> = [];
     if (Array.isArray(types)) {
@@ -1689,8 +1759,9 @@ async function main(): Promise<void> {
       const key = `${type}${sep}${name}`;
       const oldRange = deps[mode][key].old;
       const oldOrig = deps[mode][key].oldOrig;
+      const pinnedRange = pin[name];
       const newVersion = findNewVersion(data, {
-        usePre, useRel, useGreatest, semvers, range: oldRange, mode,
+        usePre, useRel, useGreatest, semvers, range: oldRange, mode, pinnedRange,
       });
 
       let newRange = "";

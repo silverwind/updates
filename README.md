@@ -43,6 +43,9 @@ export default {
     "@vitejs/*",
     /^react(-dom)?$/,
   ],
+  pin: {
+    "typescript": "^5.0.0",
+  },
 } satisfies Config;
 ```
 
@@ -53,7 +56,8 @@ export default {
 - `types` *Array\<string>*: Array of package types to use
 - `registry` *string*: URL to npm registry
 - `minAge` *number*: Minimum package age in hours
+- `pin` *Record\<string, string>*: Pin packages to semver ranges
 
-CLI arguments have precedence over options in the config file. `include` and `exclude` options are merged.
+CLI arguments have precedence over options in the config file. `include`, `exclude`, and `pin` options are merged.
 
 © [silverwind](https://github.com/silverwind), distributed under BSD licence

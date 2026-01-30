@@ -8,6 +8,7 @@ import {tmpdir} from "node:os";
 import {execPath, versions} from "node:process";
 import {gzipSync} from "node:zlib";
 import type {Server} from "node:http";
+import {satisfies} from "semver";
 import {npmTypes, poetryTypes, uvTypes, goTypes} from "./utils.ts";
 
 const testFile = fileURLToPath(new URL("fixtures/npm-test/package.json", import.meta.url));
@@ -19,6 +20,7 @@ const goFile = fileURLToPath(new URL("fixtures/go/go.mod", import.meta.url));
 const goUpdateFile = fileURLToPath(new URL("fixtures/go-update/go.mod", import.meta.url));
 const dualFile = fileURLToPath(new URL("fixtures/dual", import.meta.url));
 const actionsFile = fileURLToPath(new URL("fixtures/actions.yaml", import.meta.url));
+const invalidConfigFile = fileURLToPath(new URL("fixtures/invalid-config/package.json", import.meta.url));
 
 const testPkg = JSON.parse(readFileSync(testFile, "utf8"));
 const testDir = mkdtempSync(join(tmpdir(), "updates-"));
@@ -1121,6 +1123,19 @@ test("dual 2", async () => {
   `);
 });
 
+test("invalid config", async () => {
+  const args = ["-j", "-f", invalidConfigFile, "-c", "--githubapi", githubUrl, "--pypiapi", pypiUrl];
+  try {
+    await nanoSpawn(execPath, [script, ...args]);
+    throw new Error("Expected error but got success");
+  } catch (err: any) {
+    expect(err?.exitCode).toBe(1);
+    const output = err?.stdout || "";
+    expect(output).toContain("updates.config.js");
+    expect(output).toContain("Unable to parse");
+  }
+});
+
 test("issue #76: don't upgrade to prerelease from latest dist-tag by default", async () => {
   // Test that we don't upgrade from stable to prerelease when latest dist-tag is a prerelease
   // noty: 3.1.0 -> should suggest 3.1.4 (not 3.2.0-beta which is on latest dist-tag)
@@ -1266,4 +1281,30 @@ test("actions", async () => {
       },
     },
   });
+});
+
+test("pin", async () => {
+  const {stdout, stderr} = await nanoSpawn(process.execPath, [
+    script,
+    "-j",
+    "-c",
+    "--githubapi", githubUrl,
+    "--pypiapi", pypiUrl,
+    "--registry", npmUrl,
+    "-f", testFile,
+    "--pin", "prismjs=^1.0.0",
+    "--pin", "react=^18.0.0",
+  ]);
+  expect(stderr).toEqual("");
+  const {results} = JSON.parse(stdout);
+
+  // prismjs should be updated but only within the ^1.0.0 range
+  expect(results.npm.dependencies.prismjs).toBeDefined();
+  const prismjsNew = results.npm.dependencies.prismjs.new;
+  expect(satisfies(prismjsNew, "^1.0.0")).toBe(true);
+
+  // react should not be updated beyond ^18.0.0 range
+  expect(results.npm.dependencies.react).toBeDefined();
+  const reactNew = results.npm.dependencies.react.new;
+  expect(satisfies(reactNew, "^18.0.0")).toBe(true);
 });
