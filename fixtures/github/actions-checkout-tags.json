@@ -1,0 +1,17 @@
+[
+  {"ref": "refs/tags/v1"},
+  {"ref": "refs/tags/v2"},
+  {"ref": "refs/tags/v2.0.0"},
+  {"ref": "refs/tags/v2.1.0"},
+  {"ref": "refs/tags/v3"},
+  {"ref": "refs/tags/v3.0.0"},
+  {"ref": "refs/tags/v3.1.0"},
+  {"ref": "refs/tags/v4"},
+  {"ref": "refs/tags/v4.0.0"},
+  {"ref": "refs/tags/v4.1.0"},
+  {"ref": "refs/tags/v4.2.0"},
+  {"ref": "refs/tags/v6"},
+  {"ref": "refs/tags/v6.0.0"},
+  {"ref": "refs/tags/v6.0.1"},
+  {"ref": "refs/tags/v6.0.2"}
+]

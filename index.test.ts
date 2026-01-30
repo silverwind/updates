@@ -18,6 +18,7 @@ const uvFile = fileURLToPath(new URL("fixtures/uv/pyproject.toml", import.meta.u
 const goFile = fileURLToPath(new URL("fixtures/go/go.mod", import.meta.url));
 const goUpdateFile = fileURLToPath(new URL("fixtures/go-update/go.mod", import.meta.url));
 const dualFile = fileURLToPath(new URL("fixtures/dual", import.meta.url));
+const actionsFile = fileURLToPath(new URL("fixtures/actions.yaml", import.meta.url));
 
 const testPkg = JSON.parse(readFileSync(testFile, "utf8"));
 const testDir = mkdtempSync(join(tmpdir(), "updates-"));
@@ -150,6 +151,10 @@ beforeAll(async () => {
     readFile(fileURLToPath(new URL("fixtures/github/updates-tags.json", import.meta.url))),
   ]);
 
+  const actionsCheckoutTags = await readFile(fileURLToPath(new URL("fixtures/github/actions-checkout-tags.json", import.meta.url)));
+  const actionsSetupNodeTags = await readFile(fileURLToPath(new URL("fixtures/github/actions-setup-node-tags.json", import.meta.url)));
+  const tjActionsChangedFilesTags = await readFile(fileURLToPath(new URL("fixtures/github/tj-actions-changed-files-tags.json", import.meta.url)));
+
   for (const pkgName of testPackages) {
     const name = testPkg.resolutions[pkgName] ? resolutionsBasePackage(pkgName) : pkgName;
     const urlName = name.replace(/\//g, "%2f");
@@ -172,6 +177,11 @@ beforeAll(async () => {
 
   githubServer.get("/repos/silverwind/updates/commits", (_, res) => res.send(commits));
   githubServer.get("/repos/silverwind/updates/git/refs/tags", (_, res) => res.send(tags));
+
+  // GitHub Actions mock routes
+  githubServer.get("/repos/actions/checkout/git/refs/tags", (_, res) => res.send(actionsCheckoutTags));
+  githubServer.get("/repos/actions/setup-node/git/refs/tags", (_, res) => res.send(actionsSetupNodeTags));
+  githubServer.get("/repos/tj-actions/changed-files/git/refs/tags", (_, res) => res.send(tjActionsChangedFilesTags));
 
   await Promise.all([
     githubServer.start(0),
@@ -1234,4 +1244,26 @@ test("go update", async () => {
   const matches = updatedContent.match(/github\.com\/google\/uuid v1\.6\.0/g);
   expect(matches).toBeTruthy();
   expect(matches?.length).toBe(4);
+});
+
+test("actions", async () => {
+  const result = await makeTest(`-j -f ${actionsFile} --modes actions --githubapi ${githubUrl}`)();
+  expect(result).toMatchObject({
+    actions: {
+      actions: {
+        "actions/checkout": {
+          old: "v2",
+          new: expect.stringMatching(/^v[6-9]\./),
+        },
+        "actions/setup-node": {
+          old: "v1",
+          new: expect.stringMatching(/^v[6-9]\./),
+        },
+        "tj-actions/changed-files": {
+          old: "87697c0dca7dd44e37a2b79a79489332556ff1f3 # v37.6.0",
+          new: expect.stringMatching(/^v[0-9]+\./),
+        },
+      },
+    },
+  });
 });
