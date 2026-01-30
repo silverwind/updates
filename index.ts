@@ -984,7 +984,7 @@ function findNewVersion(data: any, {mode, range, useGreatest, useRel, usePre, se
   }
 }
 
-function fetchGitHostApi(url: string): Promise<Response> {
+function fetchForgeApi(url: string): Promise<Response> {
   const opts: RequestInit = {headers: {"accept-encoding": "gzip, deflate, br"}};
   const token =
     env.UPDATES_GITHUB_API_TOKEN ||
@@ -1006,7 +1006,7 @@ type CommitInfo = {
 
 async function getLastestCommit(user: string, repo: string): Promise<CommitInfo> {
   const url = `${githubApiUrl}/repos/${user}/${repo}/commits`;
-  const res = await fetchGitHostApi(url);
+  const res = await fetchForgeApi(url);
   if (!res?.ok) return {hash: "", commit: {}};
   const data = await res.json();
   const {sha: hash, commit} = data[0];
@@ -1016,7 +1016,7 @@ async function getLastestCommit(user: string, repo: string): Promise<CommitInfo>
 // return list of tags sorted old to new
 // TODO: newDate support, semver matching
 async function getTags(user: string, repo: string): Promise<Array<string>> {
-  const res = await fetchGitHostApi(`${githubApiUrl}/repos/${user}/${repo}/git/refs/tags`);
+  const res = await fetchForgeApi(`${githubApiUrl}/repos/${user}/${repo}/git/refs/tags`);
   if (!res?.ok) return [];
   const data = await res.json();
   const tags = data.map((entry: {ref: string}) => entry.ref.replace(/^refs\/tags\//, ""));
@@ -1027,7 +1027,7 @@ async function getTags(user: string, repo: string): Promise<Array<string>> {
 // Returns the first version-like tag found, or null if none found
 async function getTagForCommit(user: string, repo: string, sha: string): Promise<string | null> {
   // Use the GitHub API to list tags for the repository
-  const res = await fetchGitHostApi(`${githubApiUrl}/repos/${user}/${repo}/tags`);
+  const res = await fetchForgeApi(`${githubApiUrl}/repos/${user}/${repo}/tags`);
   if (!res?.ok) return null;
   const tags = await res.json();
 
