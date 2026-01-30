@@ -595,16 +595,16 @@ function formatDeps(deps: DepsByMode): string {
   // Check if there are multiple modes
   const modes = Object.keys(deps);
   const hasMultipleModes = modes.length > 1;
-  
-  const header = hasMultipleModes 
-    ? ["NAME", "MODE", "OLD", "NEW", "AGE", "INFO"]
-    : ["NAME", "OLD", "NEW", "AGE", "INFO"];
+
+  const header = hasMultipleModes ?
+    ["NAME", "MODE", "OLD", "NEW", "AGE", "INFO"] :
+    ["NAME", "OLD", "NEW", "AGE", "INFO"];
   const arr = [header];
   const seen = new Set<string>();
 
   for (const mode of modes) {
     for (const [key, data] of Object.entries(deps[mode])) {
-      const [type, name] = key.split(sep);
+      const [_type, name] = key.split(sep);
       const id = `${mode}|${name}`;
       if (seen.has(id)) continue;
       seen.add(id);
