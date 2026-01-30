@@ -1141,7 +1141,7 @@ async function loadConfig(rootDir: string): Promise<Config> {
       const fileUrl = pathToFileURL(fullPath);
 
       try {
-        accessSync(fileUrl);
+        accessSync(fullPath);
       } catch {
         throw new Error(`File not found: ${filename}`);
       }
