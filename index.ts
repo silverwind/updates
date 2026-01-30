@@ -750,12 +750,12 @@ function updateActionsYaml(yamlStr: string, deps: Deps): string {
     const oldVersion = oldOrig || old;
 
     // Handle hash@version format (e.g., @87697c0dca7dd44e37a2b79a79489332556ff1f3 # v37.6.0)
-    const hashCommentMatch = /^([0-9a-f]+)\s*#\s*(v?[\d.]+)$/.exec(oldVersion);
+    const hashCommentMatch = /^([0-9a-f]{40})\s*#\s*(v?[\d.]+)$/.exec(oldVersion);
     if (hashCommentMatch) {
-      const [_, hash, version] = hashCommentMatch;
-      // Replace hash@version comment format
+      const [, hash, oldCommentVersion] = hashCommentMatch;
+      // When updating, replace hash with new version and update comment to match
       const pattern = new RegExp(
-        `(uses:\\s*${esc(actionName)}@)${esc(hash)}(\\s*#\\s*)${esc(version)}`,
+        `(uses:\\s*${esc(actionName)}@)${esc(hash)}(\\s*#\\s*)${esc(oldCommentVersion)}`,
         "g"
       );
       newYamlStr = newYamlStr.replace(pattern, `$1${deps[key].new}$2${deps[key].new}`);
@@ -1087,7 +1087,7 @@ async function parseActionsFromYaml(yamlContent: string): Promise<Array<ActionDe
         const hashMatch = /^[0-9a-f]{40}$/.exec(versionPart);
         if (hashMatch) {
           // It's a hash, check raw YAML for version comment
-          const regex = new RegExp(`uses:\\s*${owner}/${repo}@${versionPart}\\s*#\\s*(v?[\\d.]+)`, "m");
+          const regex = new RegExp(`uses:\\s*${esc(owner)}/${esc(repo)}@${esc(versionPart)}\\s*#\\s*(v?[\\d.]+)`, "m");
           const commentMatch = regex.exec(yamlContent);
           if (commentMatch) {
             version = `${versionPart} # ${commentMatch[1]}`;
@@ -1406,18 +1406,20 @@ async function main(): Promise<void> {
     let mode = modeByFileName[filename];
 
     // Detect actions mode for workflow files
-    if (!mode && (file.includes("/.github/workflows/") || file.includes("/.gitea/workflows/") ||
-                  (explicitFiles.has(file) && (filename.endsWith(".yaml") || filename.endsWith(".yml"))))) {
+    if (!mode && (explicitFiles.has(file) && (filename.endsWith(".yaml") || filename.endsWith(".yml")))) {
       // For explicit files, check if it's a workflow file by trying to parse it
-      if (explicitFiles.has(file) && (filename.endsWith(".yaml") || filename.endsWith(".yml"))) {
-        try {
-          const content = readFileSync(file, "utf8");
-          // Simple check: does it have 'jobs:' which is required for workflow files
-          if (content.includes("jobs:") && content.includes("uses:")) {
-            mode = "actions";
-          }
-        } catch {}
-      } else {
+      try {
+        const content = readFileSync(file, "utf8");
+        // Simple check: does it have 'jobs:' which is required for workflow files
+        if (content.includes("jobs:") && content.includes("uses:")) {
+          mode = "actions";
+        }
+      } catch {}
+    } else if (!mode) {
+      // For discovered files, check if they're in workflow directories (using path separators)
+      const normalizedPath = file.split(sep).join("/");
+      if ((normalizedPath.includes("/.github/workflows/") || normalizedPath.includes("/.gitea/workflows/")) &&
+          (filename.endsWith(".yaml") || filename.endsWith(".yml"))) {
         mode = "actions";
       }
     }
@@ -1756,7 +1758,7 @@ async function main(): Promise<void> {
     finishWithMessage("All dependencies are up to date.");
   }
 
-  // Transform actions deps for output - remove file path from key
+  // Transform actions deps for output - remove file path from key and deduplicate
   if (deps.actions) {
     const {verbose} = args;
     if (verbose) {
@@ -1775,7 +1777,12 @@ async function main(): Promise<void> {
         // Transform to: actions${sep}${actionName}
         if (parts.length >= 2) {
           const actionName = parts[parts.length - 1]; // Get last part (action name)
-          transformedActions[`actions${sep}${actionName}`] = dep;
+          const transformedKey = `actions${sep}${actionName}`;
+          // If multiple files use the same action, keep the first one we see
+          // (they should all have the same old/new versions if discovered together)
+          if (!transformedActions[transformedKey]) {
+            transformedActions[transformedKey] = dep;
+          }
         } else {
           if (verbose) console.error(`Malformed key in actions deps: ${key}`);
         }
