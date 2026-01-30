@@ -1218,6 +1218,10 @@ export async function main(argv?: Array<string>): Promise<void> {
   // Reset state for test isolation
   if (argv) {
     skipExit = true;
+    npmrc = null;
+    authOpts = null;
+    rat = null;
+    authCache.clear();
   }
 
   // Parse arguments
