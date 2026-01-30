@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import {cwd, stdout, stderr, env, exit, platform, versions} from "node:process";
 import {join, dirname, basename, resolve} from "node:path";
-import {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync, type Stats} from "node:fs";
+import {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync, readdirSync, type Stats} from "node:fs";
 import {stripVTControlCharacters, styleText, parseArgs, type ParseArgsOptionsConfig} from "node:util";
 import {execFileSync} from "node:child_process";
 import pMap from "p-map";
@@ -189,7 +189,7 @@ const release = argSetToRegexes(parseMixedArg(args.release));
 const patch = argSetToRegexes(parseMixedArg(args.patch));
 const minor = argSetToRegexes(parseMixedArg(args.minor));
 const allowDowngrade = argSetToRegexes(parseMixedArg(args["allow-downgrade"]));
-const enabledModes = parseMixedArg(args.modes) as Set<string> || new Set(["npm", "pypi"]);
+const enabledModes = parseMixedArg(args.modes) as Set<string> || new Set(["npm", "pypi", "actions"]);
 const githubApiUrl = typeof args.githubapi === "string" ? normalizeUrl(args.githubapi) : "https://api.github.com";
 const pypiApiUrl = typeof args.pypiapi === "string" ? normalizeUrl(args.pypiapi) : "https://pypi.org";
 const jsrApiUrl = typeof args.jsrapi === "string" ? normalizeUrl(args.jsrapi) : "https://jsr.io";
@@ -593,7 +593,10 @@ function outputDeps(deps: DepsByMode = {}): number {
     const output: Output = {results: {}};
     for (const mode of Object.keys(deps)) {
       for (const [key, value] of Object.entries(deps[mode])) {
-        const [type, name] = key.split(sep);
+        if (!key) continue; // Skip if key is undefined/empty
+        const parts = key.split(sep);
+        if (parts.length < 2) continue; // Skip malformed keys
+        const [type, name] = parts;
         if (!output.results[mode]) output.results[mode] = {};
         if (!output.results[mode][type]) output.results[mode][type] = {};
         output.results[mode][type][name] = value;
@@ -677,7 +680,10 @@ function formatDeps(deps: DepsByMode): string {
 
   for (const mode of Object.keys(deps)) {
     for (const [key, data] of Object.entries(deps[mode])) {
-      const name = key.split(sep)[1];
+      if (!key || !data) continue; // Skip if key or data is missing
+      const parts = key.split(sep);
+      if (parts.length < 2) continue; // Skip malformed keys
+      const name = parts[1];
       const id = `${mode}|${name}`;
       if (seen.has(id)) continue;
       seen.add(id);
@@ -735,6 +741,31 @@ function updateGoMod(pkgStr: string, deps: Deps): string {
     newPkgStr = newPkgStr.replace(new RegExp(`(${esc(name)}) +v${esc(oldValue)}`, "g"), `$1 v${deps[key].new}`);
   }
   return newPkgStr;
+}
+
+function updateActionsYaml(yamlStr: string, deps: Deps): string {
+  let newYamlStr = yamlStr;
+  for (const [key, {old, oldOrig}] of Object.entries(deps)) {
+    const [_depType, actionName] = key.split(sep);
+    const oldVersion = oldOrig || old;
+    
+    // Handle hash@version format (e.g., @87697c0dca7dd44e37a2b79a79489332556ff1f3 # v37.6.0)
+    const hashCommentMatch = oldVersion.match(/^([0-9a-f]+)\s*#\s*(v?[\d.]+)$/);
+    if (hashCommentMatch) {
+      const [_, hash, version] = hashCommentMatch;
+      // Replace hash@version comment format
+      const pattern = new RegExp(
+        `(uses:\\s*${esc(actionName)}@)${esc(hash)}(\\s*#\\s*)${esc(version)}`,
+        "g"
+      );
+      newYamlStr = newYamlStr.replace(pattern, `$1${deps[key].new}$2${deps[key].new}`);
+    } else {
+      // Handle standard format (e.g., @v2, @v3)
+      const pattern = new RegExp(`(uses:\\s*${esc(actionName)}@)${esc(oldVersion)}`, "g");
+      newYamlStr = newYamlStr.replace(pattern, `$1${deps[key].new}`);
+    }
+  }
+  return newYamlStr;
 }
 
 function updateNpmRange(oldRange: string, newVersion: string, oldOrig: string | undefined): string {
@@ -1017,6 +1048,142 @@ async function checkUrlDep(key: string, dep: Dep, useGreatest: boolean): Promise
   return null;
 }
 
+type ActionDep = {
+  owner: string,
+  repo: string,
+  version: string,
+  fullName: string,
+};
+
+async function parseActionsFromYaml(yamlContent: string): Promise<Array<ActionDep>> {
+  const {parse} = await import("yaml");
+  const actions: Array<ActionDep> = [];
+  
+  try {
+    const doc = parse(yamlContent);
+    if (!doc?.jobs) return actions;
+    
+    for (const job of Object.values(doc.jobs)) {
+      if (typeof job !== "object" || !job || !("steps" in job)) continue;
+      const steps = (job as any).steps;
+      if (!Array.isArray(steps)) continue;
+      
+      for (const step of steps) {
+        if (!step?.uses) continue;
+        const uses = step.uses;
+        
+        // Skip local actions (e.g., ./local-action@v1)
+        if (uses.startsWith("./") || uses.startsWith("../")) continue;
+        
+        // Parse owner/repo@version
+        const match = uses.match(/^([^/]+)\/([^@]+)@(.+)$/);
+        if (!match) continue;
+        
+        const [_, owner, repo, versionPart] = match;
+        const fullName = `${owner}/${repo}`;
+        
+        // Now check if there's a comment in the raw YAML for this action
+        let version = versionPart;
+        const hashMatch = versionPart.match(/^[0-9a-f]{40}$/);
+        if (hashMatch) {
+          // It's a hash, check raw YAML for version comment
+          const regex = new RegExp(`uses:\\s*${owner}/${repo}@${versionPart}\\s*#\\s*(v?[\\d.]+)`, "m");
+          const commentMatch = yamlContent.match(regex);
+          if (commentMatch) {
+            version = `${versionPart} # ${commentMatch[1]}`;
+          }
+        }
+        
+        actions.push({
+          owner,
+          repo,
+          version,
+          fullName,
+        });
+      }
+    }
+  } catch (err) {
+    // If parsing fails, return empty array
+  }
+  
+  return actions;
+}
+
+async function checkActionDep(action: ActionDep, useGreatest: boolean): Promise<{oldVersion: string, newVersion: string | null} | null> {
+  const {owner, repo, version} = action;
+  
+  // Handle hash with version comment format
+  const hashCommentMatch = version.match(/^([0-9a-f]{40})\s*#\s*(v?[\d.]+)$/);
+  if (hashCommentMatch) {
+    const [_, hash, versionTag] = hashCommentMatch;
+    const tags = await getTags(owner, repo);
+    if (args.verbose) {
+      console.error(`DEBUG: ${owner}/${repo} has ${tags.length} tags, checking hash comment version ${versionTag}`);
+    }
+    const newTag = selectActionTag(tags, versionTag, useGreatest);
+    
+    if (newTag && newTag !== versionTag) {
+      return {oldVersion: version, newVersion: newTag};
+    }
+  } else {
+    // Handle standard semver tag format (including major-only like v2, v3)
+    const tags = await getTags(owner, repo);
+    if (args.verbose) {
+      console.error(`DEBUG: ${owner}/${repo} has ${tags.length} tags, checking version ${version}, useGreatest=${useGreatest}`);
+      console.error(`DEBUG: Last few tags: ${tags.slice(-5).join(', ')}`);
+    }
+    const newTag = selectActionTag(tags, version, useGreatest);
+    if (args.verbose) {
+      console.error(`DEBUG: selectActionTag returned: ${newTag}`);
+    }
+    
+    if (newTag && newTag !== version) {
+      return {oldVersion: version, newVersion: newTag};
+    }
+  }
+  
+  return null;
+}
+
+function selectActionTag(tags: Array<string>, oldRef: string, useGreatest: boolean): string | null {
+  const oldRefBare = stripv(oldRef);
+  const oldRefCoerced = coerce(oldRefBare);
+  if (!oldRefCoerced) return null;
+
+  if (!useGreatest) {
+    // Find the latest tag
+    const lastTag = tags.at(-1);
+    if (!lastTag) return null;
+    const lastTagBare = stripv(lastTag);
+    const lastTagCoerced = coerce(lastTagBare);
+    if (!lastTagCoerced) return null;
+
+    if (neq(oldRefCoerced.version, lastTagCoerced.version)) {
+      return lastTag;
+    }
+  } else {
+    // Find the greatest tag
+    let greatestTag: string | null = null;
+    let greatestVersion: string | null = null;
+
+    for (const tag of tags) {
+      const tagBare = stripv(tag);
+      const tagCoerced = coerce(tagBare);
+      if (!tagCoerced) continue;
+      if (!greatestVersion || gt(tagCoerced.version, greatestVersion)) {
+        greatestTag = tag;
+        greatestVersion = tagCoerced.version;
+      }
+    }
+    
+    if (greatestTag && greatestVersion && neq(oldRefCoerced.version, greatestVersion)) {
+      return greatestTag;
+    }
+  }
+
+  return null;
+}
+
 // turn "v1.3.2-0.20230802210424-5b0b94c5c0d3" into "v1.3.2"
 function shortenGoVersion(version: string): string {
   return version.replace(/-.*/, "");
@@ -1084,6 +1251,22 @@ function canIncludeByDate(date: string | undefined, cooldownDays: number, now: n
   return diffDays >= cooldownDays;
 }
 
+function discoverWorkflowFiles(dir: string): Array<string> {
+  const files: Array<string> = [];
+  for (const workflowDir of [".github/workflows", ".gitea/workflows"]) {
+    const fullPath = join(dir, workflowDir);
+    try {
+      const entries = readdirSync(fullPath);
+      for (const entry of entries) {
+        if (entry.endsWith(".yaml") || entry.endsWith(".yml")) {
+          files.push(resolve(join(fullPath, entry)));
+        }
+      }
+    } catch {}
+  }
+  return files;
+}
+
 function resolveFiles(filesArg: Set<string>): [Set<string>, Set<string>] {
   const resolvedFiles = new Set<string>();
   const explicitFiles = new Set<string>();
@@ -1112,6 +1295,10 @@ function resolveFiles(filesArg: Set<string>): [Set<string>, Set<string>] {
             resolvedFiles.add(resolve(f));
           }
         }
+        // Also discover workflow files
+        for (const workflowFile of discoverWorkflowFiles(file)) {
+          resolvedFiles.add(workflowFile);
+        }
       } else {
         throw new Error(`${file} is neither a file nor directory`);
       }
@@ -1120,6 +1307,10 @@ function resolveFiles(filesArg: Set<string>): [Set<string>, Set<string>] {
     for (const filename of Object.keys(modeByFileName)) {
       const file = findUpSync(filename, cwd());
       if (file) resolvedFiles.add(resolve(file));
+    }
+    // Also discover workflow files from current directory
+    for (const workflowFile of discoverWorkflowFiles(cwd())) {
+      resolvedFiles.add(workflowFile);
     }
   }
   return [resolvedFiles, explicitFiles];
@@ -1203,6 +1394,8 @@ async function main(): Promise<void> {
   const maybeUrlDeps: Deps = {};
   const pkgStrs: Record<string, string> = {};
   const filePerMode: Record<string, string> = {};
+  const actionFiles: Map<string, string> = new Map(); // Map action file path to its content
+  const actionDepsOriginal: Deps = {}; // Store original action deps with file paths in keys
   const now = Date.now();
   let numDependencies = 0;
 
@@ -1210,9 +1403,31 @@ async function main(): Promise<void> {
 
   for (const file of files) {
     const filename = basename(file);
-    const mode = modeByFileName[filename];
+    let mode = modeByFileName[filename];
+    
+    // Detect actions mode for workflow files
+    if (!mode && (file.includes("/.github/workflows/") || file.includes("/.gitea/workflows/") || 
+                  (explicitFiles.has(file) && (filename.endsWith(".yaml") || filename.endsWith(".yml"))))) {
+      // For explicit files, check if it's a workflow file by trying to parse it
+      if (explicitFiles.has(file) && (filename.endsWith(".yaml") || filename.endsWith(".yml"))) {
+        try {
+          const content = readFileSync(file, "utf8");
+          // Simple check: does it have 'jobs:' which is required for workflow files
+          if (content.includes("jobs:") && content.includes("uses:")) {
+            mode = "actions";
+          }
+        } catch {}
+      } else {
+        mode = "actions";
+      }
+    }
+    
     if (!enabledModes.has(mode) && !explicitFiles.has(file)) continue;
-    filePerMode[mode] = file;
+    
+    // For actions mode, don't overwrite filePerMode - we need to track all files separately
+    if (mode !== "actions") {
+      filePerMode[mode] = file;
+    }
     if (!deps[mode]) deps[mode] = {};
 
     const projectDir = dirname(resolve(file));
@@ -1245,7 +1460,62 @@ async function main(): Promise<void> {
     }
 
     let pkg: Record<string, any> = {};
-    if (mode === "go") {
+    if (mode === "actions") {
+      // For actions mode, skip standard dependency parsing
+      try {
+        const content = readFileSync(file, "utf8");
+        actionFiles.set(file, content);
+      } catch (err) {
+        throw new Error(`Unable to open ${file}: ${(err as Error).message}`);
+      }
+      
+      // Parse actions from YAML
+      const actions = await parseActionsFromYaml(actionFiles.get(file)!);
+      const actionsToCheck: Array<{key: string, action: ActionDep}> = [];
+      
+      for (const action of actions) {
+        if (canInclude(action.fullName, mode, include, exclude, "actions")) {
+          // Include file path in the key to track which file this action belongs to
+          const key = `${file}${sep}${action.fullName}`;
+          deps[mode][key] = {
+            old: action.version,
+            oldOrig: action.version,
+          } as Dep;
+          actionsToCheck.push({key, action});
+        }
+      }
+      
+      // Check each action for updates
+      await pMap(actionsToCheck, async ({key, action}) => {
+        const {owner, repo, version, fullName} = action;
+        
+        const useGreatest = typeof greatest === "boolean" ? greatest : matchesAny(fullName, greatest);
+        const result = await checkActionDep(action, useGreatest);
+        
+        if (args.verbose) {
+          console.error(`DEBUG: Checked ${fullName}: result=${JSON.stringify(result)}`);
+        }
+        
+        if (result?.newVersion) {
+          deps[mode][key].new = result.newVersion;
+          // Store original with file path
+          actionDepsOriginal[key] = deps[mode][key];
+          if (args.verbose) {
+            console.error(`DEBUG: Added update for ${fullName}: ${version} -> ${result.newVersion}`);
+          }
+        } else {
+          delete deps[mode][key];
+          if (args.verbose) {
+            console.error(`DEBUG: Deleted ${fullName} (no update)`);
+          }
+        }
+        
+        return null;
+      }, {concurrency});
+      
+      numDependencies += Object.keys(deps[mode]).length;
+      continue; // Skip standard dependency processing
+    } else if (mode === "go") {
       pkgStrs[mode] = execFileSync("go", [
         "list", "-m", "-f", "{{if not .Indirect}}{{.Path}}@{{.Version}}{{end}}", "all",
       ], {stdio: "pipe", encoding: "utf8", cwd: projectDir});
@@ -1483,21 +1753,84 @@ async function main(): Promise<void> {
     finishWithMessage("All dependencies are up to date.");
   }
 
+  // Transform actions deps for output - remove file path from key
+  if (deps.actions) {
+    if (args.verbose) {
+      console.error(`DEBUG: deps.actions keys before transform: ${JSON.stringify(Object.keys(deps.actions))}`);
+    }
+    if (Object.keys(deps.actions).length > 0) {
+      const transformedActions: Deps = {};
+      for (const [key, dep] of Object.entries(deps.actions)) {
+        if (!key) {
+          if (args.verbose) console.error("Empty key found in actions deps");
+          continue;
+        }
+        const parts = key.split(sep);
+        // Actions keys should have file path as first part, action name as second
+        // Transform to: actions${sep}${actionName}
+        if (parts.length >= 2) {
+          const actionName = parts[parts.length - 1]; // Get last part (action name)
+          transformedActions[`actions${sep}${actionName}`] = dep;
+        } else {
+          if (args.verbose) console.error(`Malformed key in actions deps: ${key}`);
+        }
+      }
+      deps.actions = transformedActions;
+      if (args.verbose) {
+        console.error(`DEBUG: deps.actions keys after transform: ${JSON.stringify(Object.keys(deps.actions))}`);
+      }
+    }
+  }
+
   const exitCode = outputDeps(deps);
 
   if (update) {
     for (const mode of Object.keys(deps)) {
       if (!Object.keys(deps[mode]).length) continue;
-      try {
-        const fn = (mode === "npm") ? updatePackageJson : (mode === "go") ? updateGoMod : updatePyprojectToml;
-        const fileContent = (mode === "go") ? readFileSync(filePerMode[mode], "utf8") : pkgStrs[mode];
-        write(filePerMode[mode], fn(fileContent, deps[mode]));
-      } catch (err) {
-        throw new Error(`Error writing ${basename(filePerMode[mode])}: ${(err as Error).message}`);
+      
+      if (mode === "actions") {
+        // Group deps by file - use actionDepsOriginal which has file paths
+        const depsByFile = new Map<string, Deps>();
+        for (const [key, dep] of Object.entries(actionDepsOriginal)) {
+          const parts = key.split(sep);
+          const filePath = parts[0];
+          const actionName = parts[1];
+          
+          if (!depsByFile.has(filePath)) {
+            depsByFile.set(filePath, {});
+          }
+          // Store with simplified key for updateActionsYaml
+          depsByFile.get(filePath)![`actions${sep}${actionName}`] = dep;
+        }
+        
+        // Update each file
+        for (const [filePath, fileDeps] of depsByFile.entries()) {
+          try {
+            const content = actionFiles.get(filePath)!;
+            write(filePath, updateActionsYaml(content, fileDeps));
+            console.info(green(`✨ ${basename(filePath)} updated`));
+          } catch (err) {
+            throw new Error(`Error writing ${basename(filePath)}: ${(err as Error).message}`);
+          }
+        }
+      } else {
+        try {
+          let fn: (content: string, deps: Deps) => string;
+          if (mode === "npm") {
+            fn = updatePackageJson;
+          } else if (mode === "go") {
+            fn = updateGoMod;
+          } else {
+            fn = updatePyprojectToml;
+          }
+          
+          const fileContent = (mode === "go") ? readFileSync(filePerMode[mode], "utf8") : pkgStrs[mode];
+          write(filePerMode[mode], fn(fileContent, deps[mode]));
+          console.info(green(`✨ ${basename(filePerMode[mode])} updated`));
+        } catch (err) {
+          throw new Error(`Error writing ${basename(filePerMode[mode])}: ${(err as Error).message}`);
+        }
       }
-
-      // TODO: json
-      console.info(green(`✨ ${basename(filePerMode[mode])} updated`));
     }
   }
 
