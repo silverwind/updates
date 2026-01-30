@@ -1227,6 +1227,11 @@ export async function main(argv?: Array<string>): Promise<void> {
   // Parse arguments
   args = parseCliArgs(argv);
 
+  // In test mode, create a mock npmrc with the test registry to prevent loading system npmrc
+  if (argv && typeof args.registry === "string") {
+    npmrc = {registry: args.registry} as Npmrc;
+  }
+
   // Initialize color functions
   [magenta, red, green] = (["magenta", "red", "green"] as const)
     .map(color => args["no-color"] ? String : (text: string | number) => styleText(color, String(text)));
