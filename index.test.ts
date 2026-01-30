@@ -8,6 +8,7 @@ import {tmpdir} from "node:os";
 import {execPath, versions} from "node:process";
 import {gzipSync} from "node:zlib";
 import type {Server} from "node:http";
+import {satisfies} from "semver";
 import {npmTypes, poetryTypes, uvTypes, goTypes} from "./utils.ts";
 
 const testFile = fileURLToPath(new URL("fixtures/npm-test/package.json", import.meta.url));
@@ -1234,4 +1235,30 @@ test("go update", async () => {
   const matches = updatedContent.match(/github\.com\/google\/uuid v1\.6\.0/g);
   expect(matches).toBeTruthy();
   expect(matches?.length).toBe(4);
+});
+
+test("pin", async () => {
+  const {stdout, stderr} = await nanoSpawn(process.execPath, [
+    script,
+    "-j",
+    "-c",
+    "--githubapi", githubUrl,
+    "--pypiapi", pypiUrl,
+    "--registry", npmUrl,
+    "-f", testFile,
+    "--pin", "prismjs=^1.0.0",
+    "--pin", "react=^18.0.0",
+  ]);
+  expect(stderr).toEqual("");
+  const {results} = JSON.parse(stdout);
+
+  // prismjs should be updated but only within the ^1.0.0 range
+  expect(results.npm.dependencies.prismjs).toBeDefined();
+  const prismjsNew = results.npm.dependencies.prismjs.new;
+  expect(satisfies(prismjsNew, "^1.0.0")).toBe(true);
+
+  // react should not be updated beyond ^18.0.0 range
+  expect(results.npm.dependencies.react).toBeDefined();
+  const reactNew = results.npm.dependencies.react.new;
+  expect(satisfies(reactNew, "^18.0.0")).toBe(true);
 });
