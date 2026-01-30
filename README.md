@@ -57,6 +57,6 @@ export default {
 - `minAge` *number*: Minimum package age in hours
 - `pin` *Record\<string, string>*: Pin packages to semver ranges
 
-CLI arguments have precedence over options in the config file. `include`, `exclude`, and `pin` options are merged, with CLI values taking precedence for the same package.
+CLI arguments have precedence over options in the config file. `include`, `exclude`, and `pin` options are merged.
 
 © [silverwind](https://github.com/silverwind), distributed under BSD licence
