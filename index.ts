@@ -638,11 +638,7 @@ function updateGoMod(pkgStr: string, deps: Deps): string {
   for (const [key, {old, oldOrig}] of Object.entries(deps)) {
     const [_depType, name] = key.split(sep);
     const oldValue = oldOrig || old;
-    // go.mod format: module-path version (e.g., "github.com/foo/bar v1.2.3")
-    newPkgStr = newPkgStr.replace(
-      new RegExp(`(${esc(name)}) +v${esc(oldValue)}`, "g"),
-      `$1 v${deps[key].new}`,
-    );
+    newPkgStr = newPkgStr.replace(new RegExp(`(${esc(name)}) +v${esc(oldValue)}`, "g"), `$1 v${deps[key].new}`);
   }
   return newPkgStr;
 }
@@ -1138,18 +1134,9 @@ async function main(): Promise<void> {
 
     let pkg: Record<string, any> = {};
     if (mode === "go") {
-      // For go.mod files, read file content if updating, otherwise use go list output
-      if (update) {
-        try {
-          pkgStrs[mode] = readFileSync(file, "utf8");
-        } catch (err) {
-          throw new Error(`Unable to open ${file}: ${(err as Error).message}`);
-        }
-      } else {
-        pkgStrs[mode] = execFileSync("go", [
-          "list", "-m", "-f", "{{if not .Indirect}}{{.Path}}@{{.Version}}{{end}}", "all",
-        ], {stdio: "pipe", encoding: "utf8", cwd: projectDir});
-      }
+      pkgStrs[mode] = execFileSync("go", [
+        "list", "-m", "-f", "{{if not .Indirect}}{{.Path}}@{{.Version}}{{end}}", "all",
+      ], {stdio: "pipe", encoding: "utf8", cwd: projectDir});
     } else {
       try {
         pkgStrs[mode] = readFileSync(file, "utf8");
@@ -1166,16 +1153,9 @@ async function main(): Promise<void> {
         pkg = parse(pkgStrs[mode]);
       } else {
         pkg.deps = {};
-        // For go mode, always use go list output to get module info
-        const goListOutput = (mode === "go" && update) ?
-          execFileSync("go", [
-            "list", "-m", "-f", "{{if not .Indirect}}{{.Path}}@{{.Version}}{{end}}", "all",
-          ], {stdio: "pipe", encoding: "utf8", cwd: projectDir}) :
-          pkgStrs[mode];
-
-        for (const modulePathAndVersion of splitPlainText(goListOutput)) {
+        for (const modulePathAndVersion of splitPlainText(pkgStrs[mode])) {
           const [modulePath, version] = modulePathAndVersion.split("@");
-          if (version) { // current module has no version
+          if (version) {
             pkg.deps[modulePath] = version;
           }
         }
@@ -1363,7 +1343,8 @@ async function main(): Promise<void> {
       if (!Object.keys(deps[mode]).length) continue;
       try {
         const fn = (mode === "npm") ? updatePackageJson : (mode === "go") ? updateGoMod : updatePyprojectToml;
-        write(filePerMode[mode], fn(pkgStrs[mode], deps[mode]));
+        const fileContent = (mode === "go") ? readFileSync(filePerMode[mode], "utf8") : pkgStrs[mode];
+        write(filePerMode[mode], fn(fileContent, deps[mode]));
       } catch (err) {
         throw new Error(`Error writing ${basename(filePerMode[mode])}: ${(err as Error).message}`);
       }
