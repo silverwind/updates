@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import {cwd, stdout, stderr, env, exit, platform, versions} from "node:process";
-import {join, dirname, basename, resolve, sep as pathSep} from "node:path";
+import {join, dirname, basename, resolve, sep as pathSep, relative} from "node:path";
 import {pathToFileURL} from "node:url";
 import {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync, readdirSync, type Stats} from "node:fs";
 import {stripVTControlCharacters, styleText, parseArgs, type ParseArgsOptionsConfig} from "node:util";
@@ -202,36 +202,9 @@ const jsrApiUrl = typeof args.jsrapi === "string" ? normalizeUrl(args.jsrapi) : 
 
 const stripv = (str: string): string => str.replace(/^v/, "");
 
-// Check if a file path indicates it's a GitHub/Gitea/Forgejo Actions workflow file
-// Supports both Windows and Unix path separators
 function isActionsWorkflowPath(filePath: string): boolean {
-  // Normalize path to use forward slashes
   const normalized = filePath.split(pathSep).join("/");
-
-  // Must be a YAML file
-  if (!normalized.endsWith(".yml") && !normalized.endsWith(".yaml")) {
-    return false;
-  }
-
-  // Check if path matches any of these patterns:
-  // - Contains /.github/ or /.gitea/ or /.forgejo/ anywhere in the path
-  // - Starts with .github/ or .gitea/ or .forgejo/
-  // - Is exactly .github or .gitea or .forgejo
-  // This covers all the specified patterns
-
-  const hasGithubDir = normalized.includes("/.github/") ||
-                       normalized.startsWith(".github/") ||
-                       normalized === ".github";
-
-  const hasGiteaDir = normalized.includes("/.gitea/") ||
-                      normalized.startsWith(".gitea/") ||
-                      normalized === ".gitea";
-
-  const hasForgejoDir = normalized.includes("/.forgejo/") ||
-                        normalized.startsWith(".forgejo/") ||
-                        normalized === ".forgejo";
-
-  return hasGithubDir || hasGiteaDir || hasForgejoDir;
+  return /\.ya?ml$/.test(normalized) && /(?:^|\/)\.(github|gitea|forgejo)(?:\/|$)/.test(normalized);
 }
 
 function matchesAny(str: string, set: Set<RegExp> | boolean): boolean {
@@ -1068,8 +1041,8 @@ async function getTagForCommit(user: string, repo: string, sha: string): Promise
     const tagSha = tag.commit?.sha;
     if (tagSha === sha) {
       const tagName = tag.name;
-      // Check if tag looks like a version (contains digits)
-      if (/\d/.test(tagName)) {
+      // Check if tag looks like a version (starts with v followed by digit, or contains digits)
+      if (/^v\d/.test(tagName) || /\d/.test(tagName)) {
         return tagName;
       }
     }
@@ -1160,11 +1133,11 @@ type ActionDep = {
 };
 
 async function parseActionsFromYaml(yamlContent: string): Promise<Array<ActionDep>> {
-  const {parse} = await import("yaml");
+  const {load} = await import("js-yaml");
   const actions: Array<ActionDep> = [];
 
   try {
-    const doc = parse(yamlContent);
+    const doc = load(yamlContent) as any;
     if (!doc?.jobs) return actions;
 
     for (const job of Object.values(doc.jobs)) {
@@ -1565,6 +1538,9 @@ async function main(): Promise<void> {
 
       for (const action of actions) {
         if (canInclude(action.fullName, mode, include, exclude, "actions")) {
+          // Validate that fullName is not empty before creating key
+          if (!action.fullName || !action.fullName.includes("/")) continue;
+
           // Include file path in the key to track which file this action belongs to
           const key = `${file}${sep}${action.fullName}`;
           deps[mode][key] = {
@@ -1918,9 +1894,11 @@ async function main(): Promise<void> {
           try {
             const content = actionFiles.get(filePath)!;
             write(filePath, updateActionsYaml(content, fileDeps));
-            console.info(green(`✨ ${basename(filePath)} updated`));
+            const relPath = relative(cwd(), filePath) || basename(filePath);
+            console.info(green(`✨ ${relPath} updated`));
           } catch (err) {
-            throw new Error(`Error writing ${basename(filePath)}: ${(err as Error).message}`);
+            const relPath = relative(cwd(), filePath) || basename(filePath);
+            throw new Error(`Error writing ${relPath}: ${(err as Error).message}`);
           }
         }
       } else {
@@ -1936,9 +1914,11 @@ async function main(): Promise<void> {
 
           const fileContent = (mode === "go") ? readFileSync(filePerMode[mode], "utf8") : pkgStrs[mode];
           write(filePerMode[mode], fn(fileContent, deps[mode]));
-          console.info(green(`✨ ${basename(filePerMode[mode])} updated`));
+          const relPath = relative(cwd(), filePerMode[mode]) || basename(filePerMode[mode]);
+          console.info(green(`✨ ${relPath} updated`));
         } catch (err) {
-          throw new Error(`Error writing ${basename(filePerMode[mode])}: ${(err as Error).message}`);
+          const relPath = relative(cwd(), filePerMode[mode]) || basename(filePerMode[mode]);
+          throw new Error(`Error writing ${relPath}: ${(err as Error).message}`);
         }
       }
     }
