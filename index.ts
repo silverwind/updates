@@ -817,6 +817,18 @@ function updateActionsYaml(yamlStr: string, deps: Deps): string {
   return newYamlStr;
 }
 
+function retainVersionParts(oldVersion: string, newVersion: string): string {
+  // Retain number of version parts from old version in new version
+  // e.g., if old is "5" (1 part) and new is "6.2.1", return "6"
+  // e.g., if old is "5.2" (2 parts) and new is "6.2.1", return "6.2"
+  const oldParts = oldVersion.split(".");
+  const newParts = newVersion.split(".");
+  if (oldParts.length !== newParts.length) {
+    return newParts.slice(0, oldParts.length).join(".");
+  }
+  return newVersion;
+}
+
 function updateNpmRange(oldRange: string, newVersion: string, oldOrig: string | undefined): string {
   let newRange = oldRange.replace(npmVersionRePre, newVersion);
 
@@ -1058,13 +1070,50 @@ async function getTagForCommit(user: string, repo: string, sha: string): Promise
   return null;
 }
 
-function selectTag(tags: Array<string>, oldRef: string, useGreatest: boolean): string | null {
+function selectTag(tags: Array<string>, oldRef: string, useGreatest: boolean, preserveSemverLevel = false): string | null {
   const oldRefBare = stripv(oldRef);
   const oldRefCoerced = coerce(oldRefBare);
   if (!oldRefCoerced) return null;
 
+  const oldVersion = oldRefCoerced.version;
+  const [oldMajor, oldMinor] = oldVersion.split(".").map(Number);
+
+  // Determine the semver level from the original ref for filtering
+  let semverLevel: "major" | "minor" | "patch" | null = null;
+  if (preserveSemverLevel) {
+    const oldParts = oldRefBare.split(".");
+    if (oldParts.length === 1) {
+      semverLevel = "major";
+    } else if (oldParts.length === 2) {
+      semverLevel = "minor";
+    } else if (oldParts.length >= 3) {
+      semverLevel = "patch";
+    }
+  }
+
+  // Filter tags based on semver level if preserving
+  let filteredTags = tags;
+  if (preserveSemverLevel && semverLevel) {
+    filteredTags = tags.filter(tag => {
+      const tagBare = stripv(tag);
+      const tagCoerced = coerce(tagBare);
+      if (!tagCoerced) return false;
+
+      const [tagMajor, tagMinor] = tagCoerced.version.split(".").map(Number);
+
+      if (semverLevel === "major") {
+        // Only consider tags from the same major version
+        return tagMajor === oldMajor;
+      } else if (semverLevel === "minor" || semverLevel === "patch") {
+        // For both minor and patch, filter to same major.minor
+        return tagMajor === oldMajor && tagMinor === oldMinor;
+      }
+      return true;
+    });
+  }
+
   if (!useGreatest) {
-    const lastTag = tags.at(-1);
+    const lastTag = filteredTags.at(-1);
     if (!lastTag) return null;
     const lastTagBare = stripv(lastTag);
     const lastTagCoerced = coerce(lastTagBare);
@@ -1077,10 +1126,11 @@ function selectTag(tags: Array<string>, oldRef: string, useGreatest: boolean): s
     let greatestTag: string | null = null;
     let greatestVersion: string | null = null;
 
-    for (const tag of tags) {
+    for (const tag of filteredTags) {
       const tagBare = stripv(tag);
       const tagCoerced = coerce(tagBare);
       if (!tagCoerced) continue;
+
       if (!greatestVersion || gt(tagCoerced.version, greatestVersion)) {
         greatestTag = tag;
         greatestVersion = tagCoerced.version;
@@ -1193,8 +1243,9 @@ async function parseActionsFromYaml(yamlContent: string): Promise<Array<ActionDe
   return actions;
 }
 
-async function checkActionDep(action: ActionDep, useGreatest: boolean): Promise<{oldVersion: string, displayVersion: string | null, newVersion: string | null} | null> {
+async function checkActionDep(action: ActionDep, useGreatest: boolean): Promise<{oldVersion: string, displayVersion: string | null, newVersion: string | null, info: string} | null> {
   const {owner, repo, version} = action;
+  const info = `https://github.com/${owner}/${repo}`;
 
   // Handle hash with version comment format
   const hashCommentMatch = /^([0-9a-f]{40})\s*#\s*(v?[\d.]+)$/.exec(version);
@@ -1210,13 +1261,25 @@ async function checkActionDep(action: ActionDep, useGreatest: boolean): Promise<
     if (args.verbose) {
       console.error(`DEBUG: ${owner}/${repo} has ${tags.length} tags, checking hash comment version ${commentVersion}, display: ${displayVersion}`);
     }
-    const newTag = selectTag(tags, commentVersion, useGreatest);
+    const newTag = selectTag(tags, commentVersion, useGreatest, true); // preserve semver level for actions
 
     if (newTag && newTag !== commentVersion) {
-      return {oldVersion: version, displayVersion, newVersion: newTag};
+      // Retain the number of version parts from commentVersion in the new tag
+      const hasV = commentVersion.startsWith("v");
+      const oldBare = stripv(commentVersion);
+      const newBare = stripv(newTag);
+      const formattedVersion = retainVersionParts(oldBare, newBare);
+      const formattedTag = hasV ? `v${formattedVersion}` : formattedVersion;
+
+      // Check if formatted version is actually different
+      if (formattedTag === commentVersion) {
+        return {oldVersion: version, displayVersion, newVersion: null, info};
+      }
+
+      return {oldVersion: version, displayVersion, newVersion: formattedTag, info};
     } else {
       // No update, but still return displayVersion for proper display
-      return {oldVersion: version, displayVersion, newVersion: null};
+      return {oldVersion: version, displayVersion, newVersion: null, info};
     }
   } else {
     // Handle standard semver tag format (including major-only like v2, v3)
@@ -1225,13 +1288,25 @@ async function checkActionDep(action: ActionDep, useGreatest: boolean): Promise<
       console.error(`DEBUG: ${owner}/${repo} has ${tags.length} tags, checking version ${version}, useGreatest=${useGreatest}`);
       console.error(`DEBUG: Last few tags: ${tags.slice(-5).join(", ")}`);
     }
-    const newTag = selectTag(tags, version, useGreatest);
+    const newTag = selectTag(tags, version, useGreatest, true); // preserve semver level for actions
     if (args.verbose) {
       console.error(`DEBUG: selectTag returned: ${newTag}`);
     }
 
     if (newTag && newTag !== version) {
-      return {oldVersion: version, displayVersion: null, newVersion: newTag};
+      // Retain the number of version parts from version in the new tag
+      const hasV = version.startsWith("v");
+      const oldBare = stripv(version);
+      const newBare = stripv(newTag);
+      const formattedVersion = retainVersionParts(oldBare, newBare);
+      const formattedTag = hasV ? `v${formattedVersion}` : formattedVersion;
+
+      // Check if formatted version is actually different
+      if (formattedTag === version) {
+        return null;
+      }
+
+      return {oldVersion: version, displayVersion: null, newVersion: formattedTag, info};
     }
   }
 
@@ -1571,6 +1646,11 @@ async function main(): Promise<void> {
         }
 
         const dep = deps[mode][key];
+
+        // Store the info (repo URL)
+        if (result?.info) {
+          dep.info = result.info;
+        }
 
         // If there's a displayVersion, use it for the old version display
         if (result?.displayVersion) {

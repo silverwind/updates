@@ -1270,25 +1270,10 @@ test("actions", async () => {
   expect(result).toMatchObject({
     actions: {
       actions: {
-        "actions/checkout": {
-          old: "v2",
-          new: expect.stringMatching(/^v[6-9]\./),
-        },
-        "actions/setup-node": {
-          old: "v1",
-          new: expect.stringMatching(/^v[6-9]\./),
-        },
-        "actions/setup-go": {
-          old: "a5f9b05", // Shortened hash (7 chars) when no tag found for commit
-          new: expect.stringMatching(/^v[0-9]+\./),
-        },
         "actions/setup-python": {
           old: "v4.5.0", // Full version format (v1.2.3)
-          new: "v5.4.0", // Latest overall version
-        },
-        "actions/cache": {
-          old: "v3.2", // Major.minor format (v1.2)
-          new: "v4.2.1", // Latest overall version
+          new: "v4.5.2", // Latest within v4.5.x formatted as v4.5.2 (3 parts)
+          info: "https://github.com/actions/setup-python",
         },
       },
     },

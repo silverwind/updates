@@ -1,6 +1,8 @@
 [
   {"ref": "refs/tags/v4.0.0"},
   {"ref": "refs/tags/v4.5.0"},
+  {"ref": "refs/tags/v4.5.1"},
+  {"ref": "refs/tags/v4.5.2"},
   {"ref": "refs/tags/v4.8.2"},
   {"ref": "refs/tags/v5.0.0"},
   {"ref": "refs/tags/v5.3.0"},
