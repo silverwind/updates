@@ -1877,22 +1877,21 @@ async function main(): Promise<void> {
 
       if (mode === "actions") {
         // Group deps by file - keys have file paths
-        const depsByFile = new Map<string, Deps>();
+        const depsByFile: Record<string, Deps> = {};
         for (const [key, dep] of Object.entries(deps.actions)) {
           const parts = key.split(fieldSep);
           const filePath = parts[0];
           const actionName = parts[1];
 
-          if (!depsByFile.has(filePath)) {
-            depsByFile.set(filePath, {});
+          if (!depsByFile[filePath]) {
+            depsByFile[filePath] = {};
           }
           // Store with simplified key for updateActionsYaml
-          const fileDeps = depsByFile.get(filePath)!;
-          fileDeps[`actions${fieldSep}${actionName}`] = dep;
+          depsByFile[filePath][`actions${fieldSep}${actionName}`] = dep;
         }
 
         // Update each file
-        for (const [filePath, fileDeps] of depsByFile.entries()) {
+        for (const [filePath, fileDeps] of Object.entries(depsByFile)) {
           const relPath = relative(cwd(), filePath) || basename(filePath);
           try {
             const content = actionFiles.get(filePath)!;
