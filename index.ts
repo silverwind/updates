@@ -628,7 +628,18 @@ function outputDeps(deps: DepsByMode = {}): number {
     for (const mode of Object.keys(deps)) {
       for (const [key, value] of Object.entries(deps[mode])) {
         const parts = key.split(fieldSep);
-        const [type, name] = parts;
+        let type, name;
+
+        if (mode === "actions") {
+          // For actions mode, keys are: filePath${fieldSep}actionName
+          // We want to display as: actions[actionName]
+          type = "actions";
+          name = parts[1]; // actionName
+        } else {
+          // For other modes, keys are: type${fieldSep}name
+          [type, name] = parts;
+        }
+
         if (!output.results[mode]) output.results[mode] = {};
         if (!output.results[mode][type]) output.results[mode][type] = {};
         output.results[mode][type][name] = value;

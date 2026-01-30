@@ -156,6 +156,8 @@ beforeAll(async () => {
   const actionsCheckoutTags = await readFile(fileURLToPath(new URL("fixtures/github/actions-checkout-tags.json", import.meta.url)));
   const actionsSetupNodeTags = await readFile(fileURLToPath(new URL("fixtures/github/actions-setup-node-tags.json", import.meta.url)));
   const actionsSetupGoTags = await readFile(fileURLToPath(new URL("fixtures/github/actions-setup-go-tags.json", import.meta.url)));
+  const actionsSetupPythonTags = await readFile(fileURLToPath(new URL("fixtures/github/actions-setup-python-tags.json", import.meta.url)));
+  const actionsCacheTags = await readFile(fileURLToPath(new URL("fixtures/github/actions-cache-tags.json", import.meta.url)));
 
   for (const pkgName of testPackages) {
     const name = testPkg.resolutions[pkgName] ? resolutionsBasePackage(pkgName) : pkgName;
@@ -184,6 +186,8 @@ beforeAll(async () => {
   githubServer.get("/repos/actions/checkout/git/refs/tags", (_, res) => res.send(actionsCheckoutTags));
   githubServer.get("/repos/actions/setup-node/git/refs/tags", (_, res) => res.send(actionsSetupNodeTags));
   githubServer.get("/repos/actions/setup-go/git/refs/tags", (_, res) => res.send(actionsSetupGoTags));
+  githubServer.get("/repos/actions/setup-python/git/refs/tags", (_, res) => res.send(actionsSetupPythonTags));
+  githubServer.get("/repos/actions/cache/git/refs/tags", (_, res) => res.send(actionsCacheTags));
 
   await Promise.all([
     githubServer.start(0),
@@ -1277,6 +1281,14 @@ test("actions", async () => {
         "actions/setup-go": {
           old: "a5f9b05", // Shortened hash (7 chars) when no tag found for commit
           new: expect.stringMatching(/^v[0-9]+\./),
+        },
+        "actions/setup-python": {
+          old: "v4.5.0", // Full version format (v1.2.3)
+          new: "v5.4.0", // Latest overall version
+        },
+        "actions/cache": {
+          old: "v3.2", // Major.minor format (v1.2)
+          new: "v4.2.1", // Latest overall version
         },
       },
     },
