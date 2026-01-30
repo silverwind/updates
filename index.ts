@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import {cwd, stdout, stderr, env, exit, platform, versions} from "node:process";
 import {join, dirname, basename, resolve} from "node:path";
+import {pathToFileURL} from "node:url";
 import {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync, type Stats} from "node:fs";
 import {stripVTControlCharacters, styleText, parseArgs, type ParseArgsOptionsConfig} from "node:util";
 import {execFileSync} from "node:child_process";
@@ -1174,11 +1175,33 @@ async function loadConfig(rootDir: string): Promise<Config> {
     }
   }
   let config: Config = {};
+
   try {
-    ({default: config} = await Promise.any(filenames.map(str => {
-      return import(join(rootDir, ...str.split("/")));
+    ({default: config} = await Promise.any(filenames.map(async (filename) => {
+      const fullPath = join(rootDir, ...filename.split("/"));
+      const fileUrl = pathToFileURL(fullPath);
+
+      try {
+        accessSync(fullPath);
+      } catch {
+        throw new Error(`File not found: ${filename}`);
+      }
+
+      try {
+        return await import(fileUrl.href);
+      } catch (err) {
+        throw new Error(`Unable to parse config file ${filename}: ${err.message}`);
+      }
     })));
-  } catch {}
+  } catch (err) {
+    if (err instanceof AggregateError) {
+      const parseErrors = err.errors.filter(e => e.message.startsWith("Unable to parse"));
+      if (parseErrors.length > 0) {
+        throw parseErrors[0];
+      }
+    }
+  }
+
   return config;
 }
 

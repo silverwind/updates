@@ -19,6 +19,7 @@ const uvFile = fileURLToPath(new URL("fixtures/uv/pyproject.toml", import.meta.u
 const goFile = fileURLToPath(new URL("fixtures/go/go.mod", import.meta.url));
 const goUpdateFile = fileURLToPath(new URL("fixtures/go-update/go.mod", import.meta.url));
 const dualFile = fileURLToPath(new URL("fixtures/dual", import.meta.url));
+const invalidConfigFile = fileURLToPath(new URL("fixtures/invalid-config/package.json", import.meta.url));
 
 const testPkg = JSON.parse(readFileSync(testFile, "utf8"));
 const testDir = mkdtempSync(join(tmpdir(), "updates-"));
@@ -1110,6 +1111,19 @@ test("dual 2", async () => {
       },
     }
   `);
+});
+
+test("invalid config", async () => {
+  const args = ["-j", "-f", invalidConfigFile, "-c", "--githubapi", githubUrl, "--pypiapi", pypiUrl];
+  try {
+    await nanoSpawn(execPath, [script, ...args]);
+    throw new Error("Expected error but got success");
+  } catch (err: any) {
+    expect(err?.exitCode).toBe(1);
+    const output = err?.stdout || "";
+    expect(output).toContain("updates.config.js");
+    expect(output).toContain("Unable to parse");
+  }
 });
 
 test("issue #76: don't upgrade to prerelease from latest dist-tag by default", async () => {
