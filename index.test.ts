@@ -1235,3 +1235,32 @@ test("go update", async () => {
   expect(matches).toBeTruthy();
   expect(matches?.length).toBe(4);
 });
+
+test("pin", async () => {
+  const {stdout, stderr} = await nanoSpawn(process.execPath, [
+    script,
+    "-j",
+    "-c",
+    "--githubapi", githubUrl,
+    "--pypiapi", pypiUrl,
+    "--registry", npmUrl,
+    "-f", testFile,
+    "--pin", "prismjs=^1.0.0",
+    "--pin", "react=^18.0.0",
+  ]);
+  expect(stderr).toEqual("");
+  const {results} = JSON.parse(stdout);
+  
+  // prismjs should be updated but only within the ^1.0.0 range
+  expect(results.npm.dependencies.prismjs).toBeDefined();
+  const prismjsNew = results.npm.dependencies.prismjs.new;
+  // Check that the new version is within ^1.0.0 range (1.x.x but not 2.x.x)
+  expect(prismjsNew).toMatch(/^1\./);
+  
+  // react should not be updated beyond ^18.0.0 range
+  expect(results.npm.dependencies.react).toBeDefined();
+  const reactNew = results.npm.dependencies.react.new;
+  // Check that the new version is within ^18.0.0 range (18.x.x but not 19.x.x)
+  expect(reactNew).toMatch(/^18\./);
+});
+
