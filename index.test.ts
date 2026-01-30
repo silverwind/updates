@@ -5,12 +5,11 @@ import {readFileSync, mkdtempSync, readdirSync, mkdirSync} from "node:fs";
 import {writeFile, readFile, rm} from "node:fs/promises";
 import {fileURLToPath} from "node:url";
 import {tmpdir} from "node:os";
-import {execPath, versions} from "node:process";
 import {gzipSync} from "node:zlib";
-import type {Server} from "node:http";
 import {satisfies} from "semver";
 import {npmTypes, poetryTypes, uvTypes, goTypes} from "./utils.ts";
 import {main} from "./index.ts";
+import type {Server} from "node:http";
 
 const testFile = fileURLToPath(new URL("fixtures/npm-test/package.json", import.meta.url));
 const emptyFile = fileURLToPath(new URL("fixtures/npm-empty/package.json", import.meta.url));
@@ -24,7 +23,6 @@ const invalidConfigFile = fileURLToPath(new URL("fixtures/invalid-config/package
 
 const testPkg = JSON.parse(readFileSync(testFile, "utf8"));
 const testDir = mkdtempSync(join(tmpdir(), "updates-"));
-const script = fileURLToPath(new URL("dist/index.js", import.meta.url));
 
 type RouteHandler = (req: any, res: any) => void | Promise<void>;
 
@@ -206,22 +204,22 @@ async function captureOutput(fn: () => Promise<void>): Promise<{stdout: string, 
   const originalLog = console.info;
   const originalError = console.error;
   const originalWarn = console.warn;
-  
+
   let stdout = "";
   let stderr = "";
-  
+
   console.info = (...args: any[]) => {
-    stdout += args.join(" ") + "\n";
+    stdout += `${args.join(" ")}\n`;
   };
-  
+
   console.error = (...args: any[]) => {
-    stderr += args.join(" ") + "\n";
+    stderr += `${args.join(" ")}\n`;
   };
-  
+
   console.warn = (...args: any[]) => {
-    stderr += args.join(" ") + "\n";
+    stderr += `${args.join(" ")}\n`;
   };
-  
+
   try {
     await fn();
   } finally {
@@ -229,7 +227,7 @@ async function captureOutput(fn: () => Promise<void>): Promise<{stdout: string, 
     console.error = originalError;
     console.warn = originalWarn;
   }
-  
+
   return {stdout, stderr};
 }
 
@@ -242,7 +240,7 @@ function makeTest(args: string) {
       "--jsrapi", jsrUrl,
       "--registry", npmUrl,
     ];
-    
+
     // Only add default file if none is specified
     if (!args.includes("-f") && !args.includes("--file")) {
       argsArr.push("-f", join(testDir, "package.json"));

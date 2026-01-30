@@ -1219,7 +1219,7 @@ export async function main(argv?: Array<string>): Promise<void> {
   if (argv) {
     skipExit = true;
   }
-  
+
   // Parse arguments
   args = parseCliArgs(argv);
 
