@@ -94,7 +94,7 @@ const npmVersionRePre = /[0-9]+\.[0-9]+\.[0-9]+(-.+)?/g;
 const esc = (str: string) => str.replace(/[|\\{}()[\]^$+*?.-]/g, "\\$&");
 const normalizeUrl = (url: string) => url.endsWith("/") ? url.substring(0, url.length - 1) : url;
 const packageVersion = pkg.version;
-const sep = "\0";
+const fieldSep = "\0";
 
 const modeByFileName: Record<string, string> = {
   "package.json": "npm",
@@ -480,7 +480,7 @@ type GoListInfo = {
 
 function getGoUpgrades(deps: DepsByMode, projectDir: string) {
   const stdout = execFileSync("go", [
-    "list", "-u", "-mod=readonly", "-json", "-m", ...Object.keys(deps.go).map(key => key.split(sep)[1]),
+    "list", "-u", "-mod=readonly", "-json", "-m", ...Object.keys(deps.go).map(key => key.split(fieldSep)[1]),
   ], {stdio: "pipe", encoding: "utf8", cwd: projectDir});
   const json = `[${stdout.replaceAll(/\r?\n\}/g, "},")}]`.replaceAll(/\},\r?\n\]/g, "}]");
 
@@ -619,7 +619,7 @@ function outputDeps(deps: DepsByMode = {}): number {
     const output: Output = {results: {}};
     for (const mode of Object.keys(deps)) {
       for (const [key, value] of Object.entries(deps[mode])) {
-        const [type, name] = key.split(sep);
+        const [type, name] = key.split(fieldSep);
         if (!output.results[mode]) output.results[mode] = {};
         if (!output.results[mode][type]) output.results[mode][type] = {};
         output.results[mode][type][name] = value;
@@ -710,7 +710,7 @@ function formatDeps(deps: DepsByMode): string {
 
   for (const mode of modes) {
     for (const [key, data] of Object.entries(deps[mode])) {
-      const [_type, name] = key.split(sep);
+      const [_type, name] = key.split(fieldSep);
       const id = `${mode}|${name}`;
       if (seen.has(id)) continue;
       seen.add(id);
@@ -731,7 +731,7 @@ function formatDeps(deps: DepsByMode): string {
 function updatePackageJson(pkgStr: string, deps: Deps): string {
   let newPkgStr = pkgStr;
   for (const [key, {old, oldOrig}] of Object.entries(deps)) {
-    const [depType, name] = key.split(sep);
+    const [depType, name] = key.split(fieldSep);
     const oldValue = oldOrig || old;
     if (depType === "packageManager") {
       const re = new RegExp(`"${esc(depType)}": *"${name}@${esc(oldValue)}"`, "g");
@@ -747,7 +747,7 @@ function updatePackageJson(pkgStr: string, deps: Deps): string {
 function updatePyprojectToml(pkgStr: string, deps: Deps): string {
   let newPkgStr = pkgStr;
   for (const [key, {old, oldOrig}] of Object.entries(deps)) {
-    const [_depType, name] = key.split(sep);
+    const [_depType, name] = key.split(fieldSep);
     const oldValue = oldOrig || old;
     newPkgStr = newPkgStr.replace( // poetry
       new RegExp(`${esc(name)} *= *"${esc(oldValue)}"`, "g"),
@@ -764,7 +764,7 @@ function updatePyprojectToml(pkgStr: string, deps: Deps): string {
 function updateGoMod(pkgStr: string, deps: Deps): string {
   let newPkgStr = pkgStr;
   for (const [key, {old, oldOrig}] of Object.entries(deps)) {
-    const [_depType, name] = key.split(sep);
+    const [_depType, name] = key.split(fieldSep);
     const oldValue = oldOrig || old;
     newPkgStr = newPkgStr.replace(new RegExp(`(${esc(name)}) +v${esc(oldValue)}`, "g"), `$1 v${deps[key].new}`);
   }
@@ -1357,7 +1357,7 @@ async function main(): Promise<void> {
       if (Array.isArray(obj) && mode === "pypi") { // array for uv
         for (const {name, version} of parseUvDependencies(obj)) {
           if (canInclude(name, mode, include, exclude, depType)) {
-            deps[mode][`${depType}${sep}${name}`] = {
+            deps[mode][`${depType}${fieldSep}${name}`] = {
               old: normalizeRange(version),
               oldOrig: version,
             } as Dep;
@@ -1366,7 +1366,7 @@ async function main(): Promise<void> {
       } else {
         if (typeof obj === "string") { // string (packageManager)
           const [name, value] = obj.split("@");
-          deps[mode][`${depType}${sep}${name}`] = {
+          deps[mode][`${depType}${fieldSep}${name}`] = {
             old: normalizeRange(value),
             oldOrig: value,
           } as Dep;
@@ -1375,21 +1375,21 @@ async function main(): Promise<void> {
             if (mode === "npm" && isJsrDependency(value) && canInclude(name, mode, include, exclude, depType)) {
               // Handle JSR dependencies
               const parsed = parseJsrDependency(value, name);
-              deps[mode][`${depType}${sep}${name}`] = {
+              deps[mode][`${depType}${fieldSep}${name}`] = {
                 old: parsed.version,
                 oldOrig: value,
               } as Dep;
             } else if (mode !== "go" && validRange(value) && canInclude(name, mode, include, exclude, depType)) {
-              deps[mode][`${depType}${sep}${name}`] = {
+              deps[mode][`${depType}${fieldSep}${name}`] = {
                 old: normalizeRange(value),
                 oldOrig: value,
               } as Dep;
             } else if (mode === "npm" && !isJsrDependency(value) && canInclude(name, mode, include, exclude, depType)) {
-              maybeUrlDeps[`${depType}${sep}${name}`] = {
+              maybeUrlDeps[`${depType}${fieldSep}${name}`] = {
                 old: value,
               } as Dep;
             } else if (mode === "go" && canInclude(name, mode, include, exclude, depType)) {
-              deps[mode][`${depType}${sep}${name}`] = {
+              deps[mode][`${depType}${fieldSep}${name}`] = {
                 old: shortenGoVersion(value),
                 oldOrig: stripv(value),
               } as Dep;
@@ -1408,7 +1408,7 @@ async function main(): Promise<void> {
       entries = getGoUpgrades(deps, projectDir);
     } else {
       entries = await pMap(Object.keys(deps[mode]), async (key) => {
-        const [type, name] = key.split(sep);
+        const [type, name] = key.split(fieldSep);
         if (mode === "npm") {
           // Check if this dependency is a JSR dependency
           const depValue = deps[mode][key].oldOrig;
@@ -1438,7 +1438,7 @@ async function main(): Promise<void> {
         semvers = new Set<string>(["patch", "minor", "major"]);
       }
 
-      const key = `${type}${sep}${name}`;
+      const key = `${type}${fieldSep}${name}`;
       const oldRange = deps[mode][key].old;
       const oldOrig = deps[mode][key].oldOrig;
       const pinnedRange = pin[name];
@@ -1509,7 +1509,7 @@ async function main(): Promise<void> {
 
     if (Object.keys(maybeUrlDeps).length) {
       const results = (await pMap(Object.entries(maybeUrlDeps), ([key, dep]) => {
-        const name = key.split(sep)[1];
+        const name = key.split(fieldSep)[1];
         const useGreatest = typeof greatest === "boolean" ? greatest : matchesAny(name, greatest);
         return checkUrlDep(key, dep, useGreatest);
       }, {concurrency})).filter(r => r !== null);
