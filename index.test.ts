@@ -155,7 +155,7 @@ beforeAll(async () => {
 
   const actionsCheckoutTags = await readFile(fileURLToPath(new URL("fixtures/github/actions-checkout-tags.json", import.meta.url)));
   const actionsSetupNodeTags = await readFile(fileURLToPath(new URL("fixtures/github/actions-setup-node-tags.json", import.meta.url)));
-  const tjActionsChangedFilesTags = await readFile(fileURLToPath(new URL("fixtures/github/tj-actions-changed-files-tags.json", import.meta.url)));
+  const actionsSetupGoTags = await readFile(fileURLToPath(new URL("fixtures/github/actions-setup-go-tags.json", import.meta.url)));
 
   for (const pkgName of testPackages) {
     const name = testPkg.resolutions[pkgName] ? resolutionsBasePackage(pkgName) : pkgName;
@@ -183,7 +183,7 @@ beforeAll(async () => {
   // GitHub Actions mock routes
   githubServer.get("/repos/actions/checkout/git/refs/tags", (_, res) => res.send(actionsCheckoutTags));
   githubServer.get("/repos/actions/setup-node/git/refs/tags", (_, res) => res.send(actionsSetupNodeTags));
-  githubServer.get("/repos/tj-actions/changed-files/git/refs/tags", (_, res) => res.send(tjActionsChangedFilesTags));
+  githubServer.get("/repos/actions/setup-go/git/refs/tags", (_, res) => res.send(actionsSetupGoTags));
 
   await Promise.all([
     githubServer.start(0),
@@ -1274,8 +1274,8 @@ test("actions", async () => {
           old: "v1",
           new: expect.stringMatching(/^v[6-9]\./),
         },
-        "tj-actions/changed-files": {
-          old: "87697c0", // Shortened hash (7 chars) when no tag found for commit
+        "actions/setup-go": {
+          old: "a5f9b05", // Shortened hash (7 chars) when no tag found for commit
           new: expect.stringMatching(/^v[0-9]+\./),
         },
       },

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import {cwd, stdout, stderr, env, exit, platform, versions} from "node:process";
-import {join, dirname, basename, resolve, sep as pathSep, relative} from "node:path";
+import {join, dirname, basename, resolve, sep, relative} from "node:path";
 import {pathToFileURL} from "node:url";
 import {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync, readdirSync, type Stats} from "node:fs";
 import {stripVTControlCharacters, styleText, parseArgs, type ParseArgsOptionsConfig} from "node:util";
@@ -94,7 +94,7 @@ const npmVersionRePre = /[0-9]+\.[0-9]+\.[0-9]+(-.+)?/g;
 const esc = (str: string) => str.replace(/[|\\{}()[\]^$+*?.-]/g, "\\$&");
 const normalizeUrl = (url: string) => url.endsWith("/") ? url.substring(0, url.length - 1) : url;
 const packageVersion = pkg.version;
-const sep = "\0";
+const fieldSep = "\0";
 
 const modeByFileName: Record<string, string> = {
   "package.json": "npm",
@@ -203,7 +203,7 @@ const jsrApiUrl = typeof args.jsrapi === "string" ? normalizeUrl(args.jsrapi) : 
 const stripv = (str: string): string => str.replace(/^v/, "");
 
 function isActionsWorkflowPath(filePath: string): boolean {
-  const normalized = filePath.split(pathSep).join("/");
+  const normalized = filePath.split(sep).join("/");
   return /\.ya?ml$/.test(normalized) && /(?:^|\/)\.(github|gitea|forgejo)(?:\/|$)/.test(normalized);
 }
 
@@ -485,7 +485,7 @@ type GoListInfo = {
 
 function getGoUpgrades(deps: DepsByMode, projectDir: string) {
   const stdout = execFileSync("go", [
-    "list", "-u", "-mod=readonly", "-json", "-m", ...Object.keys(deps.go).map(key => key.split(sep)[1]),
+    "list", "-u", "-mod=readonly", "-json", "-m", ...Object.keys(deps.go).map(key => key.split(fieldSep)[1]),
   ], {stdio: "pipe", encoding: "utf8", cwd: projectDir});
   const json = `[${stdout.replaceAll(/\r?\n\}/g, "},")}]`.replaceAll(/\},\r?\n\]/g, "}]");
 
@@ -627,9 +627,7 @@ function outputDeps(deps: DepsByMode = {}): number {
     const output: Output = {results: {}};
     for (const mode of Object.keys(deps)) {
       for (const [key, value] of Object.entries(deps[mode])) {
-        if (!key) continue; // Skip if key is undefined/empty
-        const parts = key.split(sep);
-        if (parts.length < 2) continue; // Skip malformed keys
+        const parts = key.split(fieldSep);
         const [type, name] = parts;
         if (!output.results[mode]) output.results[mode] = {};
         if (!output.results[mode][type]) output.results[mode][type] = {};
@@ -721,9 +719,7 @@ function formatDeps(deps: DepsByMode): string {
 
   for (const mode of modes) {
     for (const [key, data] of Object.entries(deps[mode])) {
-      if (!key || !data) continue; // Skip if key or data is missing
-      const parts = key.split(sep);
-      if (parts.length < 2) continue; // Skip malformed keys
+      const parts = key.split(fieldSep);
       const name = parts[1];
       const id = `${mode}|${name}`;
       if (seen.has(id)) continue;
@@ -745,7 +741,7 @@ function formatDeps(deps: DepsByMode): string {
 function updatePackageJson(pkgStr: string, deps: Deps): string {
   let newPkgStr = pkgStr;
   for (const [key, {old, oldOrig}] of Object.entries(deps)) {
-    const [depType, name] = key.split(sep);
+    const [depType, name] = key.split(fieldSep);
     const oldValue = oldOrig || old;
     if (depType === "packageManager") {
       const re = new RegExp(`"${esc(depType)}": *"${name}@${esc(oldValue)}"`, "g");
@@ -761,7 +757,7 @@ function updatePackageJson(pkgStr: string, deps: Deps): string {
 function updatePyprojectToml(pkgStr: string, deps: Deps): string {
   let newPkgStr = pkgStr;
   for (const [key, {old, oldOrig}] of Object.entries(deps)) {
-    const [_depType, name] = key.split(sep);
+    const [_depType, name] = key.split(fieldSep);
     const oldValue = oldOrig || old;
     newPkgStr = newPkgStr.replace( // poetry
       new RegExp(`${esc(name)} *= *"${esc(oldValue)}"`, "g"),
@@ -778,7 +774,7 @@ function updatePyprojectToml(pkgStr: string, deps: Deps): string {
 function updateGoMod(pkgStr: string, deps: Deps): string {
   let newPkgStr = pkgStr;
   for (const [key, {old, oldOrig}] of Object.entries(deps)) {
-    const [_depType, name] = key.split(sep);
+    const [_depType, name] = key.split(fieldSep);
     const oldValue = oldOrig || old;
     newPkgStr = newPkgStr.replace(new RegExp(`(${esc(name)}) +v${esc(oldValue)}`, "g"), `$1 v${deps[key].new}`);
   }
@@ -788,7 +784,7 @@ function updateGoMod(pkgStr: string, deps: Deps): string {
 function updateActionsYaml(yamlStr: string, deps: Deps): string {
   let newYamlStr = yamlStr;
   for (const [key, {old, oldOrig}] of Object.entries(deps)) {
-    const [_depType, actionName] = key.split(sep);
+    const [_depType, actionName] = key.split(fieldSep);
     const oldVersion = oldOrig || old;
 
     // Handle hash@version format (e.g., @87697c0dca7dd44e37a2b79a79489332556ff1f3 # v37.6.0)
@@ -1300,12 +1296,13 @@ function canIncludeByDate(date: string | undefined, cooldownDays: number, now: n
 
 function discoverWorkflowFiles(dir: string): Array<string> {
   const files: Array<string> = [];
+  const yamlRegex = /\.ya?ml$/;
   for (const workflowDir of [".github/workflows", ".gitea/workflows", ".forgejo/workflows"]) {
     const fullPath = join(dir, workflowDir);
     try {
       const entries = readdirSync(fullPath);
       for (const entry of entries) {
-        if (entry.endsWith(".yaml") || entry.endsWith(".yml")) {
+        if (yamlRegex.test(entry)) {
           files.push(resolve(join(fullPath, entry)));
         }
       }
@@ -1466,7 +1463,6 @@ async function main(): Promise<void> {
   const pkgStrs: Record<string, string> = {};
   const filePerMode: Record<string, string> = {};
   const actionFiles = new Map<string, string>(); // Map action file path to its content
-  const actionDepsOriginal: Deps = {}; // Store original action deps with file paths in keys
   const now = Date.now();
   let numDependencies = 0;
 
@@ -1542,7 +1538,7 @@ async function main(): Promise<void> {
           if (!action.fullName || !action.fullName.includes("/")) continue;
 
           // Include file path in the key to track which file this action belongs to
-          const key = `${file}${sep}${action.fullName}`;
+          const key = `${file}${fieldSep}${action.fullName}`;
           deps[mode][key] = {
             old: action.version,
             oldOrig: action.version,
@@ -1574,8 +1570,6 @@ async function main(): Promise<void> {
         const newVersion = result?.newVersion;
         if (newVersion) {
           dep.new = newVersion;
-          // Store original with file path
-          actionDepsOriginal[key] = dep;
           if (verbose) {
             console.error(`DEBUG: Added update for ${fullName}: ${version} -> ${newVersion}`);
           }
@@ -1634,7 +1628,7 @@ async function main(): Promise<void> {
       if (Array.isArray(obj) && mode === "pypi") { // array for uv
         for (const {name, version} of parseUvDependencies(obj)) {
           if (canInclude(name, mode, include, exclude, depType)) {
-            deps[mode][`${depType}${sep}${name}`] = {
+            deps[mode][`${depType}${fieldSep}${name}`] = {
               old: normalizeRange(version),
               oldOrig: version,
             } as Dep;
@@ -1643,7 +1637,7 @@ async function main(): Promise<void> {
       } else {
         if (typeof obj === "string") { // string (packageManager)
           const [name, value] = obj.split("@");
-          deps[mode][`${depType}${sep}${name}`] = {
+          deps[mode][`${depType}${fieldSep}${name}`] = {
             old: normalizeRange(value),
             oldOrig: value,
           } as Dep;
@@ -1652,21 +1646,21 @@ async function main(): Promise<void> {
             if (mode === "npm" && isJsrDependency(value) && canInclude(name, mode, include, exclude, depType)) {
               // Handle JSR dependencies
               const parsed = parseJsrDependency(value, name);
-              deps[mode][`${depType}${sep}${name}`] = {
+              deps[mode][`${depType}${fieldSep}${name}`] = {
                 old: parsed.version,
                 oldOrig: value,
               } as Dep;
             } else if (mode !== "go" && validRange(value) && canInclude(name, mode, include, exclude, depType)) {
-              deps[mode][`${depType}${sep}${name}`] = {
+              deps[mode][`${depType}${fieldSep}${name}`] = {
                 old: normalizeRange(value),
                 oldOrig: value,
               } as Dep;
             } else if (mode === "npm" && !isJsrDependency(value) && canInclude(name, mode, include, exclude, depType)) {
-              maybeUrlDeps[`${depType}${sep}${name}`] = {
+              maybeUrlDeps[`${depType}${fieldSep}${name}`] = {
                 old: value,
               } as Dep;
             } else if (mode === "go" && canInclude(name, mode, include, exclude, depType)) {
-              deps[mode][`${depType}${sep}${name}`] = {
+              deps[mode][`${depType}${fieldSep}${name}`] = {
                 old: shortenGoVersion(value),
                 oldOrig: stripv(value),
               } as Dep;
@@ -1685,7 +1679,7 @@ async function main(): Promise<void> {
       entries = getGoUpgrades(deps, projectDir);
     } else {
       entries = await pMap(Object.keys(deps[mode]), async (key) => {
-        const [type, name] = key.split(sep);
+        const [type, name] = key.split(fieldSep);
         if (mode === "npm") {
           // Check if this dependency is a JSR dependency
           const depValue = deps[mode][key].oldOrig;
@@ -1715,7 +1709,7 @@ async function main(): Promise<void> {
         semvers = new Set<string>(["patch", "minor", "major"]);
       }
 
-      const key = `${type}${sep}${name}`;
+      const key = `${type}${fieldSep}${name}`;
       const oldRange = deps[mode][key].old;
       const oldOrig = deps[mode][key].oldOrig;
       const pinnedRange = pin[name];
@@ -1786,7 +1780,7 @@ async function main(): Promise<void> {
 
     if (Object.keys(maybeUrlDeps).length) {
       const results = (await pMap(Object.entries(maybeUrlDeps), ([key, dep]) => {
-        const name = key.split(sep)[1];
+        const name = key.split(fieldSep)[1];
         const useGreatest = typeof greatest === "boolean" ? greatest : matchesAny(name, greatest);
         return checkUrlDep(key, dep, useGreatest);
       }, {concurrency})).filter(r => r !== null);
@@ -1832,52 +1826,49 @@ async function main(): Promise<void> {
   }
 
   // Transform actions deps for output - remove file path from key and deduplicate
-  if (deps.actions) {
-    const {verbose} = args;
-    if (verbose) {
-      console.error(`DEBUG: deps.actions keys before transform: ${JSON.stringify(Object.keys(deps.actions))}`);
-    }
-    const actionsKeys = Object.keys(deps.actions);
-    if (actionsKeys.length > 0) {
-      const transformedActions: Deps = {};
-      for (const [key, dep] of Object.entries(deps.actions)) {
-        if (!key) {
-          if (verbose) console.error("Empty key found in actions deps");
-          continue;
-        }
-        const parts = key.split(sep);
-        // Actions keys should have file path as first part, action name as second
-        // Transform to: actions${sep}${actionName}
-        if (parts.length >= 2) {
+  const depsForOutput: DepsByMode = {};
+  for (const mode of Object.keys(deps)) {
+    if (mode === "actions") {
+      const {verbose} = args;
+      if (verbose) {
+        console.error(`DEBUG: deps.actions keys before transform: ${JSON.stringify(Object.keys(deps.actions))}`);
+      }
+      const actionsKeys = Object.keys(deps.actions);
+      if (actionsKeys.length > 0) {
+        const transformedActions: Deps = {};
+        for (const [key, dep] of Object.entries(deps.actions)) {
+          const parts = key.split(fieldSep);
+          // Actions keys should have file path as first part, action name as second
+          // Transform to: actions${fieldSep}${actionName}
           const actionName = parts[parts.length - 1]; // Get last part (action name)
-          const transformedKey = `actions${sep}${actionName}`;
+          const transformedKey = `actions${fieldSep}${actionName}`;
           // If multiple files use the same action, keep the first one we see
           // (they should all have the same old/new versions if discovered together)
           if (!transformedActions[transformedKey]) {
             transformedActions[transformedKey] = dep;
           }
-        } else {
-          if (verbose) console.error(`Malformed key in actions deps: ${key}`);
+        }
+        depsForOutput.actions = transformedActions;
+        if (verbose) {
+          console.error(`DEBUG: depsForOutput.actions keys after transform: ${JSON.stringify(Object.keys(depsForOutput.actions))}`);
         }
       }
-      deps.actions = transformedActions;
-      if (verbose) {
-        console.error(`DEBUG: deps.actions keys after transform: ${JSON.stringify(Object.keys(deps.actions))}`);
-      }
+    } else {
+      depsForOutput[mode] = deps[mode];
     }
   }
 
-  const exitCode = outputDeps(deps);
+  const exitCode = outputDeps(depsForOutput);
 
   if (update) {
     for (const mode of Object.keys(deps)) {
       if (!Object.keys(deps[mode]).length) continue;
 
       if (mode === "actions") {
-        // Group deps by file - use actionDepsOriginal which has file paths
+        // Group deps by file - keys have file paths
         const depsByFile = new Map<string, Deps>();
-        for (const [key, dep] of Object.entries(actionDepsOriginal)) {
-          const parts = key.split(sep);
+        for (const [key, dep] of Object.entries(deps.actions)) {
+          const parts = key.split(fieldSep);
           const filePath = parts[0];
           const actionName = parts[1];
 
@@ -1886,7 +1877,7 @@ async function main(): Promise<void> {
           }
           // Store with simplified key for updateActionsYaml
           const fileDeps = depsByFile.get(filePath)!;
-          fileDeps[`actions${sep}${actionName}`] = dep;
+          fileDeps[`actions${fieldSep}${actionName}`] = dep;
         }
 
         // Update each file
