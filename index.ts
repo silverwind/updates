@@ -727,6 +727,16 @@ function updatePyprojectToml(pkgStr: string, deps: Deps): string {
   return newPkgStr;
 }
 
+function updateGoMod(pkgStr: string, deps: Deps): string {
+  let newPkgStr = pkgStr;
+  for (const [key, {old, oldOrig}] of Object.entries(deps)) {
+    const [_depType, name] = key.split(sep);
+    const oldValue = oldOrig || old;
+    newPkgStr = newPkgStr.replace(new RegExp(`(${esc(name)}) +v${esc(oldValue)}`, "g"), `$1 v${deps[key].new}`);
+  }
+  return newPkgStr;
+}
+
 function updateNpmRange(oldRange: string, newVersion: string, oldOrig: string | undefined): string {
   let newRange = oldRange.replace(npmVersionRePre, newVersion);
 
@@ -1257,7 +1267,7 @@ async function main(): Promise<void> {
         pkg.deps = {};
         for (const modulePathAndVersion of splitPlainText(pkgStrs[mode])) {
           const [modulePath, version] = modulePathAndVersion.split("@");
-          if (version) { // current module has no version
+          if (version) {
             pkg.deps[modulePath] = version;
           }
         }
@@ -1479,8 +1489,9 @@ async function main(): Promise<void> {
     for (const mode of Object.keys(deps)) {
       if (!Object.keys(deps[mode]).length) continue;
       try {
-        const fn = (mode === "npm") ? updatePackageJson : updatePyprojectToml;
-        write(filePerMode[mode], fn(pkgStrs[mode], deps[mode]));
+        const fn = (mode === "npm") ? updatePackageJson : (mode === "go") ? updateGoMod : updatePyprojectToml;
+        const fileContent = (mode === "go") ? readFileSync(filePerMode[mode], "utf8") : pkgStrs[mode];
+        write(filePerMode[mode], fn(fileContent, deps[mode]));
       } catch (err) {
         throw new Error(`Error writing ${basename(filePerMode[mode])}: ${(err as Error).message}`);
       }

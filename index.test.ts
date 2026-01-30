@@ -1,7 +1,7 @@
 import nanoSpawn from "nano-spawn";
 import {createServer} from "node:http";
 import {join, parse} from "node:path";
-import {readFileSync, mkdtempSync, readdirSync} from "node:fs";
+import {readFileSync, mkdtempSync, readdirSync, mkdirSync} from "node:fs";
 import {writeFile, readFile, rm} from "node:fs/promises";
 import {fileURLToPath} from "node:url";
 import {tmpdir} from "node:os";
@@ -15,7 +15,8 @@ const emptyFile = fileURLToPath(new URL("fixtures/npm-empty/package.json", impor
 const jsrFile = fileURLToPath(new URL("fixtures/npm-jsr/package.json", import.meta.url));
 const poetryFile = fileURLToPath(new URL("fixtures/poetry/pyproject.toml", import.meta.url));
 const uvFile = fileURLToPath(new URL("fixtures/uv/pyproject.toml", import.meta.url));
-// const goFile = fileURLToPath(new URL("fixtures/go/go.mod", import.meta.url));
+const goFile = fileURLToPath(new URL("fixtures/go/go.mod", import.meta.url));
+const goUpdateFile = fileURLToPath(new URL("fixtures/go-update/go.mod", import.meta.url));
 const dualFile = fileURLToPath(new URL("fixtures/dual", import.meta.url));
 
 const testPkg = JSON.parse(readFileSync(testFile, "utf8"));
@@ -1192,18 +1193,45 @@ test("issue #76: allow upgrade from prerelease to prerelease without -p flag", a
   `);
 });
 
-// test("go", async () => {
-//   expect(await makeTest(`-j -f ${goFile}`)()).toMatchInlineSnapshot(`
-//     {
-//       "go": {
-//         "deps": {
-//           "github.com/google/go-github/v70": {
-//             "info": "https://github.com/google/go-github",
-//             "new": "v71.0.0",
-//             "old": "v70.0.0",
-//           },
-//         },
-//       },
-//     }
-//   `);
-// });
+test("go", async () => {
+  expect(await makeTest(`-j -f ${goFile}`)()).toMatchInlineSnapshot(`
+    {
+      "go": {
+        "deps": {
+          "github.com/google/uuid": {
+            "info": "https://github.com/google/uuid",
+            "new": "1.6.0",
+            "old": "1.5.0",
+          },
+        },
+      },
+    }
+  `);
+});
+
+test("go update", async () => {
+  const testGoModDir = join(testDir, "test-go-update");
+  mkdirSync(testGoModDir, {recursive: true});
+
+  const goUpdateContent = readFileSync(goUpdateFile, "utf8");
+  await writeFile(join(testGoModDir, "go.mod"), goUpdateContent);
+
+  await nanoSpawn("go", ["mod", "download"], {cwd: testGoModDir});
+
+  await nanoSpawn(execPath, [
+    script,
+    "-u",
+    "-f", join(testGoModDir, "go.mod"),
+    "-c",
+  ], {cwd: testGoModDir});
+
+  const updatedContent = await readFile(join(testGoModDir, "go.mod"), "utf8");
+
+  expect(updatedContent).toContain("github.com/google/uuid v1.6.0");
+  expect(updatedContent).not.toContain("uuid v1.5.0");
+  expect(updatedContent).toContain("github.com/google/go-github/v70 v70.0.0");
+
+  const matches = updatedContent.match(/github\.com\/google\/uuid v1\.6\.0/g);
+  expect(matches).toBeTruthy();
+  expect(matches?.length).toBe(4);
+});
