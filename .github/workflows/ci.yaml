@@ -8,6 +8,11 @@ jobs:
       matrix:
         js: [[node, 20], [node, 22], [node, 24], [bun, latest]]
         os: [ubuntu-latest, macos-latest, windows-latest]
+        exclude:
+          # Exclude Node.js 24 on Windows due to UV_HANDLE_CLOSING issue
+          # See: https://github.com/nodejs/node/issues/56645
+          - js: [node, 24]
+            os: windows-latest
     runs-on: ${{matrix.os}}
     steps:
       - uses: actions/checkout@v6
