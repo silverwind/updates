@@ -1250,13 +1250,13 @@ test("pin", async () => {
   ]);
   expect(stderr).toEqual("");
   const {results} = JSON.parse(stdout);
-  
+
   // prismjs should be updated but only within the ^1.0.0 range
   expect(results.npm.dependencies.prismjs).toBeDefined();
   const prismjsNew = results.npm.dependencies.prismjs.new;
   // Check that the new version is within ^1.0.0 range (1.x.x but not 2.x.x)
   expect(prismjsNew).toMatch(/^1\./);
-  
+
   // react should not be updated beyond ^18.0.0 range
   expect(results.npm.dependencies.react).toBeDefined();
   const reactNew = results.npm.dependencies.react.new;
