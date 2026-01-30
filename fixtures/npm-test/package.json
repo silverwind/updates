@@ -23,7 +23,10 @@
   "peerDependencies": {
     "@babel/preset-env": "~6.0.0",
     "svgstore": "^1.0.0 || ^2.0.0",
-    "typescript": "^4"
+    "typescript": "^4",
+    "prismjs": ">=1",
+    "noty": ">= 3.1",
+    "gulp-sourcemaps": ">=2.0.0"
   },
   "resolutions": {
     "versions/updates": "^1.0.0"
