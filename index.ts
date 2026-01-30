@@ -119,7 +119,7 @@ const options: ParseArgsOptionsConfig = {
   "color": {short: "c", type: "boolean"},
   "no-color": {short: "n", type: "boolean"},
   "patch": {short: "P", type: "string", multiple: true},
-  "pin": {type: "string", multiple: true},
+  "pin": {short: "l", type: "string", multiple: true},
   "prerelease": {short: "p", type: "string", multiple: true},
   "pypiapi": {type: "string"}, // undocumented, only for tests
   "registry": {short: "r", type: "string"},
@@ -1203,7 +1203,7 @@ async function main(): Promise<void> {
     -m, --minor [<pkg,...>]            Consider only up to semver-minor
     -d, --allow-downgrade [<pkg,...>]  Allow version downgrades when using latest version
     -C, --cooldown <days>              Minimum package age in days
-    --pin <pkg=range>                  Pin package to given semver range
+    -l, --pin <pkg=range>              Pin package to given semver range
     -E, --error-on-outdated            Exit with code 2 when updates are available and 0 when not
     -U, --error-on-unchanged           Exit with code 0 when updates are available and 2 when not
     -r, --registry <url>               Override npm registry URL
@@ -1224,7 +1224,7 @@ async function main(): Promise<void> {
     $ updates -f package.json
     $ updates -f pyproject.toml
     $ updates -f go.mod
-    $ updates --pin typescript=^5.0.0
+    $ updates -l typescript=^5.0.0
 `);
     await end();
   }
