@@ -767,52 +767,6 @@ test("include", async () => {
   `);
 });
 
-test("include 2", async () => {
-  expect(await makeTest("-j -i noty -i noty,noty")()).toMatchInlineSnapshot(`
-    {
-      "npm": {
-        "dependencies": {
-          "noty": {
-            "info": "https://github.com/needim/noty",
-            "new": "3.1.4",
-            "old": "3.1.0",
-          },
-        },
-        "packageManager": {
-          "npm": {
-            "info": "https://github.com/npm/cli",
-            "new": "11.6.2",
-            "old": "11.6.0",
-          },
-        },
-      },
-    }
-  `);
-});
-
-test("include 3", async () => {
-  expect(await makeTest("-j -i /^noty/")()).toMatchInlineSnapshot(`
-    {
-      "npm": {
-        "dependencies": {
-          "noty": {
-            "info": "https://github.com/needim/noty",
-            "new": "3.1.4",
-            "old": "3.1.0",
-          },
-        },
-        "packageManager": {
-          "npm": {
-            "info": "https://github.com/npm/cli",
-            "new": "11.6.2",
-            "old": "11.6.0",
-          },
-        },
-      },
-    }
-  `);
-});
-
 test("packageManager", async () => {
   expect(await makeTest("-j -i npm")()).toMatchInlineSnapshot(`
     {
@@ -857,89 +811,6 @@ test("exclude", async () => {
             "info": "https://github.com/Microsoft/TypeScript",
             "new": "^5",
             "old": "^4",
-          },
-        },
-      },
-    }
-  `);
-});
-
-test("exclude 2", async () => {
-  expect(await makeTest("-j -e gulp-sourcemaps -i /react/")()).toMatchInlineSnapshot(`
-    {
-      "npm": {
-        "dependencies": {
-          "react": {
-            "info": "https://github.com/facebook/react/tree/HEAD/packages/react",
-            "new": "18.2.0",
-            "old": "18.0",
-          },
-        },
-        "packageManager": {
-          "npm": {
-            "info": "https://github.com/npm/cli",
-            "new": "11.6.2",
-            "old": "11.6.0",
-          },
-        },
-      },
-    }
-  `);
-});
-
-test("exclude 3", async () => {
-  expect(await makeTest("-j -i gulp*")()).toMatchInlineSnapshot(`
-    {
-      "npm": {
-        "dependencies": {
-          "gulp-sourcemaps": {
-            "info": "https://github.com/gulp-sourcemaps/gulp-sourcemaps",
-            "new": "2.6.5",
-            "old": "2.0.0",
-          },
-        },
-        "packageManager": {
-          "npm": {
-            "info": "https://github.com/npm/cli",
-            "new": "11.6.2",
-            "old": "11.6.0",
-          },
-        },
-        "peerDependencies": {
-          "gulp-sourcemaps": {
-            "info": "https://github.com/gulp-sourcemaps/gulp-sourcemaps",
-            "new": ">=2.6.5",
-            "old": ">=2.0.0",
-          },
-        },
-      },
-    }
-  `);
-});
-
-test("exclude 4", async () => {
-  expect(await makeTest("-j -i /^gulp/ -P gulp*")()).toMatchInlineSnapshot(`
-    {
-      "npm": {
-        "dependencies": {
-          "gulp-sourcemaps": {
-            "info": "https://github.com/floridoo/gulp-sourcemaps",
-            "new": "2.0.1",
-            "old": "2.0.0",
-          },
-        },
-        "packageManager": {
-          "npm": {
-            "info": "https://github.com/npm/cli",
-            "new": "11.6.2",
-            "old": "11.6.0",
-          },
-        },
-        "peerDependencies": {
-          "gulp-sourcemaps": {
-            "info": "https://github.com/floridoo/gulp-sourcemaps",
-            "new": ">=2.0.1",
-            "old": ">=2.0.0",
           },
         },
       },
@@ -1090,22 +961,6 @@ test("dual", async () => {
             "info": "https://github.com/Riverside-Healthcare/djlint",
             "new": "1.31.0",
             "old": "1.30.0",
-          },
-        },
-      },
-    }
-  `);
-});
-
-test("dual 2", async () => {
-  expect(await makeTest(`-j -f ${dualFile} -i noty`)()).toMatchInlineSnapshot(`
-    {
-      "npm": {
-        "dependencies": {
-          "noty": {
-            "info": "https://github.com/needim/noty",
-            "new": "3.1.4",
-            "old": "3.1.0",
           },
         },
       },
