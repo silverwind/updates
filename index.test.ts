@@ -205,7 +205,7 @@ function makeTest(args: string) {
   return async () => {
     const argsArr = [
       ...args.split(/\s+/), "-c",
-      "--githubapi", githubUrl,
+      "--forgeapi", githubUrl,
       "--pypiapi", pypiUrl,
       "--jsrapi", jsrUrl,
     ];
@@ -242,7 +242,7 @@ test("simple", async () => {
   const {stdout, stderr} = await nanoSpawn(process.execPath, [
     script,
     "-C",
-    "--githubapi", githubUrl,
+    "--forgeapi", githubUrl,
     "--pypiapi", pypiUrl,
     "--registry", npmUrl,
     "-f", testFile,
@@ -256,7 +256,7 @@ test("empty", async () => {
   const {stdout, stderr} = await nanoSpawn(process.execPath, [
     script,
     "-C",
-    "--githubapi", githubUrl,
+    "--forgeapi", githubUrl,
     "--pypiapi", pypiUrl,
     "-f", emptyFile,
   ]);
@@ -269,7 +269,7 @@ test("jsr", async () => {
     script,
     "-C",
     "-j",
-    "--githubapi", githubUrl,
+    "--forgeapi", githubUrl,
     "--pypiapi", pypiUrl,
     "--jsrapi", jsrUrl,
     "-f", jsrFile,
@@ -290,7 +290,7 @@ if (!versions.bun) {
     try {
       const {stdout, stderr} = await nanoSpawn("updates", [
         "-C",
-        "--githubapi", githubUrl,
+        "--forgeapi", githubUrl,
         "--pypiapi", pypiUrl,
         "-f", testFile,
       ]);
@@ -1114,7 +1114,7 @@ test("dual 2", async () => {
 });
 
 test("invalid config", async () => {
-  const args = ["-j", "-f", invalidConfigFile, "-c", "--githubapi", githubUrl, "--pypiapi", pypiUrl];
+  const args = ["-j", "-f", invalidConfigFile, "-c", "--forgeapi", githubUrl, "--pypiapi", pypiUrl];
   try {
     await nanoSpawn(execPath, [script, ...args]);
     throw new Error("Expected error but got success");
@@ -1256,7 +1256,7 @@ test("pin", async () => {
     script,
     "-j",
     "-c",
-    "--githubapi", githubUrl,
+    "--forgeapi", githubUrl,
     "--pypiapi", pypiUrl,
     "--registry", npmUrl,
     "-f", testFile,
