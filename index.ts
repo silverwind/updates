@@ -1891,17 +1891,17 @@ async function main(): Promise<void> {
 
         // Update each file
         for (const [filePath, fileDeps] of depsByFile.entries()) {
+          const relPath = relative(cwd(), filePath) || basename(filePath);
           try {
             const content = actionFiles.get(filePath)!;
             write(filePath, updateActionsYaml(content, fileDeps));
-            const relPath = relative(cwd(), filePath) || basename(filePath);
             console.info(green(`✨ ${relPath} updated`));
           } catch (err) {
-            const relPath = relative(cwd(), filePath) || basename(filePath);
             throw new Error(`Error writing ${relPath}: ${(err as Error).message}`);
           }
         }
       } else {
+        const relPath = relative(cwd(), filePerMode[mode]) || basename(filePerMode[mode]);
         try {
           let fn: (content: string, deps: Deps) => string;
           if (mode === "npm") {
@@ -1914,10 +1914,8 @@ async function main(): Promise<void> {
 
           const fileContent = (mode === "go") ? readFileSync(filePerMode[mode], "utf8") : pkgStrs[mode];
           write(filePerMode[mode], fn(fileContent, deps[mode]));
-          const relPath = relative(cwd(), filePerMode[mode]) || basename(filePerMode[mode]);
           console.info(green(`✨ ${relPath} updated`));
         } catch (err) {
-          const relPath = relative(cwd(), filePerMode[mode]) || basename(filePerMode[mode]);
           throw new Error(`Error writing ${relPath}: ${(err as Error).message}`);
         }
       }
