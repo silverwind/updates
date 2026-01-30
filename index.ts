@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import {cwd, stdout, stderr, env, exit, platform, versions} from "node:process";
-import {join, dirname, basename, resolve} from "node:path";
+import {join, dirname, basename, resolve, sep as pathSep} from "node:path";
 import {pathToFileURL} from "node:url";
 import {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync, readdirSync, type Stats} from "node:fs";
 import {stripVTControlCharacters, styleText, parseArgs, type ParseArgsOptionsConfig} from "node:util";
@@ -201,6 +201,38 @@ const pypiApiUrl = typeof args.pypiapi === "string" ? normalizeUrl(args.pypiapi)
 const jsrApiUrl = typeof args.jsrapi === "string" ? normalizeUrl(args.jsrapi) : "https://jsr.io";
 
 const stripv = (str: string): string => str.replace(/^v/, "");
+
+// Check if a file path indicates it's a GitHub/Gitea/Forgejo Actions workflow file
+// Supports both Windows and Unix path separators
+function isActionsWorkflowPath(filePath: string): boolean {
+  // Normalize path to use forward slashes
+  const normalized = filePath.split(pathSep).join("/");
+
+  // Must be a YAML file
+  if (!normalized.endsWith(".yml") && !normalized.endsWith(".yaml")) {
+    return false;
+  }
+
+  // Check if path matches any of these patterns:
+  // - Contains /.github/ or /.gitea/ or /.forgejo/ anywhere in the path
+  // - Starts with .github/ or .gitea/ or .forgejo/
+  // - Is exactly .github or .gitea or .forgejo
+  // This covers all the specified patterns
+
+  const hasGithubDir = normalized.includes("/.github/") ||
+                       normalized.startsWith(".github/") ||
+                       normalized === ".github";
+
+  const hasGiteaDir = normalized.includes("/.gitea/") ||
+                      normalized.startsWith(".gitea/") ||
+                      normalized === ".gitea";
+
+  const hasForgejoDir = normalized.includes("/.forgejo/") ||
+                        normalized.startsWith(".forgejo/") ||
+                        normalized === ".forgejo";
+
+  return hasGithubDir || hasGiteaDir || hasForgejoDir;
+}
 
 function matchesAny(str: string, set: Set<RegExp> | boolean): boolean {
   for (const re of (set instanceof Set ? set : [])) {
@@ -1295,7 +1327,7 @@ function canIncludeByDate(date: string | undefined, cooldownDays: number, now: n
 
 function discoverWorkflowFiles(dir: string): Array<string> {
   const files: Array<string> = [];
-  for (const workflowDir of [".github/workflows", ".gitea/workflows"]) {
+  for (const workflowDir of [".github/workflows", ".gitea/workflows", ".forgejo/workflows"]) {
     const fullPath = join(dir, workflowDir);
     try {
       const entries = readdirSync(fullPath);
@@ -1471,23 +1503,9 @@ async function main(): Promise<void> {
     const filename = basename(file);
     let mode = modeByFileName[filename];
 
-    // Detect actions mode for workflow files
-    if (!mode && (explicitFiles.has(file) && (filename.endsWith(".yaml") || filename.endsWith(".yml")))) {
-      // For explicit files, check if it's a workflow file by trying to parse it
-      try {
-        const content = readFileSync(file, "utf8");
-        // Simple check: does it have 'jobs:' which is required for workflow files
-        if (content.includes("jobs:") && content.includes("uses:")) {
-          mode = "actions";
-        }
-      } catch {}
-    } else if (!mode) {
-      // For discovered files, check if they're in workflow directories (using path separators)
-      const normalizedPath = file.split(sep).join("/");
-      if ((normalizedPath.includes("/.github/workflows/") || normalizedPath.includes("/.gitea/workflows/")) &&
-          (filename.endsWith(".yaml") || filename.endsWith(".yml"))) {
-        mode = "actions";
-      }
+    // Detect actions mode for workflow files based on path alone
+    if (!mode && isActionsWorkflowPath(file)) {
+      mode = "actions";
     }
 
     if (!enabledModes.has(mode) && !explicitFiles.has(file)) continue;

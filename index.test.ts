@@ -19,7 +19,7 @@ const uvFile = fileURLToPath(new URL("fixtures/uv/pyproject.toml", import.meta.u
 const goFile = fileURLToPath(new URL("fixtures/go/go.mod", import.meta.url));
 const goUpdateFile = fileURLToPath(new URL("fixtures/go-update/go.mod", import.meta.url));
 const dualFile = fileURLToPath(new URL("fixtures/dual", import.meta.url));
-const actionsFile = fileURLToPath(new URL("fixtures/actions.yaml", import.meta.url));
+const actionsFile = fileURLToPath(new URL("fixtures/.github/workflows/actions.yaml", import.meta.url));
 const invalidConfigFile = fileURLToPath(new URL("fixtures/invalid-config/package.json", import.meta.url));
 
 const testPkg = JSON.parse(readFileSync(testFile, "utf8"));
