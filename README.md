@@ -10,6 +10,7 @@
 - `package.json`: supports all npm package managers
 - `pyproject.toml`: supports formats of `uv` and `poetry`
 - `go.mod`: experimental go support, will not be discovered go.mod in directory mode
+- `.github/workflows/*.yaml` and `.gitea/workflows/*.yaml`: supports GitHub/Gitea Actions
 
 # Usage
 

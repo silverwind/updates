@@ -1365,7 +1365,7 @@ async function main(): Promise<void> {
     -U, --error-on-unchanged           Exit with code 0 when updates are available and 2 when not
     -r, --registry <url>               Override npm registry URL
     -S, --sockets <num>                Maximum number of parallel HTTP sockets opened. Default: ${maxSockets}
-    -M, --modes <mode,...>             Which modes to enable. Either npm,pypi,go. Default: npm,pypi
+    -M, --modes <mode,...>             Which modes to enable. Either npm,pypi,go,actions. Default: npm,pypi,actions
     -j, --json                         Output a JSON object
     -n, --no-color                     Disable color output
     -v, --version                      Print the version
