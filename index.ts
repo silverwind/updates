@@ -108,7 +108,7 @@ const options: ParseArgsOptionsConfig = {
   "error-on-unchanged": {short: "U", type: "boolean"},
   "exclude": {short: "e", type: "string", multiple: true},
   "file": {short: "f", type: "string", multiple: true},
-  "githubapi": {type: "string"}, // undocumented, only for tests
+  "forgeapi": {type: "string"}, // undocumented, only for tests
   "greatest": {short: "g", type: "string", multiple: true},
   "help": {short: "h", type: "boolean"},
   "include": {short: "i", type: "string", multiple: true},
@@ -196,7 +196,7 @@ const patch = argSetToRegexes(parseMixedArg(args.patch));
 const minor = argSetToRegexes(parseMixedArg(args.minor));
 const allowDowngrade = argSetToRegexes(parseMixedArg(args["allow-downgrade"]));
 const enabledModes = parseMixedArg(args.modes) as Set<string> || new Set(["npm", "pypi", "actions"]);
-const githubApiUrl = typeof args.githubapi === "string" ? normalizeUrl(args.githubapi) : "https://api.github.com";
+const forgeApiUrl = typeof args.forgeapi === "string" ? normalizeUrl(args.forgeapi) : "https://api.github.com";
 const pypiApiUrl = typeof args.pypiapi === "string" ? normalizeUrl(args.pypiapi) : "https://pypi.org";
 const jsrApiUrl = typeof args.jsrapi === "string" ? normalizeUrl(args.jsrapi) : "https://jsr.io";
 
@@ -1005,7 +1005,7 @@ type CommitInfo = {
 };
 
 async function getLastestCommit(user: string, repo: string): Promise<CommitInfo> {
-  const url = `${githubApiUrl}/repos/${user}/${repo}/commits`;
+  const url = `${forgeApiUrl}/repos/${user}/${repo}/commits`;
   const res = await fetchForgeApi(url);
   if (!res?.ok) return {hash: "", commit: {}};
   const data = await res.json();
@@ -1016,7 +1016,7 @@ async function getLastestCommit(user: string, repo: string): Promise<CommitInfo>
 // return list of tags sorted old to new
 // TODO: newDate support, semver matching
 async function getTags(user: string, repo: string): Promise<Array<string>> {
-  const res = await fetchForgeApi(`${githubApiUrl}/repos/${user}/${repo}/git/refs/tags`);
+  const res = await fetchForgeApi(`${forgeApiUrl}/repos/${user}/${repo}/git/refs/tags`);
   if (!res?.ok) return [];
   const data = await res.json();
   const tags = data.map((entry: {ref: string}) => entry.ref.replace(/^refs\/tags\//, ""));
@@ -1027,7 +1027,7 @@ async function getTags(user: string, repo: string): Promise<Array<string>> {
 // Returns the first version-like tag found, or null if none found
 async function getTagForCommit(user: string, repo: string, sha: string): Promise<string | null> {
   // Use the GitHub API to list tags for the repository
-  const res = await fetchForgeApi(`${githubApiUrl}/repos/${user}/${repo}/tags`);
+  const res = await fetchForgeApi(`${forgeApiUrl}/repos/${user}/${repo}/tags`);
   if (!res?.ok) return null;
   const tags = await res.json();
 
