@@ -158,47 +158,52 @@ function getOptionKey(name: string): string {
   return "";
 }
 
-const result = parseArgs({
-  strict: false,
-  allowPositionals: true,
-  tokens: true,
-  options,
-});
+function parseCliArgs(argv?: Array<string>) {
+  const result = parseArgs({
+    strict: false,
+    allowPositionals: true,
+    tokens: true,
+    options,
+    args: argv,
+  });
 
-// fix parseArgs defect parsing "-a -b" as {a: "-b"} when a is string
-for (const [index, token] of result.tokens.entries()) {
-  if (token.kind === "option" && token.value?.startsWith("-")) {
-    const key = getOptionKey(token.value.substring(1));
-    const next = result.tokens[index + 1];
-    // @ts-expect-error
-    result.values[token.name] = [true];
-    // @ts-expect-error
-    if (!result.values[key]) result.values[key] = [];
-    if (next.kind === "positional" && next.value) {
+  // fix parseArgs defect parsing "-a -b" as {a: "-b"} when a is string
+  for (const [index, token] of result.tokens.entries()) {
+    if (token.kind === "option" && token.value?.startsWith("-")) {
+      const key = getOptionKey(token.value.substring(1));
+      const next = result.tokens[index + 1];
       // @ts-expect-error
-      result.values[key].push(next.value);
-    } else {
+      result.values[token.name] = [true];
       // @ts-expect-error
-      result.values[key].push(true);
+      if (!result.values[key]) result.values[key] = [];
+      if (next.kind === "positional" && next.value) {
+        // @ts-expect-error
+        result.values[key].push(next.value);
+      } else {
+        // @ts-expect-error
+        result.values[key].push(true);
+      }
     }
   }
+
+  return result.values;
 }
 
-const args = result.values;
-
-const [magenta, red, green] = (["magenta", "red", "green"] as const)
-  .map(color => args["no-color"] ? String : (text: string | number) => styleText(color, String(text)));
-
-const greatest = argSetToRegexes(parseMixedArg(args.greatest));
-const prerelease = argSetToRegexes(parseMixedArg(args.prerelease));
-const release = argSetToRegexes(parseMixedArg(args.release));
-const patch = argSetToRegexes(parseMixedArg(args.patch));
-const minor = argSetToRegexes(parseMixedArg(args.minor));
-const allowDowngrade = argSetToRegexes(parseMixedArg(args["allow-downgrade"]));
-const enabledModes = parseMixedArg(args.modes) as Set<string> || new Set(["npm", "pypi"]);
-const githubApiUrl = typeof args.githubapi === "string" ? normalizeUrl(args.githubapi) : "https://api.github.com";
-const pypiApiUrl = typeof args.pypiapi === "string" ? normalizeUrl(args.pypiapi) : "https://pypi.org";
-const jsrApiUrl = typeof args.jsrapi === "string" ? normalizeUrl(args.jsrapi) : "https://jsr.io";
+// These are initialized in main()
+let args: any;
+let magenta: (text: string | number) => string;
+let red: (text: string | number) => string;
+let green: (text: string | number) => string;
+let greatest: Set<RegExp> | boolean;
+let prerelease: Set<RegExp> | boolean;
+let release: Set<RegExp> | boolean;
+let patch: Set<RegExp> | boolean;
+let minor: Set<RegExp> | boolean;
+let allowDowngrade: Set<RegExp> | boolean;
+let enabledModes: Set<string>;
+let githubApiUrl: string;
+let pypiApiUrl: string;
+let jsrApiUrl: string;
 
 const stripv = (str: string): string => str.replace(/^v/, "");
 
@@ -1205,7 +1210,26 @@ async function loadConfig(rootDir: string): Promise<Config> {
   return config;
 }
 
-async function main(): Promise<void> {
+export async function main(argv?: Array<string>): Promise<void> {
+  // Parse arguments
+  args = parseCliArgs(argv);
+
+  // Initialize color functions
+  [magenta, red, green] = (["magenta", "red", "green"] as const)
+    .map(color => args["no-color"] ? String : (text: string | number) => styleText(color, String(text)));
+
+  // Initialize arg-dependent variables
+  greatest = argSetToRegexes(parseMixedArg(args.greatest));
+  prerelease = argSetToRegexes(parseMixedArg(args.prerelease));
+  release = argSetToRegexes(parseMixedArg(args.release));
+  patch = argSetToRegexes(parseMixedArg(args.patch));
+  minor = argSetToRegexes(parseMixedArg(args.minor));
+  allowDowngrade = argSetToRegexes(parseMixedArg(args["allow-downgrade"]));
+  enabledModes = parseMixedArg(args.modes) as Set<string> || new Set(["npm", "pypi"]);
+  githubApiUrl = typeof args.githubapi === "string" ? normalizeUrl(args.githubapi) : "https://api.github.com";
+  pypiApiUrl = typeof args.pypiapi === "string" ? normalizeUrl(args.pypiapi) : "https://pypi.org";
+  jsrApiUrl = typeof args.jsrapi === "string" ? normalizeUrl(args.jsrapi) : "https://jsr.io";
+
   // Node.js does not guarantee that stdio streams are flushed when calling process.exit(). Prevent Node
   // from cutting off long output by setting those streams into blocking mode.
   // Ref: https://github.com/nodejs/node/issues/6379
