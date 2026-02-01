@@ -757,7 +757,7 @@ test("include", async () => {
   `);
 });
 
-test("include 3", async () => {
+test("include 2", async () => {
   expect(await makeTest("-j -i /^noty/")()).toMatchInlineSnapshot(`
     {
       "npm": {
@@ -796,7 +796,7 @@ test("packageManager", async () => {
   `);
 });
 
-test("exclude 2", async () => {
+test("exclude", async () => {
   expect(await makeTest("-j -e gulp-sourcemaps -i /react/")()).toMatchInlineSnapshot(`
     {
       "npm": {
@@ -819,7 +819,7 @@ test("exclude 2", async () => {
   `);
 });
 
-test("exclude 3", async () => {
+test("exclude 2", async () => {
   expect(await makeTest("-j -i gulp*")()).toMatchInlineSnapshot(`
     {
       "npm": {
@@ -849,7 +849,7 @@ test("exclude 3", async () => {
   `);
 });
 
-test("exclude 4", async () => {
+test("exclude 3", async () => {
   expect(await makeTest("-j -i /^gulp/ -P gulp*")()).toMatchInlineSnapshot(`
     {
       "npm": {
@@ -1058,7 +1058,7 @@ test("invalid config", async () => {
   }
 });
 
-test("issue #76: don't upgrade to prerelease from latest dist-tag by default", async () => {
+test("preup", async () => {
   // Test that we don't upgrade from stable to prerelease when latest dist-tag is a prerelease
   // noty: 3.1.0 -> should suggest 3.1.4 (not 3.2.0-beta which is on latest dist-tag)
   expect(await makeTest("-j -i noty")()).toMatchInlineSnapshot(`
@@ -1083,7 +1083,7 @@ test("issue #76: don't upgrade to prerelease from latest dist-tag by default", a
   `);
 });
 
-test("issue #76: allow upgrade to prerelease with -p flag", async () => {
+test("preup 1", async () => {
   // Test that we DO upgrade to prerelease when explicitly requested with -p flag
   // noty: 3.1.0 -> should suggest 3.2.0-beta (from latest dist-tag) when -p is used
   expect(await makeTest("-j -i noty -p")()).toMatchInlineSnapshot(`
@@ -1115,7 +1115,7 @@ test("issue #76: allow upgrade to prerelease with -p flag", async () => {
   `);
 });
 
-test("issue #76: allow upgrade from prerelease to prerelease without -p flag", async () => {
+test("preup 2", async () => {
   // Test that upgrading from prerelease to prerelease works without -p flag
   // eslint-plugin-storybook: 10.0.0-beta.5 -> should allow upgrade to another prerelease
   expect(await makeTest("-j -i eslint-plugin-storybook")()).toMatchInlineSnapshot(`
