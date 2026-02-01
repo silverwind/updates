@@ -47,15 +47,7 @@ function createSimpleServer(defaultHandler: RouteHandler) {
       const encodings = parseAcceptEncoding(acceptEncoding);
       const shouldCompress = encodings.includes("gzip");
 
-      if (Buffer.isBuffer(data)) {
-        res.setHeader("Content-Type", "application/json");
-        if (shouldCompress) {
-          res.setHeader("Content-Encoding", "gzip");
-          res.end(gzipSync(data));
-        } else {
-          res.end(data);
-        }
-      } else if (typeof data === "object") {
+      if (typeof data === "object") {
         res.setHeader("Content-Type", "application/json");
         const json = JSON.stringify(data);
         if (shouldCompress) {
@@ -153,32 +145,32 @@ beforeAll(async () => {
   jsrServer = createSimpleServer(defaultRoute);
 
   const [commits, tags] = await Promise.all([
-    readFile(fileURLToPath(new URL("fixtures/github/updates-commits.json", import.meta.url))),
-    readFile(fileURLToPath(new URL("fixtures/github/updates-tags.json", import.meta.url))),
+    readFile(fileURLToPath(new URL("fixtures/github/updates-commits.json", import.meta.url)), "utf8"),
+    readFile(fileURLToPath(new URL("fixtures/github/updates-tags.json", import.meta.url)), "utf8"),
   ]);
 
-  const npmFilesPromises = [];
+  const npmFilesPromises: Array<Promise<{urlName: string, data: string}>> = [];
   for (const pkgName of testPackages) {
     const name = (testPkg.resolutions[pkgName] ? resolutionsBasePackage(pkgName) : pkgName);
     const urlName = name.replace(/\//g, "%2f");
     // can not use file URLs because node stupidely throws on "%2f" in paths.
     const path = join(import.meta.dirname, `fixtures/npm/${urlName}.json`);
-    npmFilesPromises.push((async () => ({urlName, data: await readFile(path)}))());
+    npmFilesPromises.push((async () => ({urlName, data: await readFile(path, "utf8")}))());
   }
 
-  const pypiFilesPromises = [];
+  const pypiFilesPromises: Array<Promise<{pkgName: string, data: string}>> = [];
   for (const file of readdirSync(join(import.meta.dirname, `fixtures/pypi`))) {
     const path = join(import.meta.dirname, `fixtures/pypi/${file}`);
     const pkgName = parse(path).name;
-    pypiFilesPromises.push((async () => ({pkgName, data: await readFile(path)}))());
+    pypiFilesPromises.push((async () => ({pkgName, data: await readFile(path, "utf8")}))());
   }
 
-  const jsrFilesPromises = [];
+  const jsrFilesPromises: Array<Promise<{scope: string, name: string, data: string}>> = [];
   for (const file of readdirSync(join(import.meta.dirname, `fixtures/jsr`))) {
     const path = join(import.meta.dirname, `fixtures/jsr/${file}`);
     const pkgName = parse(path).name;
     const [scope, name] = pkgName.replace("@", "").split("__");
-    jsrFilesPromises.push((async () => ({scope, name, data: await readFile(path)}))());
+    jsrFilesPromises.push((async () => ({scope, name, data: await readFile(path, "utf8")}))());
   }
 
   const [npmFiles, pypiFiles, jsrFiles] = await Promise.all([
