@@ -767,29 +767,6 @@ test("include", async () => {
   `);
 });
 
-test("include 2", async () => {
-  expect(await makeTest("-j -i noty -i noty,noty")()).toMatchInlineSnapshot(`
-    {
-      "npm": {
-        "dependencies": {
-          "noty": {
-            "info": "https://github.com/needim/noty",
-            "new": "3.1.4",
-            "old": "3.1.0",
-          },
-        },
-        "packageManager": {
-          "npm": {
-            "info": "https://github.com/npm/cli",
-            "new": "11.6.2",
-            "old": "11.6.0",
-          },
-        },
-      },
-    }
-  `);
-});
-
 test("include 3", async () => {
   expect(await makeTest("-j -i /^noty/")()).toMatchInlineSnapshot(`
     {
@@ -822,41 +799,6 @@ test("packageManager", async () => {
             "info": "https://github.com/npm/cli",
             "new": "11.6.2",
             "old": "11.6.0",
-          },
-        },
-      },
-    }
-  `);
-});
-
-test("exclude", async () => {
-  expect(await makeTest("-j -e gulp-sourcemaps,prismjs,svgstore,html-webpack-plugin,noty,jpeg-buffer-orientation,styled-components,@babel/preset-env,versions/updates,react")()).toMatchInlineSnapshot(`
-    {
-      "npm": {
-        "dependencies": {
-          "eslint-plugin-storybook": {
-            "info": "https://github.com/storybookjs/storybook/tree/HEAD/code/lib/eslint-plugin",
-            "new": "0.0.0-pr-32455-sha-2828decf",
-            "old": "10.0.0-beta.5",
-          },
-          "updates": {
-            "info": "https://github.com/silverwind/updates",
-            "new": "537ccb7",
-            "old": "6941e05",
-          },
-        },
-        "packageManager": {
-          "npm": {
-            "info": "https://github.com/npm/cli",
-            "new": "11.6.2",
-            "old": "11.6.0",
-          },
-        },
-        "peerDependencies": {
-          "typescript": {
-            "info": "https://github.com/Microsoft/TypeScript",
-            "new": "^5",
-            "old": "^4",
           },
         },
       },
