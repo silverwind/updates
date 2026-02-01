@@ -152,51 +152,51 @@ beforeAll(async () => {
     readFile(fileURLToPath(new URL("fixtures/github/updates-tags.json", import.meta.url))),
   ]);
 
-  // Pre-read and cache all npm fixture files
   const npmFilesPromises = [];
   for (const pkgName of testPackages) {
     const name = testPkg.resolutions[pkgName] ? resolutionsBasePackage(pkgName) : pkgName;
     const urlName = name.replace(/\//g, "%2f");
     // can not use file URLs because node stupidely throws on "%2f" in paths.
     const path = join(import.meta.dirname, `fixtures/npm/${urlName}.json`);
-    npmFilesPromises.push(
-      readFile(path).then(data => ({urlName, data})).catch(() => null)
-    );
+    npmFilesPromises.push((async () => {
+      try {
+        const data = await readFile(path);
+        return {urlName, data};
+      } catch {
+        return null;
+      }
+    })());
   }
 
-  // Pre-read and cache all pypi fixture files
   const pypiFilesPromises = [];
   for (const file of readdirSync(join(import.meta.dirname, `fixtures/pypi`))) {
     const path = join(import.meta.dirname, `fixtures/pypi/${file}`);
     const pkgName = parse(path).name;
-    pypiFilesPromises.push(
-      readFile(path).then(data => ({pkgName, data}))
-    );
+    pypiFilesPromises.push((async () => {
+      const data = await readFile(path);
+      return {pkgName, data};
+    })());
   }
 
-  // Pre-read and cache all jsr fixture files
   const jsrFilesPromises = [];
   for (const file of readdirSync(join(import.meta.dirname, `fixtures/jsr`))) {
     const path = join(import.meta.dirname, `fixtures/jsr/${file}`);
-    const pkgName = parse(path).name; // e.g., "@std__semver"
+    const pkgName = parse(path).name;
     const [scope, name] = pkgName.replace("@", "").split("__");
-    jsrFilesPromises.push(
-      readFile(path).then(data => ({scope, name, data}))
-    );
+    jsrFilesPromises.push((async () => {
+      const data = await readFile(path);
+      return {scope, name, data};
+    })());
   }
 
-  // Wait for all fixture files to be read
   const [npmFiles, pypiFiles, jsrFiles] = await Promise.all([
     Promise.all(npmFilesPromises),
     Promise.all(pypiFilesPromises),
     Promise.all(jsrFilesPromises),
   ]);
 
-  // Set up routes with cached data
-  for (const file of npmFiles) {
-    if (file) {
-      npmServer.get(`/${file.urlName}`, (_, res) => res.send(file.data));
-    }
+  for (const file of npmFiles.filter(Boolean)) {
+    npmServer.get(`/${file.urlName}`, (_, res) => res.send(file.data));
   }
 
   for (const {pkgName, data} of pypiFiles) {
