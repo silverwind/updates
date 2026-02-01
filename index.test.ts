@@ -69,11 +69,8 @@ function createSimpleServer(defaultHandler: RouteHandler) {
     try {
       await handler(req, res);
     } catch (err) {
-      console.error("Error in request handler:", err);
-      if (!res.headersSent) {
-        res.statusCode = 500;
-        res.end("Internal Server Error");
-      }
+      res.statusCode = 500;
+      res.end(err);
     }
   });
 
