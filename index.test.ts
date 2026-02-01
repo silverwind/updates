@@ -27,6 +27,10 @@ const script = fileURLToPath(new URL("dist/index.js", import.meta.url));
 
 type RouteHandler = (req: any, res: any) => void | Promise<void>;
 
+function isObject<T = Record<string, any>>(obj: any): obj is T {
+  return Object.prototype.toString.call(obj) === "[object Object]";
+}
+
 function parseAcceptEncoding(header: string): Array<string> {
   return header.split(",").map(s => s.trim().split(";")[0]).filter(Boolean);
 }
@@ -106,6 +110,7 @@ function createSimpleServer(defaultHandler: RouteHandler) {
 
 const testPackages = new Set<string>(["npm"]);
 for (const dependencyType of npmTypes) {
+  if (!isObject(testPkg[dependencyType])) continue;
   for (const name of Object.keys(testPkg[dependencyType] || [])) {
     testPackages.add(name);
   }
@@ -154,28 +159,18 @@ beforeAll(async () => {
 
   const npmFilesPromises = [];
   for (const pkgName of testPackages) {
-    const name = testPkg.resolutions[pkgName] ? resolutionsBasePackage(pkgName) : pkgName;
+    const name = (testPkg.resolutions[pkgName] ? resolutionsBasePackage(pkgName) : pkgName);
     const urlName = name.replace(/\//g, "%2f");
     // can not use file URLs because node stupidely throws on "%2f" in paths.
     const path = join(import.meta.dirname, `fixtures/npm/${urlName}.json`);
-    npmFilesPromises.push((async () => {
-      try {
-        const data = await readFile(path);
-        return {urlName, data};
-      } catch {
-        return null;
-      }
-    })());
+    npmFilesPromises.push((async () => ({urlName, data: await readFile(path)}))());
   }
 
   const pypiFilesPromises = [];
   for (const file of readdirSync(join(import.meta.dirname, `fixtures/pypi`))) {
     const path = join(import.meta.dirname, `fixtures/pypi/${file}`);
     const pkgName = parse(path).name;
-    pypiFilesPromises.push((async () => {
-      const data = await readFile(path);
-      return {pkgName, data};
-    })());
+    pypiFilesPromises.push((async () => ({pkgName, data: await readFile(path)}))());
   }
 
   const jsrFilesPromises = [];
@@ -183,10 +178,7 @@ beforeAll(async () => {
     const path = join(import.meta.dirname, `fixtures/jsr/${file}`);
     const pkgName = parse(path).name;
     const [scope, name] = pkgName.replace("@", "").split("__");
-    jsrFilesPromises.push((async () => {
-      const data = await readFile(path);
-      return {scope, name, data};
-    })());
+    jsrFilesPromises.push((async () => ({scope, name, data: await readFile(path)}))());
   }
 
   const [npmFiles, pypiFiles, jsrFiles] = await Promise.all([
