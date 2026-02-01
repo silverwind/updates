@@ -246,7 +246,7 @@ const allDependencyTypes = [
 function makeTest(args: string) {
   return async () => {
     const argsArr = [
-      ...args.split(/\s+/), "-c",
+      ...args.split(/\s+/),
       "--forgeapi", githubUrl,
       "--pypiapi", pypiUrl,
       "--jsrapi", jsrUrl,
@@ -490,7 +490,7 @@ test("greatest", async () => {
           },
           "updates": {
             "info": "https://github.com/silverwind/updates",
-            "new": "537ccb7",
+            "new": "2f786f8",
             "old": "6941e05",
           },
         },
@@ -689,7 +689,7 @@ test("release", async () => {
           },
           "updates": {
             "info": "https://github.com/silverwind/updates",
-            "new": "537ccb7",
+            "new": "2f786f8",
             "old": "6941e05",
           },
         },
@@ -751,7 +751,7 @@ test("patch", async () => {
           },
           "updates": {
             "info": "https://github.com/silverwind/updates",
-            "new": "537ccb7",
+            "new": "2f786f8",
             "old": "6941e05",
           },
         },
