@@ -220,7 +220,7 @@ afterAll(async () => {
   ]);
 });
 
-const allDependencyTypes = [
+const depTypes = [
   ...npmTypes,
   ...poetryTypes,
   ...uvTypes,
@@ -248,7 +248,7 @@ function makeTest(args: string) {
 
     // Parse results, with custom validation for the dynamic "age" property
     for (const mode of Object.keys(results || {})) {
-      for (const dependencyType of allDependencyTypes) {
+      for (const dependencyType of depTypes) {
         for (const name of Object.keys(results?.[mode]?.[dependencyType] || {})) {
           delete results[mode][dependencyType][name].age;
         }
