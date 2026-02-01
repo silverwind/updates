@@ -236,6 +236,13 @@ afterAll(async () => {
   ]);
 });
 
+const allDependencyTypes = [
+  ...npmTypes,
+  ...poetryTypes,
+  ...uvTypes,
+  ...goTypes,
+];
+
 function makeTest(args: string) {
   return async () => {
     const argsArr = [
@@ -257,12 +264,7 @@ function makeTest(args: string) {
 
     // Parse results, with custom validation for the dynamic "age" property
     for (const mode of Object.keys(results || {})) {
-      for (const dependencyType of [
-        ...npmTypes,
-        ...poetryTypes,
-        ...uvTypes,
-        ...goTypes,
-      ]) {
+      for (const dependencyType of allDependencyTypes) {
         for (const name of Object.keys(results?.[mode]?.[dependencyType] || {})) {
           delete results[mode][dependencyType][name].age;
         }
