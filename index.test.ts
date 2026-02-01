@@ -6,11 +6,13 @@ import {writeFile, readFile, rm} from "node:fs/promises";
 import {fileURLToPath} from "node:url";
 import {tmpdir} from "node:os";
 import {execPath, versions} from "node:process";
-import {gzipSync} from "node:zlib";
+import {gzip, constants} from "node:zlib";
+import {promisify} from "node:util";
 import type {Server} from "node:http";
 import {satisfies} from "semver";
 import {npmTypes, poetryTypes, uvTypes, goTypes} from "./utils.ts";
 
+const gzipPromise = (data: string) => promisify(gzip)(data, {level: constants.Z_BEST_SPEED});
 const testFile = fileURLToPath(new URL("fixtures/npm-test/package.json", import.meta.url));
 const emptyFile = fileURLToPath(new URL("fixtures/npm-empty/package.json", import.meta.url));
 const jsrFile = fileURLToPath(new URL("fixtures/npm-jsr/package.json", import.meta.url));
@@ -27,57 +29,27 @@ const script = fileURLToPath(new URL("dist/index.js", import.meta.url));
 
 type RouteHandler = (req: any, res: any) => void | Promise<void>;
 
-function parseAcceptEncoding(header: string): Array<string> {
-  return header.split(",").map(s => s.trim().split(";")[0]).filter(Boolean);
+function isObject<T = Record<string, any>>(obj: any): obj is T {
+  return Object.prototype.toString.call(obj) === "[object Object]";
 }
 
-function createSimpleServer(defaultHandler: RouteHandler) {
+function makeServer(defaultHandler: RouteHandler) {
   const routes = new Map<string, RouteHandler>();
 
   const server = createServer(async (req, res) => {
     const url = req.url || "/";
     const handler = routes.get(url) || defaultHandler;
 
-    (res as any).send = (data: any) => {
-      const acceptEncoding = req.headers["accept-encoding"] || "";
-      const encodings = parseAcceptEncoding(acceptEncoding);
-      const shouldCompress = encodings.includes("gzip");
-
-      if (Buffer.isBuffer(data)) {
-        res.setHeader("Content-Type", "application/json");
-        if (shouldCompress) {
-          res.setHeader("Content-Encoding", "gzip");
-          res.end(gzipSync(data));
-        } else {
-          res.end(data);
-        }
-      } else if (typeof data === "object") {
-        res.setHeader("Content-Type", "application/json");
-        const json = JSON.stringify(data);
-        if (shouldCompress) {
-          res.setHeader("Content-Encoding", "gzip");
-          res.end(gzipSync(json));
-        } else {
-          res.end(json);
-        }
-      } else {
-        if (shouldCompress) {
-          res.setHeader("Content-Encoding", "gzip");
-          res.end(gzipSync(String(data)));
-        } else {
-          res.end(data);
-        }
-      }
+    (res as any).send = async (data: string) => {
+      res.setHeader("Content-Encoding", "gzip");
+      res.end(await gzipPromise(data));
     };
 
     try {
       await handler(req, res);
     } catch (err) {
-      console.error("Error in request handler:", err);
-      if (!res.headersSent) {
-        res.statusCode = 500;
-        res.end("Internal Server Error");
-      }
+      res.statusCode = 500;
+      res.end(err);
     }
   });
 
@@ -106,12 +78,13 @@ function createSimpleServer(defaultHandler: RouteHandler) {
 
 const testPackages = new Set<string>(["npm"]);
 for (const dependencyType of npmTypes) {
+  if (!isObject(testPkg[dependencyType])) continue;
   for (const name of Object.keys(testPkg[dependencyType] || [])) {
     testPackages.add(name);
   }
 }
 
-function makeUrl(server: ReturnType<typeof createSimpleServer>) {
+function makeUrl(server: ReturnType<typeof makeServer>) {
   const addr = server.address();
   if (!addr || typeof addr === "string") {
     throw new Error("Server address is not available");
@@ -131,10 +104,10 @@ function resolutionsBasePackage(name: string) {
   return packages[packages.length - 1];
 }
 
-let npmServer: ReturnType<typeof createSimpleServer>;
-let githubServer: ReturnType<typeof createSimpleServer>;
-let pypiServer: ReturnType<typeof createSimpleServer>;
-let jsrServer: ReturnType<typeof createSimpleServer>;
+let npmServer: ReturnType<typeof makeServer>;
+let githubServer: ReturnType<typeof makeServer>;
+let pypiServer: ReturnType<typeof makeServer>;
+let jsrServer: ReturnType<typeof makeServer>;
 
 let githubUrl: string;
 let pypiUrl: string;
@@ -142,34 +115,56 @@ let npmUrl: string;
 let jsrUrl: string;
 
 beforeAll(async () => {
-  npmServer = createSimpleServer(defaultRoute);
-  githubServer = createSimpleServer(defaultRoute);
-  pypiServer = createSimpleServer(defaultRoute);
-  jsrServer = createSimpleServer(defaultRoute);
+  npmServer = makeServer(defaultRoute);
+  githubServer = makeServer(defaultRoute);
+  pypiServer = makeServer(defaultRoute);
+  jsrServer = makeServer(defaultRoute);
 
   const [commits, tags] = await Promise.all([
-    readFile(fileURLToPath(new URL("fixtures/github/updates-commits.json", import.meta.url))),
-    readFile(fileURLToPath(new URL("fixtures/github/updates-tags.json", import.meta.url))),
+    readFile(fileURLToPath(new URL("fixtures/github/updates-commits.json", import.meta.url)), "utf8"),
+    readFile(fileURLToPath(new URL("fixtures/github/updates-tags.json", import.meta.url)), "utf8"),
   ]);
 
+  const npmFilesPromises: Array<Promise<{urlName: string, data: string}>> = [];
   for (const pkgName of testPackages) {
-    const name = testPkg.resolutions[pkgName] ? resolutionsBasePackage(pkgName) : pkgName;
+    const name = (testPkg.resolutions[pkgName] ? resolutionsBasePackage(pkgName) : pkgName);
     const urlName = name.replace(/\//g, "%2f");
     // can not use file URLs because node stupidely throws on "%2f" in paths.
     const path = join(import.meta.dirname, `fixtures/npm/${urlName}.json`);
-    npmServer.get(`/${urlName}`, async (_, res) => res.send(await readFile(path)));
+    npmFilesPromises.push((async () => ({urlName, data: await readFile(path, "utf8")}))());
   }
 
+  const pypiFilesPromises: Array<Promise<{pkgName: string, data: string}>> = [];
   for (const file of readdirSync(join(import.meta.dirname, `fixtures/pypi`))) {
     const path = join(import.meta.dirname, `fixtures/pypi/${file}`);
-    pypiServer.get(`/pypi/${parse(path).name}/json`, async (_, res) => res.send(await readFile(path)));
+    const pkgName = parse(path).name;
+    pypiFilesPromises.push((async () => ({pkgName, data: await readFile(path, "utf8")}))());
   }
 
+  const jsrFilesPromises: Array<Promise<{scope: string, name: string, data: string}>> = [];
   for (const file of readdirSync(join(import.meta.dirname, `fixtures/jsr`))) {
     const path = join(import.meta.dirname, `fixtures/jsr/${file}`);
-    const pkgName = parse(path).name; // e.g., "@std__semver"
+    const pkgName = parse(path).name;
     const [scope, name] = pkgName.replace("@", "").split("__");
-    jsrServer.get(`/@${scope}/${name}/meta.json`, async (_, res) => res.send(await readFile(path)));
+    jsrFilesPromises.push((async () => ({scope, name, data: await readFile(path, "utf8")}))());
+  }
+
+  const [npmFiles, pypiFiles, jsrFiles] = await Promise.all([
+    Promise.all(npmFilesPromises),
+    Promise.all(pypiFilesPromises),
+    Promise.all(jsrFilesPromises),
+  ]);
+
+  for (const file of npmFiles.filter(Boolean)) {
+    npmServer.get(`/${file.urlName}`, (_, res) => res.send(file.data));
+  }
+
+  for (const {pkgName, data} of pypiFiles) {
+    pypiServer.get(`/pypi/${pkgName}/json`, (_, res) => res.send(data));
+  }
+
+  for (const {scope, name, data} of jsrFiles) {
+    jsrServer.get(`/@${scope}/${name}/meta.json`, (_, res) => res.send(data));
   }
 
   githubServer.get("/repos/silverwind/updates/commits", (_, res) => res.send(commits));
@@ -222,14 +217,9 @@ function makeTest(args: string) {
 
     // Parse results, with custom validation for the dynamic "age" property
     for (const mode of Object.keys(results || {})) {
-      for (const dependencyType of [
-        ...npmTypes,
-        ...poetryTypes,
-        ...uvTypes,
-        ...goTypes,
-      ]) {
-        for (const name of Object.keys(results?.[mode]?.[dependencyType] || {})) {
-          delete results[mode][dependencyType][name].age;
+      for (const type of [...npmTypes, ...poetryTypes, ...uvTypes, ...goTypes]) {
+        for (const name of Object.keys(results?.[mode]?.[type] || {})) {
+          delete results[mode][type][name].age;
         }
       }
     }
