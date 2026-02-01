@@ -241,9 +241,9 @@ function makeTest(args: string) {
 
     // Parse results, with custom validation for the dynamic "age" property
     for (const mode of Object.keys(results || {})) {
-      for (const dependencyType of [...npmTypes,...poetryTypes,...uvTypes,...goTypes]) {
-        for (const name of Object.keys(results?.[mode]?.[dependencyType] || {})) {
-          delete results[mode][dependencyType][name].age;
+      for (const type of [...npmTypes, ...poetryTypes, ...uvTypes, ...goTypes]) {
+        for (const name of Object.keys(results?.[mode]?.[type] || {})) {
+          delete results[mode][type][name].age;
         }
       }
     }
