@@ -6,11 +6,13 @@ import {writeFile, readFile, rm} from "node:fs/promises";
 import {fileURLToPath} from "node:url";
 import {tmpdir} from "node:os";
 import {execPath, versions} from "node:process";
-import {gzipSync} from "node:zlib";
+import {gzip, constants} from "node:zlib";
+import {promisify} from "node:util";
 import type {Server} from "node:http";
 import {satisfies} from "semver";
 import {npmTypes, poetryTypes, uvTypes, goTypes} from "./utils.ts";
 
+const gzipPromise = (data: string) => promisify(gzip)(data, {level: constants.Z_BEST_SPEED});
 const testFile = fileURLToPath(new URL("fixtures/npm-test/package.json", import.meta.url));
 const emptyFile = fileURLToPath(new URL("fixtures/npm-empty/package.json", import.meta.url));
 const jsrFile = fileURLToPath(new URL("fixtures/npm-jsr/package.json", import.meta.url));
@@ -31,39 +33,16 @@ function isObject<T = Record<string, any>>(obj: any): obj is T {
   return Object.prototype.toString.call(obj) === "[object Object]";
 }
 
-function parseAcceptEncoding(header: string): Array<string> {
-  return header.split(",").map(s => s.trim().split(";")[0]).filter(Boolean);
-}
-
-function createSimpleServer(defaultHandler: RouteHandler) {
+function makeServer(defaultHandler: RouteHandler) {
   const routes = new Map<string, RouteHandler>();
 
   const server = createServer(async (req, res) => {
     const url = req.url || "/";
     const handler = routes.get(url) || defaultHandler;
 
-    (res as any).send = (data: any) => {
-      const acceptEncoding = req.headers["accept-encoding"] || "";
-      const encodings = parseAcceptEncoding(acceptEncoding);
-      const shouldCompress = encodings.includes("gzip");
-
-      if (typeof data === "object") {
-        res.setHeader("Content-Type", "application/json");
-        const json = JSON.stringify(data);
-        if (shouldCompress) {
-          res.setHeader("Content-Encoding", "gzip");
-          res.end(gzipSync(json));
-        } else {
-          res.end(json);
-        }
-      } else {
-        if (shouldCompress) {
-          res.setHeader("Content-Encoding", "gzip");
-          res.end(gzipSync(String(data)));
-        } else {
-          res.end(data);
-        }
-      }
+    (res as any).send = async (data: string) => {
+      res.setHeader("Content-Encoding", "gzip");
+      res.end(await gzipPromise(data));
     };
 
     try {
@@ -105,7 +84,7 @@ for (const dependencyType of npmTypes) {
   }
 }
 
-function makeUrl(server: ReturnType<typeof createSimpleServer>) {
+function makeUrl(server: ReturnType<typeof makeServer>) {
   const addr = server.address();
   if (!addr || typeof addr === "string") {
     throw new Error("Server address is not available");
@@ -125,10 +104,10 @@ function resolutionsBasePackage(name: string) {
   return packages[packages.length - 1];
 }
 
-let npmServer: ReturnType<typeof createSimpleServer>;
-let githubServer: ReturnType<typeof createSimpleServer>;
-let pypiServer: ReturnType<typeof createSimpleServer>;
-let jsrServer: ReturnType<typeof createSimpleServer>;
+let npmServer: ReturnType<typeof makeServer>;
+let githubServer: ReturnType<typeof makeServer>;
+let pypiServer: ReturnType<typeof makeServer>;
+let jsrServer: ReturnType<typeof makeServer>;
 
 let githubUrl: string;
 let pypiUrl: string;
@@ -136,10 +115,10 @@ let npmUrl: string;
 let jsrUrl: string;
 
 beforeAll(async () => {
-  npmServer = createSimpleServer(defaultRoute);
-  githubServer = createSimpleServer(defaultRoute);
-  pypiServer = createSimpleServer(defaultRoute);
-  jsrServer = createSimpleServer(defaultRoute);
+  npmServer = makeServer(defaultRoute);
+  githubServer = makeServer(defaultRoute);
+  pypiServer = makeServer(defaultRoute);
+  jsrServer = makeServer(defaultRoute);
 
   const [commits, tags] = await Promise.all([
     readFile(fileURLToPath(new URL("fixtures/github/updates-commits.json", import.meta.url)), "utf8"),
