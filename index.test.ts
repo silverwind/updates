@@ -152,24 +152,59 @@ beforeAll(async () => {
     readFile(fileURLToPath(new URL("fixtures/github/updates-tags.json", import.meta.url))),
   ]);
 
+  // Pre-read and cache all npm fixture files
+  const npmFilesPromises = [];
   for (const pkgName of testPackages) {
     const name = testPkg.resolutions[pkgName] ? resolutionsBasePackage(pkgName) : pkgName;
     const urlName = name.replace(/\//g, "%2f");
     // can not use file URLs because node stupidely throws on "%2f" in paths.
     const path = join(import.meta.dirname, `fixtures/npm/${urlName}.json`);
-    npmServer.get(`/${urlName}`, async (_, res) => res.send(await readFile(path)));
+    npmFilesPromises.push(
+      readFile(path).then(data => ({urlName, data})).catch(() => null)
+    );
   }
 
+  // Pre-read and cache all pypi fixture files
+  const pypiFilesPromises = [];
   for (const file of readdirSync(join(import.meta.dirname, `fixtures/pypi`))) {
     const path = join(import.meta.dirname, `fixtures/pypi/${file}`);
-    pypiServer.get(`/pypi/${parse(path).name}/json`, async (_, res) => res.send(await readFile(path)));
+    const pkgName = parse(path).name;
+    pypiFilesPromises.push(
+      readFile(path).then(data => ({pkgName, data}))
+    );
   }
 
+  // Pre-read and cache all jsr fixture files
+  const jsrFilesPromises = [];
   for (const file of readdirSync(join(import.meta.dirname, `fixtures/jsr`))) {
     const path = join(import.meta.dirname, `fixtures/jsr/${file}`);
     const pkgName = parse(path).name; // e.g., "@std__semver"
     const [scope, name] = pkgName.replace("@", "").split("__");
-    jsrServer.get(`/@${scope}/${name}/meta.json`, async (_, res) => res.send(await readFile(path)));
+    jsrFilesPromises.push(
+      readFile(path).then(data => ({scope, name, data}))
+    );
+  }
+
+  // Wait for all fixture files to be read
+  const [npmFiles, pypiFiles, jsrFiles] = await Promise.all([
+    Promise.all(npmFilesPromises),
+    Promise.all(pypiFilesPromises),
+    Promise.all(jsrFilesPromises),
+  ]);
+
+  // Set up routes with cached data
+  for (const file of npmFiles) {
+    if (file) {
+      npmServer.get(`/${file.urlName}`, (_, res) => res.send(file.data));
+    }
+  }
+
+  for (const {pkgName, data} of pypiFiles) {
+    pypiServer.get(`/pypi/${pkgName}/json`, (_, res) => res.send(data));
+  }
+
+  for (const {scope, name, data} of jsrFiles) {
+    jsrServer.get(`/@${scope}/${name}/meta.json`, (_, res) => res.send(data));
   }
 
   githubServer.get("/repos/silverwind/updates/commits", (_, res) => res.send(commits));
