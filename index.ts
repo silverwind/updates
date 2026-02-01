@@ -186,8 +186,10 @@ for (const [index, token] of result.tokens.entries()) {
 
 const args = result.values;
 
-const [magenta, red, green] = (["magenta", "red", "green"] as const)
-  .map(color => args["no-color"] ? String : (text: string | number) => styleText(color, String(text)));
+const [magenta, red, green] = (["magenta", "red", "green"] as const).map(color => {
+  if (args["no-color"]) return String;
+  return (text: string | number) => styleText(color, String(text));
+});
 
 const greatest = argSetToRegexes(parseMixedArg(args.greatest));
 const prerelease = argSetToRegexes(parseMixedArg(args.prerelease));
