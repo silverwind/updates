@@ -170,16 +170,12 @@ for (const [index, token] of result.tokens.entries()) {
   if (token.kind === "option" && token.value?.startsWith("-")) {
     const key = getOptionKey(token.value.substring(1));
     const next = result.tokens[index + 1];
-    // @ts-expect-error
-    result.values[token.name] = [true];
-    // @ts-expect-error
-    if (!result.values[key]) result.values[key] = [];
+    (result.values as any)[token.name] = [true];
+    if (!result.values[key]) (result.values as any)[key] = [];
     if (next.kind === "positional" && next.value) {
-      // @ts-expect-error
-      result.values[key].push(next.value);
+      (result.values as any)[key].push(next.value);
     } else {
-      // @ts-expect-error
-      result.values[key].push(true);
+      (result.values as any)[key].push(true);
     }
   }
 }
@@ -1206,8 +1202,7 @@ async function main(): Promise<void> {
   // from cutting off long output by setting those streams into blocking mode.
   // Ref: https://github.com/nodejs/node/issues/6379
   for (const stream of [stdout, stderr]) {
-    // @ts-expect-error -- _handle is missing in @types/node
-    stream?._handle?.setBlocking?.(true);
+    (stream as any)?._handle?.setBlocking?.(true);
   }
 
   const maxSockets = 96;
