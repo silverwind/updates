@@ -692,7 +692,7 @@ function shortenGoModule(module: string): string {
 
 function formatDeps(deps: DepsByMode): string {
   // Check if there are multiple modes
-  const modes = Object.keys(deps);
+  const modes = Object.keys(deps).filter(mode => Object.keys(deps[mode]).length > 0);
   const hasMultipleModes = modes.length > 1;
 
   const header = hasMultipleModes ?
