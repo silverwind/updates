@@ -12,7 +12,7 @@ import type {Server} from "node:http";
 import {satisfies} from "semver";
 import {npmTypes, poetryTypes, uvTypes, goTypes} from "./utils.ts";
 
-const gzipPromise = (data: string) => promisify(gzip)(data, {level: constants.Z_BEST_SPEED});
+const gzipPromise = (data: string | Buffer) => promisify(gzip)(data, {level: constants.Z_BEST_SPEED});
 const testFile = fileURLToPath(new URL("fixtures/npm-test/package.json", import.meta.url));
 const emptyFile = fileURLToPath(new URL("fixtures/npm-empty/package.json", import.meta.url));
 const jsrFile = fileURLToPath(new URL("fixtures/npm-jsr/package.json", import.meta.url));
@@ -40,9 +40,9 @@ function makeServer(defaultHandler: RouteHandler) {
     const url = req.url || "/";
     const handler = routes.get(url) || defaultHandler;
 
-    (res as any).send = async (data: string) => {
+    (res as any).send = (data: Buffer) => {
       res.setHeader("Content-Encoding", "gzip");
-      res.end(await gzipPromise(data));
+      res.end(data);
     };
 
     try {
@@ -155,20 +155,18 @@ beforeAll(async () => {
     Promise.all(jsrFilesPromises),
   ]);
 
-  for (const file of npmFiles.filter(Boolean)) {
-    npmServer.get(`/${file.urlName}`, (_, res) => res.send(file.data));
-  }
+  const gzipAll = await Promise.all([
+    ...npmFiles.filter(Boolean).map(async (file) => ({type: "npm" as const, key: `/${file.urlName}`, gz: await gzipPromise(file.data)})),
+    ...pypiFiles.map(async ({pkgName, data}) => ({type: "pypi" as const, key: `/pypi/${pkgName}/json`, gz: await gzipPromise(data)})),
+    ...jsrFiles.map(async ({scope, name, data}) => ({type: "jsr" as const, key: `/@${scope}/${name}/meta.json`, gz: await gzipPromise(data)})),
+    (async () => ({type: "github" as const, key: "/repos/silverwind/updates/commits", gz: await gzipPromise(commits)}))(),
+    (async () => ({type: "github" as const, key: "/repos/silverwind/updates/git/refs/tags", gz: await gzipPromise(tags)}))(),
+  ]);
 
-  for (const {pkgName, data} of pypiFiles) {
-    pypiServer.get(`/pypi/${pkgName}/json`, (_, res) => res.send(data));
+  for (const {type, key, gz} of gzipAll) {
+    const server = type === "npm" ? npmServer : type === "pypi" ? pypiServer : type === "jsr" ? jsrServer : githubServer;
+    server.get(key, (_, res) => res.send(gz));
   }
-
-  for (const {scope, name, data} of jsrFiles) {
-    jsrServer.get(`/@${scope}/${name}/meta.json`, (_, res) => res.send(data));
-  }
-
-  githubServer.get("/repos/silverwind/updates/commits", (_, res) => res.send(commits));
-  githubServer.get("/repos/silverwind/updates/git/refs/tags", (_, res) => res.send(tags));
 
   await Promise.all([
     githubServer.start(0),
@@ -228,7 +226,7 @@ function makeTest(args: string) {
   };
 }
 
-test("simple", async () => {
+test.concurrent("simple", async ({expect}) => {
   const {stdout, stderr} = await nanoSpawn(process.execPath, [
     script,
     "-C",
@@ -242,7 +240,7 @@ test("simple", async () => {
   expect(stdout).toContain("https://github.com/silverwind/updates");
 });
 
-test("empty", async () => {
+test.concurrent("empty", async ({expect}) => {
   const {stdout, stderr} = await nanoSpawn(process.execPath, [
     script,
     "-C",
@@ -254,7 +252,7 @@ test("empty", async () => {
   expect(stdout).toContain("No dependencies");
 });
 
-test("jsr", async () => {
+test.concurrent("jsr", async ({expect}) => {
   const {stdout, stderr} = await nanoSpawn(process.execPath, [
     script,
     "-C",
@@ -275,7 +273,7 @@ test("jsr", async () => {
 });
 
 if (!versions.bun) {
-  test("global", async () => {
+  test.concurrent("global", async ({expect}) => {
     await nanoSpawn("npm", ["i", "-g", "."]);
     try {
       const {stdout, stderr} = await nanoSpawn("updates", [
@@ -294,7 +292,7 @@ if (!versions.bun) {
 }
 
 
-test("latest", async () => {
+test.concurrent("latest", async ({expect}) => {
   expect(await makeTest("-j")()).toMatchInlineSnapshot(`
     {
       "npm": {
@@ -391,7 +389,7 @@ test("latest", async () => {
   `);
 });
 
-test("greatest", async () => {
+test.concurrent("greatest", async ({expect}) => {
   expect(await makeTest("-j -g")()).toMatchInlineSnapshot(`
     {
       "npm": {
@@ -483,7 +481,7 @@ test("greatest", async () => {
   `);
 });
 
-test("prerelease", async () => {
+test.concurrent("prerelease", async ({expect}) => {
   expect(await makeTest("-j -g -p")()).toMatchInlineSnapshot(`
     {
       "npm": {
@@ -585,7 +583,7 @@ test("prerelease", async () => {
   `);
 });
 
-test("release", async () => {
+test.concurrent("release", async ({expect}) => {
   expect(await makeTest("-j -R")()).toMatchInlineSnapshot(`
     {
       "npm": {
@@ -682,7 +680,7 @@ test("release", async () => {
   `);
 });
 
-test("patch", async () => {
+test.concurrent("patch", async ({expect}) => {
   expect(await makeTest("-j -P")()).toMatchInlineSnapshot(`
     {
       "npm": {
@@ -734,7 +732,7 @@ test("patch", async () => {
   `);
 });
 
-test("include", async () => {
+test.concurrent("include", async ({expect}) => {
   expect(await makeTest("-j -i noty")()).toMatchInlineSnapshot(`
     {
       "npm": {
@@ -757,7 +755,7 @@ test("include", async () => {
   `);
 });
 
-test("include 2", async () => {
+test.concurrent("include 2", async ({expect}) => {
   expect(await makeTest("-j -i /^noty/")()).toMatchInlineSnapshot(`
     {
       "npm": {
@@ -780,7 +778,7 @@ test("include 2", async () => {
   `);
 });
 
-test("packageManager", async () => {
+test.concurrent("packageManager", async ({expect}) => {
   expect(await makeTest("-j -i npm")()).toMatchInlineSnapshot(`
     {
       "npm": {
@@ -796,7 +794,7 @@ test("packageManager", async () => {
   `);
 });
 
-test("exclude", async () => {
+test.concurrent("exclude", async ({expect}) => {
   expect(await makeTest("-j -e gulp-sourcemaps -i /react/")()).toMatchInlineSnapshot(`
     {
       "npm": {
@@ -819,7 +817,7 @@ test("exclude", async () => {
   `);
 });
 
-test("exclude 2", async () => {
+test.concurrent("exclude 2", async ({expect}) => {
   expect(await makeTest("-j -i gulp*")()).toMatchInlineSnapshot(`
     {
       "npm": {
@@ -849,7 +847,7 @@ test("exclude 2", async () => {
   `);
 });
 
-test("exclude 3", async () => {
+test.concurrent("exclude 3", async ({expect}) => {
   expect(await makeTest("-j -i /^gulp/ -P gulp*")()).toMatchInlineSnapshot(`
     {
       "npm": {
@@ -879,7 +877,7 @@ test("exclude 3", async () => {
   `);
 });
 
-test("poetry", async () => {
+test.concurrent("poetry", async ({expect}) => {
   expect(await makeTest(`-j -f ${poetryFile}`)()).toMatchInlineSnapshot(`
     {
       "pypi": {
@@ -900,7 +898,7 @@ test("poetry", async () => {
   `);
 });
 
-test("uv", async () => {
+test.concurrent("uv", async ({expect}) => {
   expect(await makeTest(`-j -f ${uvFile}`)()).toMatchInlineSnapshot(`
     {
       "pypi": {
@@ -938,7 +936,7 @@ test("uv", async () => {
   `);
 });
 
-test("dual", async () => {
+test.concurrent("dual", async ({expect}) => {
   expect(await makeTest(`-j -f ${dualFile}`)()).toMatchInlineSnapshot(`
     {
       "npm": {
@@ -1029,7 +1027,7 @@ test("dual", async () => {
   `);
 });
 
-test("dual 2", async () => {
+test.concurrent("dual 2", async ({expect}) => {
   expect(await makeTest(`-j -f ${dualFile} -i noty`)()).toMatchInlineSnapshot(`
     {
       "npm": {
@@ -1045,7 +1043,7 @@ test("dual 2", async () => {
   `);
 });
 
-test("invalid config", async () => {
+test.concurrent("invalid config", async ({expect}) => {
   const args = ["-j", "-f", invalidConfigFile, "-c", "--forgeapi", githubUrl, "--pypiapi", pypiUrl];
   try {
     await nanoSpawn(execPath, [script, ...args]);
@@ -1058,7 +1056,7 @@ test("invalid config", async () => {
   }
 });
 
-test("preup", async () => {
+test.concurrent("preup", async ({expect}) => {
   // Test that we don't upgrade from stable to prerelease when latest dist-tag is a prerelease
   // noty: 3.1.0 -> should suggest 3.1.4 (not 3.2.0-beta which is on latest dist-tag)
   expect(await makeTest("-j -i noty")()).toMatchInlineSnapshot(`
@@ -1083,7 +1081,7 @@ test("preup", async () => {
   `);
 });
 
-test("preup 1", async () => {
+test.concurrent("preup 1", async ({expect}) => {
   // Test that we DO upgrade to prerelease when explicitly requested with -p flag
   // noty: 3.1.0 -> should suggest 3.2.0-beta (from latest dist-tag) when -p is used
   expect(await makeTest("-j -i noty -p")()).toMatchInlineSnapshot(`
@@ -1115,7 +1113,7 @@ test("preup 1", async () => {
   `);
 });
 
-test("preup 2", async () => {
+test.concurrent("preup 2", async ({expect}) => {
   // Test that upgrading from prerelease to prerelease works without -p flag
   // eslint-plugin-storybook: 10.0.0-beta.5 -> should allow upgrade to another prerelease
   expect(await makeTest("-j -i eslint-plugin-storybook")()).toMatchInlineSnapshot(`
@@ -1140,7 +1138,7 @@ test("preup 2", async () => {
   `);
 });
 
-test("go", async () => {
+test.concurrent("go", async ({expect}) => {
   expect(await makeTest(`-j -f ${goFile}`)()).toMatchInlineSnapshot(`
     {
       "go": {
@@ -1156,7 +1154,7 @@ test("go", async () => {
   `);
 });
 
-test("go update", async () => {
+test.concurrent("go update", async ({expect}) => {
   const testGoModDir = join(testDir, "test-go-update");
   mkdirSync(testGoModDir, {recursive: true});
 
@@ -1183,7 +1181,7 @@ test("go update", async () => {
   expect(matches?.length).toBe(4);
 });
 
-test("pin", async () => {
+test.concurrent("pin", async ({expect}) => {
   const {stdout, stderr} = await nanoSpawn(process.execPath, [
     script,
     "-j",
