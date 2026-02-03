@@ -4,7 +4,7 @@ import {join, dirname, basename, resolve} from "node:path";
 import {pathToFileURL} from "node:url";
 import {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync, type Stats} from "node:fs";
 import {stripVTControlCharacters, styleText, parseArgs, type ParseArgsOptionsConfig} from "node:util";
-import {execFileSync} from "node:child_process";
+
 import pMap from "p-map";
 import pkg from "./package.json" with {type: "json"};
 import {parse, coerce, diff, gt, gte, lt, neq, valid, validRange, satisfies} from "semver";
@@ -109,6 +109,7 @@ const options: ParseArgsOptionsConfig = {
   "exclude": {short: "e", type: "string", multiple: true},
   "file": {short: "f", type: "string", multiple: true},
   "forgeapi": {type: "string"}, // undocumented, only for tests
+  "goproxy": {type: "string"}, // undocumented, only for tests
   "greatest": {short: "g", type: "string", multiple: true},
   "help": {short: "h", type: "boolean"},
   "include": {short: "i", type: "string", multiple: true},
@@ -198,6 +199,18 @@ const enabledModes = parseMixedArg(args.modes) as Set<string> || new Set(["npm",
 const forgeApiUrl = typeof args.forgeapi === "string" ? normalizeUrl(args.forgeapi) : "https://api.github.com";
 const pypiApiUrl = typeof args.pypiapi === "string" ? normalizeUrl(args.pypiapi) : "https://pypi.org";
 const jsrApiUrl = typeof args.jsrapi === "string" ? normalizeUrl(args.jsrapi) : "https://jsr.io";
+const goProxyUrl = typeof args.goproxy === "string" ? normalizeUrl(args.goproxy) : resolveGoProxy();
+
+function resolveGoProxy(): string {
+  const proxyEnv = env.GOPROXY || "https://proxy.golang.org,direct";
+  for (const entry of proxyEnv.split(/[,|]/)) {
+    const trimmed = entry.trim();
+    if (trimmed && trimmed !== "direct" && trimmed !== "off") {
+      return normalizeUrl(trimmed);
+    }
+  }
+  return "https://proxy.golang.org";
+}
 
 const stripv = (str: string): string => str.replace(/^v/, "");
 
@@ -450,44 +463,111 @@ async function fetchJsrInfo(packageName: string, type: string): Promise<PackageI
   }
 }
 
-function splitPlainText(str: string): Array<string> {
-  return str.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+function encodeGoModulePath(modulePath: string): string {
+  return modulePath.replace(/[A-Z]/g, c => `!${c.toLowerCase()}`);
 }
 
-type GoListInfo = {
-  Path: string, // "github.com/redis/go-redis/v9",
-  Version: string, // "v9.17.1",
-  Main?: boolean, // true
-  Indirect?: boolean, // true
-  Time: string, // "2025-11-26T10:20:20Z",
-  Update?: {
-    Path: string, // "github.com/redis/go-redis/v9",
-    Version: string, // "v9.17.2",
-    Time: string, //"2025-12-01T13:57:40Z"
-  },
-  Dir: string, // "/Users/silverwind/go/pkg/mod/github.com/redis/go-redis/v9@v9.17.1",
-  GoMod: string // "/Users/silverwind/go/pkg/mod/cache/download/github.com/redis/go-redis/v9/@v/v9.17.1.mod",
-  GoVersion: string // "1.18",
-  Sum: string // "h1:7tl732FjYPRT9H9aNfyTwKg9iTETjWjGKEJ2t/5iWTs=",
-  GoModSum: string // "h1:u410H11HMLoB+TP67dz8rL9s6QW2j76l0//kSOd3370="
-};
+function extractGoMajor(name: string): number {
+  const match = /\/v(\d+)$/.exec(name);
+  return match ? parseInt(match[1]) : 1;
+}
 
-function getGoUpgrades(deps: DepsByMode, projectDir: string) {
-  const stdout = execFileSync("go", [
-    "list", "-u", "-mod=readonly", "-json", "-m", ...Object.keys(deps.go).map(key => key.split(fieldSep)[1]),
-  ], {stdio: "pipe", encoding: "utf8", cwd: projectDir});
-  const json = `[${stdout.replaceAll(/\r?\n\}/g, "},")}]`.replaceAll(/\},\r?\n\]/g, "}]");
+function buildGoModulePath(name: string, major: number): string {
+  if (major <= 1) return name.replace(/\/v\d+$/, "");
+  return `${name.replace(/\/v\d+$/, "")}/v${major}`;
+}
 
-  const ret: Array<PackageInfo> = [];
-  for (const {Main, Indirect, Version, Update, Path, Time} of JSON.parse(json) as Array<GoListInfo>) {
-    if (Main || Indirect) continue;
-    ret.push([{
-      old: stripv(Version),
-      new: stripv(Update?.Version || Version),
-      Time: Update?.Time || Time,
-    }, "deps", null, Path]);
+function parseGoMod(content: string): Record<string, string> {
+  const deps: Record<string, string> = {};
+  const lines = content.split(/\r?\n/);
+  let inRequire = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (/^require\s*\(/.test(trimmed)) { inRequire = true; continue; }
+    if (trimmed === ")") { inRequire = false; continue; }
+
+    if (trimmed.includes("// indirect")) continue;
+
+    const match = inRequire ?
+      /^(\S+)\s+(v\S+)/.exec(trimmed) :
+      /^require\s+(\S+)\s+(v\S+)/.exec(trimmed);
+
+    if (match) {
+      deps[match[1]] = match[2];
+    }
   }
-  return ret;
+  return deps;
+}
+
+async function fetchGoProxyInfo(name: string, type: string, currentVersion: string): Promise<PackageInfo> {
+  const noUpdate: PackageInfo = [{old: currentVersion, new: currentVersion}, type, null, name];
+
+  const encoded = encodeGoModulePath(name);
+  const res = await doFetch(`${goProxyUrl}/${encoded}/@latest`);
+  if (!res.ok) return noUpdate;
+
+  let latestVersion: string;
+  let latestTime: string;
+  try {
+    const data = await res.json() as {Version: string, Time: string};
+    latestVersion = data.Version;
+    latestTime = data.Time;
+  } catch {
+    return noUpdate;
+  }
+
+  // Probe for major version upgrades
+  let highestVersion = latestVersion;
+  let highestTime = latestTime;
+  let highestPath = name;
+  const currentMajor = extractGoMajor(name);
+  const probeGoMajor = async (major: number) => {
+    const path = buildGoModulePath(name, major);
+    return doFetch(`${goProxyUrl}/${encodeGoModulePath(path)}/@latest`, {signal: AbortSignal.timeout(10000)})
+      .then(async (r) => r.ok ? {...await r.json() as {Version: string, Time: string}, path} : null)
+      .catch(() => null);
+  };
+  const applyProbe = (data: {Version: string, Time: string, path: string}) => {
+    highestVersion = data.Version;
+    highestTime = data.Time;
+    highestPath = data.path;
+  };
+
+  // Check next major, then one more; only batch if 2+ consecutive exist
+  const first = await probeGoMajor(currentMajor + 1);
+  if (first) {
+    applyProbe(first);
+    const second = await probeGoMajor(currentMajor + 2);
+    if (second) {
+      applyProbe(second);
+      // Multiple consecutive majors, probe further in parallel batches
+      const probeBatchSize = 20;
+      for (let batchStart = currentMajor + 3; batchStart <= currentMajor + 100; batchStart += probeBatchSize) {
+        const batchEnd = Math.min(batchStart + probeBatchSize, currentMajor + 101);
+        const probes = Array.from({length: batchEnd - batchStart}, (_, i) => ({
+          result: probeGoMajor(batchStart + i),
+        }));
+        const results = await Promise.all(probes.map(p => p.result));
+        let foundInBatch = false;
+        for (const result of results) {
+          if (!result) break;
+          applyProbe(result);
+          foundInBatch = true;
+        }
+        if (!foundInBatch || results.some(r => !r)) break;
+      }
+    }
+  }
+
+  return [{
+    old: currentVersion,
+    new: stripv(highestVersion),
+    Time: highestTime,
+    ...(highestPath !== name ? {newPath: highestPath} : {}),
+    sameMajorNew: stripv(latestVersion),
+    sameMajorTime: latestTime,
+  }, type, null, name];
 }
 
 type PackageRepository = string | {
@@ -760,7 +840,16 @@ function updateGoMod(pkgStr: string, deps: Deps): string {
   for (const [key, {old, oldOrig}] of Object.entries(deps)) {
     const [_depType, name] = key.split(fieldSep);
     const oldValue = oldOrig || old;
-    newPkgStr = newPkgStr.replace(new RegExp(`(${esc(name)}) +v${esc(oldValue)}`, "g"), `$1 v${deps[key].new}`);
+    const newValue = deps[key].new;
+    const oldMajor = extractGoMajor(name);
+    const newMajor = parseInt(newValue.split(".")[0]);
+
+    if (oldMajor !== newMajor && newMajor > 1) {
+      const newPath = buildGoModulePath(name, newMajor);
+      newPkgStr = newPkgStr.replace(new RegExp(`${esc(name)} +v${esc(oldValue)}`, "g"), `${newPath} v${newValue}`);
+    } else {
+      newPkgStr = newPkgStr.replace(new RegExp(`(${esc(name)}) +v${esc(oldValue)}`, "g"), `$1 v${newValue}`);
+    }
   }
   return newPkgStr;
 }
@@ -866,7 +955,30 @@ function findNewVersion(data: any, {mode, range, useGreatest, useRel, usePre, se
   } else if (mode === "npm") {
     versions = Object.keys(data.versions).filter((version: string) => valid(version));
   } else if (mode === "go") {
-    return data.new;
+    const oldVersion = coerceToVersion(range);
+    if (!oldVersion) return null;
+
+    // Check cross-major upgrade
+    const crossVersion = coerceToVersion(data.new);
+    if (crossVersion) {
+      const d = diff(oldVersion, crossVersion);
+      if (d && semvers.has(d)) {
+        return data.new;
+      }
+    }
+
+    // Fall back to same-major upgrade
+    const sameVersion = coerceToVersion(data.sameMajorNew);
+    if (sameVersion) {
+      const d = diff(oldVersion, sameVersion);
+      if (d && semvers.has(d)) {
+        data.Time = data.sameMajorTime;
+        delete data.newPath;
+        return data.sameMajorNew;
+      }
+    }
+
+    return null;
   }
   const version = findVersion(data, versions, {range, semvers, usePre, useRel, useGreatest, pinnedRange});
   if (!version) return null;
@@ -1307,16 +1419,10 @@ async function main(): Promise<void> {
     }
 
     let pkg: Record<string, any> = {};
-    if (mode === "go") {
-      pkgStrs[mode] = execFileSync("go", [
-        "list", "-m", "-f", "{{if not .Indirect}}{{.Path}}@{{.Version}}{{end}}", "all",
-      ], {stdio: "pipe", encoding: "utf8", cwd: projectDir});
-    } else {
-      try {
-        pkgStrs[mode] = readFileSync(file, "utf8");
-      } catch (err) {
-        throw new Error(`Unable to open ${file}: ${(err as Error).message}`);
-      }
+    try {
+      pkgStrs[mode] = readFileSync(file, "utf8");
+    } catch (err) {
+      throw new Error(`Unable to open ${file}: ${(err as Error).message}`);
     }
 
     try {
@@ -1326,13 +1432,7 @@ async function main(): Promise<void> {
         const {parse} = await import("smol-toml");
         pkg = parse(pkgStrs[mode]);
       } else {
-        pkg.deps = {};
-        for (const modulePathAndVersion of splitPlainText(pkgStrs[mode])) {
-          const [modulePath, version] = modulePathAndVersion.split("@");
-          if (version) {
-            pkg.deps[modulePath] = version;
-          }
-        }
+        pkg.deps = parseGoMod(pkgStrs[mode]);
       }
     } catch (err) {
       throw new Error(`Error parsing ${file}: ${(err as Error).message}`);
@@ -1396,23 +1496,21 @@ async function main(): Promise<void> {
 
     let entries: Array<PackageInfo> = [];
 
-    if (mode === "go") {
-      entries = getGoUpgrades(deps, projectDir);
-    } else {
-      entries = await pMap(Object.keys(deps[mode]), async (key) => {
-        const [type, name] = key.split(fieldSep);
-        if (mode === "npm") {
-          // Check if this dependency is a JSR dependency
-          const {oldOrig} = deps[mode][key];
-          if (oldOrig && isJsr(oldOrig)) {
-            return fetchJsrInfo(name, type);
-          }
-          return fetchNpmInfo(name, type, config);
-        } else {
-          return fetchPypiInfo(name, type);
+    entries = await pMap(Object.keys(deps[mode]), async (key) => {
+      const [type, name] = key.split(fieldSep);
+      if (mode === "npm") {
+        // Check if this dependency is a JSR dependency
+        const {oldOrig} = deps[mode][key];
+        if (oldOrig && isJsr(oldOrig)) {
+          return fetchJsrInfo(name, type);
         }
-      }, {concurrency});
-    }
+        return fetchNpmInfo(name, type, config);
+      } else if (mode === "go") {
+        return fetchGoProxyInfo(name, type, deps[mode][key].oldOrig || deps[mode][key].old);
+      } else {
+        return fetchPypiInfo(name, type);
+      }
+    }, {concurrency});
 
     for (const [data, type, registry, name] of entries) {
       if (data?.error) throw new Error(data.error);
@@ -1490,7 +1588,8 @@ async function main(): Promise<void> {
       } else if (mode === "pypi") {
         deps[mode][key].info = getInfoUrl(data as {repository: PackageRepository, homepage: string, info: Record<string, any>}, registry, data.info.name);
       } else if (mode === "go") {
-        deps[mode][key].info = getGoInfoUrl(name);
+        const infoName = data.newPath || name;
+        deps[mode][key].info = getGoInfoUrl(infoName);
       }
 
       if (date) {
@@ -1553,7 +1652,7 @@ async function main(): Promise<void> {
       if (!Object.keys(deps[mode]).length) continue;
       try {
         const fn = (mode === "npm") ? updatePackageJson : (mode === "go") ? updateGoMod : updatePyprojectToml;
-        const fileContent = (mode === "go") ? readFileSync(filePerMode[mode], "utf8") : pkgStrs[mode];
+        const fileContent = pkgStrs[mode];
         write(filePerMode[mode], fn(fileContent, deps[mode]));
       } catch (err) {
         throw new Error(`Error writing ${basename(filePerMode[mode])}: ${(err as Error).message}`);

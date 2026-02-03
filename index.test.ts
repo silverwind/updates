@@ -1143,6 +1143,11 @@ test.concurrent("go", async ({expect}) => {
     {
       "go": {
         "deps": {
+          "github.com/google/go-github/v70": {
+            "info": "https://github.com/google/go-github/tree/HEAD/v82",
+            "new": "82.0.0",
+            "old": "70.0.0",
+          },
           "github.com/google/uuid": {
             "info": "https://github.com/google/uuid",
             "new": "1.6.0",
@@ -1174,7 +1179,8 @@ test.concurrent("go update", async ({expect}) => {
 
   expect(updatedContent).toContain("github.com/google/uuid v1.6.0");
   expect(updatedContent).not.toContain("uuid v1.5.0");
-  expect(updatedContent).toContain("github.com/google/go-github/v70 v70.0.0");
+  expect(updatedContent).not.toContain("go-github/v70");
+  expect(updatedContent).toMatch(/github\.com\/google\/go-github\/v\d+ v\d+\.\d+\.\d+/);
 
   const matches = updatedContent.match(/github\.com\/google\/uuid v1\.6\.0/g);
   expect(matches).toBeTruthy();
