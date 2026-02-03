@@ -166,16 +166,17 @@ const result = parseArgs({
 });
 
 // fix parseArgs defect parsing "-a -b" as {a: "-b"} when a is string
+const values = result.values as Record<string, Arg>;
 for (const [index, token] of result.tokens.entries()) {
   if (token.kind === "option" && token.value?.startsWith("-")) {
     const key = getOptionKey(token.value.substring(1));
     const next = result.tokens[index + 1];
-    (result.values as any)[token.name] = [true];
-    if (!result.values[key]) (result.values as any)[key] = [];
+    values[token.name] = [true];
+    if (!values[key]) values[key] = [];
     if (next.kind === "positional" && next.value) {
-      (result.values as any)[key].push(next.value);
+      (values[key] as Array<string | boolean>).push(next.value);
     } else {
-      (result.values as any)[key].push(true);
+      (values[key] as Array<string | boolean>).push(true);
     }
   }
 }
@@ -566,12 +567,12 @@ async function finishWithMessage(message: string): Promise<void> {
 async function end(err?: Error | void, exitCode?: number): Promise<void> {
   if (err) {
     const error = err.stack ?? err.message;
-    const cause = err.cause as any;
+    const cause = err.cause;
     if (args.json) {
       console.info(JSON.stringify({error, cause}));
     } else {
       console.info(red(error));
-      if (cause) console.info(red(`Caused by: ${cause}`));
+      if (cause) console.info(red(`Caused by: ${String(cause)}`));
     }
   }
 
@@ -1487,7 +1488,7 @@ async function main(): Promise<void> {
       if (mode === "npm") {
         deps[mode][key].info = getInfoUrl(data?.versions?.[newVersion], registry, data.name);
       } else if (mode === "pypi") {
-        deps[mode][key].info = getInfoUrl(data as any, registry, data.info.name);
+        deps[mode][key].info = getInfoUrl(data as {repository: PackageRepository, homepage: string, info: Record<string, any>}, registry, data.info.name);
       } else if (mode === "go") {
         deps[mode][key].info = getGoInfoUrl(name);
       }
