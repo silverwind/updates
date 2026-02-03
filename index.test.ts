@@ -12,6 +12,7 @@ import type {Server} from "node:http";
 import {satisfies} from "semver";
 import {npmTypes, poetryTypes, uvTypes, goTypes} from "./utils.ts";
 
+const globalExpect = expect;
 const gzipPromise = (data: string | Buffer) => promisify(gzip)(data, {level: constants.Z_BEST_SPEED});
 const testFile = fileURLToPath(new URL("fixtures/npm-test/package.json", import.meta.url));
 const emptyFile = fileURLToPath(new URL("fixtures/npm-empty/package.json", import.meta.url));
@@ -226,7 +227,7 @@ function makeTest(args: string) {
   };
 }
 
-test.concurrent("simple", async ({expect}) => {
+test.concurrent("simple", async ({expect = globalExpect}: any = {}) => {
   const {stdout, stderr} = await nanoSpawn(process.execPath, [
     script,
     "-C",
@@ -240,7 +241,7 @@ test.concurrent("simple", async ({expect}) => {
   expect(stdout).toContain("https://github.com/silverwind/updates");
 });
 
-test.concurrent("empty", async ({expect}) => {
+test.concurrent("empty", async ({expect = globalExpect}: any = {}) => {
   const {stdout, stderr} = await nanoSpawn(process.execPath, [
     script,
     "-C",
@@ -252,7 +253,7 @@ test.concurrent("empty", async ({expect}) => {
   expect(stdout).toContain("No dependencies");
 });
 
-test.concurrent("jsr", async ({expect}) => {
+test.concurrent("jsr", async ({expect = globalExpect}: any = {}) => {
   const {stdout, stderr} = await nanoSpawn(process.execPath, [
     script,
     "-C",
@@ -273,7 +274,7 @@ test.concurrent("jsr", async ({expect}) => {
 });
 
 if (!versions.bun) {
-  test.concurrent("global", async ({expect}) => {
+  test.concurrent("global", async ({expect = globalExpect}: any = {}) => {
     await nanoSpawn("npm", ["i", "-g", "."]);
     try {
       const {stdout, stderr} = await nanoSpawn("updates", [
@@ -292,7 +293,7 @@ if (!versions.bun) {
 }
 
 
-test.concurrent("latest", async ({expect}) => {
+test.concurrent("latest", async ({expect = globalExpect}: any = {}) => {
   expect(await makeTest("-j")()).toMatchInlineSnapshot(`
     {
       "npm": {
@@ -389,7 +390,7 @@ test.concurrent("latest", async ({expect}) => {
   `);
 });
 
-test.concurrent("greatest", async ({expect}) => {
+test.concurrent("greatest", async ({expect = globalExpect}: any = {}) => {
   expect(await makeTest("-j -g")()).toMatchInlineSnapshot(`
     {
       "npm": {
@@ -481,7 +482,7 @@ test.concurrent("greatest", async ({expect}) => {
   `);
 });
 
-test.concurrent("prerelease", async ({expect}) => {
+test.concurrent("prerelease", async ({expect = globalExpect}: any = {}) => {
   expect(await makeTest("-j -g -p")()).toMatchInlineSnapshot(`
     {
       "npm": {
@@ -583,7 +584,7 @@ test.concurrent("prerelease", async ({expect}) => {
   `);
 });
 
-test.concurrent("release", async ({expect}) => {
+test.concurrent("release", async ({expect = globalExpect}: any = {}) => {
   expect(await makeTest("-j -R")()).toMatchInlineSnapshot(`
     {
       "npm": {
@@ -680,7 +681,7 @@ test.concurrent("release", async ({expect}) => {
   `);
 });
 
-test.concurrent("patch", async ({expect}) => {
+test.concurrent("patch", async ({expect = globalExpect}: any = {}) => {
   expect(await makeTest("-j -P")()).toMatchInlineSnapshot(`
     {
       "npm": {
@@ -732,7 +733,7 @@ test.concurrent("patch", async ({expect}) => {
   `);
 });
 
-test.concurrent("include", async ({expect}) => {
+test.concurrent("include", async ({expect = globalExpect}: any = {}) => {
   expect(await makeTest("-j -i noty")()).toMatchInlineSnapshot(`
     {
       "npm": {
@@ -755,7 +756,7 @@ test.concurrent("include", async ({expect}) => {
   `);
 });
 
-test.concurrent("include 2", async ({expect}) => {
+test.concurrent("include 2", async ({expect = globalExpect}: any = {}) => {
   expect(await makeTest("-j -i /^noty/")()).toMatchInlineSnapshot(`
     {
       "npm": {
@@ -778,7 +779,7 @@ test.concurrent("include 2", async ({expect}) => {
   `);
 });
 
-test.concurrent("packageManager", async ({expect}) => {
+test.concurrent("packageManager", async ({expect = globalExpect}: any = {}) => {
   expect(await makeTest("-j -i npm")()).toMatchInlineSnapshot(`
     {
       "npm": {
@@ -794,7 +795,7 @@ test.concurrent("packageManager", async ({expect}) => {
   `);
 });
 
-test.concurrent("exclude", async ({expect}) => {
+test.concurrent("exclude", async ({expect = globalExpect}: any = {}) => {
   expect(await makeTest("-j -e gulp-sourcemaps -i /react/")()).toMatchInlineSnapshot(`
     {
       "npm": {
@@ -817,7 +818,7 @@ test.concurrent("exclude", async ({expect}) => {
   `);
 });
 
-test.concurrent("exclude 2", async ({expect}) => {
+test.concurrent("exclude 2", async ({expect = globalExpect}: any = {}) => {
   expect(await makeTest("-j -i gulp*")()).toMatchInlineSnapshot(`
     {
       "npm": {
@@ -847,7 +848,7 @@ test.concurrent("exclude 2", async ({expect}) => {
   `);
 });
 
-test.concurrent("exclude 3", async ({expect}) => {
+test.concurrent("exclude 3", async ({expect = globalExpect}: any = {}) => {
   expect(await makeTest("-j -i /^gulp/ -P gulp*")()).toMatchInlineSnapshot(`
     {
       "npm": {
@@ -877,7 +878,7 @@ test.concurrent("exclude 3", async ({expect}) => {
   `);
 });
 
-test.concurrent("poetry", async ({expect}) => {
+test.concurrent("poetry", async ({expect = globalExpect}: any = {}) => {
   expect(await makeTest(`-j -f ${poetryFile}`)()).toMatchInlineSnapshot(`
     {
       "pypi": {
@@ -898,7 +899,7 @@ test.concurrent("poetry", async ({expect}) => {
   `);
 });
 
-test.concurrent("uv", async ({expect}) => {
+test.concurrent("uv", async ({expect = globalExpect}: any = {}) => {
   expect(await makeTest(`-j -f ${uvFile}`)()).toMatchInlineSnapshot(`
     {
       "pypi": {
@@ -936,7 +937,7 @@ test.concurrent("uv", async ({expect}) => {
   `);
 });
 
-test.concurrent("dual", async ({expect}) => {
+test.concurrent("dual", async ({expect = globalExpect}: any = {}) => {
   expect(await makeTest(`-j -f ${dualFile}`)()).toMatchInlineSnapshot(`
     {
       "npm": {
@@ -1027,7 +1028,7 @@ test.concurrent("dual", async ({expect}) => {
   `);
 });
 
-test.concurrent("dual 2", async ({expect}) => {
+test.concurrent("dual 2", async ({expect = globalExpect}: any = {}) => {
   expect(await makeTest(`-j -f ${dualFile} -i noty`)()).toMatchInlineSnapshot(`
     {
       "npm": {
@@ -1043,7 +1044,7 @@ test.concurrent("dual 2", async ({expect}) => {
   `);
 });
 
-test.concurrent("invalid config", async ({expect}) => {
+test.concurrent("invalid config", async ({expect = globalExpect}: any = {}) => {
   const args = ["-j", "-f", invalidConfigFile, "-c", "--forgeapi", githubUrl, "--pypiapi", pypiUrl];
   try {
     await nanoSpawn(execPath, [script, ...args]);
@@ -1056,7 +1057,7 @@ test.concurrent("invalid config", async ({expect}) => {
   }
 });
 
-test.concurrent("preup", async ({expect}) => {
+test.concurrent("preup", async ({expect = globalExpect}: any = {}) => {
   // Test that we don't upgrade from stable to prerelease when latest dist-tag is a prerelease
   // noty: 3.1.0 -> should suggest 3.1.4 (not 3.2.0-beta which is on latest dist-tag)
   expect(await makeTest("-j -i noty")()).toMatchInlineSnapshot(`
@@ -1081,7 +1082,7 @@ test.concurrent("preup", async ({expect}) => {
   `);
 });
 
-test.concurrent("preup 1", async ({expect}) => {
+test.concurrent("preup 1", async ({expect = globalExpect}: any = {}) => {
   // Test that we DO upgrade to prerelease when explicitly requested with -p flag
   // noty: 3.1.0 -> should suggest 3.2.0-beta (from latest dist-tag) when -p is used
   expect(await makeTest("-j -i noty -p")()).toMatchInlineSnapshot(`
@@ -1113,7 +1114,7 @@ test.concurrent("preup 1", async ({expect}) => {
   `);
 });
 
-test.concurrent("preup 2", async ({expect}) => {
+test.concurrent("preup 2", async ({expect = globalExpect}: any = {}) => {
   // Test that upgrading from prerelease to prerelease works without -p flag
   // eslint-plugin-storybook: 10.0.0-beta.5 -> should allow upgrade to another prerelease
   expect(await makeTest("-j -i eslint-plugin-storybook")()).toMatchInlineSnapshot(`
@@ -1138,7 +1139,7 @@ test.concurrent("preup 2", async ({expect}) => {
   `);
 });
 
-test.concurrent("go", async ({expect}) => {
+test.concurrent("go", async ({expect = globalExpect}: any = {}) => {
   expect(await makeTest(`-j -f ${goFile}`)()).toMatchInlineSnapshot(`
     {
       "go": {
@@ -1159,7 +1160,7 @@ test.concurrent("go", async ({expect}) => {
   `);
 });
 
-test.concurrent("go update", async ({expect}) => {
+test.concurrent("go update", async ({expect = globalExpect}: any = {}) => {
   const testGoModDir = join(testDir, "test-go-update");
   mkdirSync(testGoModDir, {recursive: true});
 
@@ -1187,7 +1188,7 @@ test.concurrent("go update", async ({expect}) => {
   expect(matches?.length).toBe(4);
 });
 
-test.concurrent("pin", async ({expect}) => {
+test.concurrent("pin", async ({expect = globalExpect}: any = {}) => {
   const {stdout, stderr} = await nanoSpawn(process.execPath, [
     script,
     "-j",
