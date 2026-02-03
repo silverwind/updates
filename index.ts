@@ -200,6 +200,7 @@ const forgeApiUrl = typeof args.forgeapi === "string" ? normalizeUrl(args.forgea
 const pypiApiUrl = typeof args.pypiapi === "string" ? normalizeUrl(args.pypiapi) : "https://pypi.org";
 const jsrApiUrl = typeof args.jsrapi === "string" ? normalizeUrl(args.jsrapi) : "https://jsr.io";
 const goProxyUrl = typeof args.goproxy === "string" ? normalizeUrl(args.goproxy) : resolveGoProxy();
+const goNoProxy = parseGoNoProxy();
 
 function resolveGoProxy(): string {
   const proxyEnv = env.GOPROXY || "https://proxy.golang.org,direct";
@@ -210,6 +211,15 @@ function resolveGoProxy(): string {
     }
   }
   return "https://proxy.golang.org";
+}
+
+function parseGoNoProxy(): Array<string> {
+  const value = env.GONOPROXY || env.GOPRIVATE || "";
+  return value.split(",").map(s => s.trim()).filter(Boolean);
+}
+
+function isGoNoProxy(modulePath: string): boolean {
+  return goNoProxy.some(pattern => modulePath === pattern || modulePath.startsWith(`${pattern}/`));
 }
 
 const stripv = (str: string): string => str.replace(/^v/, "");
@@ -503,8 +513,22 @@ function parseGoMod(content: string): Record<string, string> {
 async function fetchGoProxyInfo(name: string, type: string, currentVersion: string): Promise<PackageInfo> {
   const noUpdate: PackageInfo = [{old: currentVersion, new: currentVersion}, type, null, name];
 
+  if (isGoNoProxy(name)) return noUpdate;
+
   const encoded = encodeGoModulePath(name);
-  const res = await doFetch(`${goProxyUrl}/${encoded}/@latest`);
+  const currentMajor = extractGoMajor(name);
+  const probeGoMajor = async (major: number) => {
+    const path = buildGoModulePath(name, major);
+    return doFetch(`${goProxyUrl}/${encodeGoModulePath(path)}/@latest`, {signal: AbortSignal.timeout(10000)})
+      .then(async (r) => r.ok ? {...await r.json() as {Version: string, Time: string}, path} : null)
+      .catch(() => null);
+  };
+
+  // Fetch @latest and first major probe in parallel
+  const [res, firstProbe] = await Promise.all([
+    doFetch(`${goProxyUrl}/${encoded}/@latest`, {signal: AbortSignal.timeout(10000)}),
+    probeGoMajor(currentMajor + 1),
+  ]);
   if (!res.ok) return noUpdate;
 
   let latestVersion: string;
@@ -521,23 +545,14 @@ async function fetchGoProxyInfo(name: string, type: string, currentVersion: stri
   let highestVersion = latestVersion;
   let highestTime = latestTime;
   let highestPath = name;
-  const currentMajor = extractGoMajor(name);
-  const probeGoMajor = async (major: number) => {
-    const path = buildGoModulePath(name, major);
-    return doFetch(`${goProxyUrl}/${encodeGoModulePath(path)}/@latest`, {signal: AbortSignal.timeout(10000)})
-      .then(async (r) => r.ok ? {...await r.json() as {Version: string, Time: string}, path} : null)
-      .catch(() => null);
-  };
   const applyProbe = (data: {Version: string, Time: string, path: string}) => {
     highestVersion = data.Version;
     highestTime = data.Time;
     highestPath = data.path;
   };
 
-  // Check next major, then one more; only batch if 2+ consecutive exist
-  const first = await probeGoMajor(currentMajor + 1);
-  if (first) {
-    applyProbe(first);
+  if (firstProbe) {
+    applyProbe(firstProbe);
     const second = await probeGoMajor(currentMajor + 2);
     if (second) {
       applyProbe(second);
