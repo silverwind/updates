@@ -7,9 +7,9 @@
 
 # Supported files
 
-- `package.json`: supports all npm package managers
+- `package.json`, supported with all npm package managers
 - `pyproject.toml`: supports `uv` and `poetry`
-- `go.mod`: experimental go support, will not be discovered go.mod in directory mode
+- `go.mod`: supports standard go dependencies
 
 # Usage
 

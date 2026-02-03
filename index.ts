@@ -195,7 +195,7 @@ const release = argSetToRegexes(parseMixedArg(args.release));
 const patch = argSetToRegexes(parseMixedArg(args.patch));
 const minor = argSetToRegexes(parseMixedArg(args.minor));
 const allowDowngrade = argSetToRegexes(parseMixedArg(args["allow-downgrade"]));
-const enabledModes = parseMixedArg(args.modes) as Set<string> || new Set(["npm", "pypi"]);
+const enabledModes = parseMixedArg(args.modes) as Set<string> || new Set(["npm", "pypi", "go"]);
 const forgeApiUrl = typeof args.forgeapi === "string" ? normalizeUrl(args.forgeapi) : "https://api.github.com";
 const pypiApiUrl = typeof args.pypiapi === "string" ? normalizeUrl(args.pypiapi) : "https://pypi.org";
 const jsrApiUrl = typeof args.jsrapi === "string" ? normalizeUrl(args.jsrapi) : "https://jsr.io";
@@ -1358,7 +1358,7 @@ async function main(): Promise<void> {
     -U, --error-on-unchanged           Exit with code 0 when updates are available and 2 when not
     -r, --registry <url>               Override npm registry URL
     -S, --sockets <num>                Maximum number of parallel HTTP sockets opened. Default: ${maxSockets}
-    -M, --modes <mode,...>             Which modes to enable. Either npm,pypi,go. Default: npm,pypi
+    -M, --modes <mode,...>             Which modes to enable. Either npm,pypi,go. Default: npm,pypi,go
     -j, --json                         Output a JSON object
     -n, --no-color                     Disable color output
     -v, --version                      Print the version
