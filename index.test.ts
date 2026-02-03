@@ -109,17 +109,20 @@ let npmServer: ReturnType<typeof makeServer>;
 let githubServer: ReturnType<typeof makeServer>;
 let pypiServer: ReturnType<typeof makeServer>;
 let jsrServer: ReturnType<typeof makeServer>;
+let goProxyServer: ReturnType<typeof makeServer>;
 
 let githubUrl: string;
 let pypiUrl: string;
 let npmUrl: string;
 let jsrUrl: string;
+let goProxyUrl: string;
 
 beforeAll(async () => {
   npmServer = makeServer(defaultRoute);
   githubServer = makeServer(defaultRoute);
   pypiServer = makeServer(defaultRoute);
   jsrServer = makeServer(defaultRoute);
+  goProxyServer = makeServer((_, res) => { res.statusCode = 404; res.end(); });
 
   const [commits, tags] = await Promise.all([
     readFile(fileURLToPath(new URL("fixtures/github/updates-commits.json", import.meta.url)), "utf8"),
@@ -169,17 +172,37 @@ beforeAll(async () => {
     server.get(key, (_, res) => res.send(gz));
   }
 
+  // Go proxy fixtures
+  const goProxyRoutes: Array<{path: string, response: string}> = [
+    {path: "/github.com/google/uuid/@latest", response: JSON.stringify({Version: "v1.6.0", Time: "2024-06-13T02:52:04Z"})},
+    {path: "/github.com/google/go-github/v70/@latest", response: JSON.stringify({Version: "v70.0.0", Time: "2024-11-29T00:00:00Z"})},
+  ];
+  for (let v = 71; v <= 82; v++) {
+    goProxyRoutes.push({
+      path: `/github.com/google/go-github/v${v}/@latest`,
+      response: JSON.stringify({Version: `v${v}.0.0`, Time: "2025-01-01T00:00:00Z"}),
+    });
+  }
+  const goProxyGzips = await Promise.all(
+    goProxyRoutes.map(async ({path, response}) => ({path, gz: await gzipPromise(response)})),
+  );
+  for (const {path, gz} of goProxyGzips) {
+    goProxyServer.get(path, (_, res) => res.send(gz));
+  }
+
   await Promise.all([
     githubServer.start(0),
     pypiServer.start(0),
     npmServer.start(0),
     jsrServer.start(0),
+    goProxyServer.start(0),
   ]);
 
   githubUrl = makeUrl(githubServer);
   npmUrl = makeUrl(npmServer);
   pypiUrl = makeUrl(pypiServer);
   jsrUrl = makeUrl(jsrServer);
+  goProxyUrl = makeUrl(goProxyServer);
 
   await writeFile(join(testDir, ".npmrc"), `registry=${npmUrl}`); // Fake registry
   await writeFile(join(testDir, "package.json"), JSON.stringify(testPkg, null, 2)); // Copy fixture
@@ -192,6 +215,7 @@ afterAll(async () => {
     githubServer?.close(),
     pypiServer?.close(),
     jsrServer?.close(),
+    goProxyServer?.close(),
   ]);
 });
 
@@ -202,6 +226,7 @@ function makeTest(args: string) {
       "--forgeapi", githubUrl,
       "--pypiapi", pypiUrl,
       "--jsrapi", jsrUrl,
+      "--goproxy", goProxyUrl,
     ];
 
     let stdout: string;
@@ -1167,13 +1192,12 @@ test.concurrent("go update", async ({expect = globalExpect}: any = {}) => {
   const goUpdateContent = readFileSync(goUpdateFile, "utf8");
   await writeFile(join(testGoModDir, "go.mod"), goUpdateContent);
 
-  await nanoSpawn("go", ["mod", "download"], {cwd: testGoModDir});
-
   await nanoSpawn(execPath, [
     script,
     "-u",
     "-f", join(testGoModDir, "go.mod"),
     "-c",
+    "--goproxy", goProxyUrl,
   ], {cwd: testGoModDir});
 
   const updatedContent = await readFile(join(testGoModDir, "go.mod"), "utf8");
