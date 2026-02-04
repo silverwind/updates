@@ -60,7 +60,7 @@ function makeServer(defaultHandler: RouteHandler) {
     },
     start: (port: number) => {
       return new Promise<Server>((resolve) => {
-        server.listen(port, () => {
+        server.listen(port, "127.0.0.1", () => {
           resolve(server);
         });
       });
@@ -91,7 +91,7 @@ function makeUrl(server: ReturnType<typeof makeServer>) {
     throw new Error("Server address is not available");
   }
   const {port}: any = addr;
-  return Object.assign(new URL("http://localhost"), {port}).toString();
+  return Object.assign(new URL("http://127.0.0.1"), {port}).toString();
 }
 
 function defaultRoute(req: any, res: any) {
