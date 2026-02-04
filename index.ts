@@ -393,6 +393,26 @@ function logVerbose(message: string): void {
   console.error(`${timestamp()} ${message}`);
 }
 
+const spinnerFrames = ["|", "/", "-", "\\"];
+let spinnerInterval: ReturnType<typeof setInterval> | undefined;
+
+function startSpinner(): void {
+  if (args.json || args.verbose || !stderr.isTTY) return;
+  let i = 0;
+  stderr.write("\x1B[?25l");
+  spinnerInterval = setInterval(() => {
+    stderr.write(`\r${spinnerFrames[i++ % spinnerFrames.length]}`);
+  }, 80);
+}
+
+function stopSpinner(): void {
+  if (spinnerInterval) {
+    clearInterval(spinnerInterval);
+    spinnerInterval = undefined;
+    stderr.write("\r \r\x1B[?25h");
+  }
+}
+
 async function doFetch(url: string, opts?: RequestInit): Promise<Response> {
   if (args.verbose) logVerbose(`${magenta("fetch")} ${url}`);
   const res = await fetch(url, opts);
@@ -698,6 +718,7 @@ async function finishWithMessage(message: string): Promise<void> {
 }
 
 async function end(err?: Error | void, exitCode?: number): Promise<void> {
+  stopSpinner();
   if (err) {
     const error = err.stack ?? err.message;
     const cause = err.cause;
@@ -1431,6 +1452,7 @@ async function main(): Promise<void> {
 
   const [files, explicitFiles] = resolveFiles(parseMixedArg(filesArg) as Set<string>);
 
+  startSpinner();
   for (const file of files) {
     const filename = basename(file);
     const mode = modeByFileName[filename];
@@ -1684,6 +1706,7 @@ async function main(): Promise<void> {
       }
     }
   }
+  stopSpinner();
 
   if (numDependencies === 0) {
     finishWithMessage("No dependencies found, nothing to do.");
