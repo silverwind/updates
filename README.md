@@ -23,8 +23,6 @@ npx updates -u && npm i
 
 ## Options
 
-Options that take multiple arguments can take them either via comma-separated value or by specifying the option multiple times. If an option has a optional `pkg` argument but none is given, the option will be applied to all packages instead. All `pkg` options support glob matching via `*` or regex (on CLI, wrap the regex in slashes, e.g. `'/^foo/'`).
-
 |Option|Description|
 |:-|:-|
 |`-u, --update`|Update versions and write package file|
@@ -50,6 +48,8 @@ Options that take multiple arguments can take them either via comma-separated va
 |`-v, --version`|Print the version|
 |`-V, --verbose`|Print verbose output to stderr|
 |`-h, --help`|Print the help|
+
+Options that take multiple arguments can take them either via comma-separated value or by specifying the option multiple times. If an option has a optional `pkg` argument but none is given, the option will be applied to all packages instead. All `pkg` options support glob matching via `*` or regex (on CLI, wrap the regex in slashes, e.g. `'/^foo/'`).
 
 ## Config File
 
