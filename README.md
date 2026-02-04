@@ -23,9 +23,33 @@ npx updates -u && npm i
 
 ## Options
 
-See `--help`. Options that take multiple arguments can take them either via comma-separated value or by specifying the option multiple times. If an option has a optional `pkg` argument but none is given, the option will be applied to all packages instead.
+Options that take multiple arguments can take them either via comma-separated value or by specifying the option multiple times. If an option has a optional `pkg` argument but none is given, the option will be applied to all packages instead. All `pkg` options support glob matching via `*` or regex (on CLI, wrap the regex in slashes, e.g. `'/^foo/'`).
 
-All `pkg` options support glob matching via `*` or regex (on CLI, wrap the regex in slashes, e.g. `'/^foo/'`).
+|Option|Description|
+|:-|:-|
+|`-u, --update`|Update versions and write package file|
+|`-f, --file <path,...>`|File or directory to use, defaults to current directory|
+|`-i, --include <pkg,...>`|Include only given packages|
+|`-e, --exclude <pkg,...>`|Exclude given packages|
+|`-p, --prerelease [<pkg,...>]`|Consider prerelease versions|
+|`-R, --release [<pkg,...>]`|Only use release versions, may downgrade|
+|`-g, --greatest [<pkg,...>]`|Prefer greatest over latest version|
+|`-t, --types <type,...>`|Dependency types to update|
+|`-P, --patch [<pkg,...>]`|Consider only up to semver-patch|
+|`-m, --minor [<pkg,...>]`|Consider only up to semver-minor|
+|`-d, --allow-downgrade [<pkg,...>]`|Allow version downgrades when using latest version|
+|`-C, --cooldown <days>`|Minimum package age in days|
+|`-l, --pin <pkg=range>`|Pin package to given semver range|
+|`-E, --error-on-outdated`|Exit with code 2 when updates are available and 0 when not|
+|`-U, --error-on-unchanged`|Exit with code 0 when updates are available and 2 when not|
+|`-r, --registry <url>`|Override npm registry URL|
+|`-S, --sockets <num>`|Maximum number of parallel HTTP sockets opened. Default: 96|
+|`-M, --modes <mode,...>`|Which modes to enable. Either `npm`, `pypi`, `go`. Default: `npm,pypi,go`|
+|`-j, --json`|Output a JSON object|
+|`-n, --no-color`|Disable color output|
+|`-v, --version`|Print the version|
+|`-V, --verbose`|Print verbose output to stderr|
+|`-h, --help`|Print the help|
 
 ## Config File
 
