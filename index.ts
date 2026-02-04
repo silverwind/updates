@@ -10,7 +10,6 @@ import pkg from "./package.json" with {type: "json"};
 import {parse, coerce, diff, gt, gte, lt, neq, valid, validRange, satisfies} from "semver";
 import {timerel} from "timerel";
 import {npmTypes, poetryTypes, uvTypes, goTypes, parseUvDependencies, nonPackageEngines} from "./utils.ts";
-import type {default as registryAuthToken, AuthOptions} from "registry-auth-token";
 
 export type Config = {
   /** Array of packages to include */
@@ -282,9 +281,7 @@ type AuthAndRegistry = {
 };
 
 const defaultRegistry = "https://registry.npmjs.org";
-let authOpts: AuthOptions | null = null;
 let npmrc: Npmrc | null = null;
-let rat: typeof registryAuthToken | null = null;
 
 const authCache = new Map<string, AuthAndRegistry>();
 
@@ -293,10 +290,51 @@ async function getNpmrc() {
   return (await import("rc")).default("npm", {registry: defaultRegistry});
 }
 
+function replaceEnvVar(token: string): string {
+  return token.replace(/^\$\{?([^}]*)\}?$/, (_, envVar) => process.env[envVar] || "");
+}
+
+function getAuthInfoForUrl(regUrl: string, config: Npmrc): AuthAndRegistry["auth"] {
+  // Bearer token
+  const bearerToken = config[`${regUrl}:_authToken`] || config[`${regUrl}/:_authToken`];
+  if (bearerToken) return {token: replaceEnvVar(bearerToken), type: "Bearer"};
+
+  // Basic auth (username + password)
+  const username = config[`${regUrl}:username`] || config[`${regUrl}/:username`];
+  const password = config[`${regUrl}:_password`] || config[`${regUrl}/:_password`];
+  if (username && password) {
+    const pass = Buffer.from(replaceEnvVar(password), "base64").toString("utf8");
+    return {token: Buffer.from(`${username}:${pass}`).toString("base64"), type: "Basic", username, password: pass};
+  }
+
+  // Legacy auth token
+  const legacyToken = config[`${regUrl}:_auth`] || config[`${regUrl}/:_auth`];
+  if (legacyToken) return {token: replaceEnvVar(legacyToken), type: "Basic"};
+
+  return undefined;
+}
+
+function getRegistryAuthToken(registryUrl: string, config: Npmrc): AuthAndRegistry["auth"] {
+  const parsed = new URL(registryUrl.startsWith("//") ? `http:${registryUrl}` : registryUrl);
+  let pathname: string | undefined;
+
+  while (pathname !== "/" && parsed.pathname !== pathname) {
+    pathname = parsed.pathname || "/";
+    const regUrl = "//" + parsed.host + pathname.replace(/\/$/, "");
+    const authInfo = getAuthInfoForUrl(regUrl, config);
+    if (authInfo) return authInfo;
+    const normalized = pathname.endsWith("/") ? pathname : pathname + "/";
+    parsed.pathname = new URL("..", new URL(normalized, "http://x")).pathname;
+  }
+
+  // Global legacy fallback
+  const globalAuth = config["_auth"];
+  if (globalAuth) return {token: replaceEnvVar(globalAuth), type: "Basic"};
+  return undefined;
+}
+
 async function getAuthAndRegistry(name: string, registry: string): Promise<AuthAndRegistry> {
   if (!npmrc) npmrc = await getNpmrc();
-  if (!authOpts) authOpts = {npmrc, recursive: true};
-  if (!rat) rat = (await import("registry-auth-token")).default;
 
   const scope = name.startsWith("@") ? (/@[a-z0-9][\w-.]+/.exec(name) || [""])[0] : "";
   const cacheKey = `${scope}:${registry}`;
@@ -305,18 +343,18 @@ async function getAuthAndRegistry(name: string, registry: string): Promise<AuthA
 
   let result: AuthAndRegistry;
   if (!name.startsWith("@")) {
-    result = {auth: rat(registry, authOpts), registry};
+    result = {auth: getRegistryAuthToken(registry, npmrc), registry};
   } else {
     const url = normalizeUrl(registryUrl(scope, npmrc));
     if (url !== registry) {
       try {
-        const newAuth = rat(url, authOpts);
-        result = newAuth?.token ? {auth: newAuth, registry: url} : {auth: rat(registry, authOpts), registry};
+        const newAuth = getRegistryAuthToken(url, npmrc);
+        result = newAuth?.token ? {auth: newAuth, registry: url} : {auth: getRegistryAuthToken(registry, npmrc), registry};
       } catch {
-        result = {auth: rat(registry, authOpts), registry};
+        result = {auth: getRegistryAuthToken(registry, npmrc), registry};
       }
     } else {
-      result = {auth: rat(registry, authOpts), registry};
+      result = {auth: getRegistryAuthToken(registry, npmrc), registry};
     }
   }
 
