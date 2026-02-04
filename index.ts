@@ -320,10 +320,10 @@ function getRegistryAuthToken(registryUrl: string, config: Npmrc): AuthAndRegist
 
   while (pathname !== "/" && parsed.pathname !== pathname) {
     pathname = parsed.pathname || "/";
-    const regUrl = "//" + parsed.host + pathname.replace(/\/$/, "");
+    const regUrl = `//${parsed.host}${pathname.replace(/\/$/, "")}`;
     const authInfo = getAuthInfoForUrl(regUrl, config);
     if (authInfo) return authInfo;
-    const normalized = pathname.endsWith("/") ? pathname : pathname + "/";
+    const normalized = pathname.endsWith("/") ? pathname : `${pathname}/`;
     parsed.pathname = new URL("..", new URL(normalized, "http://x")).pathname;
   }
 
