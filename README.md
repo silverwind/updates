@@ -17,7 +17,7 @@
 # check for updates
 npx updates
 
-# update package.json and install new dependencies with your favorite package manager
+# update package.json and install new dependencies
 npx updates -u && npm i
 ```
 
