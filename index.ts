@@ -291,7 +291,7 @@ async function getNpmrc() {
 }
 
 function replaceEnvVar(token: string): string {
-  return token.replace(/^\$\{?([^}]*)\}?$/, (_, envVar) => process.env[envVar] || "");
+  return token.replace(/^\$\{?([^}]*)\}?$/, (_, envVar) => env[envVar] || "");
 }
 
 function getAuthInfoForUrl(regUrl: string, config: Npmrc): AuthAndRegistry["auth"] {

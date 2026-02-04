@@ -5,7 +5,7 @@ import {readFileSync, mkdtempSync, readdirSync, mkdirSync} from "node:fs";
 import {writeFile, readFile, rm} from "node:fs/promises";
 import {fileURLToPath} from "node:url";
 import {tmpdir} from "node:os";
-import {execPath, versions} from "node:process";
+import {env, execPath, versions} from "node:process";
 import {gzip, constants} from "node:zlib";
 import {promisify} from "node:util";
 import type {Server} from "node:http";
@@ -312,7 +312,7 @@ if (!versions.bun) {
       expect(stdout).toContain("prismjs");
       expect(stdout).toContain("https://github.com/silverwind/updates");
     } finally {
-      if (process.env.CI) {
+      if (env.CI) {
         await nanoSpawn("npm", ["uninstall", "-g", "updates"]);
       } else {
         await nanoSpawn("npm", ["install", "-g", "updates@latest"]);
