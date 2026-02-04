@@ -312,7 +312,11 @@ if (!versions.bun) {
       expect(stdout).toContain("prismjs");
       expect(stdout).toContain("https://github.com/silverwind/updates");
     } finally {
-      await nanoSpawn("npm", ["install", "-g", "updates@latest"]);
+      if (process.env.CI) {
+        await nanoSpawn("npm", ["uninstall", "-g", "updates"]);
+      } else {
+        await nanoSpawn("npm", ["install", "-g", "updates@latest"]);
+      }
     }
   });
 }
