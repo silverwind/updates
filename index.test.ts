@@ -9,7 +9,7 @@ import {execPath, versions} from "node:process";
 import {gzip, constants} from "node:zlib";
 import {promisify} from "node:util";
 import type {Server} from "node:http";
-import {satisfies} from "semver";
+import {satisfies} from "./semver.ts";
 import {npmTypes, poetryTypes, uvTypes, goTypes} from "./utils.ts";
 
 const globalExpect = expect;

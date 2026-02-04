@@ -7,7 +7,7 @@ import {stripVTControlCharacters, styleText, parseArgs, type ParseArgsOptionsCon
 
 import pMap from "p-map";
 import pkg from "./package.json" with {type: "json"};
-import {parse, coerce, diff, gt, gte, lt, neq, valid, validRange, satisfies} from "semver";
+import {parse, coerce, diff, gt, gte, lt, neq, valid, validRange, satisfies} from "./semver.ts";
 import {timerel} from "timerel";
 import {npmTypes, poetryTypes, uvTypes, goTypes, parseUvDependencies, nonPackageEngines} from "./utils.ts";
 
