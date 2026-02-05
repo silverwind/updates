@@ -21,7 +21,7 @@
     "@types/rc": "1.2.4",
     "@typescript/native-preview": "7.0.0-dev.20260203.1",
     "eslint": "9.39.2",
-    "eslint-config-silverwind": "120.0.1",
+    "eslint-config-silverwind": "120.1.2",
     "nano-spawn": "2.0.0",
     "p-map": "7.0.4",
     "rc": "1.2.8",
