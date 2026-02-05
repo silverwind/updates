@@ -21,6 +21,7 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v6
         with:
+          cache: pnpm
           node-version: ${{matrix.js[1]}}
         if: ${{matrix.js[0] == 'node'}}
       - uses: oven-sh/setup-bun@v2
