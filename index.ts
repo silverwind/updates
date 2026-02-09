@@ -10,6 +10,7 @@ import pkg from "./package.json" with {type: "json"};
 import {parse, coerce, diff, gt, gte, lt, neq, valid, validRange, satisfies} from "./semver.ts";
 import {timerel} from "timerel";
 import {npmTypes, poetryTypes, uvTypes, goTypes, parseUvDependencies, nonPackageEngines} from "./utils.ts";
+import {enableDnsCache} from "./dns.ts";
 
 export type Config = {
   /** Array of packages to include */
@@ -1391,6 +1392,8 @@ async function main(): Promise<void> {
   for (const stream of [stdout, stderr]) {
     (stream as any)?._handle?.setBlocking?.(true);
   }
+
+  enableDnsCache();
 
   const maxSockets = 96;
   const concurrency = typeof args.sockets === "number" ? args.sockets : maxSockets;
