@@ -912,7 +912,7 @@ function updatePyprojectToml(pkgStr: string, deps: Deps): string {
 
 function updateGoMod(pkgStr: string, deps: Deps): [string, Record<string, string>] {
   let newPkgStr = pkgStr;
-  const pathMappings: Record<string, string> = {};
+  const majorVersionRewrites: Record<string, string> = {};
   for (const [key, {old, oldOrig}] of Object.entries(deps)) {
     const [_depType, name] = key.split(fieldSep);
     const oldValue = oldOrig || old;
@@ -923,22 +923,22 @@ function updateGoMod(pkgStr: string, deps: Deps): [string, Record<string, string
     if (oldMajor !== newMajor && newMajor > 1) {
       const newPath = buildGoModulePath(name, newMajor);
       newPkgStr = newPkgStr.replace(new RegExp(`${esc(name)} +v${esc(oldValue)}`, "g"), `${newPath} v${newValue}`);
-      pathMappings[name] = newPath;
+      majorVersionRewrites[name] = newPath;
     } else {
       newPkgStr = newPkgStr.replace(new RegExp(`(${esc(name)}) +v${esc(oldValue)}`, "g"), `$1 v${newValue}`);
     }
   }
-  return [newPkgStr, pathMappings];
+  return [newPkgStr, majorVersionRewrites];
 }
 
-function rewriteGoImports(projectDir: string, pathMappings: Record<string, string>): void {
-  if (!Object.keys(pathMappings).length) return;
+function rewriteGoImports(projectDir: string, majorVersionRewrites: Record<string, string>): void {
+  if (!Object.keys(majorVersionRewrites).length) return;
   const goFiles = globSync("**/*.go", {cwd: projectDir});
   for (const relPath of goFiles) {
     const filePath = join(projectDir, relPath);
     let content = readFileSync(filePath, "utf8");
     let changed = false;
-    for (const [oldPath, newPath] of Object.entries(pathMappings)) {
+    for (const [oldPath, newPath] of Object.entries(majorVersionRewrites)) {
       const re = new RegExp(`"${esc(oldPath)}(/|")`, "g");
       const replaced = content.replace(re, `"${newPath}$1`);
       if (replaced !== content) {
@@ -1755,9 +1755,9 @@ async function main(): Promise<void> {
       try {
         const fileContent = pkgStrs[mode];
         if (mode === "go") {
-          const [updatedContent, pathMappings] = updateGoMod(fileContent, deps[mode]);
+          const [updatedContent, majorVersionRewrites] = updateGoMod(fileContent, deps[mode]);
           write(filePerMode[mode], updatedContent);
-          rewriteGoImports(dirname(resolve(filePerMode[mode])), pathMappings);
+          rewriteGoImports(dirname(resolve(filePerMode[mode])), majorVersionRewrites);
         } else {
           const fn = (mode === "npm") ? updatePackageJson : updatePyprojectToml;
           write(filePerMode[mode], fn(fileContent, deps[mode]));
