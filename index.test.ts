@@ -20,7 +20,10 @@ const jsrFile = fileURLToPath(new URL("fixtures/npm-jsr/package.json", import.me
 const poetryFile = fileURLToPath(new URL("fixtures/poetry/pyproject.toml", import.meta.url));
 const uvFile = fileURLToPath(new URL("fixtures/uv/pyproject.toml", import.meta.url));
 const goFile = fileURLToPath(new URL("fixtures/go/go.mod", import.meta.url));
-const goUpdateFile = fileURLToPath(new URL("fixtures/go-update/go.mod", import.meta.url));
+const goUpdateModFile = fileURLToPath(new URL("fixtures/go-update/go.mod", import.meta.url));
+const goUpdateMainFile = fileURLToPath(new URL("fixtures/go-update/main.go", import.meta.url));
+const goUpdateV2ModFile = fileURLToPath(new URL("fixtures/go-update-v2/go.mod", import.meta.url));
+const goUpdateV2MainFile = fileURLToPath(new URL("fixtures/go-update-v2/main.go", import.meta.url));
 const dualFile = fileURLToPath(new URL("fixtures/dual", import.meta.url));
 const invalidConfigFile = fileURLToPath(new URL("fixtures/invalid-config/package.json", import.meta.url));
 
@@ -176,6 +179,8 @@ beforeAll(async () => {
   const goProxyRoutes: Array<{path: string, response: string}> = [
     {path: "/github.com/google/uuid/@latest", response: JSON.stringify({Version: "v1.6.0", Time: "2024-06-13T02:52:04Z"})},
     {path: "/github.com/google/go-github/v70/@latest", response: JSON.stringify({Version: "v70.0.0", Time: "2024-11-29T00:00:00Z"})},
+    {path: "/github.com/example/testpkg/@latest", response: JSON.stringify({Version: "v1.0.0", Time: "2024-01-01T00:00:00Z"})},
+    {path: "/github.com/example/testpkg/v2/@latest", response: JSON.stringify({Version: "v2.0.0", Time: "2025-01-01T00:00:00Z"})},
   ];
   for (let v = 71; v <= 82; v++) {
     goProxyRoutes.push({
@@ -1193,8 +1198,10 @@ test.concurrent("go update", async ({expect = globalExpect}: any = {}) => {
   const testGoModDir = join(testDir, "test-go-update");
   mkdirSync(testGoModDir, {recursive: true});
 
-  const goUpdateContent = readFileSync(goUpdateFile, "utf8");
+  const goUpdateContent = readFileSync(goUpdateModFile, "utf8");
   await writeFile(join(testGoModDir, "go.mod"), goUpdateContent);
+  const goMainContent = readFileSync(goUpdateMainFile, "utf8");
+  await writeFile(join(testGoModDir, "main.go"), goMainContent);
 
   await nanoSpawn(execPath, [
     script,
@@ -1214,6 +1221,35 @@ test.concurrent("go update", async ({expect = globalExpect}: any = {}) => {
   const matches = updatedContent.match(/github\.com\/google\/uuid v1\.6\.0/g);
   expect(matches).toBeTruthy();
   expect(matches?.length).toBe(4);
+
+  const updatedMain = await readFile(join(testGoModDir, "main.go"), "utf8");
+  expect(updatedMain).not.toContain("go-github/v70");
+  expect(updatedMain).toMatch(/go-github\/v\d+\/github/);
+});
+
+test.concurrent("go update v1 to v2", async ({expect = globalExpect}: any = {}) => {
+  const testGoModDir = join(testDir, "test-go-update-v2");
+  mkdirSync(testGoModDir, {recursive: true});
+
+  await writeFile(join(testGoModDir, "go.mod"), readFileSync(goUpdateV2ModFile, "utf8"));
+  await writeFile(join(testGoModDir, "main.go"), readFileSync(goUpdateV2MainFile, "utf8"));
+
+  await nanoSpawn(execPath, [
+    script,
+    "-u",
+    "-f", join(testGoModDir, "go.mod"),
+    "-c",
+    "--goproxy", goProxyUrl,
+  ], {cwd: testGoModDir});
+
+  const updatedContent = await readFile(join(testGoModDir, "go.mod"), "utf8");
+  expect(updatedContent).toContain("github.com/example/testpkg/v2 v2.0.0");
+  expect(updatedContent).not.toContain("testpkg v1.0.0");
+
+  const updatedMain = await readFile(join(testGoModDir, "main.go"), "utf8");
+  expect(updatedMain).toContain(`"github.com/example/testpkg/v2"`);
+  expect(updatedMain).toContain(`"github.com/example/testpkg/v2/sub"`);
+  expect(updatedMain).not.toMatch(/"github\.com\/example\/testpkg"(?!\/v2)/);
 });
 
 test.concurrent("pin", async ({expect = globalExpect}: any = {}) => {

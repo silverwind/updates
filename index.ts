@@ -2,7 +2,7 @@
 import {cwd, stdout, stderr, env, exit, platform, versions} from "node:process";
 import {join, dirname, basename, resolve} from "node:path";
 import {pathToFileURL} from "node:url";
-import {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync, type Stats} from "node:fs";
+import {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync, globSync, type Stats} from "node:fs";
 import {stripVTControlCharacters, styleText, parseArgs, type ParseArgsOptionsConfig} from "node:util";
 
 import pMap from "p-map";
@@ -910,8 +910,9 @@ function updatePyprojectToml(pkgStr: string, deps: Deps): string {
   return newPkgStr;
 }
 
-function updateGoMod(pkgStr: string, deps: Deps): string {
+function updateGoMod(pkgStr: string, deps: Deps): [string, Record<string, string>] {
   let newPkgStr = pkgStr;
+  const pathMappings: Record<string, string> = {};
   for (const [key, {old, oldOrig}] of Object.entries(deps)) {
     const [_depType, name] = key.split(fieldSep);
     const oldValue = oldOrig || old;
@@ -922,11 +923,33 @@ function updateGoMod(pkgStr: string, deps: Deps): string {
     if (oldMajor !== newMajor && newMajor > 1) {
       const newPath = buildGoModulePath(name, newMajor);
       newPkgStr = newPkgStr.replace(new RegExp(`${esc(name)} +v${esc(oldValue)}`, "g"), `${newPath} v${newValue}`);
+      pathMappings[name] = newPath;
     } else {
       newPkgStr = newPkgStr.replace(new RegExp(`(${esc(name)}) +v${esc(oldValue)}`, "g"), `$1 v${newValue}`);
     }
   }
-  return newPkgStr;
+  return [newPkgStr, pathMappings];
+}
+
+function rewriteGoImports(projectDir: string, pathMappings: Record<string, string>): void {
+  if (!Object.keys(pathMappings).length) return;
+  const goFiles = globSync("**/*.go", {cwd: projectDir});
+  for (const relPath of goFiles) {
+    const filePath = join(projectDir, relPath);
+    let content = readFileSync(filePath, "utf8");
+    let changed = false;
+    for (const [oldPath, newPath] of Object.entries(pathMappings)) {
+      const re = new RegExp(`"${esc(oldPath)}(/|")`, "g");
+      const replaced = content.replace(re, `"${newPath}$1`);
+      if (replaced !== content) {
+        content = replaced;
+        changed = true;
+      }
+    }
+    if (changed) {
+      write(filePath, content);
+    }
+  }
 }
 
 function updateNpmRange(oldRange: string, newVersion: string, oldOrig: string | undefined): string {
@@ -1730,9 +1753,15 @@ async function main(): Promise<void> {
     for (const mode of Object.keys(deps)) {
       if (!Object.keys(deps[mode]).length) continue;
       try {
-        const fn = (mode === "npm") ? updatePackageJson : (mode === "go") ? updateGoMod : updatePyprojectToml;
         const fileContent = pkgStrs[mode];
-        write(filePerMode[mode], fn(fileContent, deps[mode]));
+        if (mode === "go") {
+          const [updatedContent, pathMappings] = updateGoMod(fileContent, deps[mode]);
+          write(filePerMode[mode], updatedContent);
+          rewriteGoImports(dirname(resolve(filePerMode[mode])), pathMappings);
+        } else {
+          const fn = (mode === "npm") ? updatePackageJson : updatePyprojectToml;
+          write(filePerMode[mode], fn(fileContent, deps[mode]));
+        }
       } catch (err) {
         throw new Error(`Error writing ${basename(filePerMode[mode])}: ${(err as Error).message}`);
       }
