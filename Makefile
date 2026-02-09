@@ -42,7 +42,7 @@ update: node_modules
 
 .PHONY: publish
 publish: node_modules
-	pnpm publish
+	pnpm publish --no-git-checks
 
 .PHONY: patch
 patch: node_modules lint test
