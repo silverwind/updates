@@ -1,4 +1,4 @@
-import {parseUvDependencies} from "./utils.ts";
+import {parseUvDependencies} from "./utils/utils.ts";
 
 test("parseUvDependencies", () => {
   expect(parseUvDependencies([

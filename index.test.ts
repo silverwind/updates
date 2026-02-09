@@ -9,8 +9,8 @@ import {env, execPath, versions} from "node:process";
 import {gzip, constants} from "node:zlib";
 import {promisify} from "node:util";
 import type {Server} from "node:http";
-import {satisfies} from "./semver.ts";
-import {npmTypes, poetryTypes, uvTypes, goTypes} from "./utils.ts";
+import {satisfies} from "./utils/semver.ts";
+import {npmTypes, poetryTypes, uvTypes, goTypes} from "./utils/utils.ts";
 
 const globalExpect = expect;
 const gzipPromise = (data: string | Buffer) => promisify(gzip)(data, {level: constants.Z_BEST_SPEED});

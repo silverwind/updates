@@ -7,10 +7,10 @@ import {stripVTControlCharacters, styleText, parseArgs, type ParseArgsOptionsCon
 
 import pMap from "p-map";
 import pkg from "./package.json" with {type: "json"};
-import {parse, coerce, diff, gt, gte, lt, neq, valid, validRange, satisfies} from "./semver.ts";
+import {parse, coerce, diff, gt, gte, lt, neq, valid, validRange, satisfies} from "./utils/semver.ts";
 import {timerel} from "timerel";
-import {npmTypes, poetryTypes, uvTypes, goTypes, parseUvDependencies, nonPackageEngines} from "./utils.ts";
-import {enableDnsCache} from "./dns.ts";
+import {npmTypes, poetryTypes, uvTypes, goTypes, parseUvDependencies, nonPackageEngines} from "./utils/utils.ts";
+import {enableDnsCache} from "./utils/dns.ts";
 
 export type Config = {
   /** Array of packages to include */
