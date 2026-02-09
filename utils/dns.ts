@@ -1,4 +1,5 @@
 // DNS cache to avoid ENOTFOUND errors from parallel lookups
+// TODO: Use undici once https://github.com/nodejs/node/issues/43187 is resolved
 import dns from "node:dns";
 
 export function enableDnsCache() {
