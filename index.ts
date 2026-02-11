@@ -578,7 +578,7 @@ async function fetchGoProxyInfo(name: string, type: string, currentVersion: stri
   const currentMajor = extractGoMajor(name);
   const probeGoMajor = async (major: number) => {
     const path = buildGoModulePath(name, major);
-    return doFetch(`${goProxyUrl}/${encodeGoModulePath(path)}/@latest`, {signal: AbortSignal.timeout(5000)})
+    return doFetch(`${goProxyUrl}/${encodeGoModulePath(path)}/@latest`, {signal: AbortSignal.timeout(3000)})
       .then(async (r) => r.ok ? {...await r.json() as {Version: string, Time: string}, path} : null)
       .catch(() => null);
   };
