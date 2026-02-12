@@ -1294,11 +1294,12 @@ function canInclude(name: string, mode: string, include: Set<RegExp>, exclude: S
   if (depType === "engines" && nonPackageEngines.includes(name)) return false;
   if (mode === "pypi" && name === "python") return false;
   if (!include.size && !exclude.size) return true;
+  const baseName = mode === "go" ? name.replace(/\/v\d+$/, "") : name;
   for (const re of exclude) {
-    if (re.test(name)) return false;
+    if (re.test(name) || re.test(baseName)) return false;
   }
   for (const re of include) {
-    if (re.test(name)) return true;
+    if (re.test(name) || re.test(baseName)) return true;
   }
   return include.size ? false : true;
 }
