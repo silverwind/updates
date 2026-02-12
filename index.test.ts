@@ -778,13 +778,6 @@ test.concurrent("include", async ({expect = globalExpect}: any = {}) => {
             "old": "3.1.0",
           },
         },
-        "packageManager": {
-          "npm": {
-            "info": "https://github.com/npm/cli",
-            "new": "11.6.2",
-            "old": "11.6.0",
-          },
-        },
       },
     }
   `);
@@ -799,13 +792,6 @@ test.concurrent("include 2", async ({expect = globalExpect}: any = {}) => {
             "info": "https://github.com/needim/noty",
             "new": "3.1.4",
             "old": "3.1.0",
-          },
-        },
-        "packageManager": {
-          "npm": {
-            "info": "https://github.com/npm/cli",
-            "new": "11.6.2",
-            "old": "11.6.0",
           },
         },
       },
@@ -840,13 +826,6 @@ test.concurrent("exclude", async ({expect = globalExpect}: any = {}) => {
             "old": "18.0",
           },
         },
-        "packageManager": {
-          "npm": {
-            "info": "https://github.com/npm/cli",
-            "new": "11.6.2",
-            "old": "11.6.0",
-          },
-        },
       },
     }
   `);
@@ -861,13 +840,6 @@ test.concurrent("exclude 2", async ({expect = globalExpect}: any = {}) => {
             "info": "https://github.com/gulp-sourcemaps/gulp-sourcemaps",
             "new": "2.6.5",
             "old": "2.0.0",
-          },
-        },
-        "packageManager": {
-          "npm": {
-            "info": "https://github.com/npm/cli",
-            "new": "11.6.2",
-            "old": "11.6.0",
           },
         },
         "peerDependencies": {
@@ -891,13 +863,6 @@ test.concurrent("exclude 3", async ({expect = globalExpect}: any = {}) => {
             "info": "https://github.com/floridoo/gulp-sourcemaps",
             "new": "2.0.1",
             "old": "2.0.0",
-          },
-        },
-        "packageManager": {
-          "npm": {
-            "info": "https://github.com/npm/cli",
-            "new": "11.6.2",
-            "old": "11.6.0",
           },
         },
         "peerDependencies": {
@@ -1104,13 +1069,6 @@ test.concurrent("preup", async ({expect = globalExpect}: any = {}) => {
             "old": "3.1.0",
           },
         },
-        "packageManager": {
-          "npm": {
-            "info": "https://github.com/npm/cli",
-            "new": "11.6.2",
-            "old": "11.6.0",
-          },
-        },
       },
     }
   `);
@@ -1127,13 +1085,6 @@ test.concurrent("preup 1", async ({expect = globalExpect}: any = {}) => {
             "info": "https://github.com/needim/noty",
             "new": "3.2.0-beta",
             "old": "3.1.0",
-          },
-        },
-        "packageManager": {
-          "npm": {
-            "info": "https://github.com/npm/cli",
-            "new": "11.6.2",
-            "old": "11.6.0",
           },
         },
         "peerDependencies": {
@@ -1159,13 +1110,6 @@ test.concurrent("preup 2", async ({expect = globalExpect}: any = {}) => {
             "info": "https://github.com/storybookjs/storybook/tree/HEAD/code/lib/eslint-plugin",
             "new": "0.0.0-pr-32455-sha-2828decf",
             "old": "10.0.0-beta.5",
-          },
-        },
-        "packageManager": {
-          "npm": {
-            "info": "https://github.com/npm/cli",
-            "new": "11.6.2",
-            "old": "11.6.0",
           },
         },
       },

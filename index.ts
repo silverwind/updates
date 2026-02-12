@@ -1538,10 +1538,12 @@ async function main(): Promise<void> {
       } else {
         if (typeof obj === "string") { // string (packageManager)
           const [name, value] = obj.split("@");
-          deps[mode][`${depType}${fieldSep}${name}`] = {
-            old: normalizeRange(value),
-            oldOrig: value,
-          } as Dep;
+          if (canInclude(name, mode, include, exclude, depType)) {
+            deps[mode][`${depType}${fieldSep}${name}`] = {
+              old: normalizeRange(value),
+              oldOrig: value,
+            } as Dep;
+          }
         } else { // object
           for (const [name, value] of Object.entries(obj)) {
             if (mode === "npm" && isJsr(value) && canInclude(name, mode, include, exclude, depType)) {
