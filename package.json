@@ -30,7 +30,8 @@
     "tsdown": "0.20.3",
     "tsdown-config-silverwind": "1.7.5",
     "typescript": "5.9.3",
-    "typescript-config-silverwind": "14.0.1",
+    "typescript-config-silverwind": "15.0.0",
+    "updates-config-silverwind": "1.0.3",
     "versions": "14.1.2",
     "vitest": "4.0.18",
     "vitest-config-silverwind": "10.6.3"

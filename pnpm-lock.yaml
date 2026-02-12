@@ -48,8 +48,11 @@ importers:
         specifier: 5.9.3
         version: 5.9.3
       typescript-config-silverwind:
-        specifier: 14.0.1
-        version: 14.0.1
+        specifier: 15.0.0
+        version: 15.0.0
+      updates-config-silverwind:
+        specifier: 1.0.3
+        version: 1.0.3(prettier@3.8.1)
       versions:
         specifier: 14.1.2
         version: 14.1.2
@@ -1259,6 +1262,11 @@ packages:
     resolution: {integrity: sha512-vkcDPrRZo1QZLbn5RLGPpg/WmIQ65qoWWhcGKf/b5eplkkarX0m9z8ppCat4mlOqUsWpyNuYgO3VRyrYHSzX5g==}
     engines: {node: '>= 0.8.0'}
 
+  prettier@3.8.1:
+    resolution: {integrity: sha512-UOnG6LftzbdaHZcKoPFtOcCKztrQ57WkHDeRD9t/PTQtmT0NHSeWWepj6pS0z/N7+08BHFDQVUrfmfMRcZwbMg==}
+    engines: {node: '>=14'}
+    hasBin: true
+
   pretty-format@30.2.0:
     resolution: {integrity: sha512-9uBdv/B4EefsuAL+pWqueZyZS2Ba+LxfFeQ9DN14HU4bN8bhaxKdkpjpB6fs9+pSjIBu+FXQHImEg8j/Lw0+vA==}
     engines: {node: ^18.14.0 || ^20.0.0 || ^22.0.0 || >=24.0.0}
@@ -1425,8 +1433,8 @@ packages:
     resolution: {integrity: sha512-XleUoc9uwGXqjWwXaUTZAmzMcFZ5858QA2vvx1Ur5xIcixXIP+8LnFDgRplU30us6teqdlskFfu+ae4K79Ooew==}
     engines: {node: '>= 0.8.0'}
 
-  typescript-config-silverwind@14.0.1:
-    resolution: {integrity: sha512-i3hhgS/PA0YyhFDQrmwVREouyqNy9bq/c5F40Oxd9MzpRvAdWnjEQMfYkS3nd8VaKBUVMeRAzClE+ZqhebgZ/g==}
+  typescript-config-silverwind@15.0.0:
+    resolution: {integrity: sha512-r0YsBQYnTG9L/GcKrIqlPYp86lV3xufSkCLtTuDp4Wh3Y7Tmn+bg2T0bleef5dtE77yKJV73nflgtXZ88UPbew==}
 
   typescript@5.9.3:
     resolution: {integrity: sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==}
@@ -1451,6 +1459,12 @@ packages:
     peerDependenciesMeta:
       synckit:
         optional: true
+
+  updates-config-silverwind@1.0.3:
+    resolution: {integrity: sha512-g4sNvatyceKwxpGc3EAebV7zfnVCwhMqsfV7fqu8YIsBodTO5pvlga6ejunHKewKvGbOuz6Vvnvi8TUQH5Wbug==}
+    engines: {node: '>=20'}
+    peerDependencies:
+      prettier: '*'
 
   uri-js@4.4.1:
     resolution: {integrity: sha512-7rKUyy33Q1yc98pQ1DAmLtwX109F7TIfWlW1Ydo8Wl1ii1SeHieeh0HHfPeL2fMXK6z0s8ecKs9frCuLJvndBg==}
@@ -2547,6 +2561,8 @@ snapshots:
 
   prelude-ls@1.2.1: {}
 
+  prettier@3.8.1: {}
+
   pretty-format@30.2.0:
     dependencies:
       '@jest/schemas': 30.0.5
@@ -2723,7 +2739,7 @@ snapshots:
     dependencies:
       prelude-ls: 1.2.1
 
-  typescript-config-silverwind@14.0.1: {}
+  typescript-config-silverwind@15.0.0: {}
 
   typescript@5.9.3: {}
 
@@ -2761,6 +2777,10 @@ snapshots:
   unrun@0.2.27:
     dependencies:
       rolldown: 1.0.0-rc.3
+
+  updates-config-silverwind@1.0.3(prettier@3.8.1):
+    dependencies:
+      prettier: 3.8.1
 
   uri-js@4.4.1:
     dependencies:
