@@ -487,11 +487,13 @@ async function fetchJsrInfo(packageName: string, type: string): Promise<PackageI
     const data = await res.json();
     // Transform JSR format to match npm-like format for compatibility
     const versions: Record<string, any> = {};
+    const time: Record<string, string> = {};
     for (const [version, metadata] of Object.entries(data.versions as Record<string, any>)) {
       versions[version] = {
         version,
         time: metadata.createdAt,
       };
+      time[version] = metadata.createdAt;
     }
     const transformedData = {
       name: packageName,
@@ -499,9 +501,7 @@ async function fetchJsrInfo(packageName: string, type: string): Promise<PackageI
         latest: data.latest,
       },
       versions,
-      time: Object.fromEntries(
-        Object.entries(data.versions as Record<string, any>).map(([v, m]: [string, any]) => [v, m.createdAt])
-      ),
+      time,
     };
     return [transformedData, type, jsrApiUrl, packageName];
   } else {
@@ -1012,7 +1012,7 @@ function findVersion(data: any, versions: Array<string>, {range, semvers, usePre
         newVersion = candidateVersion;
       }
     } else {
-      const date = (new Date(data.time[version])).getTime();
+      const date = Date.parse(data.time[version]);
       if (date >= 0 && date > greatestDate) {
         newVersion = candidateVersion;
         greatestDate = date;

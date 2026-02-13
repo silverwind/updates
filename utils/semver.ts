@@ -8,10 +8,14 @@ type SemVer = {
 
 const semverRe = /^v?(\d+)\.(\d+)\.(\d+)(?:-([a-zA-Z0-9._-]+(?:\.[a-zA-Z0-9._-]+)*))?(?:\+[a-zA-Z0-9._-]+)?$/;
 
+const parseCache = new Map<string, SemVer | null>();
+
 function parseVersion(v: string): SemVer | null {
   if (typeof v !== "string") return null;
+  const cached = parseCache.get(v);
+  if (cached !== undefined) return cached;
   const m = semverRe.exec(v.trim());
-  if (!m) return null;
+  if (!m) { parseCache.set(v, null); return null; }
   const major = Number(m[1]);
   const minor = Number(m[2]);
   const patch = Number(m[3]);
@@ -19,7 +23,9 @@ function parseVersion(v: string): SemVer | null {
     m[4].split(".").map(p => /^\d+$/.test(p) ? Number(p) : p) :
     [];
   const version = `${major}.${minor}.${patch}${prerelease.length ? `-${prerelease.join(".")}` : ""}`;
-  return {major, minor, patch, prerelease, version};
+  const result: SemVer = {major, minor, patch, prerelease, version};
+  parseCache.set(v, result);
+  return result;
 }
 
 function compareIdentifiers(a: string | number, b: string | number): number {
@@ -62,14 +68,21 @@ export function parse(v: string): SemVer | null {
   return parseVersion(v);
 }
 
+const coerceCache = new Map<string, {version: string} | null>();
+const coerceRe = /(?:^|[^.\d])(\d+)(?:\.(\d+))?(?:\.(\d+))?/;
+
 export function coerce(v: string): {version: string} | null {
   if (typeof v !== "string") return null;
-  const m = /(?:^|[^.\d])(\d+)(?:\.(\d+))?(?:\.(\d+))?/.exec(v);
-  if (!m) return null;
+  const cached = coerceCache.get(v);
+  if (cached !== undefined) return cached;
+  const m = coerceRe.exec(v);
+  if (!m) { coerceCache.set(v, null); return null; }
   const major = m[1] || "0";
   const minor = m[2] || "0";
   const patch = m[3] || "0";
-  return {version: `${major}.${minor}.${patch}`};
+  const result = {version: `${major}.${minor}.${patch}`};
+  coerceCache.set(v, result);
+  return result;
 }
 
 export function diff(v1: string, v2: string): string | null {
@@ -289,7 +302,11 @@ function expandXRanges(range: string): string {
   return range;
 }
 
+const rangeCache = new Map<string, Array<Array<Comparator>> | null>();
+
 function parseRange(range: string): Array<Array<Comparator>> | null {
+  const cached = rangeCache.get(range);
+  if (cached !== undefined) return cached;
   const orGroups = range.split("||").map(g => g.trim());
   const result: Array<Array<Comparator>> = [];
 
@@ -320,15 +337,17 @@ function parseRange(range: string): Array<Array<Comparator>> | null {
 
     for (const part of parts) {
       const comp = parseComparator(part);
-      if (!comp) return null; // invalid
+      if (!comp) { rangeCache.set(range, null); return null; }
       comparators.push(comp);
     }
 
-    if (comparators.length === 0) return null;
+    if (comparators.length === 0) { rangeCache.set(range, null); return null; }
     result.push(comparators);
   }
 
-  return result.length ? result : null;
+  const final = result.length ? result : null;
+  rangeCache.set(range, final);
+  return final;
 }
 
 function testWithPrerelease(version: SemVer, comparators: Array<Comparator>): boolean {
