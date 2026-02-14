@@ -19,9 +19,9 @@
   "devDependencies": {
     "@types/node": "25.2.3",
     "@types/rc": "1.2.4",
-    "@typescript/native-preview": "7.0.0-dev.20260211.1",
+    "@typescript/native-preview": "7.0.0-dev.20260214.1",
     "eslint": "9.39.2",
-    "eslint-config-silverwind": "121.0.0",
+    "eslint-config-silverwind": "121.0.5",
     "nano-spawn": "2.0.0",
     "p-map": "7.0.4",
     "rc": "1.2.8",
