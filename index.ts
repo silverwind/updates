@@ -1353,10 +1353,8 @@ function resolveFiles(filesArg: Set<string>): [Set<string>, Set<string>] {
 
 async function loadConfig(rootDir: string): Promise<Config> {
   const filenames: Array<string> = [];
-  for (const prefix of ["", ".config/"]) {
-    for (const ext of ["js", "ts", "mjs", "mts"]) {
-      filenames.push(`${prefix}updates${prefix ? "" : ".config"}.${ext}`);
-    }
+  for (const ext of ["js", "ts", "mjs", "mts"]) {
+    filenames.push(`updates.config.${ext}`);
   }
   let config: Config = {};
 

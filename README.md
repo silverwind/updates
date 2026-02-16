@@ -53,7 +53,7 @@ Options that take multiple arguments can take them either via comma-separated va
 
 ## Config File
 
-The config file is used to configure certain options of the module. It is placed at `updates.config.{js,ts,mjs,mts}` or `.config/updates.config.{js,ts,mjs,mts}`, relative to `package.json` / `pyproject.toml` / `go.mod`.
+The module can be configured with `updates.config.{ts,js,mjs,mts}` in your repo root.
 
 ```ts
 import type {Config} from "updates";
