@@ -12,15 +12,15 @@
   "files": [
     "dist"
   ],
-  "packageManager": "pnpm@10.29.3",
+  "packageManager": "pnpm@10.30.0",
   "engines": {
     "node": ">=22"
   },
   "devDependencies": {
     "@types/node": "25.2.3",
-    "@typescript/native-preview": "7.0.0-dev.20260216.1",
+    "@typescript/native-preview": "7.0.0-dev.20260217.1",
     "eslint": "9.39.2",
-    "eslint-config-silverwind": "121.1.0",
+    "eslint-config-silverwind": "121.1.1",
     "nano-spawn": "2.0.0",
     "p-map": "7.0.4",
     "smol-toml": "1.6.0",
