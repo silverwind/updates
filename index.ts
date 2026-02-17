@@ -565,7 +565,7 @@ async function fetchGoVcsInfo(name: string, type: string, currentVersion: string
       const {stdout} = await execFile("go", ["list", "-m", "-json", `${modulePath}@latest`], {
         timeout,
         cwd: goCwd,
-        env: {...env, GIT_TERMINAL_PROMPT: "0"},
+        env,
       });
       const data = JSON.parse(stdout) as {Version: string, Time?: string};
       return {Version: data.Version, Time: data.Time || "", path: modulePath};
