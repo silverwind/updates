@@ -533,6 +533,11 @@ function buildGoModulePath(name: string, major: number): string {
   return `${name.replace(/\/v\d+$/, "")}/v${major}`;
 }
 
+// TODO: maybe include pseudo-versions with --prerelease
+function isGoPseudoVersion(version: string): boolean {
+  return /\d{14}-[0-9a-f]{12}$/.test(version);
+}
+
 function parseGoMod(content: string): Record<string, string> {
   const deps: Record<string, string> = {};
   const lines = content.split(/\r?\n/);
@@ -1114,7 +1119,7 @@ function findNewVersion(data: any, {mode, range, useGreatest, useRel, usePre, se
 
     // Check cross-major upgrade
     const crossVersion = coerceToVersion(data.new);
-    if (crossVersion) {
+    if (crossVersion && !isGoPseudoVersion(data.new)) {
       const d = diff(oldVersion, crossVersion);
       if (d && semvers.has(d)) {
         return data.new;
@@ -1123,7 +1128,7 @@ function findNewVersion(data: any, {mode, range, useGreatest, useRel, usePre, se
 
     // Fall back to same-major upgrade
     const sameVersion = coerceToVersion(data.sameMajorNew);
-    if (sameVersion) {
+    if (sameVersion && !isGoPseudoVersion(data.sameMajorNew)) {
       const d = diff(oldVersion, sameVersion);
       if (d && semvers.has(d)) {
         data.Time = data.sameMajorTime;

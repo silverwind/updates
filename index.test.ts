@@ -181,6 +181,7 @@ beforeAll(async () => {
     {path: "/github.com/google/go-github/v70/@latest", response: JSON.stringify({Version: "v70.0.0", Time: "2024-11-29T00:00:00Z"})},
     {path: "/github.com/example/testpkg/@latest", response: JSON.stringify({Version: "v1.0.0", Time: "2024-01-01T00:00:00Z"})},
     {path: "/github.com/example/testpkg/v2/@latest", response: JSON.stringify({Version: "v2.0.0", Time: "2025-01-01T00:00:00Z"})},
+    {path: "/github.com/google/uuid/v2/@latest", response: JSON.stringify({Version: "v2.0.0-20260217135312-8c5a7de9ffa1", Time: "2026-02-17T13:53:12Z"})},
   ];
   for (let v = 71; v <= 82; v++) {
     goProxyRoutes.push({
