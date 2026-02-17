@@ -1196,6 +1196,63 @@ test.concurrent("go update v1 to v2", async ({expect = globalExpect}: any = {}) 
   expect(updatedMain).not.toMatch(/"github\.com\/example\/testpkg"(?!\/v2)/);
 });
 
+test.concurrent("go update via git for GONOPROXY modules", async ({expect = globalExpect}: any = {}) => {
+  const testGoModDir = join(testDir, "test-go-gonoproxy");
+  const gitRepoDir = join(testDir, "test-go-gonoproxy-repo");
+  mkdirSync(testGoModDir, {recursive: true});
+  mkdirSync(gitRepoDir, {recursive: true});
+
+  // Initialize a git repo with tagged versions
+  const gitEnv = {GIT_AUTHOR_NAME: "Test", GIT_AUTHOR_EMAIL: "test@test.com", GIT_COMMITTER_NAME: "Test", GIT_COMMITTER_EMAIL: "test@test.com", GIT_CONFIG_NOSYSTEM: "1", HOME: testDir};
+  await nanoSpawn("git", ["init", gitRepoDir], {env: {...process.env, ...gitEnv}});
+  await writeFile(join(gitRepoDir, "go.mod"), "module example.com/private/lib\n\ngo 1.24\n");
+  await nanoSpawn("git", ["-C", gitRepoDir, "add", "."], {env: {...process.env, ...gitEnv}});
+  await nanoSpawn("git", ["-C", gitRepoDir, "commit", "-m", "v1.0.0"], {env: {...process.env, ...gitEnv}});
+  await nanoSpawn("git", ["-C", gitRepoDir, "tag", "v1.0.0"], {env: {...process.env, ...gitEnv}});
+
+  await writeFile(join(gitRepoDir, "lib.go"), "package lib\n");
+  await nanoSpawn("git", ["-C", gitRepoDir, "add", "."], {env: {...process.env, ...gitEnv}});
+  await nanoSpawn("git", ["-C", gitRepoDir, "commit", "-m", "v1.1.0"], {env: {...process.env, ...gitEnv}});
+  await nanoSpawn("git", ["-C", gitRepoDir, "tag", "v1.1.0"], {env: {...process.env, ...gitEnv}});
+
+  await writeFile(join(gitRepoDir, "lib.go"), "package lib\n// v2\n");
+  await nanoSpawn("git", ["-C", gitRepoDir, "add", "."], {env: {...process.env, ...gitEnv}});
+  await nanoSpawn("git", ["-C", gitRepoDir, "commit", "-m", "v2.0.0"], {env: {...process.env, ...gitEnv}});
+  await nanoSpawn("git", ["-C", gitRepoDir, "tag", "v2.0.0"], {env: {...process.env, ...gitEnv}});
+
+  // Create go.mod referencing the "private" module
+  await writeFile(join(testGoModDir, "go.mod"), [
+    "module example.com/test",
+    "",
+    "go 1.24",
+    "",
+    "require example.com/private/lib v1.0.0",
+    "",
+  ].join("\n"));
+
+  // Run the tool with GONOPROXY set and git URL rewriting to the local repo
+  const {stdout} = await nanoSpawn(execPath, [
+    script,
+    "-j",
+    "-f", join(testGoModDir, "go.mod"),
+    "-c",
+    "--goproxy", goProxyUrl,
+  ], {
+    cwd: testGoModDir,
+    env: {
+      ...process.env,
+      GONOPROXY: "example.com/private",
+      GIT_CONFIG_COUNT: "1",
+      GIT_CONFIG_KEY_0: `url.file://${gitRepoDir}/.insteadOf`,
+      GIT_CONFIG_VALUE_0: "https://example.com/private/lib",
+    },
+  });
+
+  const {results} = JSON.parse(stdout);
+  expect(results.go.deps["example.com/private/lib"]).toBeDefined();
+  expect(results.go.deps["example.com/private/lib"].new).toBe("2.0.0");
+});
+
 test.concurrent("pin", async ({expect = globalExpect}: any = {}) => {
   const {stdout, stderr} = await nanoSpawn(process.execPath, [
     script,

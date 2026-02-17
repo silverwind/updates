@@ -3,7 +3,8 @@ import {cwd, stdout, stderr, env, exit, platform, versions} from "node:process";
 import {join, dirname, basename, resolve} from "node:path";
 import {pathToFileURL} from "node:url";
 import {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync, globSync, type Stats} from "node:fs";
-import {stripVTControlCharacters, styleText, parseArgs, type ParseArgsOptionsConfig} from "node:util";
+import {execFile as execFileCb} from "node:child_process";
+import {stripVTControlCharacters, styleText, parseArgs, promisify, type ParseArgsOptionsConfig} from "node:util";
 
 import pMap from "p-map";
 import pkg from "./package.json" with {type: "json"};
@@ -11,6 +12,8 @@ import {parse, coerce, diff, gt, gte, lt, neq, valid, validRange, satisfies} fro
 import {timerel} from "timerel";
 import {npmTypes, poetryTypes, uvTypes, goTypes, parseUvDependencies, nonPackageEngines} from "./utils/utils.ts";
 import {enableDnsCache} from "./utils/dns.ts";
+
+const execFile = promisify(execFileCb);
 
 export type Config = {
   /** Array of packages to include */
@@ -201,6 +204,8 @@ const pypiApiUrl = typeof args.pypiapi === "string" ? normalizeUrl(args.pypiapi)
 const jsrApiUrl = typeof args.jsrapi === "string" ? normalizeUrl(args.jsrapi) : "https://jsr.io";
 const goProxyUrl = typeof args.goproxy === "string" ? normalizeUrl(args.goproxy) : resolveGoProxy();
 const goNoProxy = parseGoNoProxy();
+const goFetchTimeout = 10000;
+const goProbeTimeout = 3000;
 
 function resolveGoProxy(): string {
   const proxyEnv = env.GOPROXY || "https://proxy.golang.org,direct";
@@ -550,23 +555,78 @@ function parseGoMod(content: string): Record<string, string> {
   return deps;
 }
 
+async function fetchGoVcsInfo(name: string, type: string, currentVersion: string): Promise<PackageInfo> {
+  const noUpdate: PackageInfo = [{old: currentVersion, new: currentVersion}, type, null, name];
+  const basePath = name.replace(/\/v\d+$/, "");
+  const currentMajor = extractGoMajor(name);
+
+  let tags: Array<string>;
+  try {
+    const {stdout} = await execFile("git", ["ls-remote", "--tags", `https://${basePath}`], {
+      timeout: goFetchTimeout,
+      env: {...env, GIT_TERMINAL_PROMPT: "0"},
+    });
+    tags = Array.from(new Set(
+      stdout.split("\n")
+        .filter(line => line.includes("refs/tags/"))
+        .map(line => line.replace(/.*refs\/tags\//, "").replace(/\^{}$/, "").trim())
+        .filter(tag => /^v\d+\.\d+\.\d+/.test(tag))
+        .filter(Boolean),
+    ));
+  } catch {
+    return noUpdate;
+  }
+
+  if (!tags.length) return noUpdate;
+
+  // Find latest same-major version and highest overall version
+  let latestVersion = currentVersion;
+  let highestVersion = currentVersion;
+  let highestPath = name;
+
+  for (const tag of tags) {
+    const tagVersion = stripv(tag);
+    if (!valid(tagVersion)) continue;
+
+    const tagMajor = parseInt(tagVersion.split(".")[0]);
+
+    // Same-major check (v0 and v1 share the same module path)
+    if ((tagMajor === currentMajor || (currentMajor <= 1 && tagMajor <= 1)) && gt(tagVersion, latestVersion)) {
+      latestVersion = tagVersion;
+    }
+
+    // Highest overall
+    if (gt(tagVersion, highestVersion)) {
+      highestVersion = tagVersion;
+      highestPath = tagMajor > 1 ? `${basePath}/v${tagMajor}` : basePath;
+    }
+  }
+
+  return [{
+    old: currentVersion,
+    new: highestVersion,
+    ...(highestPath !== name ? {newPath: highestPath} : {}),
+    sameMajorNew: latestVersion,
+  }, type, null, name];
+}
+
 async function fetchGoProxyInfo(name: string, type: string, currentVersion: string): Promise<PackageInfo> {
   const noUpdate: PackageInfo = [{old: currentVersion, new: currentVersion}, type, null, name];
 
-  if (isGoNoProxy(name)) return noUpdate;
+  if (isGoNoProxy(name)) return fetchGoVcsInfo(name, type, currentVersion);
 
   const encoded = encodeGoModulePath(name);
   const currentMajor = extractGoMajor(name);
   const probeGoMajor = async (major: number) => {
     const path = buildGoModulePath(name, major);
-    return doFetch(`${goProxyUrl}/${encodeGoModulePath(path)}/@latest`, {signal: AbortSignal.timeout(3000)})
+    return doFetch(`${goProxyUrl}/${encodeGoModulePath(path)}/@latest`, {signal: AbortSignal.timeout(goProbeTimeout)})
       .then(async (r) => r.ok ? {...await r.json() as {Version: string, Time: string}, path} : null)
       .catch(() => null);
   };
 
   // Fetch @latest and first major probe in parallel
   const [res, firstProbe] = await Promise.all([
-    doFetch(`${goProxyUrl}/${encoded}/@latest`, {signal: AbortSignal.timeout(10000)}),
+    doFetch(`${goProxyUrl}/${encoded}/@latest`, {signal: AbortSignal.timeout(goFetchTimeout)}),
     probeGoMajor(currentMajor + 1),
   ]);
   if (!res.ok) return noUpdate;
