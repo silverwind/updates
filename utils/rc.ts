@@ -2,7 +2,7 @@ import {readFileSync, statSync} from "node:fs";
 import {join, dirname} from "node:path";
 import {env, platform, cwd} from "node:process";
 
-function parseIni(content: string): Record<string, string> {
+export function parseIni(content: string): Record<string, string> {
   if (/^\s*\{/.test(content)) {
     return JSON.parse(content);
   }
@@ -12,7 +12,11 @@ function parseIni(content: string): Record<string, string> {
     if (!trimmed || trimmed.startsWith("#") || trimmed.startsWith(";")) continue;
     const eqIndex = trimmed.indexOf("=");
     if (eqIndex === -1) continue;
-    result[trimmed.slice(0, eqIndex).trim()] = trimmed.slice(eqIndex + 1).trim();
+    let value = trimmed.slice(eqIndex + 1).trim();
+    if (value.length >= 2 && ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'")))) {
+      value = value.slice(1, -1);
+    }
+    result[trimmed.slice(0, eqIndex).trim()] = value;
   }
   return result;
 }
@@ -40,7 +44,7 @@ function findUp(filename: string): string | undefined {
   return undefined;
 }
 
-function parseEnvVars(prefix: string): Record<string, any> {
+export function parseEnvVars(prefix: string): Record<string, any> {
   const result: Record<string, any> = {};
   const prefixLower = prefix.toLowerCase();
   for (const [key, value] of Object.entries(env)) {
