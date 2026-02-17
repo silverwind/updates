@@ -12,6 +12,7 @@ import {parse, coerce, diff, gt, gte, lt, neq, valid, validRange, satisfies} fro
 import {timerel} from "timerel";
 import {npmTypes, poetryTypes, uvTypes, goTypes, parseUvDependencies, nonPackageEngines} from "./utils/utils.ts";
 import {enableDnsCache} from "./utils/dns.ts";
+import rc from "./utils/rc.ts";
 
 const execFile = promisify(execFileCb);
 
@@ -291,9 +292,9 @@ let npmrc: Npmrc | null = null;
 
 const authCache = new Map<string, AuthAndRegistry>();
 
-async function getNpmrc() {
+function getNpmrc(): Npmrc {
   if (npmrc) return npmrc;
-  return (await import("rc")).default("npm", {registry: defaultRegistry});
+  return rc("npm", {registry: defaultRegistry}) as Npmrc;
 }
 
 function replaceEnvVar(token: string): string {
@@ -339,8 +340,8 @@ function getRegistryAuthToken(registryUrl: string, config: Npmrc): AuthAndRegist
   return undefined;
 }
 
-async function getAuthAndRegistry(name: string, registry: string): Promise<AuthAndRegistry> {
-  if (!npmrc) npmrc = await getNpmrc();
+function getAuthAndRegistry(name: string, registry: string): AuthAndRegistry {
+  if (!npmrc) npmrc = getNpmrc();
 
   const scope = name.startsWith("@") ? (/@[a-z0-9][\w-.]+/.exec(name) || [""])[0] : "";
   const cacheKey = `${scope}:${registry}`;
@@ -410,12 +411,12 @@ async function doFetch(url: string, opts?: RequestInit): Promise<Response> {
 type PackageInfo = [Record<string, any>, string, string | null, string];
 
 async function fetchNpmInfo(name: string, type: string, config: Config): Promise<PackageInfo> {
-  if (!npmrc) npmrc = await getNpmrc();
+  if (!npmrc) npmrc = getNpmrc();
   const originalRegistry = normalizeUrl((typeof args.registry === "string" ? args.registry : false) ||
     config.registry || npmrc.registry || defaultRegistry,
   );
 
-  const {auth, registry} = await getAuthAndRegistry(name, originalRegistry);
+  const {auth, registry} = getAuthAndRegistry(name, originalRegistry);
   const packageName = type === "resolutions" ? basename(name) : name;
   const url = `${registry}/${packageName.replace(/\//g, "%2f")}`;
 
