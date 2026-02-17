@@ -556,65 +556,80 @@ function parseGoMod(content: string): Record<string, string> {
   return deps;
 }
 
-async function fetchGoVcsInfo(name: string, type: string, currentVersion: string): Promise<PackageInfo> {
+async function fetchGoVcsInfo(name: string, type: string, currentVersion: string, goCwd: string): Promise<PackageInfo> {
   const noUpdate: PackageInfo = [{old: currentVersion, new: currentVersion}, type, null, name];
-  const basePath = name.replace(/\/v\d+$/, "");
   const currentMajor = extractGoMajor(name);
 
-  let tags: Array<string>;
-  try {
-    const {stdout} = await execFile("git", ["ls-remote", "--tags", `https://${basePath}`], {
-      timeout: fetchTimeout,
-      env: {...env, GIT_TERMINAL_PROMPT: "0"},
-    });
-    tags = Array.from(new Set(
-      stdout.split("\n")
-        .filter(line => line.includes("refs/tags/"))
-        .map(line => line.replace(/.*refs\/tags\//, "").replace(/\^{}$/, "").trim())
-        .filter(tag => /^v\d+\.\d+\.\d+/.test(tag))
-        .filter(Boolean),
-    ));
-  } catch {
-    return noUpdate;
-  }
+  const goListQuery = async (modulePath: string, timeout: number) => {
+    try {
+      const {stdout} = await execFile("go", ["list", "-m", "-json", `${modulePath}@latest`], {
+        timeout,
+        cwd: goCwd,
+        env: {...env, GIT_TERMINAL_PROMPT: "0"},
+      });
+      const data = JSON.parse(stdout) as {Version: string, Time?: string};
+      return {Version: data.Version, Time: data.Time || "", path: modulePath};
+    } catch {
+      return null;
+    }
+  };
 
-  if (!tags.length) return noUpdate;
+  // Fetch @latest and first major probe in parallel
+  const [latest, firstProbe] = await Promise.all([
+    goListQuery(name, fetchTimeout),
+    goListQuery(buildGoModulePath(name, currentMajor + 1), goProbeTimeout),
+  ]);
+  if (!latest) return noUpdate;
 
-  // Find latest same-major version and highest overall version
-  let latestVersion = currentVersion;
-  let highestVersion = currentVersion;
+  const latestVersion = latest.Version;
+  const latestTime = latest.Time;
+  let highestVersion = latestVersion;
+  let highestTime = latestTime;
   let highestPath = name;
 
-  for (const tag of tags) {
-    const tagVersion = stripv(tag);
-    if (!valid(tagVersion)) continue;
+  const applyProbe = (data: {Version: string, Time: string, path: string}) => {
+    highestVersion = data.Version;
+    highestTime = data.Time;
+    highestPath = data.path;
+  };
 
-    const tagMajor = parseInt(tagVersion.split(".")[0]);
-
-    // Same-major check (v0 and v1 share the same module path)
-    if ((tagMajor === currentMajor || (currentMajor <= 1 && tagMajor <= 1)) && gt(tagVersion, latestVersion)) {
-      latestVersion = tagVersion;
-    }
-
-    // Highest overall
-    if (gt(tagVersion, highestVersion)) {
-      highestVersion = tagVersion;
-      highestPath = tagMajor > 1 ? `${basePath}/v${tagMajor}` : basePath;
+  if (firstProbe) {
+    applyProbe(firstProbe);
+    const second = await goListQuery(buildGoModulePath(name, currentMajor + 2), goProbeTimeout);
+    if (second) {
+      applyProbe(second);
+      const probeBatchSize = 20;
+      for (let batchStart = currentMajor + 3; batchStart <= currentMajor + 100; batchStart += probeBatchSize) {
+        const batchEnd = Math.min(batchStart + probeBatchSize, currentMajor + 101);
+        const probes = Array.from({length: batchEnd - batchStart}, (_, i) =>
+          goListQuery(buildGoModulePath(name, batchStart + i), goProbeTimeout),
+        );
+        const results = await Promise.all(probes);
+        let foundInBatch = false;
+        for (const result of results) {
+          if (!result) break;
+          applyProbe(result);
+          foundInBatch = true;
+        }
+        if (!foundInBatch || results.some(r => !r)) break;
+      }
     }
   }
 
   return [{
     old: currentVersion,
-    new: highestVersion,
+    new: stripv(highestVersion),
+    Time: highestTime,
     ...(highestPath !== name ? {newPath: highestPath} : {}),
-    sameMajorNew: latestVersion,
+    sameMajorNew: stripv(latestVersion),
+    sameMajorTime: latestTime,
   }, type, null, name];
 }
 
-async function fetchGoProxyInfo(name: string, type: string, currentVersion: string): Promise<PackageInfo> {
+async function fetchGoProxyInfo(name: string, type: string, currentVersion: string, goCwd: string): Promise<PackageInfo> {
   const noUpdate: PackageInfo = [{old: currentVersion, new: currentVersion}, type, null, name];
 
-  if (isGoNoProxy(name)) return fetchGoVcsInfo(name, type, currentVersion);
+  if (isGoNoProxy(name)) return fetchGoVcsInfo(name, type, currentVersion, goCwd);
 
   const encoded = encodeGoModulePath(name);
   const currentMajor = extractGoMajor(name);
@@ -1648,7 +1663,7 @@ async function main(): Promise<void> {
         }
         return fetchNpmInfo(name, type, config);
       } else if (mode === "go") {
-        return fetchGoProxyInfo(name, type, deps[mode][key].oldOrig || deps[mode][key].old);
+        return fetchGoProxyInfo(name, type, deps[mode][key].oldOrig || deps[mode][key].old, projectDir);
       } else {
         return fetchPypiInfo(name, type);
       }
