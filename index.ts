@@ -204,8 +204,8 @@ const pypiApiUrl = typeof args.pypiapi === "string" ? normalizeUrl(args.pypiapi)
 const jsrApiUrl = typeof args.jsrapi === "string" ? normalizeUrl(args.jsrapi) : "https://jsr.io";
 const goProxyUrl = typeof args.goproxy === "string" ? normalizeUrl(args.goproxy) : resolveGoProxy();
 const goNoProxy = parseGoNoProxy();
-const goFetchTimeout = 10000;
-const goProbeTimeout = 3000;
+const fetchTimeout = 5000;
+const goProbeTimeout = 2500;
 
 function resolveGoProxy(): string {
   const proxyEnv = env.GOPROXY || "https://proxy.golang.org,direct";
@@ -419,7 +419,7 @@ async function fetchNpmInfo(name: string, type: string, config: Config): Promise
   const packageName = type === "resolutions" ? basename(name) : name;
   const url = `${registry}/${packageName.replace(/\//g, "%2f")}`;
 
-  const res = await doFetch(url, getFetchOpts(auth?.type, auth?.token));
+  const res = await doFetch(url, {signal: AbortSignal.timeout(fetchTimeout), ...getFetchOpts(auth?.type, auth?.token)});
   if (res?.ok) {
     return [await res.json(), type, registry, name];
   } else {
@@ -434,7 +434,7 @@ async function fetchNpmInfo(name: string, type: string, config: Config): Promise
 async function fetchPypiInfo(name: string, type: string): Promise<PackageInfo> {
   const url = `${pypiApiUrl}/pypi/${name}/json`;
 
-  const res = await doFetch(url, {headers: {"accept-encoding": "gzip, deflate, br"}});
+  const res = await doFetch(url, {signal: AbortSignal.timeout(fetchTimeout), headers: {"accept-encoding": "gzip, deflate, br"}});
   if (res?.ok) {
     return [await res.json(), type, null, name];
   } else {
@@ -487,7 +487,7 @@ async function fetchJsrInfo(packageName: string, type: string): Promise<PackageI
   const [, scope, name] = match;
   const url = `${jsrApiUrl}/@${scope}/${name}/meta.json`;
 
-  const res = await doFetch(url, {headers: {"accept-encoding": "gzip, deflate, br"}});
+  const res = await doFetch(url, {signal: AbortSignal.timeout(fetchTimeout), headers: {"accept-encoding": "gzip, deflate, br"}});
   if (res?.ok) {
     const data = await res.json();
     // Transform JSR format to match npm-like format for compatibility
@@ -563,7 +563,7 @@ async function fetchGoVcsInfo(name: string, type: string, currentVersion: string
   let tags: Array<string>;
   try {
     const {stdout} = await execFile("git", ["ls-remote", "--tags", `https://${basePath}`], {
-      timeout: goFetchTimeout,
+      timeout: fetchTimeout,
       env: {...env, GIT_TERMINAL_PROMPT: "0"},
     });
     tags = Array.from(new Set(
@@ -626,7 +626,7 @@ async function fetchGoProxyInfo(name: string, type: string, currentVersion: stri
 
   // Fetch @latest and first major probe in parallel
   const [res, firstProbe] = await Promise.all([
-    doFetch(`${goProxyUrl}/${encoded}/@latest`, {signal: AbortSignal.timeout(goFetchTimeout)}),
+    doFetch(`${goProxyUrl}/${encoded}/@latest`, {signal: AbortSignal.timeout(fetchTimeout)}),
     probeGoMajor(currentMajor + 1),
   ]);
   if (!res.ok) return noUpdate;
@@ -1195,7 +1195,7 @@ function findNewVersion(data: any, {mode, range, useGreatest, useRel, usePre, se
 }
 
 function fetchForge(url: string): Promise<Response> {
-  const opts: RequestInit = {headers: {"accept-encoding": "gzip, deflate, br"}};
+  const opts: RequestInit = {signal: AbortSignal.timeout(fetchTimeout), headers: {"accept-encoding": "gzip, deflate, br"}};
   const token =
     env.UPDATES_GITHUB_API_TOKEN ||
     env.GITHUB_API_TOKEN ||
