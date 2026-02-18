@@ -1167,6 +1167,8 @@ test.concurrent("go update", async ({expect = globalExpect}: any = {}) => {
   expect(matches).toBeTruthy();
   expect(matches?.length).toBe(4);
 
+  expect(updatedContent).not.toContain("replace");
+
   const updatedMain = await readFile(join(testGoModDir, "main.go"), "utf8");
   expect(updatedMain).not.toContain("go-github/v70");
   expect(updatedMain).toMatch(/go-github\/v\d+\/github/);

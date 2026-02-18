@@ -971,6 +971,17 @@ function updatePyprojectToml(pkgStr: string, deps: Deps): string {
   return newPkgStr;
 }
 
+function removeGoReplace(content: string, name: string): string {
+  const e = esc(name);
+  // Remove single-line: replace <name> [version] => <replacement> [version]
+  content = content.replace(new RegExp(`^replace\\s+${e}(\\s+v\\S+)?\\s+=>\\s+\\S+(\\s+v\\S+)?\\s*\\n`, "gm"), "");
+  // Remove entry from replace block
+  content = content.replace(new RegExp(`^\\s+${e}(\\s+v\\S+)?\\s+=>\\s+\\S+(\\s+v\\S+)?\\s*\\n`, "gm"), "");
+  // Remove empty replace blocks
+  content = content.replace(/^replace\s*\(\s*\)\s*\n/gm, "");
+  return content;
+}
+
 function updateGoMod(pkgStr: string, deps: Deps): [string, Record<string, string>] {
   let newPkgStr = pkgStr;
   const majorVersionRewrites: Record<string, string> = {};
@@ -988,6 +999,7 @@ function updateGoMod(pkgStr: string, deps: Deps): [string, Record<string, string
     } else {
       newPkgStr = newPkgStr.replace(new RegExp(`(${esc(name)}) +v${esc(oldValue)}`, "g"), `$1 v${newValue}`);
     }
+    newPkgStr = removeGoReplace(newPkgStr, name);
   }
   return [newPkgStr, majorVersionRewrites];
 }
