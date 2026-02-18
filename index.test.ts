@@ -24,6 +24,7 @@ const goUpdateModFile = fileURLToPath(new URL("fixtures/go-update/go.mod", impor
 const goUpdateMainFile = fileURLToPath(new URL("fixtures/go-update/main.go", import.meta.url));
 const goUpdateV2ModFile = fileURLToPath(new URL("fixtures/go-update-v2/go.mod", import.meta.url));
 const goUpdateV2MainFile = fileURLToPath(new URL("fixtures/go-update-v2/main.go", import.meta.url));
+const goPreFile = fileURLToPath(new URL("fixtures/go-prerelease/go.mod", import.meta.url));
 const dualFile = fileURLToPath(new URL("fixtures/dual", import.meta.url));
 const invalidConfigFile = fileURLToPath(new URL("fixtures/invalid-config/package.json", import.meta.url));
 
@@ -182,6 +183,7 @@ beforeAll(async () => {
     {path: "/github.com/example/testpkg/@latest", response: JSON.stringify({Version: "v1.0.0", Time: "2024-01-01T00:00:00Z"})},
     {path: "/github.com/example/testpkg/v2/@latest", response: JSON.stringify({Version: "v2.0.0", Time: "2025-01-01T00:00:00Z"})},
     {path: "/github.com/google/uuid/v2/@latest", response: JSON.stringify({Version: "v2.0.0-20260217135312-8c5a7de9ffa1", Time: "2026-02-17T13:53:12Z"})},
+    {path: "/github.com/example/prerelpkg/@latest", response: JSON.stringify({Version: "v1.1.0-rc.1", Time: "2025-06-01T00:00:00Z"})},
   ];
   for (let v = 71; v <= 82; v++) {
     goProxyRoutes.push({
@@ -1197,6 +1199,45 @@ test.concurrent("go update v1 to v2", async ({expect = globalExpect}: any = {}) 
   expect(updatedMain).toContain(`"github.com/example/testpkg/v2"`);
   expect(updatedMain).toContain(`"github.com/example/testpkg/v2/sub"`);
   expect(updatedMain).not.toMatch(/"github\.com\/example\/testpkg"(?!\/v2)/);
+});
+
+test.concurrent("go prerelease excluded by default", async ({expect = globalExpect}: any = {}) => {
+  // Without --prerelease, Go prerelease versions should not be offered
+  expect(await makeTest(`-j -f ${goPreFile}`)()).toMatchInlineSnapshot(`undefined`);
+});
+
+test.concurrent("go prerelease with -p flag", async ({expect = globalExpect}: any = {}) => {
+  // With global --prerelease, Go prerelease versions should be offered
+  expect(await makeTest(`-j -f ${goPreFile} -p`)()).toMatchInlineSnapshot(`
+    {
+      "go": {
+        "deps": {
+          "github.com/example/prerelpkg": {
+            "info": "https://github.com/example/prerelpkg",
+            "new": "1.1.0-rc.1",
+            "old": "1.0.0",
+          },
+        },
+      },
+    }
+  `);
+});
+
+test.concurrent("go prerelease with -p per-package", async ({expect = globalExpect}: any = {}) => {
+  // With per-package --prerelease, Go prerelease versions should be offered for that package
+  expect(await makeTest(`-j -f ${goPreFile} -p github.com/example/prerelpkg`)()).toMatchInlineSnapshot(`
+    {
+      "go": {
+        "deps": {
+          "github.com/example/prerelpkg": {
+            "info": "https://github.com/example/prerelpkg",
+            "new": "1.1.0-rc.1",
+            "old": "1.0.0",
+          },
+        },
+      },
+    }
+  `);
 });
 
 test.concurrent("pin", async ({expect = globalExpect}: any = {}) => {

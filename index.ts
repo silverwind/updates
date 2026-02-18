@@ -562,7 +562,7 @@ function parseGoMod(content: string): Record<string, string> {
 }
 
 async function fetchGoVcsInfo(name: string, type: string, currentVersion: string, goCwd: string): Promise<PackageInfo> {
-  const noUpdate: PackageInfo = [{old: currentVersion, new: currentVersion}, type, null, name];
+  const noUpdate: PackageInfo = [{name, old: currentVersion, new: currentVersion}, type, null, name];
   const currentMajor = extractGoMajor(name);
 
   const goListQuery = async (modulePath: string, timeout: number) => {
@@ -622,6 +622,7 @@ async function fetchGoVcsInfo(name: string, type: string, currentVersion: string
   }
 
   return [{
+    name,
     old: currentVersion,
     new: stripv(highestVersion),
     Time: highestTime,
@@ -632,7 +633,7 @@ async function fetchGoVcsInfo(name: string, type: string, currentVersion: string
 }
 
 async function fetchGoProxyInfo(name: string, type: string, currentVersion: string, goCwd: string): Promise<PackageInfo> {
-  const noUpdate: PackageInfo = [{old: currentVersion, new: currentVersion}, type, null, name];
+  const noUpdate: PackageInfo = [{name, old: currentVersion, new: currentVersion}, type, null, name];
 
   if (isGoNoProxy(name)) return fetchGoVcsInfo(name, type, currentVersion, goCwd);
 
@@ -697,6 +698,7 @@ async function fetchGoProxyInfo(name: string, type: string, currentVersion: stri
   }
 
   return [{
+    name,
     old: currentVersion,
     new: stripv(highestVersion),
     Time: highestTime,
@@ -1128,10 +1130,12 @@ function findNewVersion(data: any, {mode, range, useGreatest, useRel, usePre, se
   } else if (mode === "go") {
     const oldVersion = coerceToVersion(range);
     if (!oldVersion) return null;
+    const effectiveUsePre = usePre || isRangePrerelease(range);
+    const skipPrerelease = (v: string) => isVersionPrerelease(v) && (!effectiveUsePre || useRel);
 
     // Check cross-major upgrade
     const crossVersion = coerceToVersion(data.new);
-    if (crossVersion && !isGoPseudoVersion(data.new)) {
+    if (crossVersion && !isGoPseudoVersion(data.new) && !skipPrerelease(data.new)) {
       const d = diff(oldVersion, crossVersion);
       if (d && semvers.has(d)) {
         return data.new;
@@ -1140,7 +1144,7 @@ function findNewVersion(data: any, {mode, range, useGreatest, useRel, usePre, se
 
     // Fall back to same-major upgrade
     const sameVersion = coerceToVersion(data.sameMajorNew);
-    if (sameVersion && !isGoPseudoVersion(data.sameMajorNew)) {
+    if (sameVersion && !isGoPseudoVersion(data.sameMajorNew) && !skipPrerelease(data.sameMajorNew)) {
       const d = diff(oldVersion, sameVersion);
       if (d && semvers.has(d)) {
         data.Time = data.sameMajorTime;
