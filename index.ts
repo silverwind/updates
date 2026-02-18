@@ -1810,7 +1810,7 @@ async function main(): Promise<void> {
     }
   }
   if (numDependencies === 0) {
-    finishWithMessage("No dependencies found, nothing to do.");
+    return finishWithMessage("No dependencies found, nothing to do.");
   }
 
   let numEntries = 0;
@@ -1819,7 +1819,7 @@ async function main(): Promise<void> {
   }
 
   if (!numEntries) {
-    finishWithMessage("All dependencies are up to date.");
+    return finishWithMessage("All dependencies are up to date.");
   }
 
   const exitCode = outputDeps(deps);
