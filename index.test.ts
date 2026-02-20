@@ -10,7 +10,7 @@ import {gzip, constants} from "node:zlib";
 import {promisify} from "node:util";
 import type {Server} from "node:http";
 import {satisfies} from "./utils/semver.ts";
-import {npmTypes, poetryTypes, uvTypes, goTypes} from "./utils/utils.ts";
+import {npmTypes} from "./utils/utils.ts";
 
 const globalExpect = expect;
 const gzipPromise = (data: string | Buffer) => promisify(gzip)(data, {level: constants.Z_BEST_SPEED});
@@ -27,6 +27,7 @@ const goUpdateV2MainFile = fileURLToPath(new URL("fixtures/go-update-v2/main.go"
 const goPreFile = fileURLToPath(new URL("fixtures/go-prerelease/go.mod", import.meta.url));
 const dualFile = fileURLToPath(new URL("fixtures/dual", import.meta.url));
 const invalidConfigFile = fileURLToPath(new URL("fixtures/invalid-config/package.json", import.meta.url));
+const actionsDir = fileURLToPath(new URL("fixtures/actions/.github/workflows", import.meta.url));
 
 const testPkg = JSON.parse(readFileSync(testFile, "utf8"));
 const testDir = mkdtempSync(join(tmpdir(), "updates-"));
@@ -42,7 +43,7 @@ function makeServer(defaultHandler: RouteHandler) {
   const routes = new Map<string, RouteHandler>();
 
   const server = createServer(async (req, res) => {
-    const url = req.url || "/";
+    const url = (req.url || "/").split("?")[0];
     const handler = routes.get(url) || defaultHandler;
 
     (res as any).send = (data: Buffer) => {
@@ -168,7 +169,7 @@ beforeAll(async () => {
     ...pypiFiles.map(async ({pkgName, data}) => ({type: "pypi" as const, key: `/pypi/${pkgName}/json`, gz: await gzipPromise(data)})),
     ...jsrFiles.map(async ({scope, name, data}) => ({type: "jsr" as const, key: `/@${scope}/${name}/meta.json`, gz: await gzipPromise(data)})),
     (async () => ({type: "github" as const, key: "/repos/silverwind/updates/commits", gz: await gzipPromise(commits)}))(),
-    (async () => ({type: "github" as const, key: "/repos/silverwind/updates/git/refs/tags", gz: await gzipPromise(tags)}))(),
+    (async () => ({type: "github" as const, key: "/repos/silverwind/updates/tags", gz: await gzipPromise(tags)}))(),
   ]);
 
   for (const {type, key, gz} of gzipAll) {
@@ -196,6 +197,19 @@ beforeAll(async () => {
   );
   for (const {path, gz} of goProxyGzips) {
     goProxyServer.get(path, (_, res) => res.send(gz));
+  }
+
+  // Actions fixtures for github server
+  const actionsRoutes: Array<[string, string]> = [
+    ["/repos/actions/checkout/tags", "fixtures/github/actions-checkout-tags.json"],
+    ["/repos/actions/setup-node/tags", "fixtures/github/actions-setup-node-tags.json"],
+    ["/repos/actions/checkout/git/commits/cccc000000000000000000000000000000000011", "fixtures/github/actions-checkout-commit-v10.0.1.json"],
+    ["/repos/actions/setup-node/git/commits/bbbb000000000000000000000000000000000010", "fixtures/github/actions-setup-node-commit-v10.json"],
+  ];
+  for (const [route, fixture] of actionsRoutes) {
+    const data = await readFile(fileURLToPath(new URL(fixture, import.meta.url)), "utf8");
+    const gz = await gzipPromise(data);
+    githubServer.get(route, (_, res) => res.send(gz));
   }
 
   await Promise.all([
@@ -249,8 +263,8 @@ function makeTest(args: string) {
 
     // Parse results, with custom validation for the dynamic "age" property
     for (const mode of Object.keys(results || {})) {
-      for (const type of [...npmTypes, ...poetryTypes, ...uvTypes, ...goTypes]) {
-        for (const name of Object.keys(results?.[mode]?.[type] || {})) {
+      for (const type of Object.keys(results[mode] || {})) {
+        for (const name of Object.keys(results[mode][type] || {})) {
           delete results[mode][type][name].age;
         }
       }
@@ -1264,4 +1278,122 @@ test.concurrent("pin", async ({expect = globalExpect}: any = {}) => {
   expect(results.npm.dependencies.react).toBeDefined();
   const reactNew = results.npm.dependencies.react.new;
   expect(satisfies(reactNew, "^18.0.0")).toBe(true);
+});
+
+function actionsArgs(...extra: Array<string>) {
+  return [script, "-c", "--forgeapi", githubUrl, "-M", "actions", "-f", actionsDir, ...extra];
+}
+
+function getActionsDeps(results: any) {
+  const ciType = Object.keys(results.actions).find(t => t.endsWith("ci.yaml"));
+  return results.actions[ciType!];
+}
+
+test.concurrent("actions basic", async ({expect = globalExpect}: any = {}) => {
+  const {stdout, stderr} = await nanoSpawn(process.execPath, actionsArgs("-j"));
+  expect(stderr).toEqual("");
+  const output = JSON.parse(stdout);
+  expect(output.results.actions).toBeDefined();
+  const actionsDeps = getActionsDeps(output.results);
+
+  // actions/checkout v2 -> v10 (major format preserved)
+  expect(actionsDeps["actions/checkout"].old).toBe("v2");
+  expect(actionsDeps["actions/checkout"].new).toBe("v10");
+  expect(actionsDeps["actions/checkout"].info).toContain("actions/checkout");
+
+  // actions/setup-node v1.0 -> v10.0 (minor format preserved)
+  expect(actionsDeps["actions/setup-node"].old).toBe("v1.0");
+  expect(actionsDeps["actions/setup-node"].new).toBe("v10.0");
+
+  // Docker, local, and hash-pinned without tags should be skipped
+  expect(actionsDeps["tj-actions/changed-files"]).toBeUndefined();
+});
+
+test.concurrent("actions include filter", async ({expect = globalExpect}: any = {}) => {
+  const {stdout, stderr} = await nanoSpawn(process.execPath, actionsArgs("-j", "-i", "actions/checkout"));
+  expect(stderr).toEqual("");
+  const actionsDeps = getActionsDeps(JSON.parse(stdout).results);
+  expect(actionsDeps["actions/checkout"]).toBeDefined();
+  expect(actionsDeps["actions/setup-node"]).toBeUndefined();
+});
+
+test.concurrent("actions exclude filter", async ({expect = globalExpect}: any = {}) => {
+  const {stdout, stderr} = await nanoSpawn(process.execPath, actionsArgs("-j", "-e", "actions/checkout"));
+  expect(stderr).toEqual("");
+  const actionsDeps = getActionsDeps(JSON.parse(stdout).results);
+  expect(actionsDeps["actions/checkout"]).toBeUndefined();
+  expect(actionsDeps["actions/setup-node"]).toBeDefined();
+});
+
+test.concurrent("actions text output", async ({expect = globalExpect}: any = {}) => {
+  const {stdout, stderr} = await nanoSpawn(process.execPath, actionsArgs());
+  expect(stderr).toEqual("");
+  expect(stdout).toContain("actions/checkout");
+  expect(stdout).toContain("actions/setup-node");
+});
+
+test.concurrent("actions update", async ({expect = globalExpect}: any = {}) => {
+  const tmpActionsDir = join(testDir, "actions-update-test/.github/workflows");
+  mkdirSync(tmpActionsDir, {recursive: true});
+  const wfPath = join(tmpActionsDir, "ci.yaml");
+  await writeFile(wfPath, "name: ci\non: push\njobs:\n  ci:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v2\n");
+
+  const {stderr} = await nanoSpawn(process.execPath, [
+    script, "-u", "-c", "--forgeapi", githubUrl, "-M", "actions",
+    "-f", join(testDir, "actions-update-test/.github/workflows"),
+  ]);
+  expect(stderr).toEqual("");
+
+  const updatedContent = await readFile(wfPath, "utf8");
+  expect(updatedContent).toContain("actions/checkout@v10");
+  expect(updatedContent).not.toContain("actions/checkout@v2");
+});
+
+test.concurrent("actions no false upgrade on same major", async ({expect = globalExpect}: any = {}) => {
+  const {stdout, stderr} = await nanoSpawn(process.execPath, actionsArgs("-j", "-i", "actions/checkout"));
+  expect(stderr).toEqual("");
+  const actionsDeps = getActionsDeps(JSON.parse(stdout).results);
+  // actions/checkout@v10 should not show as an update even though v10.0.1 patch exists
+  // because formatted version (v10) equals the old ref (v10)
+  expect(actionsDeps["actions/checkout"].old).toBe("v2");
+  expect(actionsDeps["actions/checkout"].new).toBe("v10");
+  // The v10 entry should not appear as a separate dep
+  const allKeys = Object.keys(actionsDeps);
+  const v10Entries = allKeys.filter(k => actionsDeps[k].old === "v10");
+  expect(v10Entries).toHaveLength(0);
+});
+
+test.concurrent("actions hash-pinned", async ({expect = globalExpect}: any = {}) => {
+  const tmpActionsDir = join(testDir, "actions-hash-test/.github/workflows");
+  mkdirSync(tmpActionsDir, {recursive: true});
+  const wfPath = join(tmpActionsDir, "ci.yaml");
+  await writeFile(wfPath, "name: ci\non: push\njobs:\n  ci:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@cccc000000000000000000000000000000000006 # v4.2.0\n");
+
+  const {stdout, stderr} = await nanoSpawn(process.execPath, [
+    script, "-j", "-c", "--forgeapi", githubUrl, "-M", "actions",
+    "-f", join(testDir, "actions-hash-test/.github/workflows"),
+  ]);
+  expect(stderr).toEqual("");
+  const output = JSON.parse(stdout);
+  const ciKey = Object.keys(output.results.actions).find(t => t.endsWith("ci.yaml"));
+  const actionsDeps = output.results.actions[ciKey!];
+  expect(actionsDeps["actions/checkout"].old).toBe("v4.2.0");
+  expect(actionsDeps["actions/checkout"].new).toBe("v10.0.1");
+});
+
+test.concurrent("actions hash-pinned update", async ({expect = globalExpect}: any = {}) => {
+  const tmpActionsDir = join(testDir, "actions-hash-update/.github/workflows");
+  mkdirSync(tmpActionsDir, {recursive: true});
+  const wfPath = join(tmpActionsDir, "ci.yaml");
+  await writeFile(wfPath, "name: ci\non: push\njobs:\n  ci:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@cccc000000000000000000000000000000000006 # v4.2.0\n");
+
+  const {stderr} = await nanoSpawn(process.execPath, [
+    script, "-u", "-c", "--forgeapi", githubUrl, "-M", "actions",
+    "-f", join(testDir, "actions-hash-update/.github/workflows"),
+  ]);
+  expect(stderr).toEqual("");
+
+  const updatedContent = await readFile(wfPath, "utf8");
+  expect(updatedContent).toContain("actions/checkout@cccc000000000000000000000000000000000011");
+  expect(updatedContent).not.toContain("cccc000000000000000000000000000000000006");
 });

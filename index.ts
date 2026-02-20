@@ -2,7 +2,7 @@
 import {cwd, stdout, stderr, env, exit, platform, versions} from "node:process";
 import {join, dirname, basename, resolve} from "node:path";
 import {pathToFileURL} from "node:url";
-import {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync, globSync, type Stats} from "node:fs";
+import {lstatSync, readFileSync, readdirSync, truncateSync, writeFileSync, accessSync, globSync, type Stats} from "node:fs";
 import {execFile as execFileCb} from "node:child_process";
 import {stripVTControlCharacters, styleText, parseArgs, promisify, type ParseArgsOptionsConfig} from "node:util";
 
@@ -95,6 +95,7 @@ const partsRe = /^([^/]+)\/([^/#]+)?.*?\/([0-9a-f]+|v?[0-9]+\.[0-9]+\.[0-9]+)$/i
 const hashRe = /^[0-9a-f]{7,}$/i;
 const npmVersionRe = /[0-9]+(\.[0-9]+)?(\.[0-9]+)?/g;
 const npmVersionRePre = /[0-9]+\.[0-9]+\.[0-9]+(-.+)?/g;
+const actionsUsesRe = /^\s*-?\s*uses:\s*['"]?([^'"#\s]+)['"]?/gm;
 const esc = (str: string) => str.replace(/[|\\{}()[\]^$+*?.-]/g, "\\$&");
 const normalizeUrl = (url: string) => url.endsWith("/") ? url.substring(0, url.length - 1) : url;
 const packageVersion = pkg.version;
@@ -199,7 +200,7 @@ const release = argSetToRegexes(parseMixedArg(args.release));
 const patch = argSetToRegexes(parseMixedArg(args.patch));
 const minor = argSetToRegexes(parseMixedArg(args.minor));
 const allowDowngrade = argSetToRegexes(parseMixedArg(args["allow-downgrade"]));
-const enabledModes = parseMixedArg(args.modes) as Set<string> || new Set(["npm", "pypi", "go"]);
+const enabledModes = parseMixedArg(args.modes) as Set<string> || new Set(["npm", "pypi", "go", "actions"]);
 const forgeApiUrl = typeof args.forgeapi === "string" ? normalizeUrl(args.forgeapi) : "https://api.github.com";
 const pypiApiUrl = typeof args.pypiapi === "string" ? normalizeUrl(args.pypiapi) : "https://pypi.org";
 const jsrApiUrl = typeof args.jsrapi === "string" ? normalizeUrl(args.jsrapi) : "https://jsr.io";
@@ -1231,15 +1232,28 @@ function findNewVersion(data: any, {mode, range, useGreatest, useRel, usePre, se
   }
 }
 
+const forgeTokensByHost = new Map<string, string>();
+if (env.UPDATES_FORGE_TOKENS) {
+  for (const entry of env.UPDATES_FORGE_TOKENS.split(",")) {
+    const sep = entry.indexOf(":");
+    if (sep > 0) {
+      forgeTokensByHost.set(entry.substring(0, sep), entry.substring(sep + 1));
+    }
+  }
+}
+
+function getForgeToken(url: string): string | undefined {
+  try {
+    const hostToken = forgeTokensByHost.get(new URL(url).hostname);
+    if (hostToken) return hostToken;
+  } catch {}
+  return env.UPDATES_GITHUB_API_TOKEN || env.GITHUB_API_TOKEN ||
+    env.GH_TOKEN || env.GITHUB_TOKEN || env.HOMEBREW_GITHUB_API_TOKEN;
+}
+
 function fetchForge(url: string): Promise<Response> {
   const opts: RequestInit = {signal: AbortSignal.timeout(fetchTimeout), headers: {"accept-encoding": "gzip, deflate, br"}};
-  const token =
-    env.UPDATES_GITHUB_API_TOKEN ||
-    env.GITHUB_API_TOKEN ||
-    env.GH_TOKEN ||
-    env.GITHUB_TOKEN ||
-    env.HOMEBREW_GITHUB_API_TOKEN;
-
+  const token = getForgeToken(url);
   if (token) {
     opts.headers = {...opts.headers, Authorization: `Bearer ${token}`};
   }
@@ -1257,16 +1271,6 @@ async function getLastestCommit(user: string, repo: string): Promise<CommitInfo>
   const data = await res.json();
   const {sha: hash, commit} = data[0];
   return {hash, commit};
-}
-
-// return list of tags sorted old to new
-// TODO: newDate support, semver matching
-async function getTags(user: string, repo: string): Promise<Array<string>> {
-  const res = await fetchForge(`${forgeApiUrl}/repos/${user}/${repo}/git/refs/tags`);
-  if (!res?.ok) return [];
-  const data = await res.json();
-  const tags = data.map((entry: {ref: string}) => entry.ref.replace(/^refs\/tags\//, ""));
-  return tags;
 }
 
 function selectTag(tags: Array<string>, oldRef: string, useGreatest: boolean): string | null {
@@ -1300,6 +1304,110 @@ function selectTag(tags: Array<string>, oldRef: string, useGreatest: boolean): s
   }
 
   return null;
+}
+
+type ActionRef = {
+  host: string | null,
+  owner: string,
+  repo: string,
+  ref: string,
+  name: string,
+  isHash: boolean,
+};
+
+function parseActionRef(uses: string): ActionRef | null {
+  if (uses.startsWith("docker://") || uses.startsWith("./")) return null;
+  const urlMatch = /^https?:\/\/([^/]+)\/(.+)$/.exec(uses);
+  const host = urlMatch?.[1] ?? null;
+  const rest = urlMatch?.[2] ?? uses;
+  const atIndex = rest.indexOf("@");
+  if (atIndex === -1) return null;
+  const pathPart = rest.substring(0, atIndex);
+  const ref = rest.substring(atIndex + 1);
+  if (!ref) return null;
+  const segments = pathPart.split("/");
+  if (segments.length < 2) return null;
+  const name = host ? `${host}/${pathPart}` : pathPart;
+  return {host, owner: segments[0], repo: segments[1], ref, name, isHash: hashRe.test(ref)};
+}
+
+function getForgeApiBaseUrl(host: string | null): string {
+  if (!host) return forgeApiUrl;
+  if (host === "github.com") return "https://api.github.com";
+  return `https://${host}/api/v1`;
+}
+
+type TagEntry = {
+  name: string,
+  commitSha: string,
+};
+
+function parseTags(data: Array<any>): Array<TagEntry> {
+  return data.map((tag: any) => ({name: tag.name, commitSha: tag.commit?.sha || ""}));
+}
+
+async function fetchActionTags(apiUrl: string, owner: string, repo: string): Promise<Array<TagEntry>> {
+  const res = await fetchForge(`${apiUrl}/repos/${owner}/${repo}/tags?per_page=100`);
+  if (!res?.ok) return [];
+  const results = parseTags(await res.json());
+  const link = res.headers.get("link") || "";
+  const last = /<([^>]+)>;\s*rel="last"/.exec(link);
+  if (last) {
+    const lastPage = Number(new URL(last[1]).searchParams.get("page"));
+    const pages = await Promise.all(
+      Array.from({length: lastPage - 1}, (_, i) => fetchForge(`${apiUrl}/repos/${owner}/${repo}/tags?per_page=100&page=${i + 2}`)),
+    );
+    for (const pageRes of pages) {
+      if (pageRes?.ok) results.push(...parseTags(await pageRes.json()));
+    }
+  }
+  return results;
+}
+
+async function getTags(user: string, repo: string): Promise<Array<string>> {
+  const entries = await fetchActionTags(forgeApiUrl, user, repo);
+  return entries.map(e => e.name);
+}
+
+async function fetchActionTagDate(apiUrl: string, owner: string, repo: string, commitSha: string): Promise<string> {
+  const res = await fetchForge(`${apiUrl}/repos/${owner}/${repo}/git/commits/${commitSha}`);
+  if (!res?.ok) return "";
+  const data = await res.json();
+  return data?.committer?.date || data?.author?.date || "";
+}
+
+function formatActionVersion(newFullVersion: string, oldRef: string): string {
+  const hadV = oldRef.startsWith("v");
+  const newParsed = parse(stripv(newFullVersion));
+  const parts = stripv(oldRef).split(".").length;
+  let bare: string;
+  if (!newParsed) bare = stripv(newFullVersion);
+  else if (parts === 1) bare = String(newParsed.major);
+  else if (parts === 2) bare = `${newParsed.major}.${newParsed.minor}`;
+  else bare = newParsed.version;
+  return hadV ? `v${bare}` : bare;
+}
+
+function updateWorkflowFile(content: string, actionDeps: Array<{name: string, oldRef: string, newRef: string}>): string {
+  let newContent = content;
+  for (const {name, oldRef, newRef} of actionDeps) {
+    const re = new RegExp(`(uses:\\s*['"]?)${esc(name)}@${esc(oldRef)}`, "g");
+    newContent = newContent.replace(re, `$1${name}@${newRef}`);
+  }
+  return newContent;
+}
+
+function isWorkflowFile(file: string): boolean {
+  const normalized = file.replace(/\\/g, "/");
+  return /\.github\/workflows\/[^/]+\.(ya?ml)$/.test(normalized);
+}
+
+function resolveWorkflowFiles(dir: string): Array<string> {
+  try {
+    return readdirSync(dir).filter(f => /\.(ya?ml)$/.test(f)).map(f => resolve(join(dir, f)));
+  } catch {
+    return [];
+  }
 }
 
 type CheckResult = {
@@ -1387,6 +1495,35 @@ function matchersToRegexSet(cliArgs: Array<string>, configArgs: Array<string | R
   return ret as Set<RegExp>;
 }
 
+function parseArgList(arg: Arg): Array<string> {
+  if (Array.isArray(arg)) {
+    return arg.filter(v => typeof v === "string").flatMap(item => commaSeparatedToArray(item));
+  }
+  return [];
+}
+
+function getSemvers(name: string): Set<string> {
+  if (patch === true || matchesAny(name, patch)) {
+    return new Set<string>(["patch"]);
+  } else if (minor === true || matchesAny(name, minor)) {
+    return new Set<string>(["patch", "minor"]);
+  }
+  return new Set<string>(["patch", "minor", "major"]);
+}
+
+function getVersionOpts(name: string) {
+  return {
+    useGreatest: typeof greatest === "boolean" ? greatest : matchesAny(name, greatest),
+    usePre: typeof prerelease === "boolean" ? prerelease : matchesAny(name, prerelease),
+    useRel: typeof release === "boolean" ? release : matchesAny(name, release),
+    semvers: getSemvers(name),
+  };
+}
+
+function toRelPath(absPath: string): string {
+  return absPath.replace(`${cwd()}/`, "").replace(`${cwd()}\\`, "");
+}
+
 function canInclude(name: string, mode: string, include: Set<RegExp>, exclude: Set<RegExp>, depType: string): boolean {
   if (depType === "engines" && nonPackageEngines.includes(name)) return false;
   if (mode === "pypi" && name === "python") return false;
@@ -1435,6 +1572,15 @@ function resolveFiles(filesArg: Set<string>): [Set<string>, Set<string>] {
             resolvedFiles.add(resolve(f));
           }
         }
+        const normalized = resolve(file).replace(/\\/g, "/");
+        let wfDir: string | undefined;
+        if (normalized.endsWith(".github/workflows")) wfDir = normalized;
+        else if (normalized.endsWith(".github")) wfDir = join(normalized, "workflows");
+        else wfDir = join(normalized, ".github", "workflows");
+        for (const wf of resolveWorkflowFiles(wfDir)) {
+          resolvedFiles.add(wf);
+          explicitFiles.add(wf);
+        }
       } else {
         throw new Error(`${file} is neither a file nor directory`);
       }
@@ -1443,6 +1589,12 @@ function resolveFiles(filesArg: Set<string>): [Set<string>, Set<string>] {
     for (const filename of Object.keys(modeByFileName)) {
       const file = findUpSync(filename, cwd());
       if (file) resolvedFiles.add(resolve(file));
+    }
+    const workflowDir = findUpSync(join(".github", "workflows"), cwd());
+    if (workflowDir) {
+      for (const wf of resolveWorkflowFiles(workflowDir)) {
+        resolvedFiles.add(wf);
+      }
     }
   }
   return [resolvedFiles, explicitFiles];
@@ -1496,7 +1648,7 @@ async function main(): Promise<void> {
 
   const maxSockets = 96;
   const concurrency = typeof args.sockets === "number" ? args.sockets : maxSockets;
-  const {help, version, file: filesArg, types, update} = args;
+  const {help, version, file: filesArg, types, update, include: includeArg, exclude: excludeArg, pin: pinArg, cooldown: cooldownArg} = args;
 
   if (help) {
     stdout.write(`usage: updates [options]
@@ -1519,7 +1671,7 @@ async function main(): Promise<void> {
     -U, --error-on-unchanged           Exit with code 0 when updates are available and 2 when not
     -r, --registry <url>               Override npm registry URL
     -S, --sockets <num>                Maximum number of parallel HTTP sockets opened. Default: ${maxSockets}
-    -M, --modes <mode,...>             Which modes to enable. Either npm,pypi,go. Default: npm,pypi,go
+    -M, --modes <mode,...>             Which modes to enable. Either npm,pypi,go,actions. Default: npm,pypi,go,actions
     -j, --json                         Output a JSON object
     -n, --no-color                     Disable color output
     -v, --version                      Print the version
@@ -1536,6 +1688,7 @@ async function main(): Promise<void> {
     $ updates -f pyproject.toml
     $ updates -f go.mod
     $ updates -l typescript=^5.0.0
+    $ updates -f .github/workflows
 `);
     await end();
   }
@@ -1554,7 +1707,41 @@ async function main(): Promise<void> {
 
   const [files, explicitFiles] = resolveFiles(parseMixedArg(filesArg) as Set<string>);
 
+  const wfData: Record<string, {absPath: string, content: string}> = {};
+  const cliInclude = parseArgList(includeArg);
+  const cliExclude = parseArgList(excludeArg);
+  const cliPin = parsePinArg(pinArg);
+
+  type ActionDepInfo = ActionRef & {key: string, apiUrl: string};
+  const actionDepInfos: Array<ActionDepInfo> = [];
+
   for (const file of files) {
+    if (isWorkflowFile(file)) {
+      if (!enabledModes.has("actions") && !explicitFiles.has(file)) continue;
+      if (!deps.actions) deps.actions = {};
+
+      let content: string;
+      try {
+        content = readFileSync(file, "utf8");
+      } catch (err) {
+        throw new Error(`Unable to open ${file}: ${(err as Error).message}`);
+      }
+      const relPath = toRelPath(file);
+      wfData[relPath] = {absPath: file, content};
+
+      const include = matchersToRegexSet(cliInclude, []);
+      const exclude = matchersToRegexSet(cliExclude, []);
+      const actions = Array.from(content.matchAll(actionsUsesRe), m => parseActionRef(m[1])).filter(a => a !== null);
+      for (const action of actions) {
+        if (!canInclude(action.name, "actions", include, exclude, "actions")) continue;
+        const key = `${relPath}${fieldSep}${action.name}`;
+        if (deps.actions[key]) continue;
+        deps.actions[key] = {old: action.ref} as Dep;
+        actionDepInfos.push({...action, key, apiUrl: getForgeApiBaseUrl(action.host)});
+      }
+      continue;
+    }
+
     const filename = basename(file);
     const mode = modeByFileName[filename];
     if (!enabledModes.has(mode) && !explicitFiles.has(file)) continue;
@@ -1564,20 +1751,9 @@ async function main(): Promise<void> {
     const projectDir = dirname(resolve(file));
     const config = await loadConfig(projectDir);
 
-    let includeCli: Array<string> = [];
-    let excludeCli: Array<string> = [];
-    if (Array.isArray(args.include)) {
-      includeCli = args.include.filter(v => typeof v === "string").flatMap(item => commaSeparatedToArray(item));
-    }
-    if (Array.isArray(args.exclude)) {
-      excludeCli = args.exclude.filter(v => typeof v === "string").flatMap(item => commaSeparatedToArray(item));
-    }
-    const include = matchersToRegexSet(includeCli, config?.include ?? []);
-    const exclude = matchersToRegexSet(excludeCli, config?.exclude ?? []);
-
-    // Merge pin options from CLI and config
-    const pinCli = parsePinArg(args.pin);
-    const pin: Record<string, string> = {...config?.pin, ...pinCli};
+    const include = matchersToRegexSet(cliInclude, config?.include ?? []);
+    const exclude = matchersToRegexSet(cliExclude, config?.exclude ?? []);
+    const pin: Record<string, string> = {...config?.pin, ...cliPin};
 
     let dependencyTypes: Array<string> = [];
     if (Array.isArray(types)) {
@@ -1693,18 +1869,7 @@ async function main(): Promise<void> {
     for (const [data, type, registry, name] of entries) {
       if (data?.error) throw new Error(data.error);
 
-      const useGreatest = typeof greatest === "boolean" ? greatest : matchesAny(data.name, greatest);
-      const usePre = typeof prerelease === "boolean" ? prerelease : matchesAny(data.name, prerelease);
-      const useRel = typeof release === "boolean" ? release : matchesAny(data.name, release);
-
-      let semvers: Set<string>;
-      if (patch === true || matchesAny(data.name, patch)) {
-        semvers = new Set<string>(["patch"]);
-      } else if (minor === true || matchesAny(data.name, minor)) {
-        semvers = new Set<string>(["patch", "minor"]);
-      } else {
-        semvers = new Set<string>(["patch", "minor", "major"]);
-      }
+      const {useGreatest, usePre, useRel, semvers} = getVersionOpts(data.name);
 
       const key = `${type}${fieldSep}${name}`;
       const oldRange = deps[mode][key].old;
@@ -1797,18 +1962,129 @@ async function main(): Promise<void> {
       }
     }
 
-    const cooldown = args.cooldown ?? config.cooldown;
+    const cooldown = cooldownArg ?? config.cooldown;
     if (cooldown) {
-      for (const mode of Object.keys(deps)) {
-        for (const [key, {date}] of Object.entries(deps[mode])) {
+      for (const m of Object.keys(deps)) {
+        for (const [key, {date}] of Object.entries(deps[m])) {
           if (!canIncludeByDate(date, Number(cooldown), now)) {
-            delete deps[mode][key];
-            continue;
+            delete deps[m][key];
           }
         }
       }
     }
   }
+
+  // Actions version resolution (after all workflow files collected)
+  if (deps.actions) {
+    numDependencies += Object.keys(deps.actions).length;
+  }
+
+  if (actionDepInfos.length) {
+    const depsByRepo = new Map<string, {apiUrl: string, owner: string, repo: string, infos: Array<ActionDepInfo>}>();
+    for (const info of actionDepInfos) {
+      const repoKey = `${info.apiUrl}/${info.owner}/${info.repo}`;
+      if (!depsByRepo.has(repoKey)) {
+        depsByRepo.set(repoKey, {apiUrl: info.apiUrl, owner: info.owner, repo: info.repo, infos: []});
+      }
+      depsByRepo.get(repoKey)!.infos.push(info);
+    }
+
+    await pMap(depsByRepo.values(), async ({apiUrl, owner, repo, infos}) => {
+      const tags = await fetchActionTags(apiUrl, owner, repo);
+      const tagNames = tags.map(t => t.name);
+      const versions = tagNames.map(t => stripv(t)).filter(v => valid(v));
+
+      const commitShaToTag = new Map<string, string>();
+      for (const tag of tags) {
+        if (tag.commitSha) commitShaToTag.set(tag.commitSha, tag.name);
+      }
+
+      const dateCache = new Map<string, string>();
+      async function getDate(commitSha: string): Promise<string> {
+        if (dateCache.has(commitSha)) return dateCache.get(commitSha)!;
+        const date = await fetchActionTagDate(apiUrl, owner, repo, commitSha);
+        dateCache.set(commitSha, date);
+        return date;
+      }
+
+      for (const info of infos) {
+        const dep = deps.actions[info.key];
+        const infoUrl = `https://${info.host || "github.com"}/${owner}/${repo}`;
+
+        if (info.isHash) {
+          const {usePre, useRel} = getVersionOpts(info.name);
+          const newVersion = findVersion({}, versions, {
+            range: "0.0.0", semvers: new Set(["patch", "minor", "major"]), usePre, useRel,
+            useGreatest: true, pinnedRange: cliPin[info.name],
+          });
+          if (!newVersion) { delete deps.actions[info.key]; continue; }
+
+          const newTag = tagNames.find(t => stripv(t) === newVersion);
+          if (!newTag) { delete deps.actions[info.key]; continue; }
+
+          const newEntry = tags.find(t => t.name === newTag);
+          const newCommitSha = newEntry?.commitSha;
+          if (!newCommitSha || newCommitSha === info.ref || newCommitSha.startsWith(info.ref) || info.ref.startsWith(newCommitSha)) {
+            delete deps.actions[info.key]; continue;
+          }
+
+          const oldTagName = commitShaToTag.get(info.ref) || Array.from(commitShaToTag.entries()).find(([sha]) => sha.startsWith(info.ref))?.[1];
+          dep.old = info.ref;
+          dep.new = newCommitSha.substring(0, info.ref.length);
+          dep.oldPrint = oldTagName || info.ref.substring(0, 7);
+          dep.newPrint = newTag;
+          dep.info = infoUrl;
+
+          const date = await getDate(newCommitSha);
+          if (date) {
+            dep.date = date;
+            dep.age = timerel(date, {noAffix: true});
+          }
+        } else {
+          const coerced = coerceToVersion(stripv(info.ref));
+          if (!coerced) { delete deps.actions[info.key]; continue; }
+
+          const {useGreatest, usePre, useRel, semvers} = getVersionOpts(info.name);
+          const newVersion = findVersion({}, versions, {
+            range: coerced, semvers, usePre, useRel,
+            useGreatest: useGreatest || true, pinnedRange: cliPin[info.name],
+          });
+          if (!newVersion || newVersion === coerced) { delete deps.actions[info.key]; continue; }
+
+          const newTag = tagNames.find(t => stripv(t) === newVersion);
+          if (!newTag) { delete deps.actions[info.key]; continue; }
+
+          const formatted = formatActionVersion(newTag, info.ref);
+          if (formatted === info.ref) { delete deps.actions[info.key]; continue; }
+
+          dep.new = formatted;
+          dep.info = infoUrl;
+
+          const newEntry = tags.find(t => t.name === newTag);
+          if (newEntry?.commitSha) {
+            const date = await getDate(newEntry.commitSha);
+            if (date) {
+              dep.date = date;
+              dep.age = timerel(date, {noAffix: true});
+            }
+          }
+        }
+      }
+    }, {concurrency});
+
+    if (cooldownArg) {
+      for (const [key, {date}] of Object.entries(deps.actions)) {
+        if (!canIncludeByDate(date, Number(cooldownArg), now)) {
+          delete deps.actions[key];
+        }
+      }
+    }
+
+    if (!Object.keys(deps.actions).length) {
+      delete deps.actions;
+    }
+  }
+
   if (numDependencies === 0) {
     return finishWithMessage("No dependencies found, nothing to do.");
   }
@@ -1822,11 +2098,36 @@ async function main(): Promise<void> {
     return finishWithMessage("All dependencies are up to date.");
   }
 
+  // Pre-build actions update data before outputDeps modifies dep values
+  const actionsUpdatesByRelPath = new Map<string, Array<{name: string, oldRef: string, newRef: string}>>();
+  if (deps.actions) {
+    for (const [key, dep] of Object.entries(deps.actions)) {
+      const [relPath, name] = key.split(fieldSep);
+      if (!actionsUpdatesByRelPath.has(relPath)) actionsUpdatesByRelPath.set(relPath, []);
+      actionsUpdatesByRelPath.get(relPath)!.push({name, oldRef: dep.old, newRef: dep.new});
+    }
+  }
+
   const exitCode = outputDeps(deps);
 
   if (update) {
     for (const mode of Object.keys(deps)) {
       if (!Object.keys(deps[mode]).length) continue;
+
+      if (mode === "actions") {
+        for (const [relPath, actionDeps] of actionsUpdatesByRelPath) {
+          const {absPath, content} = wfData[relPath] || {};
+          if (!absPath) continue;
+          try {
+            write(absPath, updateWorkflowFile(content, actionDeps));
+          } catch (err) {
+            throw new Error(`Error writing ${basename(absPath)}: ${(err as Error).message}`);
+          }
+          console.info(green(`✨ ${relPath} updated`));
+        }
+        continue;
+      }
+
       try {
         const fileContent = pkgStrs[mode];
         if (mode === "go") {

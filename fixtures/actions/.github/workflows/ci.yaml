@@ -1,0 +1,14 @@
+name: ci
+on: [push, pull_request]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-node@v1.0
+      - uses: actions/setup-node@v1.0.0
+      - uses: actions/checkout@v10
+      - uses: docker://node:20
+      - uses: ./local-action
+      - uses: tj-actions/changed-files@87697c0dca7dd44e37a2b79a79489332556ff1f3
