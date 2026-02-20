@@ -1284,19 +1284,19 @@ test.concurrent("pin", async ({expect = globalExpect}: any = {}) => {
 });
 
 function actionsArgs(...extra: Array<string>) {
-  return [script, "-c", "--forgeapi", githubUrl, "-M", "actions", "-f", actionsDir, ...extra];
+  return [script, "-c", "--forgeapi", githubUrl, "-M", "act", "-f", actionsDir, ...extra];
 }
 
 function getActionsDeps(results: any) {
-  const ciType = Object.keys(results.actions).find(t => t.endsWith("ci.yaml"));
-  return results.actions[ciType!];
+  const ciType = Object.keys(results.act).find(t => t.endsWith("ci.yaml"));
+  return results.act[ciType!];
 }
 
-test.concurrent("actions basic", async ({expect = globalExpect}: any = {}) => {
+test.concurrent("act basic", async ({expect = globalExpect}: any = {}) => {
   const {stdout, stderr} = await nanoSpawn(process.execPath, actionsArgs("-j"));
   expect(stderr).toEqual("");
   const output = JSON.parse(stdout);
-  expect(output.results.actions).toBeDefined();
+  expect(output.results.act).toBeDefined();
   const actionsDeps = getActionsDeps(output.results);
 
   // actions/checkout v2 -> v10 (major format preserved)
@@ -1312,7 +1312,7 @@ test.concurrent("actions basic", async ({expect = globalExpect}: any = {}) => {
   expect(actionsDeps["tj-actions/changed-files"]).toBeUndefined();
 });
 
-test.concurrent("actions include filter", async ({expect = globalExpect}: any = {}) => {
+test.concurrent("act include filter", async ({expect = globalExpect}: any = {}) => {
   const {stdout, stderr} = await nanoSpawn(process.execPath, actionsArgs("-j", "-i", "actions/checkout"));
   expect(stderr).toEqual("");
   const actionsDeps = getActionsDeps(JSON.parse(stdout).results);
@@ -1320,7 +1320,7 @@ test.concurrent("actions include filter", async ({expect = globalExpect}: any = 
   expect(actionsDeps["actions/setup-node"]).toBeUndefined();
 });
 
-test.concurrent("actions exclude filter", async ({expect = globalExpect}: any = {}) => {
+test.concurrent("act exclude filter", async ({expect = globalExpect}: any = {}) => {
   const {stdout, stderr} = await nanoSpawn(process.execPath, actionsArgs("-j", "-e", "actions/checkout"));
   expect(stderr).toEqual("");
   const actionsDeps = getActionsDeps(JSON.parse(stdout).results);
@@ -1328,15 +1328,15 @@ test.concurrent("actions exclude filter", async ({expect = globalExpect}: any = 
   expect(actionsDeps["actions/setup-node"]).toBeDefined();
 });
 
-test.concurrent("actions text output", async ({expect = globalExpect}: any = {}) => {
+test.concurrent("act text output", async ({expect = globalExpect}: any = {}) => {
   const {stdout, stderr} = await nanoSpawn(process.execPath, actionsArgs());
   expect(stderr).toEqual("");
   expect(stdout).toContain("actions/checkout");
   expect(stdout).toContain("actions/setup-node");
 });
 
-test.concurrent("actions positional args", async ({expect = globalExpect}: any = {}) => {
-  const {stdout, stderr} = await nanoSpawn(process.execPath, [script, "-c", "--forgeapi", githubUrl, "-M", "actions", "-j", actionsDir]);
+test.concurrent("act positional args", async ({expect = globalExpect}: any = {}) => {
+  const {stdout, stderr} = await nanoSpawn(process.execPath, [script, "-c", "--forgeapi", githubUrl, "-M", "act", "-j", actionsDir]);
   expect(stderr).toEqual("");
   const output = JSON.parse(stdout);
   const actionsDeps = getActionsDeps(output.results);
@@ -1346,14 +1346,14 @@ test.concurrent("actions positional args", async ({expect = globalExpect}: any =
   expect(actionsDeps["actions/setup-node"].new).toBe("v10.0");
 });
 
-test.concurrent("actions update", async ({expect = globalExpect}: any = {}) => {
+test.concurrent("act update", async ({expect = globalExpect}: any = {}) => {
   const tmpActionsDir = join(testDir, "actions-update-test/.github/workflows");
   mkdirSync(tmpActionsDir, {recursive: true});
   const wfPath = join(tmpActionsDir, "ci.yaml");
   await writeFile(wfPath, "name: ci\non: push\njobs:\n  ci:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v2\n");
 
   const {stderr} = await nanoSpawn(process.execPath, [
-    script, "-u", "-c", "--forgeapi", githubUrl, "-M", "actions",
+    script, "-u", "-c", "--forgeapi", githubUrl, "-M", "act",
     "-f", join(testDir, "actions-update-test/.github/workflows"),
   ]);
   expect(stderr).toEqual("");
@@ -1363,7 +1363,7 @@ test.concurrent("actions update", async ({expect = globalExpect}: any = {}) => {
   expect(updatedContent).not.toContain("actions/checkout@v2");
 });
 
-test.concurrent("actions no false upgrade on same major", async ({expect = globalExpect}: any = {}) => {
+test.concurrent("act no false upgrade on same major", async ({expect = globalExpect}: any = {}) => {
   const {stdout, stderr} = await nanoSpawn(process.execPath, actionsArgs("-j", "-i", "actions/checkout"));
   expect(stderr).toEqual("");
   const actionsDeps = getActionsDeps(JSON.parse(stdout).results);
@@ -1377,32 +1377,32 @@ test.concurrent("actions no false upgrade on same major", async ({expect = globa
   expect(v10Entries).toHaveLength(0);
 });
 
-test.concurrent("actions hash-pinned", async ({expect = globalExpect}: any = {}) => {
+test.concurrent("act hash-pinned", async ({expect = globalExpect}: any = {}) => {
   const tmpActionsDir = join(testDir, "actions-hash-test/.github/workflows");
   mkdirSync(tmpActionsDir, {recursive: true});
   const wfPath = join(tmpActionsDir, "ci.yaml");
   await writeFile(wfPath, "name: ci\non: push\njobs:\n  ci:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@cccc000000000000000000000000000000000006 # v4.2.0\n");
 
   const {stdout, stderr} = await nanoSpawn(process.execPath, [
-    script, "-j", "-c", "--forgeapi", githubUrl, "-M", "actions",
+    script, "-j", "-c", "--forgeapi", githubUrl, "-M", "act",
     "-f", join(testDir, "actions-hash-test/.github/workflows"),
   ]);
   expect(stderr).toEqual("");
   const output = JSON.parse(stdout);
-  const ciKey = Object.keys(output.results.actions).find(t => t.endsWith("ci.yaml"));
-  const actionsDeps = output.results.actions[ciKey!];
+  const ciKey = Object.keys(output.results.act).find(t => t.endsWith("ci.yaml"));
+  const actionsDeps = output.results.act[ciKey!];
   expect(actionsDeps["actions/checkout"].old).toBe("v4.2.0");
   expect(actionsDeps["actions/checkout"].new).toBe("v10.0.1");
 });
 
-test.concurrent("actions hash-pinned update", async ({expect = globalExpect}: any = {}) => {
+test.concurrent("act hash-pinned update", async ({expect = globalExpect}: any = {}) => {
   const tmpActionsDir = join(testDir, "actions-hash-update/.github/workflows");
   mkdirSync(tmpActionsDir, {recursive: true});
   const wfPath = join(tmpActionsDir, "ci.yaml");
   await writeFile(wfPath, "name: ci\non: push\njobs:\n  ci:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@cccc000000000000000000000000000000000006 # v4.2.0\n");
 
   const {stderr} = await nanoSpawn(process.execPath, [
-    script, "-u", "-c", "--forgeapi", githubUrl, "-M", "actions",
+    script, "-u", "-c", "--forgeapi", githubUrl, "-M", "act",
     "-f", join(testDir, "actions-hash-update/.github/workflows"),
   ]);
   expect(stderr).toEqual("");

@@ -1,4 +1,4 @@
-SOURCE_FILES := index.ts modes/shared.ts modes/npm.ts modes/pypi.ts modes/go.ts modes/actions.ts
+SOURCE_FILES := index.ts modes/shared.ts modes/npm.ts modes/pypi.ts modes/go.ts modes/act.ts
 DIST_FILES := dist/index.js
 
 node_modules: pnpm-lock.yaml
