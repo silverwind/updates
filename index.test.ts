@@ -206,6 +206,9 @@ beforeAll(async () => {
     ["/repos/actions/checkout/git/commits/cccc000000000000000000000000000000000011", "fixtures/github/actions-checkout-commit-v10.0.1.json"],
     ["/repos/actions/setup-node/git/commits/bbbb000000000000000000000000000000000010", "fixtures/github/actions-setup-node-commit-v10.json"],
   ];
+  // Empty tags for tj-actions/changed-files (hash-pinned, no semver tags to resolve)
+  const emptyTagsGz = await gzipPromise("[]");
+  githubServer.get("/repos/tj-actions/changed-files/tags", (_, res) => res.send(emptyTagsGz));
   for (const [route, fixture] of actionsRoutes) {
     const data = await readFile(fileURLToPath(new URL(fixture, import.meta.url)), "utf8");
     const gz = await gzipPromise(data);
