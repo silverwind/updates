@@ -280,7 +280,7 @@ function makeTest(args: string) {
 test.concurrent("simple", async ({expect = globalExpect}: any = {}) => {
   const {stdout, stderr} = await nanoSpawn(process.execPath, [
     script,
-    "-C",
+    "-n",
     "--forgeapi", githubUrl,
     "--pypiapi", pypiUrl,
     "--registry", npmUrl,
@@ -294,7 +294,7 @@ test.concurrent("simple", async ({expect = globalExpect}: any = {}) => {
 test.concurrent("empty", async ({expect = globalExpect}: any = {}) => {
   const {stdout, stderr} = await nanoSpawn(process.execPath, [
     script,
-    "-C",
+    "-n",
     "--forgeapi", githubUrl,
     "--pypiapi", pypiUrl,
     "-f", emptyFile,
@@ -306,7 +306,7 @@ test.concurrent("empty", async ({expect = globalExpect}: any = {}) => {
 test.concurrent("jsr", async ({expect = globalExpect}: any = {}) => {
   const {stdout, stderr} = await nanoSpawn(process.execPath, [
     script,
-    "-C",
+    "-n",
     "-j",
     "--forgeapi", githubUrl,
     "--pypiapi", pypiUrl,
@@ -328,7 +328,7 @@ if (!versions.bun) {
     await nanoSpawn("npm", ["i", "-g", "."]);
     try {
       const {stdout, stderr} = await nanoSpawn("updates", [
-        "-C",
+        "-n",
         "--forgeapi", githubUrl,
         "--pypiapi", pypiUrl,
         "-f", testFile,
