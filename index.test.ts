@@ -1335,6 +1335,17 @@ test.concurrent("actions text output", async ({expect = globalExpect}: any = {})
   expect(stdout).toContain("actions/setup-node");
 });
 
+test.concurrent("actions positional args", async ({expect = globalExpect}: any = {}) => {
+  const {stdout, stderr} = await nanoSpawn(process.execPath, [script, "-c", "--forgeapi", githubUrl, "-M", "actions", "-j", actionsDir]);
+  expect(stderr).toEqual("");
+  const output = JSON.parse(stdout);
+  const actionsDeps = getActionsDeps(output.results);
+  expect(actionsDeps["actions/checkout"].old).toBe("v2");
+  expect(actionsDeps["actions/checkout"].new).toBe("v10");
+  expect(actionsDeps["actions/setup-node"].old).toBe("v1.0");
+  expect(actionsDeps["actions/setup-node"].new).toBe("v10.0");
+});
+
 test.concurrent("actions update", async ({expect = globalExpect}: any = {}) => {
   const tmpActionsDir = join(testDir, "actions-update-test/.github/workflows");
   mkdirSync(tmpActionsDir, {recursive: true});

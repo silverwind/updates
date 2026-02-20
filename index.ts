@@ -125,6 +125,7 @@ for (const [index, token] of result.tokens.entries()) {
 }
 
 const args = result.values;
+const positionals = result.positionals;
 
 const [magenta, red, green] = (["magenta", "red", "green"] as const).map(color => {
   if (args["no-color"]) return String;
@@ -571,7 +572,7 @@ async function main(): Promise<void> {
   const {help, version, file: filesArg, types, update, include: includeArg, exclude: excludeArg, pin: pinArg, cooldown: cooldownArg} = args;
 
   if (help) {
-    stdout.write(`usage: updates [options]
+    stdout.write(`usage: updates [options] [files...]
 
   Options:
     -u, --update                       Update versions and write package file
@@ -625,7 +626,10 @@ async function main(): Promise<void> {
   const now = Date.now();
   let numDependencies = 0;
 
-  const [files, explicitFiles] = resolveFiles(parseMixedArg(filesArg) as Set<string>);
+  const fileSet = parseMixedArg(filesArg);
+  const mergedFiles = fileSet instanceof Set ? fileSet : (positionals.length ? new Set<string>() : false);
+  if (mergedFiles instanceof Set) for (const p of positionals) mergedFiles.add(p);
+  const [files, explicitFiles] = resolveFiles(mergedFiles as Set<string>);
 
   const wfData: Record<string, {absPath: string, content: string}> = {};
   const cliInclude = parseArgList(includeArg);
