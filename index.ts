@@ -258,6 +258,10 @@ function outputDeps(deps: DepsByMode = {}): number {
       if (typeof props.oldOrig === "string" && !isJsr(props.oldOrig)) {
         props.old = props.oldOrig;
       }
+      if (mode === "act") {
+        props.old = stripv(props.old);
+        props.new = stripv(props.new);
+      }
       delete props.oldPrint;
       delete props.newPrint;
       delete props.oldOrig;

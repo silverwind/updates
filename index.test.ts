@@ -1299,14 +1299,14 @@ test.concurrent("act basic", async ({expect = globalExpect}: any = {}) => {
   expect(output.results.act).toBeDefined();
   const actionsDeps = getActionsDeps(output.results);
 
-  // actions/checkout v2 -> v10 (major format preserved)
-  expect(actionsDeps["actions/checkout"].old).toBe("v2");
-  expect(actionsDeps["actions/checkout"].new).toBe("v10");
+  // actions/checkout v2 -> v10 (major format preserved, v stripped)
+  expect(actionsDeps["actions/checkout"].old).toBe("2");
+  expect(actionsDeps["actions/checkout"].new).toBe("10");
   expect(actionsDeps["actions/checkout"].info).toContain("actions/checkout");
 
-  // actions/setup-node v1.0 -> v10.0 (minor format preserved)
-  expect(actionsDeps["actions/setup-node"].old).toBe("v1.0");
-  expect(actionsDeps["actions/setup-node"].new).toBe("v10.0");
+  // actions/setup-node v1.0 -> v10.0 (minor format preserved, v stripped)
+  expect(actionsDeps["actions/setup-node"].old).toBe("1.0");
+  expect(actionsDeps["actions/setup-node"].new).toBe("10.0");
 
   // Docker, local, and hash-pinned without tags should be skipped
   expect(actionsDeps["tj-actions/changed-files"]).toBeUndefined();
@@ -1340,10 +1340,10 @@ test.concurrent("act positional args", async ({expect = globalExpect}: any = {})
   expect(stderr).toEqual("");
   const output = JSON.parse(stdout);
   const actionsDeps = getActionsDeps(output.results);
-  expect(actionsDeps["actions/checkout"].old).toBe("v2");
-  expect(actionsDeps["actions/checkout"].new).toBe("v10");
-  expect(actionsDeps["actions/setup-node"].old).toBe("v1.0");
-  expect(actionsDeps["actions/setup-node"].new).toBe("v10.0");
+  expect(actionsDeps["actions/checkout"].old).toBe("2");
+  expect(actionsDeps["actions/checkout"].new).toBe("10");
+  expect(actionsDeps["actions/setup-node"].old).toBe("1.0");
+  expect(actionsDeps["actions/setup-node"].new).toBe("10.0");
 });
 
 test.concurrent("act update", async ({expect = globalExpect}: any = {}) => {
@@ -1369,11 +1369,11 @@ test.concurrent("act no false upgrade on same major", async ({expect = globalExp
   const actionsDeps = getActionsDeps(JSON.parse(stdout).results);
   // actions/checkout@v10 should not show as an update even though v10.0.1 patch exists
   // because formatted version (v10) equals the old ref (v10)
-  expect(actionsDeps["actions/checkout"].old).toBe("v2");
-  expect(actionsDeps["actions/checkout"].new).toBe("v10");
-  // The v10 entry should not appear as a separate dep
+  expect(actionsDeps["actions/checkout"].old).toBe("2");
+  expect(actionsDeps["actions/checkout"].new).toBe("10");
+  // The 10 entry should not appear as a separate dep
   const allKeys = Object.keys(actionsDeps);
-  const v10Entries = allKeys.filter(k => actionsDeps[k].old === "v10");
+  const v10Entries = allKeys.filter(k => actionsDeps[k].old === "10");
   expect(v10Entries).toHaveLength(0);
 });
 
@@ -1391,8 +1391,8 @@ test.concurrent("act hash-pinned", async ({expect = globalExpect}: any = {}) => 
   const output = JSON.parse(stdout);
   const ciKey = Object.keys(output.results.act).find(t => t.endsWith("ci.yaml"));
   const actionsDeps = output.results.act[ciKey!];
-  expect(actionsDeps["actions/checkout"].old).toBe("v4.2.0");
-  expect(actionsDeps["actions/checkout"].new).toBe("v10.0.1");
+  expect(actionsDeps["actions/checkout"].old).toBe("4.2.0");
+  expect(actionsDeps["actions/checkout"].new).toBe("10.0.1");
 });
 
 test.concurrent("act hash-pinned update", async ({expect = globalExpect}: any = {}) => {
