@@ -1,3 +1,24 @@
+export function highlightDiff(a: string, b: string, colorFn: (str: string) => string): string {
+  if (a === b) return a;
+  let i = 0;
+  while (i < a.length && i < b.length && a[i] === b[i]) i++;
+  // Back up to a version part boundary to avoid splitting numbers
+  if (i > 0 && a[i - 1] !== "." && a[i - 1] !== "-") {
+    let j = i - 1;
+    while (j >= 0 && a[j] !== "." && a[j] !== "-") j--;
+    if (j >= 0) {
+      i = j + 1;
+    } else {
+      // No separator found, preserve non-digit prefix (v, ^, >=, ~)
+      let d = 0;
+      while (d < i && !/\d/.test(a[d])) d++;
+      i = d;
+    }
+  }
+  const diff = a.substring(i);
+  return diff ? a.substring(0, i) + colorFn(diff) : a;
+}
+
 // https://peps.python.org/pep-0508/
 export function parseUvDependencies(specs: Array<string>) {
   const ret: Array<{name: string, version: string}> = [];

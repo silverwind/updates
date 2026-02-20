@@ -8,7 +8,7 @@ import {stripVTControlCharacters, styleText, parseArgs, type ParseArgsOptionsCon
 import pMap from "p-map";
 import {valid, validRange} from "./utils/semver.ts";
 import {timerel} from "timerel";
-import {npmTypes, poetryTypes, uvTypes, goTypes, parseUvDependencies, nonPackageEngines} from "./utils/utils.ts";
+import {highlightDiff, npmTypes, poetryTypes, uvTypes, goTypes, parseUvDependencies, nonPackageEngines} from "./utils/utils.ts";
 import {enableDnsCache} from "./utils/dns.ts";
 
 import {
@@ -298,30 +298,6 @@ function outputDeps(deps: DepsByMode = {}): number {
 function write(file: string, content: string): void {
   if (platform === "win32") truncateSync(file, 0);
   writeFileSync(file, content, platform === "win32" ? {flag: "r+"} : undefined);
-}
-
-function highlightDiff(a: string, b: string, colorFn: (str: string) => string): string {
-  if (a === b) return a;
-  const aParts = a.split(/\./);
-  const bParts = b.split(/\./);
-  const versionPartRe = /^[0-9a-zA-Z-.]+$/;
-
-  let res = "";
-  for (let i = 0; i < aParts.length; i++) {
-    if (aParts[i] !== bParts[i]) {
-      if (versionPartRe.test(aParts[i])) {
-        res += colorFn(aParts.slice(i).join("."));
-      } else {
-        res += aParts[i].split("").map(char => {
-          return versionPartRe.test(char) ? colorFn(char) : char;
-        }).join("") + colorFn(`.${aParts.slice(i + 1).join(".")}`.replace(/\.$/, ""));
-      }
-      break;
-    } else {
-      res += `${aParts[i]}.`;
-    }
-  }
-  return res.replace(/\.$/, "");
 }
 
 const ansiLen = (str: string): number => stripVTControlCharacters(str).length;
