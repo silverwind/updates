@@ -688,7 +688,9 @@ async function main(): Promise<void> {
         const {parse} = await import("smol-toml");
         pkg = parse(pkgStrs[mode]);
       } else {
-        pkg.deps = parseGoMod(pkgStrs[mode]);
+        const parsed = parseGoMod(pkgStrs[mode]);
+        pkg.deps = parsed.deps;
+        pkg.replace = parsed.replace;
       }
     } catch (err) {
       throw new Error(`Error parsing ${file}: ${(err as Error).message}`);

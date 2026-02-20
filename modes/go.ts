@@ -47,17 +47,36 @@ export function isGoPseudoVersion(version: string): boolean {
   return /\d{14}-[0-9a-f]{12}$/.test(version);
 }
 
-export function parseGoMod(content: string): Record<string, string> {
+export function parseGoMod(content: string): {deps: Record<string, string>, replace: Record<string, string>} {
   const deps: Record<string, string> = {};
+  const replace: Record<string, string> = {};
+  const replacedModules = new Set<string>();
   const lines = content.split(/\r?\n/);
   let inRequire = false;
+  let inReplace = false;
 
   for (const line of lines) {
     const trimmed = line.trim();
     if (/^require\s*\(/.test(trimmed)) { inRequire = true; continue; }
-    if (trimmed === ")") { inRequire = false; continue; }
+    if (/^replace\s*\(/.test(trimmed)) { inReplace = true; continue; }
+    if (trimmed === ")") { inRequire = false; inReplace = false; continue; }
 
     if (trimmed.includes("// indirect")) continue;
+
+    if (inReplace || /^replace\s+/.test(trimmed)) {
+      const m = inReplace ?
+        /^(\S+)(?:\s+v\S+)?\s+=>\s+(\S+)\s+(v\S+)/.exec(trimmed) :
+        /^replace\s+(\S+)(?:\s+v\S+)?\s+=>\s+(\S+)\s+(v\S+)/.exec(trimmed);
+      if (m) {
+        const [, origModule, targetModule, targetVersion] = m;
+        // Skip local path replacements
+        if (!targetModule.startsWith("./") && !targetModule.startsWith("/") && !targetModule.startsWith("../")) {
+          replace[targetModule] = targetVersion;
+          replacedModules.add(origModule);
+        }
+      }
+      continue;
+    }
 
     const match = inRequire ?
       /^(\S+)\s+(v\S+)/.exec(trimmed) :
@@ -67,7 +86,13 @@ export function parseGoMod(content: string): Record<string, string> {
       deps[match[1]] = match[2];
     }
   }
-  return deps;
+
+  // Exclude replaced modules from deps
+  for (const mod of replacedModules) {
+    delete deps[mod];
+  }
+
+  return {deps, replace};
 }
 
 export async function fetchGoVcsInfo(name: string, type: string, currentVersion: string, goCwd: string, ctx: ModeContext): Promise<PackageInfo> {
@@ -232,9 +257,16 @@ export function updateGoMod(pkgStr: string, deps: Deps): [string, Record<string,
   let newPkgStr = pkgStr;
   const majorVersionRewrites: Record<string, string> = {};
   for (const [key, {old, oldOrig}] of Object.entries(deps)) {
-    const [_depType, name] = key.split(fieldSep);
+    const [depType, name] = key.split(fieldSep);
     const oldValue = oldOrig || old;
     const newValue = deps[key].new;
+
+    if (depType === "replace") {
+      // Update version in replace line: => targetModule vOLD -> => targetModule vNEW
+      newPkgStr = newPkgStr.replace(new RegExp(`(=>\\s+${esc(name)}\\s+)v${esc(oldValue)}`, "g"), `$1v${newValue}`);
+      continue;
+    }
+
     const oldMajor = extractGoMajor(name);
     const newMajor = parseInt(newValue.split(".")[0]);
 

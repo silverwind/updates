@@ -24,6 +24,7 @@ const goUpdateModFile = fileURLToPath(new URL("fixtures/go-update/go.mod", impor
 const goUpdateMainFile = fileURLToPath(new URL("fixtures/go-update/main.go", import.meta.url));
 const goUpdateV2ModFile = fileURLToPath(new URL("fixtures/go-update-v2/go.mod", import.meta.url));
 const goUpdateV2MainFile = fileURLToPath(new URL("fixtures/go-update-v2/main.go", import.meta.url));
+const goReplaceFile = fileURLToPath(new URL("fixtures/go-replace/go.mod", import.meta.url));
 const goPreFile = fileURLToPath(new URL("fixtures/go-prerelease/go.mod", import.meta.url));
 const dualFile = fileURLToPath(new URL("fixtures/dual", import.meta.url));
 const invalidConfigFile = fileURLToPath(new URL("fixtures/invalid-config/package.json", import.meta.url));
@@ -185,6 +186,7 @@ beforeAll(async () => {
     {path: "/github.com/example/testpkg/v2/@latest", response: JSON.stringify({Version: "v2.0.0", Time: "2025-01-01T00:00:00Z"})},
     {path: "/github.com/google/uuid/v2/@latest", response: JSON.stringify({Version: "v2.0.0-20260217135312-8c5a7de9ffa1", Time: "2026-02-17T13:53:12Z"})},
     {path: "/github.com/example/prerelpkg/@latest", response: JSON.stringify({Version: "v1.1.0-rc.1", Time: "2025-06-01T00:00:00Z"})},
+    {path: "/gitea.com/gitea/act/@latest", response: JSON.stringify({Version: "v0.261.7", Time: "2025-06-01T00:00:00Z"})},
   ];
   for (let v = 71; v <= 82; v++) {
     goProxyRoutes.push({
@@ -1186,8 +1188,6 @@ test.concurrent("go update", async ({expect = globalExpect}: any = {}) => {
   expect(matches).toBeTruthy();
   expect(matches?.length).toBe(4);
 
-  expect(updatedContent).not.toContain("replace");
-
   const updatedMain = await readFile(join(testGoModDir, "main.go"), "utf8");
   expect(updatedMain).not.toContain("go-github/v70");
   expect(updatedMain).toMatch(/go-github\/v\d+\/github/);
@@ -1255,6 +1255,44 @@ test.concurrent("go prerelease with -p per-package", async ({expect = globalExpe
       },
     }
   `);
+});
+
+test.concurrent("go replace", async ({expect = globalExpect}: any = {}) => {
+  expect(await makeTest(`-j -f ${goReplaceFile}`)()).toMatchInlineSnapshot(`
+    {
+      "go": {
+        "replace": {
+          "gitea.com/gitea/act": {
+            "info": "https://gitea.com/gitea/act",
+            "new": "0.261.7",
+            "old": "0.261.4",
+          },
+        },
+      },
+    }
+  `);
+});
+
+test.concurrent("go replace update", async ({expect = globalExpect}: any = {}) => {
+  const testGoModDir = join(testDir, "test-go-replace");
+  mkdirSync(testGoModDir, {recursive: true});
+
+  const goReplaceContent = readFileSync(goReplaceFile, "utf8");
+  await writeFile(join(testGoModDir, "go.mod"), goReplaceContent);
+
+  await nanoSpawn(execPath, [
+    script,
+    "-u",
+    "-f", join(testGoModDir, "go.mod"),
+    "-c",
+    "--goproxy", goProxyUrl,
+  ], {cwd: testGoModDir});
+
+  const updatedContent = await readFile(join(testGoModDir, "go.mod"), "utf8");
+
+  expect(updatedContent).toContain("gitea.com/gitea/act v0.261.7");
+  expect(updatedContent).not.toContain("gitea.com/gitea/act v0.261.4");
+  expect(updatedContent).toContain("replace");
 });
 
 test.concurrent("pin", async ({expect = globalExpect}: any = {}) => {

@@ -68,4 +68,5 @@ export const uvTypes = [
 
 export const goTypes = [
   "deps",
+  "replace",
 ];
