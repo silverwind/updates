@@ -44,7 +44,7 @@ npx updates -u && npm i
 |`-r, --registry <url>`|Override npm registry URL|
 |`-S, --sockets <num>`|Maximum number of parallel HTTP sockets opened. Default: 96|
 |`-T, --timeout <ms>`|Network request timeout in ms (go probes use half). Default: 5000|
-|`-M, --modes <mode,...>`|Which modes to enable. Either `npm`, `pypi`, `go`, `act`. Default: `npm,pypi,go,act`|
+|`-M, --modes <mode,...>`|Which modes to enable. Either `npm`, `pypi`, `go`, `actions`. Default: `npm,pypi,go,actions`|
 |`-j, --json`|Output a JSON object|
 |`-n, --no-color`|Disable color output|
 |`-v, --version`|Print the version|

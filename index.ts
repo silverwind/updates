@@ -34,7 +34,7 @@ import {
   actionsUsesRe, parseActionRef, getForgeApiBaseUrl,
   fetchActionTags, fetchActionTagDate, formatActionVersion,
   updateWorkflowFile, isWorkflowFile, resolveWorkflowFiles,
-} from "./modes/act.ts";
+} from "./modes/actions.ts";
 
 export type {Config, Dep, Deps, DepsByMode, Output};
 
@@ -139,7 +139,7 @@ const release = argSetToRegexes(parseMixedArg(args.release));
 const patch = argSetToRegexes(parseMixedArg(args.patch));
 const minor = argSetToRegexes(parseMixedArg(args.minor));
 const allowDowngrade = argSetToRegexes(parseMixedArg(args["allow-downgrade"]));
-const enabledModes = parseMixedArg(args.modes) as Set<string> || new Set(["npm", "pypi", "go", "act"]);
+const enabledModes = parseMixedArg(args.modes) as Set<string> || new Set(["npm", "pypi", "go", "actions"]);
 const forgeApiUrl = typeof args.forgeapi === "string" ? normalizeUrl(args.forgeapi) : "https://api.github.com";
 const pypiApiUrl = typeof args.pypiapi === "string" ? normalizeUrl(args.pypiapi) : "https://pypi.org";
 const jsrApiUrl = typeof args.jsrapi === "string" ? normalizeUrl(args.jsrapi) : "https://jsr.io";
@@ -260,7 +260,7 @@ function outputDeps(deps: DepsByMode = {}): number {
       if (typeof props.oldOrig === "string" && !isJsr(props.oldOrig)) {
         props.old = props.oldOrig;
       }
-      if (mode === "act") {
+      if (mode === "actions") {
         props.old = stripv(props.old);
         props.new = stripv(props.new);
       }
@@ -575,7 +575,7 @@ async function main(): Promise<void> {
     -r, --registry <url>               Override npm registry URL
     -S, --sockets <num>                Maximum number of parallel HTTP sockets opened. Default: ${maxSockets}
     -T, --timeout <ms>                 Network request timeout in ms (go probes use half). Default: ${fetchTimeout}
-    -M, --modes <mode,...>             Which modes to enable. Either npm,pypi,go,act. Default: npm,pypi,go,act
+    -M, --modes <mode,...>             Which modes to enable. Either npm,pypi,go,actions. Default: npm,pypi,go,actions
     -j, --json                         Output a JSON object
     -n, --no-color                     Disable color output
     -v, --version                      Print the version
@@ -624,8 +624,8 @@ async function main(): Promise<void> {
 
   for (const file of files) {
     if (isWorkflowFile(file)) {
-      if (!enabledModes.has("act") && !explicitFiles.has(file)) continue;
-      if (!deps.act) deps.act = {};
+      if (!enabledModes.has("actions") && !explicitFiles.has(file)) continue;
+      if (!deps.actions) deps.actions = {};
 
       let content: string;
       try {
@@ -640,10 +640,10 @@ async function main(): Promise<void> {
       const exclude = matchersToRegexSet(cliExclude, []);
       const actions = Array.from(content.matchAll(actionsUsesRe), m => parseActionRef(m[1])).filter(a => a !== null);
       for (const action of actions) {
-        if (!canInclude(action.name, "act", include, exclude, "act")) continue;
+        if (!canInclude(action.name, "actions", include, exclude, "actions")) continue;
         const key = `${relPath}${fieldSep}${action.name}`;
-        if (deps.act[key]) continue;
-        deps.act[key] = {old: action.ref} as Dep;
+        if (deps.actions[key]) continue;
+        deps.actions[key] = {old: action.ref} as Dep;
         actionDepInfos.push({...action, key, apiUrl: getForgeApiBaseUrl(action.host, forgeApiUrl)});
       }
       continue;
@@ -884,8 +884,8 @@ async function main(): Promise<void> {
   }
 
   // Actions version resolution (after all workflow files collected)
-  if (deps.act) {
-    numDependencies += Object.keys(deps.act).length;
+  if (deps.actions) {
+    numDependencies += Object.keys(deps.actions).length;
   }
 
   if (actionDepInfos.length) {
@@ -917,7 +917,7 @@ async function main(): Promise<void> {
       }
 
       for (const info of infos) {
-        const dep = deps.act[info.key];
+        const dep = deps.actions[info.key];
         const infoUrl = `https://${info.host || "github.com"}/${owner}/${repo}`;
 
         if (info.isHash) {
@@ -926,15 +926,15 @@ async function main(): Promise<void> {
             range: "0.0.0", semvers: new Set(["patch", "minor", "major"]), usePre, useRel,
             useGreatest: true, pinnedRange: cliPin[info.name],
           });
-          if (!newVersion) { delete deps.act[info.key]; continue; }
+          if (!newVersion) { delete deps.actions[info.key]; continue; }
 
           const newTag = tagNames.find(t => stripv(t) === newVersion);
-          if (!newTag) { delete deps.act[info.key]; continue; }
+          if (!newTag) { delete deps.actions[info.key]; continue; }
 
           const newEntry = tags.find(t => t.name === newTag);
           const newCommitSha = newEntry?.commitSha;
           if (!newCommitSha || newCommitSha === info.ref || newCommitSha.startsWith(info.ref) || info.ref.startsWith(newCommitSha)) {
-            delete deps.act[info.key]; continue;
+            delete deps.actions[info.key]; continue;
           }
 
           const oldTagName = commitShaToTag.get(info.ref) || Array.from(commitShaToTag.entries()).find(([sha]) => sha.startsWith(info.ref))?.[1];
@@ -951,20 +951,20 @@ async function main(): Promise<void> {
           }
         } else {
           const coerced = coerceToVersion(stripv(info.ref));
-          if (!coerced) { delete deps.act[info.key]; continue; }
+          if (!coerced) { delete deps.actions[info.key]; continue; }
 
           const {useGreatest, usePre, useRel, semvers} = getVersionOpts(info.name);
           const newVersion = findVersion({}, versions, {
             range: coerced, semvers, usePre, useRel,
             useGreatest: useGreatest || true, pinnedRange: cliPin[info.name],
           });
-          if (!newVersion || newVersion === coerced) { delete deps.act[info.key]; continue; }
+          if (!newVersion || newVersion === coerced) { delete deps.actions[info.key]; continue; }
 
           const newTag = tagNames.find(t => stripv(t) === newVersion);
-          if (!newTag) { delete deps.act[info.key]; continue; }
+          if (!newTag) { delete deps.actions[info.key]; continue; }
 
           const formatted = formatActionVersion(newTag, info.ref);
-          if (formatted === info.ref) { delete deps.act[info.key]; continue; }
+          if (formatted === info.ref) { delete deps.actions[info.key]; continue; }
 
           dep.new = formatted;
           dep.info = infoUrl;
@@ -982,15 +982,15 @@ async function main(): Promise<void> {
     }, {concurrency});
 
     if (cooldownArg) {
-      for (const [key, {date}] of Object.entries(deps.act)) {
+      for (const [key, {date}] of Object.entries(deps.actions)) {
         if (!canIncludeByDate(date, Number(cooldownArg), now)) {
-          delete deps.act[key];
+          delete deps.actions[key];
         }
       }
     }
 
-    if (!Object.keys(deps.act).length) {
-      delete deps.act;
+    if (!Object.keys(deps.actions).length) {
+      delete deps.actions;
     }
   }
 
@@ -1009,8 +1009,8 @@ async function main(): Promise<void> {
 
   // Pre-build actions update data before outputDeps modifies dep values
   const actionsUpdatesByRelPath = new Map<string, Array<{name: string, oldRef: string, newRef: string}>>();
-  if (deps.act) {
-    for (const [key, dep] of Object.entries(deps.act)) {
+  if (deps.actions) {
+    for (const [key, dep] of Object.entries(deps.actions)) {
       const [relPath, name] = key.split(fieldSep);
       if (!actionsUpdatesByRelPath.has(relPath)) actionsUpdatesByRelPath.set(relPath, []);
       actionsUpdatesByRelPath.get(relPath)!.push({name, oldRef: dep.old, newRef: dep.new});
@@ -1023,7 +1023,7 @@ async function main(): Promise<void> {
     for (const mode of Object.keys(deps)) {
       if (!Object.keys(deps[mode]).length) continue;
 
-      if (mode === "act") {
+      if (mode === "actions") {
         for (const [relPath, actionDeps] of actionsUpdatesByRelPath) {
           const {absPath, content} = wfData[relPath] || {};
           if (!absPath) continue;
