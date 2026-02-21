@@ -1,4 +1,4 @@
-import {highlightDiff, parseUvDependencies} from "./utils.ts";
+import {highlightDiff, parseUvDependencies, parseDuration} from "./utils.ts";
 
 const c = (s: string) => `[${s}]`;
 
@@ -70,4 +70,18 @@ test("parseUvDependencies", () => {
       },
     ]
   `);
+});
+
+test("parseDuration", () => {
+  expect(parseDuration("7")).toBe(7);
+  expect(parseDuration("2y")).toBe(730);
+  expect(parseDuration("3m")).toBe(90);
+  expect(parseDuration("1w")).toBe(7);
+  expect(parseDuration("2d")).toBe(2);
+  expect(parseDuration("12h")).toBe(0.5);
+  expect(parseDuration("6h")).toBe(0.25);
+  expect(parseDuration("86400s")).toBe(1);
+  expect(parseDuration("10s")).toBeCloseTo(10 / 86400);
+  expect(() => parseDuration("abc")).toThrow("Invalid cooldown value");
+  expect(() => parseDuration("12x")).toThrow("Invalid cooldown value");
 });

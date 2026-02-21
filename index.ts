@@ -7,7 +7,7 @@ import {stripVTControlCharacters, styleText, parseArgs, type ParseArgsOptionsCon
 import pMap from "p-map";
 import {valid, validRange} from "./utils/semver.ts";
 import {timerel} from "timerel";
-import {highlightDiff, npmTypes, poetryTypes, uvTypes, goTypes, parseUvDependencies, nonPackageEngines} from "./utils/utils.ts";
+import {highlightDiff, npmTypes, poetryTypes, uvTypes, goTypes, parseUvDependencies, nonPackageEngines, parseDuration} from "./utils/utils.ts";
 import {enableDnsCache} from "./utils/dns.ts";
 import {
   type Config, type Dep, type Deps, type DepsByMode, type Output, type ModeContext,
@@ -439,6 +439,7 @@ function canInclude(name: string, mode: string, include: Set<RegExp>, exclude: S
   return include.size ? false : true;
 }
 
+
 function canIncludeByDate(date: string | undefined, cooldownDays: number, now: number) {
   if (!date || !cooldownDays) return true;
   const diffDays = (now - Date.parse(date)) / (24 * 3600 * 1000);
@@ -566,7 +567,7 @@ async function main(): Promise<void> {
     -P, --patch [<dep,...>]            Consider only up to semver-patch
     -m, --minor [<dep,...>]            Consider only up to semver-minor
     -d, --allow-downgrade [<dep,...>]  Allow version downgrades when using latest version
-    -C, --cooldown <days>              Minimum dependency age in days
+    -C, --cooldown <duration>           Minimum dependency age, e.g. 7, 1w, 2d, 6h
     -l, --pin <dep=range>              Pin dependency to given semver range
     -E, --error-on-outdated            Exit with code 2 when updates are available and 0 when not
     -U, --error-on-unchanged           Exit with code 0 when updates are available and 2 when not
@@ -872,7 +873,7 @@ async function main(): Promise<void> {
     if (cooldown) {
       for (const m of Object.keys(deps)) {
         for (const [key, {date}] of Object.entries(deps[m])) {
-          if (!canIncludeByDate(date, Number(cooldown), now)) {
+          if (!canIncludeByDate(date, parseDuration(String(cooldown)), now)) {
             delete deps[m][key];
           }
         }
@@ -980,7 +981,7 @@ async function main(): Promise<void> {
 
     if (cooldownArg) {
       for (const [key, {date}] of Object.entries(deps.actions)) {
-        if (!canIncludeByDate(date, Number(cooldownArg), now)) {
+        if (!canIncludeByDate(date, parseDuration(String(cooldownArg)), now)) {
           delete deps.actions[key];
         }
       }

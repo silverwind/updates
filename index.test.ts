@@ -807,6 +807,22 @@ test.concurrent("include", async ({expect = globalExpect}: any = {}) => {
   `);
 });
 
+test.concurrent("cooldown duration", async ({expect = globalExpect}: any = {}) => {
+  expect(await makeTest("-j -i noty -C 12h")()).toMatchInlineSnapshot(`
+    {
+      "npm": {
+        "dependencies": {
+          "noty": {
+            "info": "https://github.com/needim/noty",
+            "new": "3.1.4",
+            "old": "3.1.0",
+          },
+        },
+      },
+    }
+  `);
+});
+
 test.concurrent("include 2", async ({expect = globalExpect}: any = {}) => {
   expect(await makeTest("-j -i /^noty/")()).toMatchInlineSnapshot(`
     {
@@ -1451,3 +1467,4 @@ test.concurrent("actions hash-pinned update", async ({expect = globalExpect}: an
   expect(updatedContent).toContain("actions/checkout@cccc000000000000000000000000000000000011");
   expect(updatedContent).not.toContain("cccc000000000000000000000000000000000006");
 });
+

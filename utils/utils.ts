@@ -70,3 +70,17 @@ export const goTypes = [
   "deps",
   "replace",
 ];
+
+const durationUnits: Record<string, number> = {y: 365, m: 30, w: 7, d: 1, h: 1 / 24, s: 1 / 86400};
+
+export function parseDuration(str: string): number {
+  const match = /^(\d+(?:\.\d+)?)\s*([a-z])$/i.exec(str);
+  if (match) {
+    const [, num, unit] = match;
+    const multiplier = durationUnits[unit.toLowerCase()];
+    if (multiplier) return Number(num) * multiplier;
+  }
+  const num = Number(str);
+  if (!Number.isFinite(num)) throw new Error(`Invalid cooldown value: ${str}`);
+  return num;
+}
