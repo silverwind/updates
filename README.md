@@ -43,7 +43,8 @@ npx updates -u && npm i
 |`-U, --error-on-unchanged`|Exit with code 0 when updates are available and 2 when not|
 |`-r, --registry <url>`|Override npm registry URL|
 |`-S, --sockets <num>`|Maximum number of parallel HTTP sockets opened. Default: 96|
-|`-M, --modes <mode,...>`|Which modes to enable. Either `npm`, `pypi`, `go`. Default: `npm,pypi,go`|
+|`-T, --timeout <ms>`|Network request timeout in ms (Go probes use half). Default: 5000|
+|`-M, --modes <mode,...>`|Which modes to enable. Either `npm`, `pypi`, `go`, `act`. Default: `npm,pypi,go,act`|
 |`-j, --json`|Output a JSON object|
 |`-n, --no-color`|Disable color output|
 |`-v, --version`|Print the version|
@@ -81,5 +82,21 @@ export default {
 - `pin` *Record\<string, string>*: Pin packages to semver ranges
 
 CLI arguments have precedence over options in the config file. `include`, `exclude`, and `pin` options are merged.
+
+## Environment Variables
+
+|Variable|Description|
+|:-|:-|
+|`UPDATES_FORGE_TOKENS`|Comma-separated list of `host:token` pairs for authenticating against forge APIs (e.g. `github.com:ghp_xxx,gitea.example.com:tok_xxx`)|
+|`UPDATES_GITHUB_API_TOKEN`|GitHub API token for authenticating forge API requests|
+|`GITHUB_API_TOKEN`|Fallback GitHub API token|
+|`GH_TOKEN`|Fallback GitHub API token|
+|`GITHUB_TOKEN`|Fallback GitHub API token|
+|`HOMEBREW_GITHUB_API_TOKEN`|Fallback GitHub API token|
+|`GOPROXY`|Go module proxy URL. Default: `https://proxy.golang.org,direct`|
+|`GONOPROXY`|Comma-separated list of Go module patterns to fetch directly, bypassing the proxy|
+|`GOPRIVATE`|Fallback for `GONOPROXY` when not set|
+
+Token resolution order for forge APIs: `UPDATES_FORGE_TOKENS` (matched by hostname) > `UPDATES_GITHUB_API_TOKEN` > `GITHUB_API_TOKEN` > `GH_TOKEN` > `GITHUB_TOKEN` > `HOMEBREW_GITHUB_API_TOKEN`.
 
 © [silverwind](https://github.com/silverwind), distributed under BSD licence
