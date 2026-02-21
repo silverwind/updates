@@ -1,4 +1,4 @@
-import nanoSpawn from "nano-spawn";
+import {execFile} from "node:child_process";
 import {createServer} from "node:http";
 import {join, parse} from "node:path";
 import {readFileSync, mkdtempSync, readdirSync, mkdirSync} from "node:fs";
@@ -11,6 +11,8 @@ import {promisify} from "node:util";
 import type {Server} from "node:http";
 import {satisfies} from "./utils/semver.ts";
 import {npmTypes} from "./utils/utils.ts";
+
+const execFileAsync = promisify(execFile);
 
 const globalExpect = expect;
 const gzipPromise = (data: string | Buffer) => promisify(gzip)(data, {level: constants.Z_BEST_SPEED});
@@ -259,7 +261,7 @@ function makeTest(args: string) {
     let stdout: string;
     let results: Record<string, any>;
     try {
-      ({stdout} = await nanoSpawn(execPath, [script, ...argsArr], {cwd: testDir}));
+      ({stdout} = await execFileAsync(execPath, [script, ...argsArr], {cwd: testDir}));
       ({results} = JSON.parse(stdout));
     } catch (err) {
       console.error(err);
@@ -280,7 +282,7 @@ function makeTest(args: string) {
 }
 
 test.concurrent("simple", async ({expect = globalExpect}: any = {}) => {
-  const {stdout, stderr} = await nanoSpawn(process.execPath, [
+  const {stdout, stderr} = await execFileAsync(process.execPath, [
     script,
     "-n",
     "--forgeapi", githubUrl,
@@ -294,7 +296,7 @@ test.concurrent("simple", async ({expect = globalExpect}: any = {}) => {
 });
 
 test.concurrent("empty", async ({expect = globalExpect}: any = {}) => {
-  const {stdout, stderr} = await nanoSpawn(process.execPath, [
+  const {stdout, stderr} = await execFileAsync(process.execPath, [
     script,
     "-n",
     "--forgeapi", githubUrl,
@@ -306,7 +308,7 @@ test.concurrent("empty", async ({expect = globalExpect}: any = {}) => {
 });
 
 test.concurrent("jsr", async ({expect = globalExpect}: any = {}) => {
-  const {stdout, stderr} = await nanoSpawn(process.execPath, [
+  const {stdout, stderr} = await execFileAsync(process.execPath, [
     script,
     "-n",
     "-j",
@@ -327,9 +329,9 @@ test.concurrent("jsr", async ({expect = globalExpect}: any = {}) => {
 
 if (!versions.bun) {
   test.concurrent("global", async ({expect = globalExpect}: any = {}) => {
-    await nanoSpawn("npm", ["i", "-g", "."]);
+    await execFileAsync("npm", ["i", "-g", "."]);
     try {
-      const {stdout, stderr} = await nanoSpawn("updates", [
+      const {stdout, stderr} = await execFileAsync("updates", [
         "-n",
         "--forgeapi", githubUrl,
         "--pypiapi", pypiUrl,
@@ -340,9 +342,9 @@ if (!versions.bun) {
       expect(stdout).toContain("https://github.com/silverwind/updates");
     } finally {
       if (env.CI) {
-        await nanoSpawn("npm", ["uninstall", "-g", "updates"]);
+        await execFileAsync("npm", ["uninstall", "-g", "updates"]);
       } else {
-        await nanoSpawn("npm", ["install", "-g", "updates@latest"]);
+        await execFileAsync("npm", ["install", "-g", "updates@latest"]);
       }
     }
   });
@@ -1068,10 +1070,10 @@ test.concurrent("dual 2", async ({expect = globalExpect}: any = {}) => {
 test.concurrent("invalid config", async ({expect = globalExpect}: any = {}) => {
   const args = ["-j", "-f", invalidConfigFile, "-c", "--forgeapi", githubUrl, "--pypiapi", pypiUrl];
   try {
-    await nanoSpawn(execPath, [script, ...args]);
+    await execFileAsync(execPath, [script, ...args]);
     throw new Error("Expected error but got success");
   } catch (err: any) {
-    expect(err?.exitCode).toBe(1);
+    expect(err?.code).toBe(1);
     const output = err?.stdout || "";
     expect(output).toContain("updates.config.js");
     expect(output).toContain("Unable to parse");
@@ -1169,7 +1171,7 @@ test.concurrent("go update", async ({expect = globalExpect}: any = {}) => {
   const goMainContent = readFileSync(goUpdateMainFile, "utf8");
   await writeFile(join(testGoModDir, "main.go"), goMainContent);
 
-  await nanoSpawn(execPath, [
+  await execFileAsync(execPath, [
     script,
     "-u",
     "-f", join(testGoModDir, "go.mod"),
@@ -1200,7 +1202,7 @@ test.concurrent("go update v1 to v2", async ({expect = globalExpect}: any = {}) 
   await writeFile(join(testGoModDir, "go.mod"), readFileSync(goUpdateV2ModFile, "utf8"));
   await writeFile(join(testGoModDir, "main.go"), readFileSync(goUpdateV2MainFile, "utf8"));
 
-  await nanoSpawn(execPath, [
+  await execFileAsync(execPath, [
     script,
     "-u",
     "-f", join(testGoModDir, "go.mod"),
@@ -1280,7 +1282,7 @@ test.concurrent("go replace update", async ({expect = globalExpect}: any = {}) =
   const goReplaceContent = readFileSync(goReplaceFile, "utf8");
   await writeFile(join(testGoModDir, "go.mod"), goReplaceContent);
 
-  await nanoSpawn(execPath, [
+  await execFileAsync(execPath, [
     script,
     "-u",
     "-f", join(testGoModDir, "go.mod"),
@@ -1296,7 +1298,7 @@ test.concurrent("go replace update", async ({expect = globalExpect}: any = {}) =
 });
 
 test.concurrent("pin", async ({expect = globalExpect}: any = {}) => {
-  const {stdout, stderr} = await nanoSpawn(process.execPath, [
+  const {stdout, stderr} = await execFileAsync(process.execPath, [
     script,
     "-j",
     "-c",
@@ -1331,7 +1333,7 @@ function getActionsDeps(results: any) {
 }
 
 test.concurrent("actions basic", async ({expect = globalExpect}: any = {}) => {
-  const {stdout, stderr} = await nanoSpawn(process.execPath, actionsArgs("-j"));
+  const {stdout, stderr} = await execFileAsync(process.execPath, actionsArgs("-j"));
   expect(stderr).toEqual("");
   const output = JSON.parse(stdout);
   expect(output.results.actions).toBeDefined();
@@ -1351,7 +1353,7 @@ test.concurrent("actions basic", async ({expect = globalExpect}: any = {}) => {
 });
 
 test.concurrent("actions include filter", async ({expect = globalExpect}: any = {}) => {
-  const {stdout, stderr} = await nanoSpawn(process.execPath, actionsArgs("-j", "-i", "actions/checkout"));
+  const {stdout, stderr} = await execFileAsync(process.execPath, actionsArgs("-j", "-i", "actions/checkout"));
   expect(stderr).toEqual("");
   const actionsDeps = getActionsDeps(JSON.parse(stdout).results);
   expect(actionsDeps["actions/checkout"]).toBeDefined();
@@ -1359,7 +1361,7 @@ test.concurrent("actions include filter", async ({expect = globalExpect}: any = 
 });
 
 test.concurrent("actions exclude filter", async ({expect = globalExpect}: any = {}) => {
-  const {stdout, stderr} = await nanoSpawn(process.execPath, actionsArgs("-j", "-e", "actions/checkout"));
+  const {stdout, stderr} = await execFileAsync(process.execPath, actionsArgs("-j", "-e", "actions/checkout"));
   expect(stderr).toEqual("");
   const actionsDeps = getActionsDeps(JSON.parse(stdout).results);
   expect(actionsDeps["actions/checkout"]).toBeUndefined();
@@ -1367,14 +1369,14 @@ test.concurrent("actions exclude filter", async ({expect = globalExpect}: any = 
 });
 
 test.concurrent("actions text output", async ({expect = globalExpect}: any = {}) => {
-  const {stdout, stderr} = await nanoSpawn(process.execPath, actionsArgs());
+  const {stdout, stderr} = await execFileAsync(process.execPath, actionsArgs());
   expect(stderr).toEqual("");
   expect(stdout).toContain("actions/checkout");
   expect(stdout).toContain("actions/setup-node");
 });
 
 test.concurrent("actions positional args", async ({expect = globalExpect}: any = {}) => {
-  const {stdout, stderr} = await nanoSpawn(process.execPath, [script, "-c", "--forgeapi", githubUrl, "-M", "actions", "-j", actionsDir]);
+  const {stdout, stderr} = await execFileAsync(process.execPath, [script, "-c", "--forgeapi", githubUrl, "-M", "actions", "-j", actionsDir]);
   expect(stderr).toEqual("");
   const output = JSON.parse(stdout);
   const actionsDeps = getActionsDeps(output.results);
@@ -1390,7 +1392,7 @@ test.concurrent("actions update", async ({expect = globalExpect}: any = {}) => {
   const wfPath = join(tmpActionsDir, "ci.yaml");
   await writeFile(wfPath, "name: ci\non: push\njobs:\n  ci:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v2\n");
 
-  const {stderr} = await nanoSpawn(process.execPath, [
+  const {stderr} = await execFileAsync(process.execPath, [
     script, "-u", "-c", "--forgeapi", githubUrl, "-M", "actions",
     "-f", join(testDir, "actions-update-test/.github/workflows"),
   ]);
@@ -1402,7 +1404,7 @@ test.concurrent("actions update", async ({expect = globalExpect}: any = {}) => {
 });
 
 test.concurrent("actions no false upgrade on same major", async ({expect = globalExpect}: any = {}) => {
-  const {stdout, stderr} = await nanoSpawn(process.execPath, actionsArgs("-j", "-i", "actions/checkout"));
+  const {stdout, stderr} = await execFileAsync(process.execPath, actionsArgs("-j", "-i", "actions/checkout"));
   expect(stderr).toEqual("");
   const actionsDeps = getActionsDeps(JSON.parse(stdout).results);
   // actions/checkout@v10 should not show as an update even though v10.0.1 patch exists
@@ -1421,7 +1423,7 @@ test.concurrent("actions hash-pinned", async ({expect = globalExpect}: any = {})
   const wfPath = join(tmpActionsDir, "ci.yaml");
   await writeFile(wfPath, "name: ci\non: push\njobs:\n  ci:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@cccc000000000000000000000000000000000006 # v4.2.0\n");
 
-  const {stdout, stderr} = await nanoSpawn(process.execPath, [
+  const {stdout, stderr} = await execFileAsync(process.execPath, [
     script, "-j", "-c", "--forgeapi", githubUrl, "-M", "actions",
     "-f", join(testDir, "actions-hash-test/.github/workflows"),
   ]);
@@ -1439,7 +1441,7 @@ test.concurrent("actions hash-pinned update", async ({expect = globalExpect}: an
   const wfPath = join(tmpActionsDir, "ci.yaml");
   await writeFile(wfPath, "name: ci\non: push\njobs:\n  ci:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@cccc000000000000000000000000000000000006 # v4.2.0\n");
 
-  const {stderr} = await nanoSpawn(process.execPath, [
+  const {stderr} = await execFileAsync(process.execPath, [
     script, "-u", "-c", "--forgeapi", githubUrl, "-M", "actions",
     "-f", join(testDir, "actions-hash-update/.github/workflows"),
   ]);
