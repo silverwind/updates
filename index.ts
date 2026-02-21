@@ -69,6 +69,7 @@ const options: ParseArgsOptionsConfig = {
   "registry": {short: "r", type: "string"},
   "release": {short: "R", type: "string", multiple: true},
   "sockets": {short: "s", type: "string"},
+  "timeout": {short: "T", type: "string"},
   "types": {short: "t", type: "string", multiple: true},
   "update": {short: "u", type: "boolean"},
   "verbose": {short: "V", type: "boolean"},
@@ -209,9 +210,10 @@ function logVerbose(message: string): void {
 }
 
 // Build mode context for passing to mode functions
+const userTimeout = typeof args.timeout === "string" ? Number(args.timeout) : 0;
 const ctx: ModeContext = {
-  fetchTimeout,
-  goProbeTimeout,
+  fetchTimeout: userTimeout || fetchTimeout,
+  goProbeTimeout: userTimeout ? userTimeout / 2 : goProbeTimeout,
   forgeApiUrl,
   pypiApiUrl,
   jsrApiUrl,
@@ -572,6 +574,7 @@ async function main(): Promise<void> {
     -U, --error-on-unchanged           Exit with code 0 when updates are available and 2 when not
     -r, --registry <url>               Override npm registry URL
     -S, --sockets <num>                Maximum number of parallel HTTP sockets opened. Default: ${maxSockets}
+    -T, --timeout <ms>                 Network request timeout in ms (Go probes use half). Default: ${fetchTimeout}
     -M, --modes <mode,...>             Which modes to enable. Either npm,pypi,go,act. Default: npm,pypi,go,act
     -j, --json                         Output a JSON object
     -n, --no-color                     Disable color output
