@@ -4,13 +4,11 @@ import {join, dirname, basename, resolve} from "node:path";
 import {pathToFileURL} from "node:url";
 import {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync, type Stats} from "node:fs";
 import {stripVTControlCharacters, styleText, parseArgs, type ParseArgsOptionsConfig} from "node:util";
-
 import pMap from "p-map";
 import {valid, validRange} from "./utils/semver.ts";
 import {timerel} from "timerel";
 import {highlightDiff, npmTypes, poetryTypes, uvTypes, goTypes, parseUvDependencies, nonPackageEngines} from "./utils/utils.ts";
 import {enableDnsCache} from "./utils/dns.ts";
-
 import {
   type Config, type Dep, type Deps, type DepsByMode, type Output, type ModeContext,
   type PackageRepository, type PackageInfo,

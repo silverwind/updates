@@ -1,6 +1,5 @@
 import {env} from "node:process";
 import {basename} from "node:path";
-
 import rc from "../utils/rc.ts";
 import {
   type Config, type Dep, type Deps, type ModeContext, type PackageInfo,

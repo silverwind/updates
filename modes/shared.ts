@@ -1,5 +1,4 @@
 import {env} from "node:process";
-
 import {parse, coerce, diff, gt, gte, lt, neq, satisfies, valid} from "../utils/semver.ts";
 import pkg from "../package.json" with {type: "json"};
 
