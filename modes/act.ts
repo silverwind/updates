@@ -48,28 +48,36 @@ function parseTags(data: Array<any>): Array<TagEntry> {
 }
 
 export async function fetchActionTags(apiUrl: string, owner: string, repo: string, ctx: ModeContext): Promise<Array<TagEntry>> {
-  const res = await fetchForge(`${apiUrl}/repos/${owner}/${repo}/tags?per_page=100`, ctx);
-  if (!res?.ok) return [];
-  const results = parseTags(await res.json());
-  const link = res.headers.get("link") || "";
-  const last = /<([^>]+)>;\s*rel="last"/.exec(link);
-  if (last) {
-    const lastPage = Number(new URL(last[1]).searchParams.get("page"));
-    const pages = await Promise.all(
-      Array.from({length: lastPage - 1}, (_, i) => fetchForge(`${apiUrl}/repos/${owner}/${repo}/tags?per_page=100&page=${i + 2}`, ctx)),
-    );
-    for (const pageRes of pages) {
-      if (pageRes?.ok) results.push(...parseTags(await pageRes.json()));
+  try {
+    const res = await fetchForge(`${apiUrl}/repos/${owner}/${repo}/tags?per_page=100`, ctx);
+    if (!res?.ok) return [];
+    const results = parseTags(await res.json());
+    const link = res.headers.get("link") || "";
+    const last = /<([^>]+)>;\s*rel="last"/.exec(link);
+    if (last) {
+      const lastPage = Number(new URL(last[1]).searchParams.get("page"));
+      const pages = await Promise.all(
+        Array.from({length: lastPage - 1}, (_, i) => fetchForge(`${apiUrl}/repos/${owner}/${repo}/tags?per_page=100&page=${i + 2}`, ctx)),
+      );
+      for (const pageRes of pages) {
+        if (pageRes?.ok) results.push(...parseTags(await pageRes.json()));
+      }
     }
+    return results;
+  } catch {
+    return [];
   }
-  return results;
 }
 
 export async function fetchActionTagDate(apiUrl: string, owner: string, repo: string, commitSha: string, ctx: ModeContext): Promise<string> {
-  const res = await fetchForge(`${apiUrl}/repos/${owner}/${repo}/git/commits/${commitSha}`, ctx);
-  if (!res?.ok) return "";
-  const data = await res.json();
-  return data?.committer?.date || data?.author?.date || "";
+  try {
+    const res = await fetchForge(`${apiUrl}/repos/${owner}/${repo}/git/commits/${commitSha}`, ctx);
+    if (!res?.ok) return "";
+    const data = await res.json();
+    return data?.committer?.date || data?.author?.date || "";
+  } catch {
+    return "";
+  }
 }
 
 export function formatActionVersion(newFullVersion: string, oldRef: string): string {

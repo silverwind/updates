@@ -273,11 +273,15 @@ type CommitInfo = {
 };
 
 export async function getLastestCommit(user: string, repo: string, ctx: ModeContext): Promise<CommitInfo> {
-  const res = await fetchForge(`${ctx.forgeApiUrl}/repos/${user}/${repo}/commits`, ctx);
-  if (!res?.ok) return {hash: "", commit: {}};
-  const data = await res.json();
-  const {sha: hash, commit} = data[0];
-  return {hash, commit};
+  try {
+    const res = await fetchForge(`${ctx.forgeApiUrl}/repos/${user}/${repo}/commits`, ctx);
+    if (!res?.ok) return {hash: "", commit: {}};
+    const data = await res.json();
+    const {sha: hash, commit} = data[0];
+    return {hash, commit};
+  } catch {
+    return {hash: "", commit: {}};
+  }
 }
 
 export async function getTags(user: string, repo: string, ctx: ModeContext): Promise<Array<string>> {
@@ -295,21 +299,25 @@ function parseTags(data: Array<any>): Array<TagEntry> {
 }
 
 async function fetchActionTags(apiUrl: string, owner: string, repo: string, ctx: ModeContext): Promise<Array<TagEntry>> {
-  const res = await fetchForge(`${apiUrl}/repos/${owner}/${repo}/tags?per_page=100`, ctx);
-  if (!res?.ok) return [];
-  const results = parseTags(await res.json());
-  const link = res.headers.get("link") || "";
-  const last = /<([^>]+)>;\s*rel="last"/.exec(link);
-  if (last) {
-    const lastPage = Number(new URL(last[1]).searchParams.get("page"));
-    const pages = await Promise.all(
-      Array.from({length: lastPage - 1}, (_, i) => fetchForge(`${apiUrl}/repos/${owner}/${repo}/tags?per_page=100&page=${i + 2}`, ctx)),
-    );
-    for (const pageRes of pages) {
-      if (pageRes?.ok) results.push(...parseTags(await pageRes.json()));
+  try {
+    const res = await fetchForge(`${apiUrl}/repos/${owner}/${repo}/tags?per_page=100`, ctx);
+    if (!res?.ok) return [];
+    const results = parseTags(await res.json());
+    const link = res.headers.get("link") || "";
+    const last = /<([^>]+)>;\s*rel="last"/.exec(link);
+    if (last) {
+      const lastPage = Number(new URL(last[1]).searchParams.get("page"));
+      const pages = await Promise.all(
+        Array.from({length: lastPage - 1}, (_, i) => fetchForge(`${apiUrl}/repos/${owner}/${repo}/tags?per_page=100&page=${i + 2}`, ctx)),
+      );
+      for (const pageRes of pages) {
+        if (pageRes?.ok) results.push(...parseTags(await pageRes.json()));
+      }
     }
+    return results;
+  } catch {
+    return [];
   }
-  return results;
 }
 
 export type CheckResult = {
