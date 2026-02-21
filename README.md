@@ -26,19 +26,19 @@ npx updates -u && npm i
 
 |Option|Description|
 |:-|:-|
-|`-u, --update`|Update versions and write package file|
+|`-u, --update`|Update versions and write dependency file|
 |`-f, --file <path,...>`|File or directory to use, defaults to current directory|
-|`-i, --include <pkg,...>`|Include only given packages|
-|`-e, --exclude <pkg,...>`|Exclude given packages|
-|`-p, --prerelease [<pkg,...>]`|Consider prerelease versions|
-|`-R, --release [<pkg,...>]`|Only use release versions, may downgrade|
-|`-g, --greatest [<pkg,...>]`|Prefer greatest over latest version|
+|`-i, --include <dep,...>`|Include only given dependencies|
+|`-e, --exclude <dep,...>`|Exclude given dependencies|
+|`-p, --prerelease [<dep,...>]`|Consider prerelease versions|
+|`-R, --release [<dep,...>]`|Only use release versions, may downgrade|
+|`-g, --greatest [<dep,...>]`|Prefer greatest over latest version|
 |`-t, --types <type,...>`|Dependency types to update|
-|`-P, --patch [<pkg,...>]`|Consider only up to semver-patch|
-|`-m, --minor [<pkg,...>]`|Consider only up to semver-minor|
-|`-d, --allow-downgrade [<pkg,...>]`|Allow version downgrades when using latest version|
-|`-C, --cooldown <days>`|Minimum package age in days|
-|`-l, --pin <pkg=range>`|Pin package to given semver range|
+|`-P, --patch [<dep,...>]`|Consider only up to semver-patch|
+|`-m, --minor [<dep,...>]`|Consider only up to semver-minor|
+|`-d, --allow-downgrade [<dep,...>]`|Allow version downgrades when using latest version|
+|`-C, --cooldown <days>`|Minimum dependency age in days|
+|`-l, --pin <dep=range>`|Pin dependency to given semver range|
 |`-E, --error-on-outdated`|Exit with code 2 when updates are available and 0 when not|
 |`-U, --error-on-unchanged`|Exit with code 0 when updates are available and 2 when not|
 |`-r, --registry <url>`|Override npm registry URL|
@@ -51,7 +51,7 @@ npx updates -u && npm i
 |`-V, --verbose`|Print verbose output to stderr|
 |`-h, --help`|Print the help|
 
-Options that take multiple arguments can take them either via comma-separated value or by specifying the option multiple times. If an option has a optional `pkg` argument but none is given, the option will be applied to all packages instead. All `pkg` options support glob matching via `*` or regex (on CLI, wrap the regex in slashes, e.g. `'/^foo/'`).
+Options that take multiple arguments can take them either via comma-separated value or by specifying the option multiple times. If an option has a optional `dep` argument but none is given, the option will be applied to all dependencies instead. All `dep` options support glob matching via `*` or regex (on CLI, wrap the regex in slashes, e.g. `'/^foo/'`).
 
 ## Config File
 
@@ -74,12 +74,12 @@ export default {
 
 ### Config Options
 
-- `include` *Array\<string | RegExp>*: Array of packages to include
-- `exclude` *Array\<string | RegExp>*: Array of packages to exclude
-- `types` *Array\<string>*: Array of package types to use
+- `include` *Array\<string | RegExp>*: Array of dependencies to include
+- `exclude` *Array\<string | RegExp>*: Array of dependencies to exclude
+- `types` *Array\<string>*: Array of dependency types to use
 - `registry` *string*: URL to npm registry
-- `minAge` *number*: Minimum package age in hours
-- `pin` *Record\<string, string>*: Pin packages to semver ranges
+- `minAge` *number*: Minimum dependency age in hours
+- `pin` *Record\<string, string>*: Pin dependencies to semver ranges
 
 CLI arguments have precedence over options in the config file. `include`, `exclude`, and `pin` options are merged.
 

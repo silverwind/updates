@@ -4,17 +4,17 @@ import {parse, coerce, diff, gt, gte, lt, neq, satisfies, valid} from "../utils/
 import pkg from "../package.json" with {type: "json"};
 
 export type Config = {
-  /** Array of packages to include */
+  /** Array of dependencies to include */
   include?: Array<string | RegExp>;
-  /** Array of packages to exclude */
+  /** Array of dependencies to exclude */
   exclude?: Array<string | RegExp>;
   /** Array of package types to use */
   types?: Array<string>;
   /** URL to npm registry */
   registry?: string;
-  /** Minimum package age in days */
+  /** Minimum dependency age in days */
   cooldown?: number,
-  /** Pin packages to semver ranges */
+  /** Pin dependencies to semver ranges */
   pin?: Record<string, string>,
 };
 

@@ -557,19 +557,19 @@ async function main(): Promise<void> {
     stdout.write(`usage: updates [options] [files...]
 
   Options:
-    -u, --update                       Update versions and write package file
+    -u, --update                       Update versions and write dependency file
     -f, --file <path,...>              File or directory to use, defaults to current directory
-    -i, --include <pkg,...>            Include only given packages
-    -e, --exclude <pkg,...>            Exclude given packages
-    -p, --prerelease [<pkg,...>]       Consider prerelease versions
-    -R, --release [<pkg,...>]          Only use release versions, may downgrade
-    -g, --greatest [<pkg,...>]         Prefer greatest over latest version
+    -i, --include <dep,...>            Include only given dependencies
+    -e, --exclude <dep,...>            Exclude given dependencies
+    -p, --prerelease [<dep,...>]       Consider prerelease versions
+    -R, --release [<dep,...>]          Only use release versions, may downgrade
+    -g, --greatest [<dep,...>]         Prefer greatest over latest version
     -t, --types <type,...>             Dependency types to update
-    -P, --patch [<pkg,...>]            Consider only up to semver-patch
-    -m, --minor [<pkg,...>]            Consider only up to semver-minor
-    -d, --allow-downgrade [<pkg,...>]  Allow version downgrades when using latest version
-    -C, --cooldown <days>              Minimum package age in days
-    -l, --pin <pkg=range>              Pin package to given semver range
+    -P, --patch [<dep,...>]            Consider only up to semver-patch
+    -m, --minor [<dep,...>]            Consider only up to semver-minor
+    -d, --allow-downgrade [<dep,...>]  Allow version downgrades when using latest version
+    -C, --cooldown <days>              Minimum dependency age in days
+    -l, --pin <dep=range>              Pin dependency to given semver range
     -E, --error-on-outdated            Exit with code 2 when updates are available and 0 when not
     -U, --error-on-unchanged           Exit with code 0 when updates are available and 2 when not
     -r, --registry <url>               Override npm registry URL
@@ -592,6 +592,7 @@ async function main(): Promise<void> {
     $ updates -f pyproject.toml
     $ updates -f go.mod
     $ updates -l typescript=^5.0.0
+    $ updates -m npm
     $ updates -f .github/workflows
 `);
     await end();
