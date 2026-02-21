@@ -5,7 +5,7 @@ import {readFileSync, mkdtempSync, readdirSync, mkdirSync} from "node:fs";
 import {writeFile, readFile, rm} from "node:fs/promises";
 import {fileURLToPath} from "node:url";
 import {tmpdir} from "node:os";
-import {env, execPath, versions} from "node:process";
+import {env, execPath, platform, versions} from "node:process";
 import {gzip, constants} from "node:zlib";
 import {promisify} from "node:util";
 import type {Server} from "node:http";
@@ -32,6 +32,7 @@ const dualFile = fileURLToPath(new URL("fixtures/dual", import.meta.url));
 const invalidConfigFile = fileURLToPath(new URL("fixtures/invalid-config/package.json", import.meta.url));
 const actionsDir = fileURLToPath(new URL("fixtures/actions/.github/workflows", import.meta.url));
 
+const npm = platform === "win32" ? "npm.cmd" : "npm";
 const testPkg = JSON.parse(readFileSync(testFile, "utf8"));
 const testDir = mkdtempSync(join(tmpdir(), "updates-"));
 const script = fileURLToPath(new URL("dist/index.js", import.meta.url));
@@ -329,9 +330,10 @@ test.concurrent("jsr", async ({expect = globalExpect}: any = {}) => {
 
 if (!versions.bun) {
   test.concurrent("global", async ({expect = globalExpect}: any = {}) => {
-    await execFileAsync("npm", ["i", "-g", "."]);
+    await execFileAsync(npm, ["i", "-g", "."]);
+    const updates = platform === "win32" ? "updates.cmd" : "updates";
     try {
-      const {stdout, stderr} = await execFileAsync("updates", [
+      const {stdout, stderr} = await execFileAsync(updates, [
         "-n",
         "--forgeapi", githubUrl,
         "--pypiapi", pypiUrl,
@@ -342,9 +344,9 @@ if (!versions.bun) {
       expect(stdout).toContain("https://github.com/silverwind/updates");
     } finally {
       if (env.CI) {
-        await execFileAsync("npm", ["uninstall", "-g", "updates"]);
+        await execFileAsync(npm, ["uninstall", "-g", "updates"]);
       } else {
-        await execFileAsync("npm", ["install", "-g", "updates@latest"]);
+        await execFileAsync(npm, ["install", "-g", "updates@latest"]);
       }
     }
   });
