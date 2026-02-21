@@ -586,12 +586,10 @@ async function main(): Promise<void> {
     $ updates -C 7
     $ updates -M npm
     $ updates -e react,react-dom
-    $ updates -e '/^react-(dom)?/'
     $ updates -f package.json
     $ updates -f pyproject.toml
     $ updates -f go.mod
-    $ updates -l typescript=^5.0.0
-    $ updates -f .github/workflows
+    $ updates -f .github
 `);
     await end();
   }
