@@ -7,7 +7,7 @@ import {stripVTControlCharacters, styleText, parseArgs, type ParseArgsOptionsCon
 import pMap from "p-map";
 import {valid, validRange} from "./utils/semver.ts";
 import {timerel} from "timerel";
-import {highlightDiff, npmTypes, poetryTypes, uvTypes, goTypes, parseUvDependencies, nonPackageEngines, parseDuration} from "./utils/utils.ts";
+import {highlightDiff, npmTypes, poetryTypes, uvTypes, goTypes, parseUvDependencies, nonPackageEngines, parseDuration, matchesAny, getProperty, commaSeparatedToArray, canIncludeByDate, timestamp, textTable} from "./utils/utils.ts";
 import {enableDnsCache} from "./utils/dns.ts";
 import {
   type Config, type Dep, type Deps, type DepsByMode, type Output, type ModeContext,
@@ -144,20 +144,6 @@ const jsrApiUrl = typeof args.jsrapi === "string" ? normalizeUrl(args.jsrapi) : 
 const goProxyUrl = typeof args.goproxy === "string" ? normalizeUrl(args.goproxy) : resolveGoProxy();
 const goNoProxy = parseGoNoProxy();
 
-function matchesAny(str: string, set: Set<RegExp> | boolean): boolean {
-  for (const re of (set instanceof Set ? set : [])) {
-    if (re.test(str)) return true;
-  }
-  return false;
-}
-
-function getProperty(obj: Record<string, any>, path: string): Record<string, any> {
-  return path.split(".").reduce((obj: Record<string, any>, prop: string) => obj?.[prop] ?? null, obj);
-}
-
-function commaSeparatedToArray(str: string): Array<string> {
-  return str.split(",").filter(Boolean);
-}
 
 function parsePinArg(arg: Arg): Record<string, string> {
   const result: Record<string, string> = {};
@@ -186,22 +172,6 @@ function findUpSync(filename: string, dir: string): string | null {
   return parent === dir ? null : findUpSync(filename, parent);
 }
 
-function timestamp(): string {
-  const date = new Date();
-  return [
-    date.getFullYear(),
-    "-",
-    String(date.getMonth() + 1).padStart(2, "0"),
-    "-",
-    String(date.getDate()).padStart(2, "0"),
-    " ",
-    String(date.getHours()).padStart(2, "0"),
-    ":",
-    String(date.getMinutes()).padStart(2, "0"),
-    ":",
-    String(date.getSeconds()).padStart(2, "0"),
-  ].join("");
-}
 
 function logVerbose(message: string): void {
   console.error(`${timestamp()} ${message}`);
@@ -306,28 +276,6 @@ function write(file: string, content: string): void {
 
 const ansiLen = (str: string): number => stripVTControlCharacters(str).length;
 
-function textTable(rows: Array<Array<string>>, hsep = " "): string {
-  let ret = "";
-  const colSizes = new Array(rows[0].length).fill(0);
-  for (const row of rows) {
-    for (const [colIndex, col] of row.entries()) {
-      const len = ansiLen(col);
-      if (len > colSizes[colIndex]) {
-        colSizes[colIndex] = len;
-      }
-    }
-  }
-  for (const [rowIndex, row] of rows.entries()) {
-    for (const [colIndex, col] of row.entries()) {
-      if (colIndex > 0) ret += hsep;
-      const space = " ".repeat(colSizes[colIndex] - ansiLen(col));
-      ret += col + (colIndex === row.length - 1 ? "" : space);
-    }
-    if (rowIndex < rows.length - 1) ret += "\n";
-  }
-  return ret;
-}
-
 function formatDeps(deps: DepsByMode): string {
   // Check if there are multiple modes
   const modes = Object.keys(deps).filter(mode => Object.keys(deps[mode]).length > 0);
@@ -356,7 +304,7 @@ function formatDeps(deps: DepsByMode): string {
     }
   }
 
-  return textTable(arr);
+  return textTable(arr, ansiLen);
 }
 
 function globToRegex(glob: string, insensitive: boolean): RegExp {
@@ -437,13 +385,6 @@ function canInclude(name: string, mode: string, include: Set<RegExp>, exclude: S
     if (re.test(name) || re.test(baseName)) return true;
   }
   return include.size ? false : true;
-}
-
-
-function canIncludeByDate(date: string | undefined, cooldownDays: number, now: number) {
-  if (!date || !cooldownDays) return true;
-  const diffDays = (now - Date.parse(date)) / (24 * 3600 * 1000);
-  return diffDays >= cooldownDays;
 }
 
 function resolveFiles(filesArg: Set<string>): [Set<string>, Set<string>] {

@@ -1,4 +1,4 @@
-import {highlightDiff, parseUvDependencies, parseDuration} from "./utils.ts";
+import {highlightDiff, parseUvDependencies, parseDuration, matchesAny, getProperty, commaSeparatedToArray, canIncludeByDate, timestamp, textTable} from "./utils.ts";
 
 const c = (s: string) => `[${s}]`;
 
@@ -70,6 +70,51 @@ test("parseUvDependencies", () => {
       },
     ]
   `);
+});
+
+test("matchesAny", () => {
+  expect(matchesAny("foo", new Set([/foo/]))).toBe(true);
+  expect(matchesAny("bar", new Set([/foo/]))).toBe(false);
+  expect(matchesAny("foobar", new Set([/^foo/]))).toBe(true);
+  expect(matchesAny("foo", new Set([/bar/, /foo/]))).toBe(true);
+  expect(matchesAny("foo", false)).toBe(false);
+  expect(matchesAny("foo", true)).toBe(false);
+  expect(matchesAny("foo", new Set())).toBe(false);
+});
+
+test("getProperty", () => {
+  expect(getProperty({a: {b: {c: 1}}}, "a.b.c")).toBe(1);
+  expect(getProperty({a: {b: 2}}, "a.b")).toBe(2);
+  expect(getProperty({a: 1}, "a")).toBe(1);
+  expect(getProperty({}, "a.b")).toBeNull();
+  expect(getProperty({a: null}, "a.b")).toBeNull();
+});
+
+test("commaSeparatedToArray", () => {
+  expect(commaSeparatedToArray("a,b,c")).toEqual(["a", "b", "c"]);
+  expect(commaSeparatedToArray("a")).toEqual(["a"]);
+  expect(commaSeparatedToArray("")).toEqual([]);
+  expect(commaSeparatedToArray("a,,b")).toEqual(["a", "b"]);
+});
+
+test("canIncludeByDate", () => {
+  const now = Date.now();
+  expect(canIncludeByDate(undefined, 7, now)).toBe(true);
+  expect(canIncludeByDate("2020-01-01", 0, now)).toBe(true);
+  expect(canIncludeByDate("2020-01-01", 7, now)).toBe(true);
+  expect(canIncludeByDate(new Date(now - 3600 * 1000).toISOString(), 7, now)).toBe(false);
+  expect(canIncludeByDate(new Date(now - 8 * 86400 * 1000).toISOString(), 7, now)).toBe(true);
+});
+
+test("timestamp", () => {
+  const ts = timestamp();
+  expect(ts).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
+});
+
+test("textTable", () => {
+  const len = (s: string) => s.length;
+  expect(textTable([["a", "bb"], ["ccc", "d"]], len)).toBe("a   bb\nccc d");
+  expect(textTable([["x"]], len)).toBe("x");
 });
 
 test("parseDuration", () => {
