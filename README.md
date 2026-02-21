@@ -10,7 +10,7 @@
 - `package.json` - supports all npm package managers
 - `pyproject.toml` - supports `uv` and `poetry`
 - `go.mod` - supports go dependencies
-- `.{github,gitea,forgejo}` - supports actions
+- `.{github,gitea,forgejo}/workflows` - supports actions
 
 # Usage
 
