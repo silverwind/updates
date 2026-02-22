@@ -119,6 +119,37 @@ export function isRangePrerelease(range: string): boolean {
   return /[0-9]+\.[0-9]+\.[0-9]+-.+/.test(range);
 }
 
+type DowngradeOpts = {
+  useRel: boolean,
+  allowDowngrade: Set<RegExp> | boolean,
+  name: string,
+  matchesAny: (str: string, set: Set<RegExp> | boolean) => boolean,
+};
+
+// Check if a version transition should be allowed. Prevents:
+// - Pre-release to lower release (unless --release)
+// - Release to lower release (unless --allow-downgrade)
+export function isAllowedVersionTransition(oldVersion: string, newVersion: string, {useRel, allowDowngrade, name, matchesAny}: DowngradeOpts): boolean {
+  const oldCoerced = coerceToVersion(oldVersion);
+  const newCoerced = coerceToVersion(newVersion);
+  if (!oldCoerced || !newCoerced) return true;
+
+  const oldIsPre = isRangePrerelease(oldVersion) || isVersionPrerelease(oldVersion);
+  const newIsPre = isVersionPrerelease(newVersion);
+
+  // Pre-release to release: allow if upgrade, or with --release flag
+  if (oldIsPre && !newIsPre) {
+    return gt(newCoerced, oldCoerced) || useRel;
+  }
+
+  // General downgrade from release to lower release: only with --allow-downgrade
+  if (!newIsPre && lt(newCoerced, oldCoerced)) {
+    return allowDowngrade === true || matchesAny(name, allowDowngrade);
+  }
+
+  return true;
+}
+
 export function coerceToVersion(rangeOrVersion: string): string {
   try {
     return coerce(rangeOrVersion)?.version ?? "";
@@ -185,12 +216,15 @@ export function findNewVersion(data: any, {mode, range, useGreatest, useRel, use
     if (!oldVersion) return null;
     const effectiveUsePre = usePre || isRangePrerelease(range);
     const skipPrerelease = (v: string) => isVersionPrerelease(v) && (!effectiveUsePre || useRel);
+    const transitionOpts = {useRel, allowDowngrade, name: data.name, matchesAny};
+    // Use full original version for prerelease detection (range is shortened for Go)
+    const originalOldVersion = data.old || range;
 
     // Check cross-major upgrade
     const crossVersion = coerceToVersion(data.new);
     if (crossVersion && !isGoPseudoVersion(data.new) && !skipPrerelease(data.new)) {
       const d = diff(oldVersion, crossVersion);
-      if (d && semvers.has(d)) {
+      if (d && semvers.has(d) && isAllowedVersionTransition(originalOldVersion, data.new, transitionOpts)) {
         return data.new;
       }
     }
@@ -199,7 +233,7 @@ export function findNewVersion(data: any, {mode, range, useGreatest, useRel, use
     const sameVersion = coerceToVersion(data.sameMajorNew);
     if (sameVersion && !isGoPseudoVersion(data.sameMajorNew) && !skipPrerelease(data.sameMajorNew)) {
       const d = diff(oldVersion, sameVersion);
-      if (d && semvers.has(d)) {
+      if (d && semvers.has(d) && isAllowedVersionTransition(originalOldVersion, data.sameMajorNew, transitionOpts)) {
         data.Time = data.sameMajorTime;
         delete data.newPath;
         return data.sameMajorNew;
@@ -227,26 +261,16 @@ export function findNewVersion(data: any, {mode, range, useGreatest, useRel, use
     const oldIsPre = isRangePrerelease(range);
     const newIsPre = isVersionPrerelease(version);
     const latestIsPre = isVersionPrerelease(latestTag);
-    const isGreater = gt(version, oldVersion);
+    const transitionOpts = {useRel, allowDowngrade, name: data.name, matchesAny};
 
     // update to new prerelease
     if (!useRel && usePre || (oldIsPre && newIsPre)) {
       return version;
     }
 
-    // downgrade from prerelease to release on --release-only
-    if (useRel && !isGreater && oldIsPre && !newIsPre) {
-      return version;
-    }
-
-    // update from prerelease to release
-    if (oldIsPre && !newIsPre && isGreater) {
-      return version;
-    }
-
-    // do not downgrade from prerelease to release
-    if (oldIsPre && !newIsPre && !isGreater) {
-      return null;
+    // pre-release to release transition
+    if (oldIsPre && !newIsPre) {
+      return isAllowedVersionTransition(range, version, transitionOpts) ? version : null;
     }
 
     // check if latestTag is allowed by semvers
@@ -262,11 +286,10 @@ export function findNewVersion(data: any, {mode, range, useGreatest, useRel, use
 
     // prevent downgrade to older version except with --allow-downgrade
     if (lt(latestTag, oldVersion) && !latestIsPre) {
-      if (allowDowngrade === true || matchesAny(data.name, allowDowngrade)) {
-        return latestTag;
-      } else {
+      if (!isAllowedVersionTransition(range, latestTag, transitionOpts)) {
         return null;
       }
+      return latestTag;
     }
 
     // prevent upgrading from non-prerelease to prerelease from latest dist-tag by default

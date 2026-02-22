@@ -28,6 +28,7 @@ const goUpdateV2ModFile = fileURLToPath(new URL("fixtures/go-update-v2/go.mod", 
 const goUpdateV2MainFile = fileURLToPath(new URL("fixtures/go-update-v2/main.go", import.meta.url));
 const goReplaceFile = fileURLToPath(new URL("fixtures/go-replace/go.mod", import.meta.url));
 const goPreFile = fileURLToPath(new URL("fixtures/go-prerelease/go.mod", import.meta.url));
+const goPseudoFile = fileURLToPath(new URL("fixtures/go-pseudo/go.mod", import.meta.url));
 const dualFile = fileURLToPath(new URL("fixtures/dual", import.meta.url));
 const invalidConfigFile = fileURLToPath(new URL("fixtures/invalid-config/package.json", import.meta.url));
 const actionsDir = fileURLToPath(new URL("fixtures/actions/.github/workflows", import.meta.url));
@@ -189,6 +190,7 @@ beforeAll(async () => {
     {path: "/github.com/google/uuid/v2/@latest", response: JSON.stringify({Version: "v2.0.0-20260217135312-8c5a7de9ffa1", Time: "2026-02-17T13:53:12Z"})},
     {path: "/github.com/example/prerelpkg/@latest", response: JSON.stringify({Version: "v1.1.0-rc.1", Time: "2025-06-01T00:00:00Z"})},
     {path: "/gitea.com/gitea/act/@latest", response: JSON.stringify({Version: "v0.261.7", Time: "2025-06-01T00:00:00Z"})},
+    {path: "/github.com/example/pseudopkg/@latest", response: JSON.stringify({Version: "v0.4.1", Time: "2023-06-01T00:00:00Z"})},
   ];
   for (let v = 71; v <= 82; v++) {
     goProxyRoutes.push({
@@ -1256,6 +1258,11 @@ test.concurrent("go prerelease with -p flag", async ({expect = globalExpect}: an
       },
     }
   `);
+});
+
+test.concurrent("go pseudo-version no downgrade", async ({expect = globalExpect}: any = {}) => {
+  // A pseudo-version like v0.4.2-0.xxx should not be downgraded to a lower release like v0.4.1
+  expect(await makeTest(`-j -f ${goPseudoFile}`)()).toMatchInlineSnapshot(`undefined`);
 });
 
 test.concurrent("go prerelease with -p per-package", async ({expect = globalExpect}: any = {}) => {
