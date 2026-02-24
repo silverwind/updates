@@ -14,12 +14,11 @@ import {
   type PackageRepository, type PackageInfo,
   fieldSep, normalizeUrl, esc, packageVersion, fetchTimeout, goProbeTimeout,
   doFetch, findVersion, findNewVersion, coerceToVersion, getInfoUrl,
-  stripv,
+  stripv, hashRe as npmHashRe,
 } from "./modes/shared.ts";
 import {
   fetchNpmInfo, fetchJsrInfo, isJsr, isLocalDep, parseJsrDependency,
   getNpmrc, updatePackageJson, updateNpmRange, normalizeRange, checkUrlDep,
-  hashRe as npmHashRe,
 } from "./modes/npm.ts";
 import {fetchPypiInfo, updatePyprojectToml} from "./modes/pypi.ts";
 import {

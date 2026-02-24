@@ -1,10 +1,10 @@
 import {resolve, join} from "node:path";
 import {readdirSync} from "node:fs";
 import {parse} from "../utils/semver.ts";
-import {type ModeContext, esc, stripv, fetchForge} from "./shared.ts";
+import {type ModeContext, type TagEntry, esc, stripv, hashRe, fetchForge, fetchActionTags, formatVersionPrecision} from "./shared.ts";
 
+export {hashRe, type TagEntry, fetchActionTags};
 export const actionsUsesRe = /^\s*-?\s*uses:\s*['"]?([^'"#\s]+)['"]?/gm;
-export const hashRe = /^[0-9a-f]{7,}$/i;
 
 export type ActionRef = {
   host: string | null,
@@ -37,37 +37,6 @@ export function getForgeApiBaseUrl(host: string | null, forgeApiUrl: string): st
   return `https://${host}/api/v1`;
 }
 
-export type TagEntry = {
-  name: string,
-  commitSha: string,
-};
-
-function parseTags(data: Array<any>): Array<TagEntry> {
-  return data.map((tag: any) => ({name: tag.name, commitSha: tag.commit?.sha || ""}));
-}
-
-export async function fetchActionTags(apiUrl: string, owner: string, repo: string, ctx: ModeContext): Promise<Array<TagEntry>> {
-  try {
-    const res = await fetchForge(`${apiUrl}/repos/${owner}/${repo}/tags?per_page=100`, ctx);
-    if (!res?.ok) return [];
-    const results = parseTags(await res.json());
-    const link = res.headers.get("link") || "";
-    const last = /<([^>]+)>;\s*rel="last"/.exec(link);
-    if (last) {
-      const lastPage = Number(new URL(last[1]).searchParams.get("page"));
-      const pages = await Promise.all(
-        Array.from({length: lastPage - 1}, (_, i) => fetchForge(`${apiUrl}/repos/${owner}/${repo}/tags?per_page=100&page=${i + 2}`, ctx)),
-      );
-      for (const pageRes of pages) {
-        if (pageRes?.ok) results.push(...parseTags(await pageRes.json()));
-      }
-    }
-    return results;
-  } catch {
-    return [];
-  }
-}
-
 export async function fetchActionTagDate(apiUrl: string, owner: string, repo: string, commitSha: string, ctx: ModeContext): Promise<string> {
   try {
     const res = await fetchForge(`${apiUrl}/repos/${owner}/${repo}/git/commits/${commitSha}`, ctx);
@@ -80,15 +49,8 @@ export async function fetchActionTagDate(apiUrl: string, owner: string, repo: st
 }
 
 export function formatActionVersion(newFullVersion: string, oldRef: string): string {
-  const hadV = oldRef.startsWith("v");
   const newParsed = parse(stripv(newFullVersion));
-  const parts = stripv(oldRef).split(".").length;
-  let bare: string;
-  if (!newParsed) bare = stripv(newFullVersion);
-  else if (parts === 1) bare = String(newParsed.major);
-  else if (parts === 2) bare = `${newParsed.major}.${newParsed.minor}`;
-  else bare = newParsed.version;
-  return hadV ? `v${bare}` : bare;
+  return formatVersionPrecision(newParsed?.version ?? stripv(newFullVersion), oldRef);
 }
 
 export function updateWorkflowFile(content: string, actionDeps: Array<{name: string, oldRef: string, newRef: string}>): string {

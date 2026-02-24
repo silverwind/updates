@@ -4,7 +4,7 @@ import rc from "../utils/rc.ts";
 import {
   type Config, type Dep, type Deps, type ModeContext, type PackageInfo,
   esc, normalizeUrl, getFetchOpts, fieldSep, fetchForge, selectTag,
-  coerceToVersion,
+  coerceToVersion, hashRe, fetchActionTags, throwFetchError,
 } from "./shared.ts";
 
 export type Npmrc = {
@@ -32,7 +32,6 @@ export type AuthAndRegistry = {
 // https://regex101.com/r/gCZzfK/2
 const stripRe = /^.*?:\/\/(.*?@)?(github\.com[:/])/i;
 const partsRe = /^([^/]+)\/([^/#]+)?.*?\/([0-9a-f]+|v?[0-9]+\.[0-9]+\.[0-9]+)$/i;
-const hashRe = /^[0-9a-f]{7,}$/i;
 export const npmVersionRe = /[0-9]+(\.[0-9]+)?(\.[0-9]+)?/g;
 const npmVersionRePre = /[0-9]+\.[0-9]+\.[0-9]+(-.+)?/g;
 
@@ -135,13 +134,8 @@ export async function fetchNpmInfo(name: string, type: string, config: Config, a
   const res = await ctx.doFetch(url, {signal: AbortSignal.timeout(ctx.fetchTimeout), ...getFetchOpts(auth?.type, auth?.token)});
   if (res?.ok) {
     return [await res.json(), type, registry, name];
-  } else {
-    if (res?.status && res?.statusText) {
-      throw new Error(`Received ${res.status} ${res.statusText} from ${url}`);
-    } else {
-      throw new Error(`Unable to fetch ${name} from ${registry}`);
-    }
   }
+  throwFetchError(res, url, name, registry);
 }
 
 export function isJsr(value: string): boolean {
@@ -211,13 +205,8 @@ export async function fetchJsrInfo(packageName: string, type: string, ctx: ModeC
       time,
     };
     return [transformedData, type, ctx.jsrApiUrl, packageName];
-  } else {
-    if (res?.status && res?.statusText) {
-      throw new Error(`Received ${res.status} ${res.statusText} from ${url}`);
-    } else {
-      throw new Error(`Unable to fetch ${packageName} from JSR`);
-    }
   }
+  throwFetchError(res, url, packageName, "JSR");
 }
 
 export function updatePackageJson(pkgStr: string, deps: Deps): string {
@@ -292,37 +281,6 @@ export async function getTags(user: string, repo: string, ctx: ModeContext): Pro
   return entries.map(e => e.name);
 }
 
-type TagEntry = {
-  name: string,
-  commitSha: string,
-};
-
-function parseTags(data: Array<any>): Array<TagEntry> {
-  return data.map((tag: any) => ({name: tag.name, commitSha: tag.commit?.sha || ""}));
-}
-
-async function fetchActionTags(apiUrl: string, owner: string, repo: string, ctx: ModeContext): Promise<Array<TagEntry>> {
-  try {
-    const res = await fetchForge(`${apiUrl}/repos/${owner}/${repo}/tags?per_page=100`, ctx);
-    if (!res?.ok) return [];
-    const results = parseTags(await res.json());
-    const link = res.headers.get("link") || "";
-    const last = /<([^>]+)>;\s*rel="last"/.exec(link);
-    if (last) {
-      const lastPage = Number(new URL(last[1]).searchParams.get("page"));
-      const pages = await Promise.all(
-        Array.from({length: lastPage - 1}, (_, i) => fetchForge(`${apiUrl}/repos/${owner}/${repo}/tags?per_page=100&page=${i + 2}`, ctx)),
-      );
-      for (const pageRes of pages) {
-        if (pageRes?.ok) results.push(...parseTags(await pageRes.json()));
-      }
-    }
-    return results;
-  } catch {
-    return [];
-  }
-}
-
 export type CheckResult = {
   key: string,
   newRange: string,
@@ -360,4 +318,3 @@ export async function checkUrlDep(key: string, dep: Dep, useGreatest: boolean, c
   return null;
 }
 
-export {hashRe};

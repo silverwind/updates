@@ -380,6 +380,58 @@ export function resolvePackageJsonUrl(url: string): string {
   }
 }
 
+export const hashRe = /^[0-9a-f]{7,}$/i;
+
+export type TagEntry = {
+  name: string,
+  commitSha: string,
+};
+
+export function parseTags(data: Array<any>): Array<TagEntry> {
+  return data.map((tag: any) => ({name: tag.name, commitSha: tag.commit?.sha || ""}));
+}
+
+export async function fetchActionTags(apiUrl: string, owner: string, repo: string, ctx: ModeContext): Promise<Array<TagEntry>> {
+  try {
+    const res = await fetchForge(`${apiUrl}/repos/${owner}/${repo}/tags?per_page=100`, ctx);
+    if (!res?.ok) return [];
+    const results = parseTags(await res.json());
+    const link = res.headers.get("link") || "";
+    const last = /<([^>]+)>;\s*rel="last"/.exec(link);
+    if (last) {
+      const lastPage = Number(new URL(last[1]).searchParams.get("page"));
+      const pages = await Promise.all(
+        Array.from({length: lastPage - 1}, (_, i) => fetchForge(`${apiUrl}/repos/${owner}/${repo}/tags?per_page=100&page=${i + 2}`, ctx)),
+      );
+      for (const pageRes of pages) {
+        if (pageRes?.ok) results.push(...parseTags(await pageRes.json()));
+      }
+    }
+    return results;
+  } catch {
+    return [];
+  }
+}
+
+export function throwFetchError(res: Response | undefined, url: string, name: string, source: string): never {
+  if (res?.status && res?.statusText) {
+    throw new Error(`Received ${res.status} ${res.statusText} from ${url}`);
+  }
+  throw new Error(`Unable to fetch ${name} from ${source}`);
+}
+
+export function formatVersionPrecision(newVersion: string, oldVersion: string, suffix = ""): string {
+  const hadV = oldVersion.startsWith("v");
+  const bare = stripv(newVersion);
+  const numParts = stripv(oldVersion).split(".").length;
+  const newParts = bare.split(".");
+  let formatted: string;
+  if (numParts === 1) formatted = newParts[0];
+  else if (numParts === 2) formatted = `${newParts[0]}.${newParts[1] || "0"}`;
+  else formatted = bare;
+  return `${hadV ? "v" : ""}${formatted}${suffix}`;
+}
+
 export function getSubDir(url: string): string {
   if (url.startsWith("https://bitbucket.org")) {
     return "src/HEAD";

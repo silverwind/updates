@@ -1,5 +1,5 @@
 import {coerce, diff, gte, valid} from "../utils/semver.ts";
-import {type Deps, type ModeContext, type PackageInfo, esc, fieldSep} from "./shared.ts";
+import {type Deps, type ModeContext, type PackageInfo, esc, fieldSep, stripv, formatVersionPrecision} from "./shared.ts";
 
 export type DockerImageRef = {
   registry: string | null,
@@ -21,6 +21,17 @@ export const workflowContainerRe = /^\s*container:\s*['"]?([^\s'"#{}]+:[^\s'"#{}
 // Matches `uses: docker://image:tag`
 export const workflowDockerUsesRe = /^\s*-?\s*uses:\s*['"]?docker:\/\/([^'"#\s]+)['"]?/gm;
 
+function parseImageParts(imagePart: string): {registry: string | null, namespace: string, repo: string} {
+  const parts = imagePart.split("/");
+  if (parts.length === 1) {
+    return {registry: null, namespace: "library", repo: parts[0]};
+  } else if (parts.length === 2 && !parts[0].includes(".") && !parts[0].includes(":")) {
+    return {registry: null, namespace: parts[0], repo: parts[1]};
+  } else {
+    return {registry: parts[0], namespace: parts.slice(1, -1).join("/") || parts[1], repo: parts[parts.length - 1]};
+  }
+}
+
 export function parseDockerImageRef(ref: string): DockerImageRef | null {
   // Strip docker:// prefix if present
   ref = ref.replace(/^docker:\/\//, "");
@@ -40,26 +51,7 @@ export function parseDockerImageRef(ref: string): DockerImageRef | null {
 
   if (!tag || !dockerTagRe.test(tag)) return null; // non-semver tag
 
-  const parts = imagePart.split("/");
-  let registry: string | null = null;
-  let namespace: string;
-  let repo: string;
-
-  if (parts.length === 1) {
-    // Official Docker Hub image: "node"
-    namespace = "library";
-    repo = parts[0];
-  } else if (parts.length === 2 && !parts[0].includes(".") && !parts[0].includes(":")) {
-    // Docker Hub user image: "myorg/app"
-    namespace = parts[0];
-    repo = parts[1];
-  } else {
-    // Custom registry: "ghcr.io/owner/repo"
-    registry = parts[0];
-    namespace = parts.slice(1, -1).join("/") || parts[1];
-    repo = parts[parts.length - 1];
-  }
-
+  const {registry, namespace, repo} = parseImageParts(imagePart);
   return {registry, namespace, repo, tag, fullImage: imagePart};
 }
 
@@ -72,18 +64,7 @@ export function parseDockerTag(tag: string): {version: string, suffix: string} |
 export function formatDockerVersion(newSemver: string, oldTag: string): string {
   const oldParsed = parseDockerTag(oldTag);
   if (!oldParsed) return oldTag;
-
-  const hadV = oldParsed.version.startsWith("v");
-  const bare = newSemver.replace(/^v/, "");
-  const numParts = oldParsed.version.replace(/^v/, "").split(".").length;
-
-  const newParts = bare.split(".");
-  let formatted: string;
-  if (numParts === 1) formatted = newParts[0];
-  else if (numParts === 2) formatted = `${newParts[0]}.${newParts[1] || "0"}`;
-  else formatted = bare;
-
-  return `${hadV ? "v" : ""}${formatted}${oldParsed.suffix}`;
+  return formatVersionPrecision(newSemver, oldParsed.version, oldParsed.suffix);
 }
 
 export function extractDockerRefs(content: string, regex: RegExp): Array<{ref: DockerImageRef, match: string}> {
@@ -129,19 +110,8 @@ export async function fetchDockerHubTags(namespace: string, repo: string, ctx: M
   return tags;
 }
 
-export function resolveDockerImage(name: string): {registry: string | null, namespace: string, repo: string} {
-  const parts = name.split("/");
-  if (parts.length === 1) {
-    return {registry: null, namespace: "library", repo: parts[0]};
-  } else if (parts.length === 2 && !parts[0].includes(".") && !parts[0].includes(":")) {
-    return {registry: null, namespace: parts[0], repo: parts[1]};
-  } else {
-    return {registry: parts[0], namespace: parts.slice(1, -1).join("/") || parts[1], repo: parts[parts.length - 1]};
-  }
-}
-
 export async function fetchDockerInfo(name: string, type: string, ctx: ModeContext): Promise<PackageInfo> {
-  const {registry, namespace, repo} = resolveDockerImage(name);
+  const {registry, namespace, repo} = parseImageParts(name);
 
   if (registry) {
     throw new Error(`Non-Docker-Hub registries are not yet supported: ${registry}`);
@@ -159,7 +129,7 @@ export function findDockerVersion(
   const oldParsed = parseDockerTag(oldTag);
   if (!oldParsed) return null;
 
-  const oldCoerced = coerce(oldParsed.version.replace(/^v/, ""))?.version;
+  const oldCoerced = coerce(stripv(oldParsed.version))?.version;
   if (!oldCoerced) return null;
 
   let bestVersion = oldCoerced;
@@ -170,7 +140,7 @@ export function findDockerVersion(
     const parsed = parseDockerTag(tagName);
     if (!parsed || parsed.suffix !== oldParsed.suffix) continue;
 
-    const coerced = coerce(parsed.version.replace(/^v/, ""))?.version;
+    const coerced = coerce(stripv(parsed.version))?.version;
     if (!coerced || !valid(coerced)) continue;
 
     const d = diff(bestVersion, coerced);
@@ -189,49 +159,35 @@ export function findDockerVersion(
   return {newTag, date: bestDate};
 }
 
-export function updateDockerfile(content: string, deps: Deps): string {
+function replaceImageRefs(content: string, deps: Deps, patterns: Array<(name: string, tag: string) => RegExp>): string {
   let newContent = content;
   for (const [key, dep] of Object.entries(deps)) {
     const [_type, name] = key.split(fieldSep);
     const oldTag = dep.oldOrig || dep.old;
-    newContent = newContent.replace(
-      new RegExp(`(FROM\\s+(?:--platform=\\S+\\s+)?)${esc(name)}:${esc(oldTag)}`, "g"),
-      `$1${name}:${dep.new}`,
-    );
+    for (const makeRegex of patterns) {
+      newContent = newContent.replace(makeRegex(esc(name), esc(oldTag)), `$1${name}:${dep.new}`);
+    }
   }
   return newContent;
+}
+
+export function updateDockerfile(content: string, deps: Deps): string {
+  return replaceImageRefs(content, deps, [
+    (name, tag) => new RegExp(`(FROM\\s+(?:--platform=\\S+\\s+)?)${name}:${tag}`, "g"),
+  ]);
 }
 
 export function updateComposeFile(content: string, deps: Deps): string {
-  let newContent = content;
-  for (const [key, dep] of Object.entries(deps)) {
-    const [_type, name] = key.split(fieldSep);
-    const oldTag = dep.oldOrig || dep.old;
-    newContent = newContent.replace(
-      new RegExp(`(image:\\s*['"]?)${esc(name)}:${esc(oldTag)}`, "g"),
-      `$1${name}:${dep.new}`,
-    );
-  }
-  return newContent;
+  return replaceImageRefs(content, deps, [
+    (name, tag) => new RegExp(`(image:\\s*['"]?)${name}:${tag}`, "g"),
+  ]);
 }
 
 export function updateWorkflowDockerImages(content: string, deps: Deps): string {
-  let newContent = content;
-  for (const [key, dep] of Object.entries(deps)) {
-    const [_type, name] = key.split(fieldSep);
-    const oldTag = dep.oldOrig || dep.old;
-    // container: image:tag or image: image:tag
-    newContent = newContent.replace(
-      new RegExp(`((?:container|image):\\s*['"]?)${esc(name)}:${esc(oldTag)}`, "g"),
-      `$1${name}:${dep.new}`,
-    );
-    // uses: docker://image:tag
-    newContent = newContent.replace(
-      new RegExp(`(uses:\\s*['"]?docker://)${esc(name)}:${esc(oldTag)}`, "g"),
-      `$1${name}:${dep.new}`,
-    );
-  }
-  return newContent;
+  return replaceImageRefs(content, deps, [
+    (name, tag) => new RegExp(`((?:container|image):\\s*['"]?)${name}:${tag}`, "g"),
+    (name, tag) => new RegExp(`(uses:\\s*['"]?docker://)${name}:${tag}`, "g"),
+  ]);
 }
 
 export const dockerTypes = ["docker"];

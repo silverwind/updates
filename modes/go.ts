@@ -46,6 +46,58 @@ export function isGoPseudoVersion(version: string): boolean {
   return /\d{14}-[0-9a-f]{12}$/.test(version);
 }
 
+type ProbeResult = {Version: string, Time: string, path: string};
+
+function noUpdateInfo(name: string, currentVersion: string, type: string): PackageInfo {
+  return [{name, old: currentVersion, new: currentVersion}, type, null, name];
+}
+
+async function probeMajorVersions(
+  currentMajor: number,
+  firstProbe: ProbeResult | null,
+  probeFn: (major: number) => Promise<ProbeResult | null>,
+): Promise<ProbeResult | null> {
+  if (!firstProbe) return null;
+  let highest = firstProbe;
+  const second = await probeFn(currentMajor + 2);
+  if (!second) return highest;
+  highest = second;
+  const probeBatchSize = 20;
+  for (let batchStart = currentMajor + 3; batchStart <= currentMajor + 100; batchStart += probeBatchSize) {
+    const batchEnd = Math.min(batchStart + probeBatchSize, currentMajor + 101);
+    const results = await Promise.all(
+      Array.from({length: batchEnd - batchStart}, (_, i) => probeFn(batchStart + i)),
+    );
+    let foundInBatch = false;
+    for (const result of results) {
+      if (!result) break;
+      highest = result;
+      foundInBatch = true;
+    }
+    if (!foundInBatch || results.some(r => !r)) break;
+  }
+  return highest;
+}
+
+function buildGoPackageInfo(
+  name: string, type: string, currentVersion: string,
+  probe: ProbeResult | null,
+  latestVersion: string, latestTime: string,
+): PackageInfo {
+  const highestVersion = probe?.Version ?? latestVersion;
+  const highestTime = probe?.Time ?? latestTime;
+  const highestPath = probe?.path ?? name;
+  return [{
+    name,
+    old: currentVersion,
+    new: stripv(highestVersion),
+    Time: highestTime,
+    ...(highestPath !== name ? {newPath: highestPath} : {}),
+    sameMajorNew: stripv(latestVersion),
+    sameMajorTime: latestTime,
+  }, type, null, name];
+}
+
 export function parseGoMod(content: string): {deps: Record<string, string>, replace: Record<string, string>} {
   const deps: Record<string, string> = {};
   const replace: Record<string, string> = {};
@@ -95,10 +147,9 @@ export function parseGoMod(content: string): {deps: Record<string, string>, repl
 }
 
 export async function fetchGoVcsInfo(name: string, type: string, currentVersion: string, goCwd: string, ctx: ModeContext): Promise<PackageInfo> {
-  const noUpdate: PackageInfo = [{name, old: currentVersion, new: currentVersion}, type, null, name];
   const currentMajor = extractGoMajor(name);
 
-  const goListQuery = async (modulePath: string, timeout: number) => {
+  const goListQuery = async (modulePath: string, timeout: number): Promise<ProbeResult | null> => {
     try {
       const {stdout} = await execFile("go", ["list", "-m", "-json", `${modulePath}@latest`], {
         timeout,
@@ -117,62 +168,20 @@ export async function fetchGoVcsInfo(name: string, type: string, currentVersion:
     goListQuery(name, ctx.fetchTimeout),
     goListQuery(buildGoModulePath(name, currentMajor + 1), ctx.goProbeTimeout),
   ]);
-  if (!latest) return noUpdate;
+  if (!latest) return noUpdateInfo(name, currentVersion, type);
 
-  const latestVersion = latest.Version;
-  const latestTime = latest.Time;
-  let highestVersion = latestVersion;
-  let highestTime = latestTime;
-  let highestPath = name;
-
-  const applyProbe = (data: {Version: string, Time: string, path: string}) => {
-    highestVersion = data.Version;
-    highestTime = data.Time;
-    highestPath = data.path;
-  };
-
-  if (firstProbe) {
-    applyProbe(firstProbe);
-    const second = await goListQuery(buildGoModulePath(name, currentMajor + 2), ctx.goProbeTimeout);
-    if (second) {
-      applyProbe(second);
-      const probeBatchSize = 20;
-      for (let batchStart = currentMajor + 3; batchStart <= currentMajor + 100; batchStart += probeBatchSize) {
-        const batchEnd = Math.min(batchStart + probeBatchSize, currentMajor + 101);
-        const probes = Array.from({length: batchEnd - batchStart}, (_, i) =>
-          goListQuery(buildGoModulePath(name, batchStart + i), ctx.goProbeTimeout),
-        );
-        const results = await Promise.all(probes);
-        let foundInBatch = false;
-        for (const result of results) {
-          if (!result) break;
-          applyProbe(result);
-          foundInBatch = true;
-        }
-        if (!foundInBatch || results.some(r => !r)) break;
-      }
-    }
-  }
-
-  return [{
-    name,
-    old: currentVersion,
-    new: stripv(highestVersion),
-    Time: highestTime,
-    ...(highestPath !== name ? {newPath: highestPath} : {}),
-    sameMajorNew: stripv(latestVersion),
-    sameMajorTime: latestTime,
-  }, type, null, name];
+  const probeResult = await probeMajorVersions(currentMajor, firstProbe, (major) =>
+    goListQuery(buildGoModulePath(name, major), ctx.goProbeTimeout),
+  );
+  return buildGoPackageInfo(name, type, currentVersion, probeResult, latest.Version, latest.Time);
 }
 
 export async function fetchGoProxyInfo(name: string, type: string, currentVersion: string, goCwd: string, ctx: ModeContext, goNoProxy: Array<string>): Promise<PackageInfo> {
-  const noUpdate: PackageInfo = [{name, old: currentVersion, new: currentVersion}, type, null, name];
-
   if (isGoNoProxy(name, goNoProxy)) return fetchGoVcsInfo(name, type, currentVersion, goCwd, ctx);
 
   const encoded = encodeGoModulePath(name);
   const currentMajor = extractGoMajor(name);
-  const probeGoMajor = async (major: number) => {
+  const probeGoMajor = async (major: number): Promise<ProbeResult | null> => {
     const path = buildGoModulePath(name, major);
     return ctx.doFetch(`${ctx.goProxyUrl}/${encodeGoModulePath(path)}/@latest`, {signal: AbortSignal.timeout(ctx.goProbeTimeout)})
       .then(async (r) => r.ok ? {...await r.json() as {Version: string, Time: string}, path} : null)
@@ -184,7 +193,7 @@ export async function fetchGoProxyInfo(name: string, type: string, currentVersio
     ctx.doFetch(`${ctx.goProxyUrl}/${encoded}/@latest`, {signal: AbortSignal.timeout(ctx.fetchTimeout)}),
     probeGoMajor(currentMajor + 1),
   ]);
-  if (!res.ok) return noUpdate;
+  if (!res.ok) return noUpdateInfo(name, currentVersion, type);
 
   let latestVersion: string;
   let latestTime: string;
@@ -193,52 +202,11 @@ export async function fetchGoProxyInfo(name: string, type: string, currentVersio
     latestVersion = data.Version;
     latestTime = data.Time;
   } catch {
-    return noUpdate;
+    return noUpdateInfo(name, currentVersion, type);
   }
 
-  // Probe for major version upgrades
-  let highestVersion = latestVersion;
-  let highestTime = latestTime;
-  let highestPath = name;
-  const applyProbe = (data: {Version: string, Time: string, path: string}) => {
-    highestVersion = data.Version;
-    highestTime = data.Time;
-    highestPath = data.path;
-  };
-
-  if (firstProbe) {
-    applyProbe(firstProbe);
-    const second = await probeGoMajor(currentMajor + 2);
-    if (second) {
-      applyProbe(second);
-      // Multiple consecutive majors, probe further in parallel batches
-      const probeBatchSize = 20;
-      for (let batchStart = currentMajor + 3; batchStart <= currentMajor + 100; batchStart += probeBatchSize) {
-        const batchEnd = Math.min(batchStart + probeBatchSize, currentMajor + 101);
-        const probes = Array.from({length: batchEnd - batchStart}, (_, i) => ({
-          result: probeGoMajor(batchStart + i),
-        }));
-        const results = await Promise.all(probes.map(p => p.result));
-        let foundInBatch = false;
-        for (const result of results) {
-          if (!result) break;
-          applyProbe(result);
-          foundInBatch = true;
-        }
-        if (!foundInBatch || results.some(r => !r)) break;
-      }
-    }
-  }
-
-  return [{
-    name,
-    old: currentVersion,
-    new: stripv(highestVersion),
-    Time: highestTime,
-    ...(highestPath !== name ? {newPath: highestPath} : {}),
-    sameMajorNew: stripv(latestVersion),
-    sameMajorTime: latestTime,
-  }, type, null, name];
+  const probeResult = await probeMajorVersions(currentMajor, firstProbe, probeGoMajor);
+  return buildGoPackageInfo(name, type, currentVersion, probeResult, latestVersion, latestTime);
 }
 
 export function removeGoReplace(content: string, name: string): string {

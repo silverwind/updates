@@ -1,4 +1,4 @@
-import {type Deps, type ModeContext, type PackageInfo, esc, fieldSep} from "./shared.ts";
+import {type Deps, type ModeContext, type PackageInfo, esc, fieldSep, throwFetchError} from "./shared.ts";
 
 export async function fetchPypiInfo(name: string, type: string, ctx: ModeContext): Promise<PackageInfo> {
   const url = `${ctx.pypiApiUrl}/pypi/${name}/json`;
@@ -6,13 +6,8 @@ export async function fetchPypiInfo(name: string, type: string, ctx: ModeContext
   const res = await ctx.doFetch(url, {signal: AbortSignal.timeout(ctx.fetchTimeout), headers: {"accept-encoding": "gzip, deflate, br"}});
   if (res?.ok) {
     return [await res.json(), type, null, name];
-  } else {
-    if (res?.status && res?.statusText) {
-      throw new Error(`Received ${res.status} ${res.statusText} from ${url}`);
-    } else {
-      throw new Error(`Unable to fetch ${name} from ${ctx.pypiApiUrl}`);
-    }
   }
+  throwFetchError(res, url, name, ctx.pypiApiUrl);
 }
 
 export function updatePyprojectToml(pkgStr: string, deps: Deps): string {
