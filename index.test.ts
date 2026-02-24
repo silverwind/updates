@@ -235,7 +235,7 @@ beforeAll(async () => {
   jsrUrl = makeUrl(jsrServer);
   goProxyUrl = makeUrl(goProxyServer);
 
-  await writeFile(join(testDir, ".npmrc"), `registry=${npmUrl}`); // Fake registry
+  await writeFile(join(testDir, ".npmrc"), `registry=${npmUrl}\nsave-exact=false`); // Fake registry
   await writeFile(join(testDir, "package.json"), JSON.stringify(testPkg, null, 2)); // Copy fixture
 });
 
@@ -414,6 +414,18 @@ test.concurrent("latest", async ({expect = globalExpect}: any = {}) => {
             "old": "6941e05",
           },
         },
+        "devDependencies": {
+          "prismjs": {
+            "info": "https://github.com/LeaVerou/prism",
+            "new": "^1.17.1",
+            "old": "link:../prismjs",
+          },
+          "updates": {
+            "info": "https://github.com/silverwind/updates",
+            "new": "^10.0.0",
+            "old": "file:.",
+          },
+        },
         "packageManager": {
           "npm": {
             "info": "https://github.com/npm/cli",
@@ -504,6 +516,18 @@ test.concurrent("greatest", async ({expect = globalExpect}: any = {}) => {
             "info": "https://github.com/silverwind/updates",
             "new": "537ccb7",
             "old": "6941e05",
+          },
+        },
+        "devDependencies": {
+          "prismjs": {
+            "info": "https://github.com/LeaVerou/prism",
+            "new": "^1.17.1",
+            "old": "link:../prismjs",
+          },
+          "updates": {
+            "info": "https://github.com/silverwind/updates",
+            "new": "^10.0.0",
+            "old": "file:.",
           },
         },
         "packageManager": {
@@ -601,6 +625,18 @@ test.concurrent("prerelease", async ({expect = globalExpect}: any = {}) => {
             "info": "https://github.com/silverwind/updates",
             "new": "537ccb7",
             "old": "6941e05",
+          },
+        },
+        "devDependencies": {
+          "prismjs": {
+            "info": "https://github.com/LeaVerou/prism",
+            "new": "^1.17.1",
+            "old": "link:../prismjs",
+          },
+          "updates": {
+            "info": "https://github.com/silverwind/updates",
+            "new": "^10.0.0",
+            "old": "file:.",
           },
         },
         "packageManager": {
@@ -705,6 +741,18 @@ test.concurrent("release", async ({expect = globalExpect}: any = {}) => {
             "old": "6941e05",
           },
         },
+        "devDependencies": {
+          "prismjs": {
+            "info": "https://github.com/LeaVerou/prism",
+            "new": "^1.17.1",
+            "old": "link:../prismjs",
+          },
+          "updates": {
+            "info": "https://github.com/silverwind/updates",
+            "new": "^10.0.0",
+            "old": "file:.",
+          },
+        },
         "packageManager": {
           "npm": {
             "info": "https://github.com/npm/cli",
@@ -756,15 +804,17 @@ test.concurrent("patch", async ({expect = globalExpect}: any = {}) => {
             "new": "3.1.4",
             "old": "3.1.0",
           },
-          "react": {
-            "info": "https://github.com/facebook/react/tree/HEAD/packages/react",
-            "new": "18.0.0",
-            "old": "18.0",
-          },
           "updates": {
             "info": "https://github.com/silverwind/updates",
             "new": "537ccb7",
             "old": "6941e05",
+          },
+        },
+        "devDependencies": {
+          "prismjs": {
+            "info": "https://github.com/LeaVerou/prism",
+            "new": "^0.0.1",
+            "old": "link:../prismjs",
           },
         },
         "packageManager": {
@@ -1032,6 +1082,13 @@ test.concurrent("dual", async ({expect = globalExpect}: any = {}) => {
             "info": "https://github.com/silverwind/updates",
             "new": "537ccb7",
             "old": "6941e05",
+          },
+        },
+        "devDependencies": {
+          "updates": {
+            "info": "https://github.com/silverwind/updates",
+            "new": "^10.0.0",
+            "old": "file:.",
           },
         },
         "peerDependencies": {

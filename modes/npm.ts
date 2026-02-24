@@ -148,6 +148,10 @@ export function isJsr(value: string): boolean {
   return value.startsWith("npm:@jsr/") || value.startsWith("jsr:");
 }
 
+export function isLocalDep(value: string): boolean {
+  return value.startsWith("link:") || value.startsWith("file:");
+}
+
 // - "npm:@jsr/std__semver@1.0.5" -> { scope: "std", name: "semver", version: "1.0.5" }
 // - "jsr:@std/semver@1.0.5" -> { scope: "std", name: "semver", version: "1.0.5" }
 // - "jsr:1.0.5" (when package name is known) -> { scope: null, name: null, version: "1.0.5" }

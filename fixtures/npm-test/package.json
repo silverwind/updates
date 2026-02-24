@@ -18,7 +18,8 @@
     "eslint-plugin-storybook": "10.0.0-beta.5"
   },
   "devDependencies": {
-    "updates": "file:."
+    "updates": "file:.",
+    "prismjs": "link:../prismjs"
   },
   "peerDependencies": {
     "@babel/preset-env": "~6.0.0",

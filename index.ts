@@ -17,8 +17,8 @@ import {
   stripv,
 } from "./modes/shared.ts";
 import {
-  fetchNpmInfo, fetchJsrInfo, isJsr, parseJsrDependency,
-  updatePackageJson, updateNpmRange, normalizeRange, checkUrlDep,
+  fetchNpmInfo, fetchJsrInfo, isJsr, isLocalDep, parseJsrDependency,
+  getNpmrc, updatePackageJson, updateNpmRange, normalizeRange, checkUrlDep,
   hashRe as npmHashRe,
 } from "./modes/npm.ts";
 import {fetchPypiInfo, updatePyprojectToml} from "./modes/pypi.ts";
@@ -678,6 +678,11 @@ async function main(): Promise<void> {
                 old: normalizeRange(value),
                 oldOrig: value,
               } as Dep;
+            } else if (mode === "npm" && isLocalDep(value) && canInclude(name, mode, include, exclude, depType)) {
+              deps[mode][`${depType}${fieldSep}${name}`] = {
+                old: "0.0.0",
+                oldOrig: value,
+              } as Dep;
             } else if (mode === "npm" && !isJsr(value) && canInclude(name, mode, include, exclude, depType)) {
               maybeUrlDeps[`${depType}${fieldSep}${name}`] = {
                 old: value,
@@ -698,7 +703,7 @@ async function main(): Promise<void> {
 
     let entries: Array<PackageInfo> = [];
 
-    entries = await pMap(Object.keys(deps[mode]), async (key) => {
+    entries = (await pMap(Object.keys(deps[mode]), async (key) => {
       const [type, name] = key.split(fieldSep);
       if (mode === "npm") {
         // Check if this dependency is a JSR dependency
@@ -706,13 +711,21 @@ async function main(): Promise<void> {
         if (oldOrig && isJsr(oldOrig)) {
           return fetchJsrInfo(name, type, ctx);
         }
+        if (oldOrig && isLocalDep(oldOrig)) {
+          try {
+            return await fetchNpmInfo(name, type, config, args, ctx);
+          } catch {
+            delete deps[mode][key];
+            return null;
+          }
+        }
         return fetchNpmInfo(name, type, config, args, ctx);
       } else if (mode === "go") {
         return fetchGoProxyInfo(name, type, deps[mode][key].oldOrig || deps[mode][key].old, projectDir, ctx, goNoProxy);
       } else {
         return fetchPypiInfo(name, type, ctx);
       }
-    }, {concurrency});
+    }, {concurrency})).filter(Boolean) as Array<PackageInfo>;
 
     for (const [data, type, registry, name] of entries) {
       if (data?.error) throw new Error(data.error);
@@ -732,8 +745,11 @@ async function main(): Promise<void> {
         // go has no ranges and pypi oldRange is a version at this point, not a range
         newRange = newVersion;
       } else if (newVersion) {
+        // Check if this is a local dependency (link: or file:)
+        if (oldOrig && isLocalDep(oldOrig)) {
+          newRange = String(getNpmrc()["save-exact"]) === "true" ? newVersion : `^${newVersion}`;
         // Check if this is a JSR dependency
-        if (oldOrig && isJsr(oldOrig)) {
+        } else if (oldOrig && isJsr(oldOrig)) {
           // Reconstruct JSR format with new version
           if (oldOrig.startsWith("npm:@jsr/")) {
             const match = /^(npm:@jsr\/[^@]+@)(.+)$/.exec(oldOrig);
@@ -753,7 +769,7 @@ async function main(): Promise<void> {
         }
       }
 
-      if (!newVersion || oldOrig && (oldOrig === newRange)) {
+      if (!newVersion || newVersion === oldRange || oldOrig && (oldOrig === newRange)) {
         delete deps[mode][key];
         continue;
       }
