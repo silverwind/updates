@@ -1,0 +1,12 @@
+name: ci
+on: [push]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    container: node:18
+    services:
+      db:
+        image: postgres:15
+    steps:
+      - uses: docker://node:18
+      - run: echo "test"

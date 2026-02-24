@@ -1,0 +1,16 @@
+{
+  "count": 10,
+  "next": null,
+  "results": [
+    {"name": "22", "tag_last_pushed": "2025-01-15T10:00:00Z", "last_updated": "2025-01-15T10:00:00Z"},
+    {"name": "22.13", "tag_last_pushed": "2025-01-15T10:00:00Z", "last_updated": "2025-01-15T10:00:00Z"},
+    {"name": "22.13.0", "tag_last_pushed": "2025-01-15T10:00:00Z", "last_updated": "2025-01-15T10:00:00Z"},
+    {"name": "20", "tag_last_pushed": "2024-06-01T10:00:00Z", "last_updated": "2024-06-01T10:00:00Z"},
+    {"name": "20.11", "tag_last_pushed": "2024-06-01T10:00:00Z", "last_updated": "2024-06-01T10:00:00Z"},
+    {"name": "20.11.0", "tag_last_pushed": "2024-06-01T10:00:00Z", "last_updated": "2024-06-01T10:00:00Z"},
+    {"name": "18", "tag_last_pushed": "2024-01-01T10:00:00Z", "last_updated": "2024-01-01T10:00:00Z"},
+    {"name": "18.19", "tag_last_pushed": "2024-01-01T10:00:00Z", "last_updated": "2024-01-01T10:00:00Z"},
+    {"name": "18.19.1", "tag_last_pushed": "2024-01-01T10:00:00Z", "last_updated": "2024-01-01T10:00:00Z"},
+    {"name": "latest", "tag_last_pushed": "2025-01-15T10:00:00Z", "last_updated": "2025-01-15T10:00:00Z"}
+  ]
+}

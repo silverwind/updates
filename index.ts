@@ -2,7 +2,7 @@
 import {cwd, stdout, stderr, exit, platform, versions} from "node:process";
 import {join, dirname, basename, resolve} from "node:path";
 import {pathToFileURL} from "node:url";
-import {lstatSync, readFileSync, truncateSync, writeFileSync, accessSync, type Stats} from "node:fs";
+import {lstatSync, readFileSync, readdirSync, truncateSync, writeFileSync, accessSync, type Stats} from "node:fs";
 import {stripVTControlCharacters, styleText, parseArgs, type ParseArgsOptionsConfig} from "node:util";
 import pMap from "p-map";
 import {valid, validRange} from "./utils/semver.ts";
@@ -33,6 +33,14 @@ import {
   fetchActionTags, fetchActionTagDate, formatActionVersion,
   updateWorkflowFile, isWorkflowFile, resolveWorkflowFiles,
 } from "./modes/actions.ts";
+import {
+  type DockerImageRef,
+  parseDockerTag, extractDockerRefs,
+  getExtractionRegex, isDockerfile, isDockerFileName, dockerExactFileNames,
+  fetchDockerInfo, findDockerVersion, getDockerInfoUrl,
+  updateDockerfile, updateComposeFile, updateWorkflowDockerImages,
+  composeImageRe, workflowContainerRe, workflowDockerUsesRe,
+} from "./modes/docker.ts";
 
 export type {Config, Dep, Deps, DepsByMode, Output};
 
@@ -50,6 +58,7 @@ const options: ParseArgsOptionsConfig = {
   "file": {short: "f", type: "string", multiple: true},
   "forgeapi": {type: "string"}, // undocumented, only for tests
   "goproxy": {type: "string"}, // undocumented, only for tests
+  "dockerapi": {type: "string"}, // undocumented, only for tests
   "greatest": {short: "g", type: "string", multiple: true},
   "help": {short: "h", type: "boolean"},
   "include": {short: "i", type: "string", multiple: true},
@@ -137,11 +146,12 @@ const release = argSetToRegexes(parseMixedArg(args.release));
 const patch = argSetToRegexes(parseMixedArg(args.patch));
 const minor = argSetToRegexes(parseMixedArg(args.minor));
 const allowDowngrade = argSetToRegexes(parseMixedArg(args["allow-downgrade"]));
-const enabledModes = parseMixedArg(args.modes) as Set<string> || new Set(["npm", "pypi", "go", "actions"]);
+const enabledModes = parseMixedArg(args.modes) as Set<string> || new Set(["npm", "pypi", "go", "actions", "docker"]);
 const forgeApiUrl = typeof args.forgeapi === "string" ? normalizeUrl(args.forgeapi) : "https://api.github.com";
 const pypiApiUrl = typeof args.pypiapi === "string" ? normalizeUrl(args.pypiapi) : "https://pypi.org";
 const jsrApiUrl = typeof args.jsrapi === "string" ? normalizeUrl(args.jsrapi) : "https://jsr.io";
 const goProxyUrl = typeof args.goproxy === "string" ? normalizeUrl(args.goproxy) : resolveGoProxy();
+const dockerApiUrl = typeof args.dockerapi === "string" ? normalizeUrl(args.dockerapi) : "https://hub.docker.com";
 const goNoProxy = parseGoNoProxy();
 
 
@@ -186,6 +196,7 @@ const ctx: ModeContext = {
   pypiApiUrl,
   jsrApiUrl,
   goProxyUrl,
+  dockerApiUrl,
   doFetch: (url: string, opts?: RequestInit) => doFetch(url, opts, Boolean(args.verbose), logVerbose, magenta, green, red),
   verbose: Boolean(args.verbose),
 };
@@ -415,6 +426,20 @@ function resolveFiles(filesArg: Set<string>): [Set<string>, Set<string>] {
             resolvedFiles.add(resolve(f));
           }
         }
+        // Scan for Docker files by pattern
+        try {
+          for (const entry of readdirSync(file)) {
+            if (isDockerFileName(entry)) {
+              const f = join(file, entry);
+              try {
+                if (lstatSync(f).isFile()) {
+                  resolvedFiles.add(resolve(f));
+                  explicitFiles.add(resolve(f));
+                }
+              } catch {}
+            }
+          }
+        } catch {}
         const normalized = resolve(file).replace(/\\/g, "/");
         let wfDir: string | undefined;
         if (normalized.endsWith(".github/workflows")) wfDir = normalized;
@@ -433,6 +458,22 @@ function resolveFiles(filesArg: Set<string>): [Set<string>, Set<string>] {
       const file = findUpSync(filename, cwd());
       if (file) resolvedFiles.add(resolve(file));
     }
+    // Auto-discover Docker files by exact name (findUpSync) and pattern (directory scan)
+    for (const filename of dockerExactFileNames) {
+      const file = findUpSync(filename, cwd());
+      if (file) resolvedFiles.add(resolve(file));
+    }
+    // Scan cwd for Docker files matching patterns (Dockerfile.*, docker-*.yml)
+    try {
+      for (const entry of readdirSync(cwd())) {
+        if (isDockerFileName(entry) && !dockerExactFileNames.includes(entry)) {
+          const f = join(cwd(), entry);
+          try {
+            if (lstatSync(f).isFile()) resolvedFiles.add(resolve(f));
+          } catch {}
+        }
+      }
+    } catch {}
     const workflowDir = findUpSync(join(".github", "workflows"), cwd());
     if (workflowDir) {
       for (const wf of resolveWorkflowFiles(workflowDir)) {
@@ -515,7 +556,7 @@ async function main(): Promise<void> {
     -r, --registry <url>               Override npm registry URL
     -S, --sockets <num>                Maximum number of parallel HTTP sockets opened. Default: ${maxSockets}
     -T, --timeout <ms>                 Network request timeout in ms (go probes use half). Default: ${fetchTimeout}
-    -M, --modes <mode,...>             Which modes to enable. Either npm,pypi,go,actions. Default: npm,pypi,go,actions
+    -M, --modes <mode,...>             Which modes to enable. Default: npm,pypi,go,actions,docker
     -j, --json                         Output a JSON object
     -n, --no-color                     Disable color output
     -v, --version                      Print the version
@@ -532,6 +573,8 @@ async function main(): Promise<void> {
     $ updates -f pyproject.toml
     $ updates -f go.mod
     $ updates -f .github
+    $ updates -f Dockerfile
+    $ updates -f docker-compose.yml
 `);
     await end();
   }
@@ -554,17 +597,38 @@ async function main(): Promise<void> {
   const [files, explicitFiles] = resolveFiles(mergedFiles as Set<string>);
 
   const wfData: Record<string, {absPath: string, content: string}> = {};
+  const dockerFileData: Record<string, {absPath: string, content: string, fileType: string}> = {};
   const cliInclude = parseArgList(includeArg);
   const cliExclude = parseArgList(excludeArg);
   const cliPin = parsePinArg(pinArg);
 
   type ActionDepInfo = ActionRef & {key: string, apiUrl: string};
   const actionDepInfos: Array<ActionDepInfo> = [];
+  type DockerDepInfo = {key: string, fullImage: string, ref: DockerImageRef};
+  const dockerDepInfos: Array<DockerDepInfo> = [];
+
+  function collectDockerRefs(content: string, relPath: string, regexes: Array<RegExp>): void {
+    if (!deps.docker) deps.docker = {};
+    const include = matchersToRegexSet(cliInclude, []);
+    const exclude = matchersToRegexSet(cliExclude, []);
+    for (const regex of regexes) {
+      for (const {ref} of extractDockerRefs(content, regex)) {
+        if (!canInclude(ref.fullImage, "docker", include, exclude, "docker")) continue;
+        const key = `${relPath}${fieldSep}${ref.fullImage}`;
+        if (deps.docker[key]) continue;
+        const parsed = parseDockerTag(ref.tag);
+        if (!parsed) continue;
+        deps.docker[key] = {old: parsed.version, oldOrig: ref.tag} as Dep;
+        dockerDepInfos.push({key, fullImage: ref.fullImage, ref});
+      }
+    }
+  }
 
   for (const file of files) {
     if (isWorkflowFile(file)) {
-      if (!enabledModes.has("actions") && !explicitFiles.has(file)) continue;
-      if (!deps.actions) deps.actions = {};
+      const actionsEnabled = enabledModes.has("actions") || explicitFiles.has(file);
+      const dockerEnabled = enabledModes.has("docker") || explicitFiles.has(file);
+      if (!actionsEnabled && !dockerEnabled) continue;
 
       let content: string;
       try {
@@ -575,20 +639,44 @@ async function main(): Promise<void> {
       const relPath = toRelPath(file);
       wfData[relPath] = {absPath: file, content};
 
-      const include = matchersToRegexSet(cliInclude, []);
-      const exclude = matchersToRegexSet(cliExclude, []);
-      const actions = Array.from(content.matchAll(actionsUsesRe), m => parseActionRef(m[1])).filter(a => a !== null);
-      for (const action of actions) {
-        if (!canInclude(action.name, "actions", include, exclude, "actions")) continue;
-        const key = `${relPath}${fieldSep}${action.name}`;
-        if (deps.actions[key]) continue;
-        deps.actions[key] = {old: action.ref} as Dep;
-        actionDepInfos.push({...action, key, apiUrl: getForgeApiBaseUrl(action.host, forgeApiUrl)});
+      if (actionsEnabled) {
+        if (!deps.actions) deps.actions = {};
+        const include = matchersToRegexSet(cliInclude, []);
+        const exclude = matchersToRegexSet(cliExclude, []);
+        const actions = Array.from(content.matchAll(actionsUsesRe), m => parseActionRef(m[1])).filter(a => a !== null);
+        for (const action of actions) {
+          if (!canInclude(action.name, "actions", include, exclude, "actions")) continue;
+          const key = `${relPath}${fieldSep}${action.name}`;
+          if (deps.actions[key]) continue;
+          deps.actions[key] = {old: action.ref} as Dep;
+          actionDepInfos.push({...action, key, apiUrl: getForgeApiBaseUrl(action.host, forgeApiUrl)});
+        }
+      }
+
+      if (dockerEnabled) {
+        dockerFileData[relPath] = {absPath: file, content, fileType: "workflow"};
+        collectDockerRefs(content, relPath, [composeImageRe, workflowContainerRe, workflowDockerUsesRe]);
       }
       continue;
     }
 
     const filename = basename(file);
+
+    if (isDockerFileName(filename)) {
+      if (!enabledModes.has("docker") && !explicitFiles.has(file)) continue;
+      let content: string;
+      try {
+        content = readFileSync(file, "utf8");
+      } catch (err) {
+        throw new Error(`Unable to open ${file}: ${(err as Error).message}`);
+      }
+      const relPath = toRelPath(file);
+      const fileType = isDockerfile(filename) ? "dockerfile" : "compose";
+      dockerFileData[relPath] = {absPath: file, content, fileType};
+      collectDockerRefs(content, relPath, [getExtractionRegex(filename)]);
+      continue;
+    }
+
     const mode = modeByFileName[filename];
     if (!enabledModes.has(mode) && !explicitFiles.has(file)) continue;
     filePerMode[mode] = file;
@@ -949,6 +1037,61 @@ async function main(): Promise<void> {
     }
   }
 
+  // Docker version resolution (after all docker files collected)
+  if (deps.docker) {
+    numDependencies += Object.keys(deps.docker).length;
+  }
+
+  if (dockerDepInfos.length) {
+    // Group by unique image to avoid duplicate fetches
+    const depsByImage = new Map<string, Array<DockerDepInfo>>();
+    for (const info of dockerDepInfos) {
+      if (!depsByImage.has(info.fullImage)) {
+        depsByImage.set(info.fullImage, []);
+      }
+      depsByImage.get(info.fullImage)!.push(info);
+    }
+
+    await pMap(depsByImage.entries(), async ([fullImage, infos]) => {
+      let data: Record<string, any>;
+      try {
+        const [fetchedData] = await fetchDockerInfo(fullImage, "docker", ctx);
+        data = fetchedData;
+      } catch {
+        for (const info of infos) delete deps.docker[info.key];
+        return;
+      }
+
+      for (const info of infos) {
+        const dep = deps.docker[info.key];
+        const oldTag = dep.oldOrig || dep.old;
+        const {semvers} = getVersionOpts(info.fullImage);
+        const result = findDockerVersion(data.tags, oldTag, semvers);
+        if (!result) { delete deps.docker[info.key]; continue; }
+
+        dep.new = result.newTag;
+        dep.info = getDockerInfoUrl(info.ref);
+
+        if (result.date) {
+          dep.date = result.date;
+          dep.age = timerel(result.date, {noAffix: true});
+        }
+      }
+    }, {concurrency});
+
+    if (cooldownArg) {
+      for (const [key, {date}] of Object.entries(deps.docker)) {
+        if (!canIncludeByDate(date, parseDuration(String(cooldownArg)), now)) {
+          delete deps.docker[key];
+        }
+      }
+    }
+
+    if (!Object.keys(deps.docker).length) {
+      delete deps.docker;
+    }
+  }
+
   if (numDependencies === 0) {
     return finishWithMessage("No dependencies found, nothing to do.");
   }
@@ -972,6 +1115,16 @@ async function main(): Promise<void> {
     }
   }
 
+  // Pre-build docker update data before outputDeps modifies dep values
+  const dockerUpdatesByRelPath = new Map<string, Deps>();
+  if (deps.docker) {
+    for (const [key, dep] of Object.entries(deps.docker)) {
+      const [relPath] = key.split(fieldSep);
+      if (!dockerUpdatesByRelPath.has(relPath)) dockerUpdatesByRelPath.set(relPath, {});
+      dockerUpdatesByRelPath.get(relPath)![key] = dep;
+    }
+  }
+
   const exitCode = outputDeps(deps);
 
   if (update) {
@@ -984,6 +1137,27 @@ async function main(): Promise<void> {
           if (!absPath) continue;
           try {
             write(absPath, updateWorkflowFile(content, actionDeps));
+          } catch (err) {
+            throw new Error(`Error writing ${basename(absPath)}: ${(err as Error).message}`);
+          }
+          console.info(green(`✨ ${relPath} updated`));
+        }
+        continue;
+      }
+
+      if (mode === "docker") {
+        for (const [relPath, dockerDeps] of dockerUpdatesByRelPath) {
+          const fileInfo = dockerFileData[relPath];
+          if (!fileInfo) continue;
+          const {absPath, fileType} = fileInfo;
+          // Read latest content (may have been updated by actions mode for workflow files)
+          let content: string;
+          try { content = readFileSync(absPath, "utf8"); } catch { continue; }
+          try {
+            const updateFn = fileType === "dockerfile" ? updateDockerfile :
+              fileType === "compose" ? updateComposeFile :
+                updateWorkflowDockerImages;
+            write(absPath, updateFn(content, dockerDeps));
           } catch (err) {
             throw new Error(`Error writing ${basename(absPath)}: ${(err as Error).message}`);
           }

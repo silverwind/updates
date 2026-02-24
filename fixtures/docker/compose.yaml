@@ -1,0 +1,11 @@
+services:
+  web:
+    image: node:18
+    ports:
+      - "3000:3000"
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_PASSWORD: secret
+  cache:
+    image: redis:7

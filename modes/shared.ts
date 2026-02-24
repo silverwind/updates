@@ -78,6 +78,7 @@ export type ModeContext = {
   pypiApiUrl: string,
   jsrApiUrl: string,
   goProxyUrl: string,
+  dockerApiUrl: string,
   doFetch: typeof doFetch,
   verbose: boolean,
 };

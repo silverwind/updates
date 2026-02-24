@@ -32,6 +32,12 @@ const goPseudoFile = fileURLToPath(new URL("fixtures/go-pseudo/go.mod", import.m
 const dualFile = fileURLToPath(new URL("fixtures/dual", import.meta.url));
 const invalidConfigFile = fileURLToPath(new URL("fixtures/invalid-config/package.json", import.meta.url));
 const actionsDir = fileURLToPath(new URL("fixtures/actions/.github/workflows", import.meta.url));
+const dockerfileFixture = fileURLToPath(new URL("fixtures/docker/Dockerfile", import.meta.url));
+const composeFixture = fileURLToPath(new URL("fixtures/docker/compose.yaml", import.meta.url));
+const dockerActionsDir = fileURLToPath(new URL("fixtures/docker-actions/.github/workflows", import.meta.url));
+const dockerfileDevFixture = fileURLToPath(new URL("fixtures/docker/Dockerfile.dev", import.meta.url));
+const dockerStackFixture = fileURLToPath(new URL("fixtures/docker/docker-stack.yml", import.meta.url));
+const dockerDir = fileURLToPath(new URL("fixtures/docker", import.meta.url));
 
 const testPkg = JSON.parse(readFileSync(testFile, "utf8"));
 const testDir = mkdtempSync(join(tmpdir(), "updates-"));
@@ -119,12 +125,14 @@ let githubServer: ReturnType<typeof makeServer>;
 let pypiServer: ReturnType<typeof makeServer>;
 let jsrServer: ReturnType<typeof makeServer>;
 let goProxyServer: ReturnType<typeof makeServer>;
+let dockerServer: ReturnType<typeof makeServer>;
 
 let githubUrl: string;
 let pypiUrl: string;
 let npmUrl: string;
 let jsrUrl: string;
 let goProxyUrl: string;
+let dockerUrl: string;
 
 beforeAll(async () => {
   npmServer = makeServer(defaultRoute);
@@ -132,6 +140,7 @@ beforeAll(async () => {
   pypiServer = makeServer(defaultRoute);
   jsrServer = makeServer(defaultRoute);
   goProxyServer = makeServer((_, res) => { res.statusCode = 404; res.end(); });
+  dockerServer = makeServer((_, res) => { res.statusCode = 404; res.end(); });
 
   const [commits, tags] = await Promise.all([
     readFile(fileURLToPath(new URL("fixtures/github/updates-commits.json", import.meta.url)), "utf8"),
@@ -221,12 +230,25 @@ beforeAll(async () => {
     githubServer.get(route, (_, res) => res.send(gz));
   }
 
+  // Docker Hub API fixtures
+  const dockerFixtures: Array<[string, string]> = [
+    ["/v2/repositories/library/node/tags", "fixtures/docker/node-tags.json"],
+    ["/v2/repositories/library/postgres/tags", "fixtures/docker/postgres-tags.json"],
+    ["/v2/repositories/library/redis/tags", "fixtures/docker/redis-tags.json"],
+  ];
+  for (const [route, fixture] of dockerFixtures) {
+    const data = await readFile(fileURLToPath(new URL(fixture, import.meta.url)), "utf8");
+    const gz = await gzipPromise(data);
+    dockerServer.get(route, (_, res) => res.send(gz));
+  }
+
   await Promise.all([
     githubServer.start(0),
     pypiServer.start(0),
     npmServer.start(0),
     jsrServer.start(0),
     goProxyServer.start(0),
+    dockerServer.start(0),
   ]);
 
   githubUrl = makeUrl(githubServer);
@@ -234,6 +256,7 @@ beforeAll(async () => {
   pypiUrl = makeUrl(pypiServer);
   jsrUrl = makeUrl(jsrServer);
   goProxyUrl = makeUrl(goProxyServer);
+  dockerUrl = makeUrl(dockerServer);
 
   await writeFile(join(testDir, ".npmrc"), `registry=${npmUrl}\nsave-exact=false`); // Fake registry
   await writeFile(join(testDir, "package.json"), JSON.stringify(testPkg, null, 2)); // Copy fixture
@@ -247,6 +270,7 @@ afterAll(async () => {
     pypiServer?.close(),
     jsrServer?.close(),
     goProxyServer?.close(),
+    dockerServer?.close(),
   ]);
 });
 
@@ -1532,3 +1556,172 @@ test.concurrent("actions hash-pinned update", async ({expect = globalExpect}: an
   expect(updatedContent).not.toContain("cccc000000000000000000000000000000000006");
 });
 
+// -- Docker tests --
+
+function dockerArgs(...extra: Array<string>) {
+  return [script, "-c", "--dockerapi", dockerUrl, "-M", "docker", ...extra];
+}
+
+test.concurrent("docker Dockerfile basic", async ({expect = globalExpect}: any = {}) => {
+  const {stdout, stderr} = await execFileAsync(process.execPath, dockerArgs("-j", "-f", dockerfileFixture));
+  expect(stderr).toEqual("");
+  const output = JSON.parse(stdout);
+  expect(output.results.docker).toBeDefined();
+
+  const dockerfileKey = Object.keys(output.results.docker).find(t => t.endsWith("Dockerfile"));
+  expect(dockerfileKey).toBeDefined();
+  const dockerDeps = output.results.docker[dockerfileKey!];
+
+  // node:18 -> node:22 (major bump, preserving 1-part format)
+  expect(dockerDeps.node.old).toBe("18");
+  expect(dockerDeps.node.new).toBe("22");
+  expect(dockerDeps.node.info).toBe("https://hub.docker.com/_/node");
+
+  // postgres:15-alpine -> postgres:17-alpine (suffix preserved, oldOrig shown as old)
+  expect(dockerDeps.postgres.old).toBe("15-alpine");
+  expect(dockerDeps.postgres.new).toBe("17-alpine");
+  expect(dockerDeps.postgres.info).toBe("https://hub.docker.com/_/postgres");
+});
+
+test.concurrent("docker compose basic", async ({expect = globalExpect}: any = {}) => {
+  const {stdout, stderr} = await execFileAsync(process.execPath, dockerArgs("-j", "-f", composeFixture));
+  expect(stderr).toEqual("");
+  const output = JSON.parse(stdout);
+  expect(output.results.docker).toBeDefined();
+
+  const composeKey = Object.keys(output.results.docker).find(t => t.endsWith("compose.yaml"));
+  expect(composeKey).toBeDefined();
+  const dockerDeps = output.results.docker[composeKey!];
+
+  // node:18 -> node:22
+  expect(dockerDeps.node.old).toBe("18");
+  expect(dockerDeps.node.new).toBe("22");
+
+  // postgres:15-alpine -> postgres:17-alpine
+  expect(dockerDeps.postgres.old).toBe("15-alpine");
+  expect(dockerDeps.postgres.new).toBe("17-alpine");
+
+  // redis:7 -> redis:8
+  expect(dockerDeps.redis.old).toBe("7");
+  expect(dockerDeps.redis.new).toBe("8");
+});
+
+test.concurrent("docker workflow container/image", async ({expect = globalExpect}: any = {}) => {
+  const {stdout, stderr} = await execFileAsync(process.execPath, dockerArgs("-j", "-f", dockerActionsDir));
+  expect(stderr).toEqual("");
+  const output = JSON.parse(stdout);
+  expect(output.results.docker).toBeDefined();
+
+  const ciKey = Object.keys(output.results.docker).find(t => t.endsWith("ci.yaml"));
+  expect(ciKey).toBeDefined();
+  const dockerDeps = output.results.docker[ciKey!];
+
+  // node:18 -> node:22 (from container: and uses: docker://)
+  expect(dockerDeps.node.old).toBe("18");
+  expect(dockerDeps.node.new).toBe("22");
+
+  // postgres:15 -> postgres:17 (from services image:)
+  expect(dockerDeps.postgres.old).toBe("15");
+  expect(dockerDeps.postgres.new).toBe("17");
+});
+
+test.concurrent("docker include filter", async ({expect = globalExpect}: any = {}) => {
+  const {stdout, stderr} = await execFileAsync(process.execPath, dockerArgs("-j", "-f", composeFixture, "-i", "node"));
+  expect(stderr).toEqual("");
+  const output = JSON.parse(stdout);
+  const composeKey = Object.keys(output.results.docker).find(t => t.endsWith("compose.yaml"));
+  const dockerDeps = output.results.docker[composeKey!];
+  expect(dockerDeps.node).toBeDefined();
+  expect(dockerDeps.postgres).toBeUndefined();
+  expect(dockerDeps.redis).toBeUndefined();
+});
+
+test.concurrent("docker exclude filter", async ({expect = globalExpect}: any = {}) => {
+  const {stdout, stderr} = await execFileAsync(process.execPath, dockerArgs("-j", "-f", composeFixture, "-e", "node"));
+  expect(stderr).toEqual("");
+  const output = JSON.parse(stdout);
+  const composeKey = Object.keys(output.results.docker).find(t => t.endsWith("compose.yaml"));
+  const dockerDeps = output.results.docker[composeKey!];
+  expect(dockerDeps.node).toBeUndefined();
+  expect(dockerDeps.postgres).toBeDefined();
+  expect(dockerDeps.redis).toBeDefined();
+});
+
+test.concurrent("docker text output", async ({expect = globalExpect}: any = {}) => {
+  const {stdout, stderr} = await execFileAsync(process.execPath, dockerArgs("-f", composeFixture));
+  expect(stderr).toEqual("");
+  expect(stdout).toContain("node");
+  expect(stdout).toContain("postgres");
+  expect(stdout).toContain("redis");
+});
+
+test.concurrent("docker update Dockerfile", async ({expect = globalExpect}: any = {}) => {
+  const tmpDir = join(testDir, "docker-update-test");
+  mkdirSync(tmpDir, {recursive: true});
+  const dockerfilePath = join(tmpDir, "Dockerfile");
+  await writeFile(dockerfilePath, "FROM node:18\nRUN npm install\n");
+
+  const {stderr} = await execFileAsync(process.execPath, [
+    script, "-u", "-c", "--dockerapi", dockerUrl, "-M", "docker",
+    "-f", dockerfilePath,
+  ]);
+  expect(stderr).toEqual("");
+
+  const updatedContent = await readFile(dockerfilePath, "utf8");
+  expect(updatedContent).toContain("FROM node:22");
+  expect(updatedContent).not.toContain("FROM node:18");
+});
+
+test.concurrent("docker update compose", async ({expect = globalExpect}: any = {}) => {
+  const tmpDir = join(testDir, "docker-compose-update-test");
+  mkdirSync(tmpDir, {recursive: true});
+  const composePath = join(tmpDir, "compose.yaml");
+  await writeFile(composePath, "services:\n  web:\n    image: node:18\n  db:\n    image: redis:7\n");
+
+  const {stderr} = await execFileAsync(process.execPath, [
+    script, "-u", "-c", "--dockerapi", dockerUrl, "-M", "docker",
+    "-f", composePath,
+  ]);
+  expect(stderr).toEqual("");
+
+  const updatedContent = await readFile(composePath, "utf8");
+  expect(updatedContent).toContain("image: node:22");
+  expect(updatedContent).not.toContain("image: node:18");
+  expect(updatedContent).toContain("image: redis:8");
+  expect(updatedContent).not.toContain("image: redis:7");
+});
+
+test.concurrent("docker Dockerfile.dev pattern", async ({expect = globalExpect}: any = {}) => {
+  const {stdout, stderr} = await execFileAsync(process.execPath, dockerArgs("-j", "-f", dockerfileDevFixture));
+  expect(stderr).toEqual("");
+  const output = JSON.parse(stdout);
+  expect(output.results.docker).toBeDefined();
+  const key = Object.keys(output.results.docker).find(t => t.endsWith("Dockerfile.dev"));
+  expect(key).toBeDefined();
+  expect(output.results.docker[key!].node.old).toBe("18");
+  expect(output.results.docker[key!].node.new).toBe("22");
+});
+
+test.concurrent("docker docker-stack.yml pattern", async ({expect = globalExpect}: any = {}) => {
+  const {stdout, stderr} = await execFileAsync(process.execPath, dockerArgs("-j", "-f", dockerStackFixture));
+  expect(stderr).toEqual("");
+  const output = JSON.parse(stdout);
+  expect(output.results.docker).toBeDefined();
+  const key = Object.keys(output.results.docker).find(t => t.endsWith("docker-stack.yml"));
+  expect(key).toBeDefined();
+  expect(output.results.docker[key!].node.old).toBe("18");
+  expect(output.results.docker[key!].node.new).toBe("22");
+});
+
+test.concurrent("docker directory discovery", async ({expect = globalExpect}: any = {}) => {
+  const {stdout, stderr} = await execFileAsync(process.execPath, dockerArgs("-j", "-f", dockerDir));
+  expect(stderr).toEqual("");
+  const output = JSON.parse(stdout);
+  expect(output.results.docker).toBeDefined();
+  const keys = Object.keys(output.results.docker);
+  // Should discover Dockerfile, Dockerfile.dev, compose.yaml, docker-stack.yml
+  expect(keys.some(k => k.endsWith("Dockerfile"))).toBe(true);
+  expect(keys.some(k => k.endsWith("Dockerfile.dev"))).toBe(true);
+  expect(keys.some(k => k.endsWith("compose.yaml"))).toBe(true);
+  expect(keys.some(k => k.endsWith("docker-stack.yml"))).toBe(true);
+});

@@ -1,0 +1,10 @@
+{
+  "count": 4,
+  "next": null,
+  "results": [
+    {"name": "8", "tag_last_pushed": "2025-03-01T10:00:00Z", "last_updated": "2025-03-01T10:00:00Z"},
+    {"name": "8.0.0", "tag_last_pushed": "2025-03-01T10:00:00Z", "last_updated": "2025-03-01T10:00:00Z"},
+    {"name": "7", "tag_last_pushed": "2024-06-01T10:00:00Z", "last_updated": "2024-06-01T10:00:00Z"},
+    {"name": "7.2.4", "tag_last_pushed": "2024-06-01T10:00:00Z", "last_updated": "2024-06-01T10:00:00Z"}
+  ]
+}
