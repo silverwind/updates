@@ -5,6 +5,7 @@ import {pathToFileURL} from "node:url";
 import {lstatSync, readFileSync, readdirSync, truncateSync, writeFileSync, accessSync, type Stats} from "node:fs";
 import {stripVTControlCharacters, styleText, parseArgs, type ParseArgsOptionsConfig} from "node:util";
 import pMap from "p-map";
+import {parse as parseToml} from "smol-toml";
 import {valid, validRange} from "./utils/semver.ts";
 import {timerel} from "timerel";
 import {highlightDiff, npmTypes, poetryTypes, uvTypes, goTypes, parseUvDependencies, nonPackageEngines, parseDuration, matchesAny, getProperty, commaSeparatedToArray, canIncludeByDate, timestamp, textTable} from "./utils/utils.ts";
@@ -714,8 +715,7 @@ async function main(): Promise<void> {
       if (mode === "npm") {
         pkg = JSON.parse(pkgStrs[mode]);
       } else if (mode === "pypi") {
-        const {parse} = await import("smol-toml");
-        pkg = parse(pkgStrs[mode]);
+        pkg = parseToml(pkgStrs[mode]);
       } else {
         const parsed = parseGoMod(pkgStrs[mode]);
         pkg.deps = parsed.deps;
