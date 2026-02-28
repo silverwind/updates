@@ -197,12 +197,10 @@ export const dockerExactFileNames = [
   "Dockerfile",
   "docker-compose.yml",
   "docker-compose.yaml",
-  "compose.yml",
-  "compose.yaml",
 ];
 
 export function isComposeFile(filename: string): boolean {
-  return /^(?:docker-)?compose\.ya?ml$/.test(filename) || /^docker-.+\.ya?ml$/.test(filename);
+  return /^docker-.+\.ya?ml$/.test(filename);
 }
 
 export function isDockerfile(filename: string): boolean {

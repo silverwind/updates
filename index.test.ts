@@ -33,7 +33,7 @@ const dualFile = fileURLToPath(new URL("fixtures/dual", import.meta.url));
 const invalidConfigFile = fileURLToPath(new URL("fixtures/invalid-config/package.json", import.meta.url));
 const actionsDir = fileURLToPath(new URL("fixtures/actions/.github/workflows", import.meta.url));
 const dockerfileFixture = fileURLToPath(new URL("fixtures/docker/Dockerfile", import.meta.url));
-const composeFixture = fileURLToPath(new URL("fixtures/docker/compose.yaml", import.meta.url));
+const composeFixture = fileURLToPath(new URL("fixtures/docker/docker-compose.yaml", import.meta.url));
 const dockerActionsDir = fileURLToPath(new URL("fixtures/docker-actions/.github/workflows", import.meta.url));
 const dockerfileDevFixture = fileURLToPath(new URL("fixtures/docker/Dockerfile.dev", import.meta.url));
 const dockerStackFixture = fileURLToPath(new URL("fixtures/docker/docker-stack.yml", import.meta.url));
@@ -1589,7 +1589,7 @@ test.concurrent("docker compose basic", async ({expect = globalExpect}: any = {}
   const output = JSON.parse(stdout);
   expect(output.results.docker).toBeDefined();
 
-  const composeKey = Object.keys(output.results.docker).find(t => t.endsWith("compose.yaml"));
+  const composeKey = Object.keys(output.results.docker).find(t => t.endsWith("docker-compose.yaml"));
   expect(composeKey).toBeDefined();
   const dockerDeps = output.results.docker[composeKey!];
 
@@ -1629,7 +1629,7 @@ test.concurrent("docker include filter", async ({expect = globalExpect}: any = {
   const {stdout, stderr} = await execFileAsync(process.execPath, dockerArgs("-j", "-f", composeFixture, "-i", "node"));
   expect(stderr).toEqual("");
   const output = JSON.parse(stdout);
-  const composeKey = Object.keys(output.results.docker).find(t => t.endsWith("compose.yaml"));
+  const composeKey = Object.keys(output.results.docker).find(t => t.endsWith("docker-compose.yaml"));
   const dockerDeps = output.results.docker[composeKey!];
   expect(dockerDeps.node).toBeDefined();
   expect(dockerDeps.postgres).toBeUndefined();
@@ -1640,7 +1640,7 @@ test.concurrent("docker exclude filter", async ({expect = globalExpect}: any = {
   const {stdout, stderr} = await execFileAsync(process.execPath, dockerArgs("-j", "-f", composeFixture, "-e", "node"));
   expect(stderr).toEqual("");
   const output = JSON.parse(stdout);
-  const composeKey = Object.keys(output.results.docker).find(t => t.endsWith("compose.yaml"));
+  const composeKey = Object.keys(output.results.docker).find(t => t.endsWith("docker-compose.yaml"));
   const dockerDeps = output.results.docker[composeKey!];
   expect(dockerDeps.node).toBeUndefined();
   expect(dockerDeps.postgres).toBeDefined();
@@ -1675,7 +1675,7 @@ test.concurrent("docker update Dockerfile", async ({expect = globalExpect}: any 
 test.concurrent("docker update compose", async ({expect = globalExpect}: any = {}) => {
   const tmpDir = join(testDir, "docker-compose-update-test");
   mkdirSync(tmpDir, {recursive: true});
-  const composePath = join(tmpDir, "compose.yaml");
+  const composePath = join(tmpDir, "docker-compose.yaml");
   await writeFile(composePath, "services:\n  web:\n    image: node:18\n  db:\n    image: redis:7\n");
 
   const {stderr} = await execFileAsync(process.execPath, [
@@ -1719,9 +1719,9 @@ test.concurrent("docker directory discovery", async ({expect = globalExpect}: an
   const output = JSON.parse(stdout);
   expect(output.results.docker).toBeDefined();
   const keys = Object.keys(output.results.docker);
-  // Should discover Dockerfile, Dockerfile.dev, compose.yaml, docker-stack.yml
+  // Should discover Dockerfile, Dockerfile.dev, docker-compose.yaml, docker-stack.yml
   expect(keys.some(k => k.endsWith("Dockerfile"))).toBe(true);
   expect(keys.some(k => k.endsWith("Dockerfile.dev"))).toBe(true);
-  expect(keys.some(k => k.endsWith("compose.yaml"))).toBe(true);
+  expect(keys.some(k => k.endsWith("docker-compose.yaml"))).toBe(true);
   expect(keys.some(k => k.endsWith("docker-stack.yml"))).toBe(true);
 });

@@ -11,6 +11,7 @@
 - `pyproject.toml` - supports `uv` and `poetry`
 - `go.mod` - supports go dependencies
 - `.{github,gitea,forgejo}/workflows` - supports actions
+- `Dockerfile*`, `docker-*.{yml,yaml}` - supports Docker Hub images
 
 # Usage
 
@@ -44,7 +45,7 @@ npx updates -u && npm i
 |`-r, --registry <url>`|Override npm registry URL|
 |`-S, --sockets <num>`|Maximum number of parallel HTTP sockets opened. Default: 96|
 |`-T, --timeout <ms>`|Network request timeout in ms (go probes use half). Default: 5000|
-|`-M, --modes <mode,...>`|Which modes to enable. Either `npm`, `pypi`, `go`, `actions`. Default: `npm,pypi,go,actions`|
+|`-M, --modes <mode,...>`|Which modes to enable. Either `npm`, `pypi`, `go`, `actions`, `docker`. Default: `npm,pypi,go,actions,docker`|
 |`-j, --json`|Output a JSON object|
 |`-n, --no-color`|Disable color output|
 |`-v, --version`|Print the version|
