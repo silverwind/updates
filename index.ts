@@ -124,7 +124,7 @@ for (const [index, token] of result.tokens.entries()) {
     const next = result.tokens[index + 1];
     values[token.name] = [true];
     if (!values[key]) values[key] = [];
-    if (next.kind === "positional" && next.value) {
+    if (next?.kind === "positional" && next.value) {
       (values[key] as Array<string | boolean>).push(next.value);
     } else {
       (values[key] as Array<string | boolean>).push(true);
