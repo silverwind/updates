@@ -59,23 +59,40 @@ async function probeMajorVersions(
 ): Promise<ProbeResult | null> {
   if (!firstProbe) return null;
   let highest = firstProbe;
-  const second = await probeFn(currentMajor + 2);
-  if (!second) return highest;
-  highest = second;
-  const probeBatchSize = 20;
-  for (let batchStart = currentMajor + 3; batchStart <= currentMajor + 100; batchStart += probeBatchSize) {
-    const batchEnd = Math.min(batchStart + probeBatchSize, currentMajor + 101);
-    const results = await Promise.all(
-      Array.from({length: batchEnd - batchStart}, (_, i) => probeFn(batchStart + i)),
-    );
-    let foundInBatch = false;
-    for (const result of results) {
-      if (!result) break;
-      highest = result;
-      foundInBatch = true;
+
+  // Exponential search to find upper bound
+  let lo = currentMajor + 1;
+  let step = 1;
+  let hi: number | null = null;
+
+  while (hi === null) {
+    const next = lo + step;
+    if (next > currentMajor + 100) {
+      hi = currentMajor + 101;
+      break;
     }
-    if (!foundInBatch || results.some(r => !r)) break;
+    const result = await probeFn(next);
+    if (result) {
+      highest = result;
+      lo = next;
+      step *= 2;
+    } else {
+      hi = next;
+    }
   }
+
+  // Binary search between lo and hi
+  while (lo + 1 < hi) {
+    const mid = Math.floor((lo + hi) / 2);
+    const result = await probeFn(mid);
+    if (result) {
+      highest = result;
+      lo = mid;
+    } else {
+      hi = mid;
+    }
+  }
+
   return highest;
 }
 
