@@ -48,6 +48,106 @@ export function isGoPseudoVersion(version: string): boolean {
 
 type ProbeResult = {Version: string, Time: string, path: string};
 
+function pktLine(s: string): string {
+  const len = (s.length + 4).toString(16).padStart(4, "0");
+  return `${len}${s}`;
+}
+
+function buildLsRefsRequest(refPrefix: string): Blob {
+  const lines = [
+    pktLine("command=ls-refs\n"),
+    pktLine("object-format=sha1\n"),
+    "0001", // delimiter
+    pktLine("peel\n"),
+    pktLine(`ref-prefix refs/tags/${refPrefix}v\n`),
+    "0000", // flush
+  ];
+  return new Blob([lines.join("")]);
+}
+
+function parsePktLineTags(buf: ArrayBuffer, prefix: string): string[] {
+  const text = new TextDecoder().decode(buf);
+  const tags: string[] = [];
+  const fullPrefix = `refs/tags/${prefix}`;
+  let pos = 0;
+  while (pos < text.length) {
+    if (text.startsWith("0000", pos)) break;
+    const lenHex = text.substring(pos, pos + 4);
+    const len = parseInt(lenHex, 16);
+    if (len === 0 || isNaN(len)) break;
+    const line = text.substring(pos + 4, pos + len);
+    pos += len;
+    // Each line: "<sha> <refname>\n" or "<sha> <refname>\n" with possible extras
+    const spaceIdx = line.indexOf(" ");
+    if (spaceIdx === -1) continue;
+    const refname = line.substring(spaceIdx + 1).trim();
+    // Skip annotated tag dereferences
+    if (refname.endsWith("^{}")) continue;
+    if (!refname.startsWith(fullPrefix)) continue;
+    const tag = refname.substring(fullPrefix.length);
+    if (tag) tags.push(tag);
+  }
+  return tags;
+}
+
+function findHighestMajorFromTags(tags: string[], currentMajor: number): number | null {
+  let highest = currentMajor;
+  for (const tag of tags) {
+    const m = /^v(\d+)\./.exec(tag);
+    if (m) {
+      const major = parseInt(m[1]);
+      if (major > highest) highest = major;
+    }
+  }
+  return highest > currentMajor ? highest : null;
+}
+
+async function resolveGitUrl(modulePath: string, ctx: ModeContext): Promise<{repoUrl: string, tagPrefix: string} | null> {
+  try {
+    const res = await ctx.doFetch(`https://${modulePath}?go-get=1`, {signal: AbortSignal.timeout(ctx.goProbeTimeout)});
+    if (!res.ok) return null;
+    const html = await res.text();
+    const metaMatch = /<meta\s+name="go-import"\s+content="([^"]+)"/.exec(html) ||
+      /<meta\s+content="([^"]+)"\s+name="go-import"/.exec(html);
+    if (!metaMatch) return null;
+    const [rootPath, vcs, repoUrl] = metaMatch[1].trim().split(/\s+/);
+    if (vcs !== "git") return null;
+    const tagPrefix = modulePath.length > rootPath.length ?
+      `${modulePath.substring(rootPath.length + 1)}/` :
+      "";
+    return {repoUrl, tagPrefix};
+  } catch {
+    return null;
+  }
+}
+
+async function fetchHighestMajorViaGit(name: string, currentMajor: number, ctx: ModeContext): Promise<number | null> {
+  try {
+    const basePath = name.replace(/\/v\d+$/, "");
+    const resolved = await resolveGitUrl(basePath, ctx);
+    if (!resolved) return null;
+    const {repoUrl, tagPrefix} = resolved;
+
+    const body = buildLsRefsRequest(tagPrefix);
+    const res = await ctx.doFetch(`${repoUrl}/git-upload-pack`, {
+      method: "POST",
+      headers: {
+        "Git-Protocol": "version=2",
+        "Content-Type": "application/x-git-upload-pack-request",
+      },
+      body,
+      signal: AbortSignal.timeout(ctx.goProbeTimeout),
+    });
+    if (!res.ok) return null;
+
+    const buf = await res.arrayBuffer();
+    const tags = parsePktLineTags(buf, tagPrefix);
+    return findHighestMajorFromTags(tags, currentMajor);
+  } catch {
+    return null;
+  }
+}
+
 function noUpdateInfo(name: string, currentVersion: string, type: string): PackageInfo {
   return [{name, old: currentVersion, new: currentVersion}, type, null, name];
 }
@@ -205,10 +305,10 @@ export async function fetchGoProxyInfo(name: string, type: string, currentVersio
       .catch(() => null);
   };
 
-  // Fetch @latest and first major probe in parallel
-  const [res, firstProbe] = await Promise.all([
+  // Fetch @latest and git-based major version discovery in parallel
+  const [res, gitHighestMajor] = await Promise.all([
     ctx.doFetch(`${ctx.goProxyUrl}/${encoded}/@latest`, {signal: AbortSignal.timeout(ctx.fetchTimeout)}),
-    probeGoMajor(currentMajor + 1),
+    fetchHighestMajorViaGit(name, currentMajor, ctx),
   ]);
   if (!res.ok) return noUpdateInfo(name, currentVersion, type);
 
@@ -222,7 +322,22 @@ export async function fetchGoProxyInfo(name: string, type: string, currentVersio
     return noUpdateInfo(name, currentVersion, type);
   }
 
-  const probeResult = await probeMajorVersions(currentMajor, firstProbe, probeGoMajor);
+  let probeResult: ProbeResult | null = null;
+  if (gitHighestMajor !== null && gitHighestMajor > currentMajor) {
+    // Git found a higher major — single proxy @latest to get Version+Time
+    probeResult = await probeGoMajor(gitHighestMajor);
+    if (!probeResult) {
+      // Proxy doesn't have this major yet — fall back to probing
+      const firstProbe = await probeGoMajor(currentMajor + 1);
+      probeResult = await probeMajorVersions(currentMajor, firstProbe, probeGoMajor);
+    }
+  } else if (gitHighestMajor === null) {
+    // Git approach failed — full fallback to existing probing
+    const firstProbe = await probeGoMajor(currentMajor + 1);
+    probeResult = await probeMajorVersions(currentMajor, firstProbe, probeGoMajor);
+  }
+  // gitHighestMajor <= currentMajor means no upgrade, probeResult stays null
+
   return buildGoPackageInfo(name, type, currentVersion, probeResult, latestVersion, latestTime);
 }
 
