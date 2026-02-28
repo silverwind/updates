@@ -237,7 +237,10 @@ function outputDeps(deps: DepsByMode = {}): number {
       }
       // Don't overwrite old with oldOrig for JSR dependencies
       if (typeof props.oldOrig === "string" && !isJsr(props.oldOrig)) {
-        props.old = props.oldOrig;
+        props.old = mode === "go" ? shortenGoVersion(props.oldOrig) : props.oldOrig;
+      }
+      if (mode === "go") {
+        props.new = shortenGoVersion(props.new);
       }
       if (mode === "actions") {
         props.old = stripv(props.old);

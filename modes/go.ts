@@ -287,7 +287,7 @@ export function shortenGoModule(module: string): string {
   return /\/v[0-9]$/.test(module) ? dirname(module) : module;
 }
 
-// turn "v1.3.2-0.20230802210424-5b0b94c5c0d3" into "v1.3.2"
+// turn "v0.0.0-20221128193559-754e69321358" into "v0.0.0-2022112"
 export function shortenGoVersion(version: string): string {
-  return version.replace(/-.*/, "");
+  return version.replace(/(\d{7})\d{7}-[0-9a-f]{12}$/, "$1");
 }
