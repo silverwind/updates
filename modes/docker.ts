@@ -83,33 +83,29 @@ export async function fetchDockerHubTags(namespace: string, repo: string, ctx: M
   const baseUrl = `${ctx.dockerApiUrl}/v2/repositories/${namespace}/${repo}/tags`;
   const pageUrl = (page: number) => `${baseUrl}?page_size=100&ordering=last_updated&page=${page}`;
 
-  // Fetch first page to get total count
-  let totalPages = 1;
-  try {
-    const res = await ctx.doFetch(pageUrl(1), {signal: AbortSignal.timeout(ctx.fetchTimeout)});
-    if (!res?.ok) return tags;
-    const data = await res.json();
+  const collectResults = (data: any) => {
     for (const result of data.results || []) {
       tags[result.name] = result.tag_last_pushed || result.last_updated || "";
     }
-    totalPages = Math.min(Math.ceil((data.count || 0) / 100), maxPages);
-  } catch {
-    return tags;
-  }
+  };
 
-  if (totalPages > 1) {
-    // Fetch remaining pages in parallel
-    await Promise.all(Array.from({length: totalPages - 1}, (_, i) =>
-      ctx.doFetch(pageUrl(i + 2), {signal: AbortSignal.timeout(ctx.fetchTimeout)})
-        .then(async (res) => {
-          if (!res?.ok) return;
-          const data = await res.json();
-          for (const result of data.results || []) {
-            tags[result.name] = result.tag_last_pushed || result.last_updated || "";
-          }
-        })
-        .catch(() => {})
-    ));
+  // Speculatively fetch all pages in parallel (pages beyond actual count return errors and are ignored)
+  const fetches = Array.from({length: maxPages}, (_, i) =>
+    ctx.doFetch(pageUrl(i + 1), {signal: AbortSignal.timeout(ctx.fetchTimeout)})
+      .then(async (res) => {
+        if (!res?.ok) return null;
+        return res.json();
+      })
+      .catch(() => null)
+  );
+
+  const results = await Promise.all(fetches);
+  const firstPage = results[0];
+  if (!firstPage) return tags;
+
+  const totalPages = Math.min(Math.ceil((firstPage.count || 0) / 100), maxPages);
+  for (let i = 0; i < totalPages; i++) {
+    if (results[i]) collectResults(results[i]);
   }
   return tags;
 }
