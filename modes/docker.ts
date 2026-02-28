@@ -80,32 +80,36 @@ const maxPages = 10;
 
 export async function fetchDockerHubTags(namespace: string, repo: string, ctx: ModeContext): Promise<Record<string, string>> {
   const tags: Record<string, string> = {};
-  let url: string | null = `${ctx.dockerApiUrl}/v2/repositories/${namespace}/${repo}/tags?page_size=100&ordering=last_updated`;
-  let page = 0;
+  const baseUrl = `${ctx.dockerApiUrl}/v2/repositories/${namespace}/${repo}/tags`;
+  const pageUrl = (page: number) => `${baseUrl}?page_size=100&ordering=last_updated&page=${page}`;
 
-  while (url && page < maxPages) {
-    page++;
-    try {
-      const res = await ctx.doFetch(url, {signal: AbortSignal.timeout(ctx.fetchTimeout)});
-      if (!res?.ok) break;
-      const data = await res.json();
-      for (const result of data.results || []) {
-        tags[result.name] = result.tag_last_pushed || result.last_updated || "";
-      }
-      // Rewrite absolute next URL to use our base URL (for test mock servers)
-      const next = data.next;
-      if (next) {
-        const nextUrl = new URL(next);
-        const baseUrl = new URL(ctx.dockerApiUrl);
-        nextUrl.protocol = baseUrl.protocol;
-        nextUrl.host = baseUrl.host;
-        url = nextUrl.toString();
-      } else {
-        url = null;
-      }
-    } catch {
-      break;
+  // Fetch first page to get total count
+  let totalPages = 1;
+  try {
+    const res = await ctx.doFetch(pageUrl(1), {signal: AbortSignal.timeout(ctx.fetchTimeout)});
+    if (!res?.ok) return tags;
+    const data = await res.json();
+    for (const result of data.results || []) {
+      tags[result.name] = result.tag_last_pushed || result.last_updated || "";
     }
+    totalPages = Math.min(Math.ceil((data.count || 0) / 100), maxPages);
+  } catch {
+    return tags;
+  }
+
+  if (totalPages > 1) {
+    // Fetch remaining pages in parallel
+    await Promise.all(Array.from({length: totalPages - 1}, (_, i) =>
+      ctx.doFetch(pageUrl(i + 2), {signal: AbortSignal.timeout(ctx.fetchTimeout)})
+        .then(async (res) => {
+          if (!res?.ok) return;
+          const data = await res.json();
+          for (const result of data.results || []) {
+            tags[result.name] = result.tag_last_pushed || result.last_updated || "";
+          }
+        })
+        .catch(() => {})
+    ));
   }
   return tags;
 }

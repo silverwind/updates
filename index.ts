@@ -606,6 +606,8 @@ async function main(): Promise<void> {
   const actionDepInfos: Array<ActionDepInfo> = [];
   type DockerDepInfo = {key: string, fullImage: string, ref: DockerImageRef};
   const dockerDepInfos: Array<DockerDepInfo> = [];
+  type ModeCtx = {config: Config, projectDir: string, pin: Record<string, string>};
+  const modeConfigs: Record<string, ModeCtx> = {};
 
   function collectDockerRefs(content: string, relPath: string, regexes: Array<RegExp>): void {
     if (!deps.docker) deps.docker = {};
@@ -786,314 +788,314 @@ async function main(): Promise<void> {
     }
 
     numDependencies += Object.keys(deps[mode]).length + Object.keys(maybeUrlDeps).length;
-    if (!numDependencies) continue;
-
-    let entries: Array<PackageInfo> = [];
-
-    entries = (await pMap(Object.keys(deps[mode]), async (key) => {
-      const [type, name] = key.split(fieldSep);
-      if (mode === "npm") {
-        // Check if this dependency is a JSR dependency
-        const {oldOrig} = deps[mode][key];
-        if (oldOrig && isJsr(oldOrig)) {
-          return fetchJsrInfo(name, type, ctx);
-        }
-        if (oldOrig && isLocalDep(oldOrig)) {
-          try {
-            return await fetchNpmInfo(name, type, config, args, ctx);
-          } catch {
-            delete deps[mode][key];
-            return null;
-          }
-        }
-        return fetchNpmInfo(name, type, config, args, ctx);
-      } else if (mode === "go") {
-        return fetchGoProxyInfo(name, type, deps[mode][key].oldOrig || deps[mode][key].old, projectDir, ctx, goNoProxy);
-      } else {
-        return fetchPypiInfo(name, type, ctx);
-      }
-    }, {concurrency})).filter(Boolean) as Array<PackageInfo>;
-
-    for (const [data, type, registry, name] of entries) {
-      if (data?.error) throw new Error(data.error);
-
-      const {useGreatest, usePre, useRel, semvers} = getVersionOpts(data.name);
-
-      const key = `${type}${fieldSep}${name}`;
-      const oldRange = deps[mode][key].old;
-      const oldOrig = deps[mode][key].oldOrig;
-      const pinnedRange = pin[name];
-      const newVersion = findNewVersion(data, {
-        usePre, useRel, useGreatest, semvers, range: oldRange, mode, pinnedRange,
-      }, {allowDowngrade, matchesAny, isGoPseudoVersion});
-
-      let newRange = "";
-      if (["go", "pypi"].includes(mode) && newVersion) {
-        // go has no ranges and pypi oldRange is a version at this point, not a range
-        newRange = newVersion;
-      } else if (newVersion) {
-        // Check if this is a local dependency (link: or file:)
-        if (oldOrig && isLocalDep(oldOrig)) {
-          newRange = String(getNpmrc()["save-exact"]) === "true" ? newVersion : `^${newVersion}`;
-        // Check if this is a JSR dependency
-        } else if (oldOrig && isJsr(oldOrig)) {
-          // Reconstruct JSR format with new version
-          if (oldOrig.startsWith("npm:@jsr/")) {
-            const match = /^(npm:@jsr\/[^@]+@)(.+)$/.exec(oldOrig);
-            if (match) {
-              newRange = `${match[1]}${newVersion}`;
-            }
-          } else if (oldOrig.startsWith("jsr:@")) {
-            const match = /^(jsr:@[^@]+@)(.+)$/.exec(oldOrig);
-            if (match) {
-              newRange = `${match[1]}${newVersion}`;
-            }
-          } else if (oldOrig.startsWith("jsr:")) {
-            newRange = `jsr:${newVersion}`;
-          }
-        } else {
-          newRange = updateNpmRange(oldRange, newVersion, oldOrig);
-        }
-      }
-
-      if (!newVersion || newVersion === oldRange || oldOrig && (oldOrig === newRange)) {
-        delete deps[mode][key];
-        continue;
-      }
-
-      let date = "";
-      if (mode === "npm" && data.time?.[newVersion]) { // npm
-        date = data.time[newVersion];
-      } else if (mode === "pypi" && data.releases?.[newVersion]?.[0]?.upload_time_iso_8601) {
-        date = data.releases[newVersion][0].upload_time_iso_8601;
-      } else if (mode === "go" && data.Time) {
-        date = data.Time;
-      }
-
-      deps[mode][key].new = newRange;
-
-      // For JSR dependencies, set newPrint to show just the version
-      if (oldOrig && isJsr(oldOrig)) {
-        deps[mode][key].newPrint = newVersion;
-      }
-
-      if (mode === "npm") {
-        deps[mode][key].info = getInfoUrl(data?.versions?.[newVersion], registry, data.name);
-      } else if (mode === "pypi") {
-        deps[mode][key].info = getInfoUrl(data as {repository: PackageRepository, homepage: string, info: Record<string, any>}, registry, data.info.name);
-      } else if (mode === "go") {
-        const infoName = data.newPath || name;
-        deps[mode][key].info = getGoInfoUrl(infoName);
-      }
-
-      if (date) {
-        deps[mode][key].date = date;
-        deps[mode][key].age = timerel(date, {noAffix: true});
-      }
-    }
-
-    if (Object.keys(maybeUrlDeps).length) {
-      const results = (await pMap(Object.entries(maybeUrlDeps), ([key, dep]) => {
-        const name = key.split(fieldSep)[1];
-        const useGreatest = typeof greatest === "boolean" ? greatest : matchesAny(name, greatest);
-        return checkUrlDep(key, dep, useGreatest, ctx);
-      }, {concurrency})).filter(r => r !== null);
-
-      for (const res of results) {
-        const {key, newRange, user, repo, oldRef, newRef, newDate} = res;
-
-        deps[mode][key] = {
-          old: maybeUrlDeps[key].old,
-          new: newRange,
-          oldPrint: npmHashRe.test(oldRef) ? oldRef.substring(0, 7) : oldRef,
-          newPrint: npmHashRe.test(newRef) ? newRef.substring(0, 7) : newRef,
-          info: `https://github.com/${user}/${repo}`,
-          ...(newDate ? {age: timerel(newDate, {noAffix: true})} : {}),
-        };
-      }
-    }
-
-    const cooldown = cooldownArg ?? config.cooldown;
-    if (cooldown) {
-      for (const m of Object.keys(deps)) {
-        for (const [key, {date}] of Object.entries(deps[m])) {
-          if (!canIncludeByDate(date, parseDuration(String(cooldown)), now)) {
-            delete deps[m][key];
-          }
-        }
-      }
-    }
+    modeConfigs[mode] = {config, projectDir, pin};
   }
 
-  // Actions version resolution (after all workflow files collected)
-  if (deps.actions) {
-    numDependencies += Object.keys(deps.actions).length;
-  }
-
-  if (actionDepInfos.length) {
-    const depsByRepo = new Map<string, {apiUrl: string, owner: string, repo: string, infos: Array<ActionDepInfo>}>();
-    for (const info of actionDepInfos) {
-      const repoKey = `${info.apiUrl}/${info.owner}/${info.repo}`;
-      if (!depsByRepo.has(repoKey)) {
-        depsByRepo.set(repoKey, {apiUrl: info.apiUrl, owner: info.owner, repo: info.repo, infos: []});
-      }
-      depsByRepo.get(repoKey)!.infos.push(info);
-    }
-
-    await pMap(depsByRepo.values(), async ({apiUrl, owner, repo, infos}) => {
-      const tags = await fetchActionTags(apiUrl, owner, repo, ctx);
-      const tagNames = tags.map(t => t.name);
-      const versions = tagNames.map(t => stripv(t)).filter(v => valid(v));
-
-      const commitShaToTag = new Map<string, string>();
-      for (const tag of tags) {
-        if (tag.commitSha) commitShaToTag.set(tag.commitSha, tag.name);
-      }
-
-      const dateCache = new Map<string, string>();
-      async function getDate(commitSha: string): Promise<string> {
-        if (dateCache.has(commitSha)) return dateCache.get(commitSha)!;
-        const date = await fetchActionTagDate(apiUrl, owner, repo, commitSha, ctx);
-        dateCache.set(commitSha, date);
-        return date;
-      }
-
-      for (const info of infos) {
-        const dep = deps.actions[info.key];
-        const infoUrl = `https://${info.host || "github.com"}/${owner}/${repo}`;
-
-        if (info.isHash) {
-          const {usePre, useRel} = getVersionOpts(info.name);
-          const newVersion = findVersion({}, versions, {
-            range: "0.0.0", semvers: new Set(["patch", "minor", "major"]), usePre, useRel,
-            useGreatest: true, pinnedRange: cliPin[info.name],
-          });
-          if (!newVersion) { delete deps.actions[info.key]; continue; }
-
-          const newTag = tagNames.find(t => stripv(t) === newVersion);
-          if (!newTag) { delete deps.actions[info.key]; continue; }
-
-          const newEntry = tags.find(t => t.name === newTag);
-          const newCommitSha = newEntry?.commitSha;
-          if (!newCommitSha || newCommitSha === info.ref || newCommitSha.startsWith(info.ref) || info.ref.startsWith(newCommitSha)) {
-            delete deps.actions[info.key]; continue;
-          }
-
-          const oldTagName = commitShaToTag.get(info.ref) || Array.from(commitShaToTag.entries()).find(([sha]) => sha.startsWith(info.ref))?.[1];
-          dep.old = info.ref;
-          dep.new = newCommitSha.substring(0, info.ref.length);
-          dep.oldPrint = oldTagName || info.ref.substring(0, 7);
-          dep.newPrint = newTag;
-          dep.info = infoUrl;
-
-          const date = await getDate(newCommitSha);
-          if (date) {
-            dep.date = date;
-            dep.age = timerel(date, {noAffix: true});
-          }
-        } else {
-          const coerced = coerceToVersion(stripv(info.ref));
-          if (!coerced) { delete deps.actions[info.key]; continue; }
-
-          const {useGreatest, usePre, useRel, semvers} = getVersionOpts(info.name);
-          const newVersion = findVersion({}, versions, {
-            range: coerced, semvers, usePre, useRel,
-            useGreatest: useGreatest || true, pinnedRange: cliPin[info.name],
-          });
-          if (!newVersion || newVersion === coerced) { delete deps.actions[info.key]; continue; }
-
-          const newTag = tagNames.find(t => stripv(t) === newVersion);
-          if (!newTag) { delete deps.actions[info.key]; continue; }
-
-          const formatted = formatActionVersion(newTag, info.ref);
-          if (formatted === info.ref) { delete deps.actions[info.key]; continue; }
-
-          dep.new = formatted;
-          dep.info = infoUrl;
-
-          const newEntry = tags.find(t => t.name === newTag);
-          if (newEntry?.commitSha) {
-            const date = await getDate(newEntry.commitSha);
-            if (date) {
-              dep.date = date;
-              dep.age = timerel(date, {noAffix: true});
-            }
-          }
-        }
-      }
-    }, {concurrency});
-
-    if (cooldownArg) {
-      for (const [key, {date}] of Object.entries(deps.actions)) {
-        if (!canIncludeByDate(date, parseDuration(String(cooldownArg)), now)) {
-          delete deps.actions[key];
-        }
-      }
-    }
-
-    if (!Object.keys(deps.actions).length) {
-      delete deps.actions;
-    }
-  }
-
-  // Docker version resolution (after all docker files collected)
-  if (deps.docker) {
-    numDependencies += Object.keys(deps.docker).length;
-  }
-
-  if (dockerDepInfos.length) {
-    // Group by unique image to avoid duplicate fetches
-    const depsByImage = new Map<string, Array<DockerDepInfo>>();
-    for (const info of dockerDepInfos) {
-      if (!depsByImage.has(info.fullImage)) {
-        depsByImage.set(info.fullImage, []);
-      }
-      depsByImage.get(info.fullImage)!.push(info);
-    }
-
-    await pMap(depsByImage.entries(), async ([fullImage, infos]) => {
-      let data: Record<string, any>;
-      try {
-        const [fetchedData] = await fetchDockerInfo(fullImage, "docker", ctx);
-        data = fetchedData;
-      } catch {
-        for (const info of infos) delete deps.docker[info.key];
-        return;
-      }
-
-      for (const info of infos) {
-        const dep = deps.docker[info.key];
-        const oldTag = dep.oldOrig || dep.old;
-        const {semvers} = getVersionOpts(info.fullImage);
-        const result = findDockerVersion(data.tags, oldTag, semvers);
-        if (!result) { delete deps.docker[info.key]; continue; }
-
-        dep.new = result.newTag;
-        dep.info = getDockerInfoUrl(info.ref);
-
-        if (result.date) {
-          dep.date = result.date;
-          dep.age = timerel(result.date, {noAffix: true});
-        }
-      }
-    }, {concurrency});
-
-    if (cooldownArg) {
-      for (const [key, {date}] of Object.entries(deps.docker)) {
-        if (!canIncludeByDate(date, parseDuration(String(cooldownArg)), now)) {
-          delete deps.docker[key];
-        }
-      }
-    }
-
-    if (!Object.keys(deps.docker).length) {
-      delete deps.docker;
-    }
-  }
+  if (deps.actions) numDependencies += Object.keys(deps.actions).length;
+  if (deps.docker) numDependencies += Object.keys(deps.docker).length;
 
   if (numDependencies === 0) {
     return finishWithMessage("No dependencies found, nothing to do.");
   }
+
+  // Fetch and process all modes in parallel
+  const fetchTasks: Array<Promise<void>> = [];
+
+  // npm/go/pypi fetch tasks
+  for (const mode of Object.keys(modeConfigs)) {
+    if (!deps[mode] || !Object.keys(deps[mode]).length && !Object.keys(maybeUrlDeps).length) continue;
+    const {config, projectDir, pin} = modeConfigs[mode];
+    fetchTasks.push((async () => {
+      const entries = (await pMap(Object.keys(deps[mode]), async (key) => {
+        const [type, name] = key.split(fieldSep);
+        if (mode === "npm") {
+          const {oldOrig} = deps[mode][key];
+          if (oldOrig && isJsr(oldOrig)) {
+            return fetchJsrInfo(name, type, ctx);
+          }
+          if (oldOrig && isLocalDep(oldOrig)) {
+            try {
+              return await fetchNpmInfo(name, type, config, args, ctx);
+            } catch {
+              delete deps[mode][key];
+              return null;
+            }
+          }
+          return fetchNpmInfo(name, type, config, args, ctx);
+        } else if (mode === "go") {
+          return fetchGoProxyInfo(name, type, deps[mode][key].oldOrig || deps[mode][key].old, projectDir, ctx, goNoProxy);
+        } else {
+          return fetchPypiInfo(name, type, ctx);
+        }
+      }, {concurrency})).filter(Boolean) as Array<PackageInfo>;
+
+      for (const [data, type, registry, name] of entries) {
+        if (data?.error) throw new Error(data.error);
+
+        const {useGreatest, usePre, useRel, semvers} = getVersionOpts(data.name);
+
+        const key = `${type}${fieldSep}${name}`;
+        const oldRange = deps[mode][key].old;
+        const oldOrig = deps[mode][key].oldOrig;
+        const pinnedRange = pin[name];
+        const newVersion = findNewVersion(data, {
+          usePre, useRel, useGreatest, semvers, range: oldRange, mode, pinnedRange,
+        }, {allowDowngrade, matchesAny, isGoPseudoVersion});
+
+        let newRange = "";
+        if (["go", "pypi"].includes(mode) && newVersion) {
+          newRange = newVersion;
+        } else if (newVersion) {
+          if (oldOrig && isLocalDep(oldOrig)) {
+            newRange = String(getNpmrc()["save-exact"]) === "true" ? newVersion : `^${newVersion}`;
+          } else if (oldOrig && isJsr(oldOrig)) {
+            if (oldOrig.startsWith("npm:@jsr/")) {
+              const match = /^(npm:@jsr\/[^@]+@)(.+)$/.exec(oldOrig);
+              if (match) {
+                newRange = `${match[1]}${newVersion}`;
+              }
+            } else if (oldOrig.startsWith("jsr:@")) {
+              const match = /^(jsr:@[^@]+@)(.+)$/.exec(oldOrig);
+              if (match) {
+                newRange = `${match[1]}${newVersion}`;
+              }
+            } else if (oldOrig.startsWith("jsr:")) {
+              newRange = `jsr:${newVersion}`;
+            }
+          } else {
+            newRange = updateNpmRange(oldRange, newVersion, oldOrig);
+          }
+        }
+
+        if (!newVersion || newVersion === oldRange || oldOrig && (oldOrig === newRange)) {
+          delete deps[mode][key];
+          continue;
+        }
+
+        let date = "";
+        if (mode === "npm" && data.time?.[newVersion]) {
+          date = data.time[newVersion];
+        } else if (mode === "pypi" && data.releases?.[newVersion]?.[0]?.upload_time_iso_8601) {
+          date = data.releases[newVersion][0].upload_time_iso_8601;
+        } else if (mode === "go" && data.Time) {
+          date = data.Time;
+        }
+
+        deps[mode][key].new = newRange;
+
+        if (oldOrig && isJsr(oldOrig)) {
+          deps[mode][key].newPrint = newVersion;
+        }
+
+        if (mode === "npm") {
+          deps[mode][key].info = getInfoUrl(data?.versions?.[newVersion], registry, data.name);
+        } else if (mode === "pypi") {
+          deps[mode][key].info = getInfoUrl(data as {repository: PackageRepository, homepage: string, info: Record<string, any>}, registry, data.info.name);
+        } else if (mode === "go") {
+          const infoName = data.newPath || name;
+          deps[mode][key].info = getGoInfoUrl(infoName);
+        }
+
+        if (date) {
+          deps[mode][key].date = date;
+          deps[mode][key].age = timerel(date, {noAffix: true});
+        }
+      }
+
+      if (Object.keys(maybeUrlDeps).length) {
+        const results = (await pMap(Object.entries(maybeUrlDeps), ([key, dep]) => {
+          const name = key.split(fieldSep)[1];
+          const useGreatest = typeof greatest === "boolean" ? greatest : matchesAny(name, greatest);
+          return checkUrlDep(key, dep, useGreatest, ctx);
+        }, {concurrency})).filter(r => r !== null);
+
+        for (const res of results) {
+          const {key, newRange, user, repo, oldRef, newRef, newDate} = res;
+
+          deps[mode][key] = {
+            old: maybeUrlDeps[key].old,
+            new: newRange,
+            oldPrint: npmHashRe.test(oldRef) ? oldRef.substring(0, 7) : oldRef,
+            newPrint: npmHashRe.test(newRef) ? newRef.substring(0, 7) : newRef,
+            info: `https://github.com/${user}/${repo}`,
+            ...(newDate ? {age: timerel(newDate, {noAffix: true})} : {}),
+          };
+        }
+      }
+
+      const cooldown = cooldownArg ?? config.cooldown;
+      if (cooldown) {
+        for (const [key, {date}] of Object.entries(deps[mode])) {
+          if (!canIncludeByDate(date, parseDuration(String(cooldown)), now)) {
+            delete deps[mode][key];
+          }
+        }
+      }
+    })());
+  }
+
+  // Actions fetch task
+  if (actionDepInfos.length) {
+    fetchTasks.push((async () => {
+      const depsByRepo = new Map<string, {apiUrl: string, owner: string, repo: string, infos: Array<ActionDepInfo>}>();
+      for (const info of actionDepInfos) {
+        const repoKey = `${info.apiUrl}/${info.owner}/${info.repo}`;
+        if (!depsByRepo.has(repoKey)) {
+          depsByRepo.set(repoKey, {apiUrl: info.apiUrl, owner: info.owner, repo: info.repo, infos: []});
+        }
+        depsByRepo.get(repoKey)!.infos.push(info);
+      }
+
+      await pMap(depsByRepo.values(), async ({apiUrl, owner, repo, infos}) => {
+        const tags = await fetchActionTags(apiUrl, owner, repo, ctx);
+        const tagNames = tags.map(t => t.name);
+        const versions = tagNames.map(t => stripv(t)).filter(v => valid(v));
+
+        const commitShaToTag = new Map<string, string>();
+        for (const tag of tags) {
+          if (tag.commitSha) commitShaToTag.set(tag.commitSha, tag.name);
+        }
+
+        const dateCache = new Map<string, string>();
+        async function getDate(commitSha: string): Promise<string> {
+          if (dateCache.has(commitSha)) return dateCache.get(commitSha)!;
+          const date = await fetchActionTagDate(apiUrl, owner, repo, commitSha, ctx);
+          dateCache.set(commitSha, date);
+          return date;
+        }
+
+        for (const info of infos) {
+          const dep = deps.actions[info.key];
+          const infoUrl = `https://${info.host || "github.com"}/${owner}/${repo}`;
+
+          if (info.isHash) {
+            const {usePre, useRel} = getVersionOpts(info.name);
+            const newVersion = findVersion({}, versions, {
+              range: "0.0.0", semvers: new Set(["patch", "minor", "major"]), usePre, useRel,
+              useGreatest: true, pinnedRange: cliPin[info.name],
+            });
+            if (!newVersion) { delete deps.actions[info.key]; continue; }
+
+            const newTag = tagNames.find(t => stripv(t) === newVersion);
+            if (!newTag) { delete deps.actions[info.key]; continue; }
+
+            const newEntry = tags.find(t => t.name === newTag);
+            const newCommitSha = newEntry?.commitSha;
+            if (!newCommitSha || newCommitSha === info.ref || newCommitSha.startsWith(info.ref) || info.ref.startsWith(newCommitSha)) {
+              delete deps.actions[info.key]; continue;
+            }
+
+            const oldTagName = commitShaToTag.get(info.ref) || Array.from(commitShaToTag.entries()).find(([sha]) => sha.startsWith(info.ref))?.[1];
+            dep.old = info.ref;
+            dep.new = newCommitSha.substring(0, info.ref.length);
+            dep.oldPrint = oldTagName || info.ref.substring(0, 7);
+            dep.newPrint = newTag;
+            dep.info = infoUrl;
+
+            const date = await getDate(newCommitSha);
+            if (date) {
+              dep.date = date;
+              dep.age = timerel(date, {noAffix: true});
+            }
+          } else {
+            const coerced = coerceToVersion(stripv(info.ref));
+            if (!coerced) { delete deps.actions[info.key]; continue; }
+
+            const {useGreatest, usePre, useRel, semvers} = getVersionOpts(info.name);
+            const newVersion = findVersion({}, versions, {
+              range: coerced, semvers, usePre, useRel,
+              useGreatest: useGreatest || true, pinnedRange: cliPin[info.name],
+            });
+            if (!newVersion || newVersion === coerced) { delete deps.actions[info.key]; continue; }
+
+            const newTag = tagNames.find(t => stripv(t) === newVersion);
+            if (!newTag) { delete deps.actions[info.key]; continue; }
+
+            const formatted = formatActionVersion(newTag, info.ref);
+            if (formatted === info.ref) { delete deps.actions[info.key]; continue; }
+
+            dep.new = formatted;
+            dep.info = infoUrl;
+
+            const newEntry = tags.find(t => t.name === newTag);
+            if (newEntry?.commitSha) {
+              const date = await getDate(newEntry.commitSha);
+              if (date) {
+                dep.date = date;
+                dep.age = timerel(date, {noAffix: true});
+              }
+            }
+          }
+        }
+      }, {concurrency});
+
+      if (cooldownArg) {
+        for (const [key, {date}] of Object.entries(deps.actions)) {
+          if (!canIncludeByDate(date, parseDuration(String(cooldownArg)), now)) {
+            delete deps.actions[key];
+          }
+        }
+      }
+
+      if (!Object.keys(deps.actions).length) {
+        delete deps.actions;
+      }
+    })());
+  }
+
+  // Docker fetch task
+  if (dockerDepInfos.length) {
+    fetchTasks.push((async () => {
+      const depsByImage = new Map<string, Array<DockerDepInfo>>();
+      for (const info of dockerDepInfos) {
+        if (!depsByImage.has(info.fullImage)) {
+          depsByImage.set(info.fullImage, []);
+        }
+        depsByImage.get(info.fullImage)!.push(info);
+      }
+
+      await pMap(depsByImage.entries(), async ([fullImage, infos]) => {
+        let data: Record<string, any>;
+        try {
+          const [fetchedData] = await fetchDockerInfo(fullImage, "docker", ctx);
+          data = fetchedData;
+        } catch {
+          for (const info of infos) delete deps.docker[info.key];
+          return;
+        }
+
+        for (const info of infos) {
+          const dep = deps.docker[info.key];
+          const oldTag = dep.oldOrig || dep.old;
+          const {semvers} = getVersionOpts(info.fullImage);
+          const result = findDockerVersion(data.tags, oldTag, semvers);
+          if (!result) { delete deps.docker[info.key]; continue; }
+
+          dep.new = result.newTag;
+          dep.info = getDockerInfoUrl(info.ref);
+
+          if (result.date) {
+            dep.date = result.date;
+            dep.age = timerel(result.date, {noAffix: true});
+          }
+        }
+      }, {concurrency});
+
+      if (cooldownArg) {
+        for (const [key, {date}] of Object.entries(deps.docker)) {
+          if (!canIncludeByDate(date, parseDuration(String(cooldownArg)), now)) {
+            delete deps.docker[key];
+          }
+        }
+      }
+
+      if (!Object.keys(deps.docker).length) {
+        delete deps.docker;
+      }
+    })());
+  }
+
+  await Promise.all(fetchTasks);
 
   let numEntries = 0;
   for (const mode of Object.keys(deps)) {
