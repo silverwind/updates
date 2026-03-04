@@ -50,14 +50,6 @@ export const nonPackageEngines = [
   "bun",
 ];
 
-export const poetryTypes = [
-  "tool.poetry.dependencies",
-  "tool.poetry.dev-dependencies",
-  "tool.poetry.test-dependencies",
-  "tool.poetry.group.dev.dependencies",
-  "tool.poetry.group.test.dependencies",
-];
-
 export const uvTypes = [
   "project.dependencies",
   "project.optional-dependencies",

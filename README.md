@@ -8,7 +8,7 @@
 # Supported files
 
 - `package.json` - supports all npm package managers
-- `pyproject.toml` - supports `uv` and `poetry`
+- `pyproject.toml` - supports `uv`
 - `go.mod` - supports go dependencies
 - `.{github,gitea,forgejo}/workflows` - supports actions
 - `Dockerfile*`, `docker-*.{yml,yaml}` - supports Docker Hub images

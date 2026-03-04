@@ -15,11 +15,7 @@ export function updatePyprojectToml(pkgStr: string, deps: Deps): string {
   for (const [key, {old, oldOrig}] of Object.entries(deps)) {
     const [_depType, name] = key.split(fieldSep);
     const oldValue = oldOrig || old;
-    newPkgStr = newPkgStr.replace( // poetry
-      new RegExp(`${esc(name)} *= *"${esc(oldValue)}"`, "g"),
-      `${name} = "${deps[key].new}"`,
-    );
-    newPkgStr = newPkgStr.replace( // uv
+    newPkgStr = newPkgStr.replace(
       new RegExp(`("${esc(name)} *[<>=~]+ *)${esc(oldValue)}(")`, "g"),
       (_, m1, m2) => `${m1}${deps[key].new}${m2}`,
     );

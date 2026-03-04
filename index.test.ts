@@ -19,7 +19,6 @@ const gzipPromise = (data: string | Buffer) => promisify(gzip)(data, {level: con
 const testFile = fileURLToPath(new URL("fixtures/npm-test/package.json", import.meta.url));
 const emptyFile = fileURLToPath(new URL("fixtures/npm-empty/package.json", import.meta.url));
 const jsrFile = fileURLToPath(new URL("fixtures/npm-jsr/package.json", import.meta.url));
-const poetryFile = fileURLToPath(new URL("fixtures/poetry/pyproject.toml", import.meta.url));
 const uvFile = fileURLToPath(new URL("fixtures/uv/pyproject.toml", import.meta.url));
 const goFile = fileURLToPath(new URL("fixtures/go/go.mod", import.meta.url));
 const goUpdateModFile = fileURLToPath(new URL("fixtures/go-update/go.mod", import.meta.url));
@@ -29,7 +28,6 @@ const goUpdateV2MainFile = fileURLToPath(new URL("fixtures/go-update-v2/main.go"
 const goReplaceFile = fileURLToPath(new URL("fixtures/go-replace/go.mod", import.meta.url));
 const goPreFile = fileURLToPath(new URL("fixtures/go-prerelease/go.mod", import.meta.url));
 const goPseudoFile = fileURLToPath(new URL("fixtures/go-pseudo/go.mod", import.meta.url));
-const dualFile = fileURLToPath(new URL("fixtures/dual", import.meta.url));
 const invalidConfigFile = fileURLToPath(new URL("fixtures/invalid-config/package.json", import.meta.url));
 const actionsDir = fileURLToPath(new URL("fixtures/actions/.github/workflows", import.meta.url));
 const dockerfileFixture = fileURLToPath(new URL("fixtures/docker/Dockerfile", import.meta.url));
@@ -993,27 +991,6 @@ test.concurrent("exclude 3", async ({expect = globalExpect}: any = {}) => {
   `);
 });
 
-test.concurrent("poetry", async ({expect = globalExpect}: any = {}) => {
-  expect(await makeTest(`-j -f ${poetryFile}`)()).toMatchInlineSnapshot(`
-    {
-      "pypi": {
-        "tool.poetry.group.dev.dependencies": {
-          "PyYAML": {
-            "info": "https://github.com/yaml/pyyaml",
-            "new": "6.0",
-            "old": "1.0",
-          },
-          "djlint": {
-            "info": "https://github.com/Riverside-Healthcare/djlint",
-            "new": "1.31.0",
-            "old": "1.30.0",
-          },
-        },
-      },
-    }
-  `);
-});
-
 test.concurrent("uv", async ({expect = globalExpect}: any = {}) => {
   expect(await makeTest(`-j -f ${uvFile}`)()).toMatchInlineSnapshot(`
     {
@@ -1045,120 +1022,6 @@ test.concurrent("uv", async ({expect = globalExpect}: any = {}) => {
             "info": "https://github.com/astral-sh/ty",
             "new": "0.0.1a19",
             "old": "0.0.1a15",
-          },
-        },
-      },
-    }
-  `);
-});
-
-test.concurrent("dual", async ({expect = globalExpect}: any = {}) => {
-  expect(await makeTest(`-j -f ${dualFile}`)()).toMatchInlineSnapshot(`
-    {
-      "npm": {
-        "dependencies": {
-          "@babel/preset-env": {
-            "info": "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
-            "new": "7.11.5",
-            "old": "7.0.0",
-          },
-          "gulp-sourcemaps": {
-            "info": "https://github.com/gulp-sourcemaps/gulp-sourcemaps",
-            "new": "2.6.5",
-            "old": "2.0.0",
-          },
-          "html-webpack-plugin": {
-            "info": "https://github.com/jantimon/html-webpack-plugin",
-            "new": "4.0.0-beta.11",
-            "old": "4.0.0-alpha.2",
-          },
-          "jpeg-buffer-orientation": {
-            "info": "https://github.com/fisker/jpeg-buffer-orientation",
-            "new": "2.0.3",
-            "old": "0.0.0",
-          },
-          "noty": {
-            "info": "https://github.com/needim/noty",
-            "new": "3.1.4",
-            "old": "3.1.0",
-          },
-          "prismjs": {
-            "info": "https://github.com/LeaVerou/prism",
-            "new": "1.17.1",
-            "old": "1.0.0",
-          },
-          "react": {
-            "info": "https://github.com/facebook/react/tree/HEAD/packages/react",
-            "new": "18.2.0",
-            "old": "18.0",
-          },
-          "styled-components": {
-            "info": "https://github.com/styled-components/styled-components",
-            "new": "5.0.0-rc.2",
-            "old": "2.5.0-1",
-          },
-          "svgstore": {
-            "info": "https://github.com/svgstore/svgstore",
-            "new": "^2.0.3",
-            "old": "^3.0.0",
-          },
-          "updates": {
-            "info": "https://github.com/silverwind/updates",
-            "new": "537ccb7",
-            "old": "6941e05",
-          },
-        },
-        "devDependencies": {
-          "updates": {
-            "info": "https://github.com/silverwind/updates",
-            "new": "^10.0.0",
-            "old": "file:.",
-          },
-        },
-        "peerDependencies": {
-          "@babel/preset-env": {
-            "info": "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
-            "new": "~7.11.5",
-            "old": "~6.0.0",
-          },
-        },
-        "resolutions": {
-          "versions/updates": {
-            "info": "https://github.com/silverwind/updates",
-            "new": "^10.0.0",
-            "old": "^1.0.0",
-          },
-        },
-      },
-      "pypi": {
-        "dependencies": {
-          "updates": {
-            "info": "https://github.com/silverwind/updates",
-            "new": "537ccb7",
-            "old": "6941e05",
-          },
-        },
-        "tool.poetry.group.dev.dependencies": {
-          "djlint": {
-            "info": "https://github.com/Riverside-Healthcare/djlint",
-            "new": "1.31.0",
-            "old": "1.30.0",
-          },
-        },
-      },
-    }
-  `);
-});
-
-test.concurrent("dual 2", async ({expect = globalExpect}: any = {}) => {
-  expect(await makeTest(`-j -f ${dualFile} -i noty`)()).toMatchInlineSnapshot(`
-    {
-      "npm": {
-        "dependencies": {
-          "noty": {
-            "info": "https://github.com/needim/noty",
-            "new": "3.1.4",
-            "old": "3.1.0",
           },
         },
       },

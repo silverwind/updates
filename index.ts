@@ -8,7 +8,7 @@ import pMap from "p-map";
 import {parse as parseToml} from "smol-toml";
 import {valid, validRange} from "./utils/semver.ts";
 import {timerel} from "timerel";
-import {highlightDiff, npmTypes, poetryTypes, uvTypes, goTypes, parseUvDependencies, nonPackageEngines, parseDuration, matchesAny, getProperty, commaSeparatedToArray, canIncludeByDate, timestamp, textTable} from "./utils/utils.ts";
+import {highlightDiff, npmTypes, uvTypes, goTypes, parseUvDependencies, nonPackageEngines, parseDuration, matchesAny, getProperty, commaSeparatedToArray, canIncludeByDate, timestamp, textTable} from "./utils/utils.ts";
 import {enableDnsCache} from "./utils/dns.ts";
 import {
   type Config, type Dep, type Deps, type DepsByMode, type Output, type ModeContext,
@@ -703,7 +703,7 @@ async function main(): Promise<void> {
       if (mode === "npm") {
         dependencyTypes = npmTypes;
       } else if (mode === "pypi") {
-        dependencyTypes = [...uvTypes, ...poetryTypes];
+        dependencyTypes = Array.from(uvTypes);
       } else if (mode === "go") {
         dependencyTypes = Array.from(goTypes);
       }
