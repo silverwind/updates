@@ -22,7 +22,6 @@
     "eslint": "9.39.3",
     "eslint-config-silverwind": "121.1.3",
     "p-map": "7.0.4",
-    "smol-toml": "1.6.0",
     "timerel": "5.8.6",
     "tsdown": "0.20.3",
     "tsdown-config-silverwind": "1.7.5",
