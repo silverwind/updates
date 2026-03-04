@@ -102,7 +102,32 @@ function findHighestMajorFromTags(tags: string[], currentMajor: number): number 
   return highest > currentMajor ? highest : null;
 }
 
+function inferGitUrl(modulePath: string): {repoUrl: string, tagPrefix: string} | null {
+  // github.com/{owner}/{repo}[/sub/path]
+  const ghMatch = /^(github\.com\/[^/]+\/[^/]+)(\/.*)?$/.exec(modulePath);
+  if (ghMatch) {
+    const rootPath = ghMatch[1];
+    const subPath = ghMatch[2] || "";
+    return {
+      repoUrl: `https://${rootPath}.git`,
+      tagPrefix: subPath ? `${subPath.substring(1)}/` : "",
+    };
+  }
+  // golang.org/x/{name}
+  const goMatch = /^golang\.org\/x\/([^/]+)(\/.*)?$/.exec(modulePath);
+  if (goMatch) {
+    const subPath = goMatch[2] || "";
+    return {
+      repoUrl: `https://go.googlesource.com/${goMatch[1]}`,
+      tagPrefix: subPath ? `${subPath.substring(1)}/` : "",
+    };
+  }
+  return null;
+}
+
 async function resolveGitUrl(modulePath: string, ctx: ModeContext): Promise<{repoUrl: string, tagPrefix: string} | null> {
+  const inferred = inferGitUrl(modulePath);
+  if (inferred) return inferred;
   try {
     const res = await ctx.doFetch(`https://${modulePath}?go-get=1`, {signal: AbortSignal.timeout(ctx.goProbeTimeout)});
     if (!res.ok) return null;
