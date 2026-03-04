@@ -90,7 +90,7 @@ function parsePktLineTags(buf: ArrayBuffer, prefix: string): string[] {
   return tags;
 }
 
-function findHighestMajorFromTags(tags: string[], currentMajor: number): number | null {
+function findHighestMajorFromTags(tags: string[], currentMajor: number): number {
   let highest = currentMajor;
   for (const tag of tags) {
     const m = /^v(\d+)\./.exec(tag);
@@ -99,15 +99,15 @@ function findHighestMajorFromTags(tags: string[], currentMajor: number): number 
       if (major > highest) highest = major;
     }
   }
-  return highest > currentMajor ? highest : null;
+  return highest;
 }
 
 function inferGitUrl(modulePath: string): {repoUrl: string, tagPrefix: string} | null {
-  // github.com/{owner}/{repo}[/sub/path]
-  const ghMatch = /^(github\.com\/[^/]+\/[^/]+)(\/.*)?$/.exec(modulePath);
-  if (ghMatch) {
-    const rootPath = ghMatch[1];
-    const subPath = ghMatch[2] || "";
+  // github.com, gitea.com: {host}/{owner}/{repo}[/sub/path]
+  const forgeMatch = /^((github\.com|gitea\.com)\/[^/]+\/[^/]+)(\/.*)?$/.exec(modulePath);
+  if (forgeMatch) {
+    const rootPath = forgeMatch[1];
+    const subPath = forgeMatch[3] || "";
     return {
       repoUrl: `https://${rootPath}.git`,
       tagPrefix: subPath ? `${subPath.substring(1)}/` : "",
