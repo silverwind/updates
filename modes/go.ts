@@ -41,6 +41,10 @@ export function buildGoModulePath(name: string, major: number): string {
   return `${name.replace(/\/v\d+$/, "")}/v${major}`;
 }
 
+function shouldSkipMajorProbe(name: string, type: string): boolean {
+  return type === "indirect" || name.startsWith("golang.org/x/");
+}
+
 // TODO: maybe include pseudo-versions with --prerelease
 export function isGoPseudoVersion(version: string): boolean {
   return /\d{14}-[0-9a-f]{12}$/.test(version);
@@ -308,15 +312,14 @@ export async function fetchGoVcsInfo(name: string, type: string, currentVersion:
   };
 
   // Fetch @latest and first major probe in parallel
-  // Skip major version probing for indirect deps and golang.org/x/* (never publish v2+)
-  const skipMajorProbe = type === "indirect" || name.startsWith("golang.org/x/");
+  const skip = shouldSkipMajorProbe(name, type);
   const [latest, firstProbe] = await Promise.all([
     goListQuery(name, ctx.fetchTimeout),
-    skipMajorProbe ? null : goListQuery(buildGoModulePath(name, currentMajor + 1), ctx.goProbeTimeout),
+    skip ? null : goListQuery(buildGoModulePath(name, currentMajor + 1), ctx.goProbeTimeout),
   ]);
   if (!latest) return noUpdateInfo(name, currentVersion, type);
 
-  const probeResult = skipMajorProbe ? null : await probeMajorVersions(currentMajor, firstProbe, (major) =>
+  const probeResult = skip ? null : await probeMajorVersions(currentMajor, firstProbe, (major) =>
     goListQuery(buildGoModulePath(name, major), ctx.goProbeTimeout),
   );
   return buildGoPackageInfo(name, type, currentVersion, probeResult, latest.Version, latest.Time);
@@ -335,12 +338,11 @@ export async function fetchGoProxyInfo(name: string, type: string, currentVersio
   };
 
   // Fetch @latest, git-based major version discovery, and early proxy probe in parallel
-  // Skip major version probing for indirect deps and golang.org/x/* (never publish v2+)
-  const skipMajorProbe = type === "indirect" || name.startsWith("golang.org/x/");
+  const skip = shouldSkipMajorProbe(name, type);
   const [res, gitHighestMajor, earlyProbe] = await Promise.all([
     ctx.doFetch(`${ctx.goProxyUrl}/${encoded}/@latest`, {signal: AbortSignal.timeout(ctx.fetchTimeout)}),
-    skipMajorProbe ? null : fetchHighestMajorViaGit(name, currentMajor, ctx),
-    skipMajorProbe ? null : probeGoMajor(currentMajor + 1),
+    skip ? null : fetchHighestMajorViaGit(name, currentMajor, ctx),
+    skip ? null : probeGoMajor(currentMajor + 1),
   ]);
   if (!res.ok) return noUpdateInfo(name, currentVersion, type);
 
@@ -355,7 +357,7 @@ export async function fetchGoProxyInfo(name: string, type: string, currentVersio
   }
 
   let probeResult: ProbeResult | null = null;
-  if (!skipMajorProbe) {
+  if (!skip) {
     if (gitHighestMajor !== null && gitHighestMajor > currentMajor) {
       // Git found a higher major — single proxy @latest to get Version+Time
       probeResult = await probeGoMajor(gitHighestMajor);
