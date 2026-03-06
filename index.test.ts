@@ -5,7 +5,7 @@ import {readFileSync, mkdtempSync, readdirSync, mkdirSync} from "node:fs";
 import {writeFile, readFile, rm} from "node:fs/promises";
 import {fileURLToPath} from "node:url";
 import {tmpdir} from "node:os";
-import {execPath, versions} from "node:process";
+import {execPath, platform, versions} from "node:process";
 import {gzip, constants} from "node:zlib";
 import {promisify} from "node:util";
 import type {Server} from "node:http";
@@ -356,7 +356,7 @@ if (!versions.bun) {
     const prefix = mkdtempSync(join(tmpdir(), "updates-global-"));
     try {
       await execFileAsync("npm", ["i", "-g", "--prefix", prefix, "."], {shell: true});
-      const bin = join(prefix, "bin", "updates");
+      const bin = platform === "win32" ? join(prefix, "updates.cmd") : join(prefix, "bin", "updates");
       const {stdout, stderr} = await execFileAsync(bin, [
         "-n",
         "--forgeapi", githubUrl,
