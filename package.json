@@ -1,6 +1,6 @@
 {
   "name": "updates",
-  "version": "17.8.2",
+  "version": "17.8.3",
   "description": "Dependency update tool for npm, uv, golang and actions",
   "author": "silverwind",
   "repository": "silverwind/updates",
