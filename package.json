@@ -20,7 +20,7 @@
     "@types/node": "25.3.5",
     "@typescript/native-preview": "7.0.0-dev.20260306.1",
     "eslint": "9.39.3",
-    "eslint-config-silverwind": "122.0.2",
+    "eslint-config-silverwind": "122.0.4",
     "p-map": "7.0.4",
     "timerel": "5.8.6",
     "tsdown": "0.21.0",
