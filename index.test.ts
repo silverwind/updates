@@ -353,23 +353,21 @@ test.concurrent("jsr", async ({expect = globalExpect}: any = {}) => {
 
 if (!versions.bun) {
   test.concurrent("global", async ({expect = globalExpect}: any = {}) => {
-    await execFileAsync("npm", ["i", "-g", "."], {shell: true});
+    const prefix = mkdtempSync(join(tmpdir(), "updates-global-"));
     try {
-      const {stdout, stderr} = await execFileAsync("updates", [
+      await execFileAsync("npm", ["i", "-g", "--prefix", prefix, "."], {shell: true});
+      const bin = join(prefix, "bin", "updates");
+      const {stdout, stderr} = await execFileAsync(bin, [
         "-n",
         "--forgeapi", githubUrl,
         "--pypiapi", pypiUrl,
         "-f", testFile,
-      ], {shell: true});
+      ]);
       expect(stderr).toEqual("");
       expect(stdout).toContain("prismjs");
       expect(stdout).toContain("https://github.com/silverwind/updates");
     } finally {
-      if (env.CI) {
-        await execFileAsync("npm", ["uninstall", "-g", "updates"], {shell: true});
-      } else {
-        await execFileAsync("npm", ["install", "-g", "updates@latest"], {shell: true});
-      }
+      await rm(prefix, {recursive: true});
     }
   });
 }
