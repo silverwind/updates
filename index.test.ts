@@ -356,13 +356,14 @@ if (!versions.bun) {
     const prefix = mkdtempSync(join(tmpdir(), "updates-global-"));
     try {
       await execFileAsync("npm", ["i", "-g", "--prefix", prefix, "."], {shell: true});
-      const bin = platform === "win32" ? join(prefix, "updates.cmd") : join(prefix, "bin", "updates");
+      const isWin = platform === "win32";
+      const bin = isWin ? join(prefix, "updates.cmd") : join(prefix, "bin", "updates");
       const {stdout, stderr} = await execFileAsync(bin, [
         "-n",
         "--forgeapi", githubUrl,
         "--pypiapi", pypiUrl,
         "-f", testFile,
-      ]);
+      ], {shell: isWin});
       expect(stderr).toEqual("");
       expect(stdout).toContain("prismjs");
       expect(stdout).toContain("https://github.com/silverwind/updates");
