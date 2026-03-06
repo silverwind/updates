@@ -724,6 +724,7 @@ async function main(): Promise<void> {
       } else {
         const parsed = parseGoMod(pkgStrs[mode]);
         pkg.deps = parsed.deps;
+        pkg.indirect = parsed.indirect;
         pkg.replace = parsed.replace;
       }
     } catch (err) {

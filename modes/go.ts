@@ -240,8 +240,9 @@ function buildGoPackageInfo(
   }, type, null, name];
 }
 
-export function parseGoMod(content: string): {deps: Record<string, string>, replace: Record<string, string>} {
+export function parseGoMod(content: string): {deps: Record<string, string>, indirect: Record<string, string>, replace: Record<string, string>} {
   const deps: Record<string, string> = {};
+  const indirect: Record<string, string> = {};
   const replace: Record<string, string> = {};
   const replacedModules = new Set<string>();
   const lines = content.split(/\r?\n/);
@@ -254,7 +255,7 @@ export function parseGoMod(content: string): {deps: Record<string, string>, repl
     if (/^replace\s*\(/.test(trimmed)) { inReplace = true; continue; }
     if (trimmed === ")") { inRequire = false; inReplace = false; continue; }
 
-    if (trimmed.includes("// indirect")) continue;
+    const isIndirect = trimmed.includes("// indirect");
 
     if (inReplace || /^replace\s+/.test(trimmed)) {
       const m = inReplace ?
@@ -276,16 +277,17 @@ export function parseGoMod(content: string): {deps: Record<string, string>, repl
       /^require\s+(\S+)\s+(v\S+)/.exec(trimmed);
 
     if (match) {
-      deps[match[1]] = match[2];
+      (isIndirect ? indirect : deps)[match[1]] = match[2];
     }
   }
 
   // Exclude replaced modules from deps
   for (const mod of replacedModules) {
     delete deps[mod];
+    delete indirect[mod];
   }
 
-  return {deps, replace};
+  return {deps, indirect, replace};
 }
 
 export async function fetchGoVcsInfo(name: string, type: string, currentVersion: string, goCwd: string, ctx: ModeContext): Promise<PackageInfo> {
@@ -306,13 +308,14 @@ export async function fetchGoVcsInfo(name: string, type: string, currentVersion:
   };
 
   // Fetch @latest and first major probe in parallel
+  // Skip major version probing for indirect deps
   const [latest, firstProbe] = await Promise.all([
     goListQuery(name, ctx.fetchTimeout),
-    goListQuery(buildGoModulePath(name, currentMajor + 1), ctx.goProbeTimeout),
+    type === "indirect" ? null : goListQuery(buildGoModulePath(name, currentMajor + 1), ctx.goProbeTimeout),
   ]);
   if (!latest) return noUpdateInfo(name, currentVersion, type);
 
-  const probeResult = await probeMajorVersions(currentMajor, firstProbe, (major) =>
+  const probeResult = type === "indirect" ? null : await probeMajorVersions(currentMajor, firstProbe, (major) =>
     goListQuery(buildGoModulePath(name, major), ctx.goProbeTimeout),
   );
   return buildGoPackageInfo(name, type, currentVersion, probeResult, latest.Version, latest.Time);
@@ -331,9 +334,10 @@ export async function fetchGoProxyInfo(name: string, type: string, currentVersio
   };
 
   // Fetch @latest and git-based major version discovery in parallel
+  // Skip major version probing for indirect deps — they are managed by go mod tidy
   const [res, gitHighestMajor] = await Promise.all([
     ctx.doFetch(`${ctx.goProxyUrl}/${encoded}/@latest`, {signal: AbortSignal.timeout(ctx.fetchTimeout)}),
-    fetchHighestMajorViaGit(name, currentMajor, ctx),
+    type === "indirect" ? null : fetchHighestMajorViaGit(name, currentMajor, ctx),
   ]);
   if (!res.ok) return noUpdateInfo(name, currentVersion, type);
 
@@ -348,20 +352,22 @@ export async function fetchGoProxyInfo(name: string, type: string, currentVersio
   }
 
   let probeResult: ProbeResult | null = null;
-  if (gitHighestMajor !== null && gitHighestMajor > currentMajor) {
-    // Git found a higher major — single proxy @latest to get Version+Time
-    probeResult = await probeGoMajor(gitHighestMajor);
-    if (!probeResult) {
-      // Proxy doesn't have this major yet — fall back to probing
+  if (type !== "indirect") {
+    if (gitHighestMajor !== null && gitHighestMajor > currentMajor) {
+      // Git found a higher major — single proxy @latest to get Version+Time
+      probeResult = await probeGoMajor(gitHighestMajor);
+      if (!probeResult) {
+        // Proxy doesn't have this major yet — fall back to probing
+        const firstProbe = await probeGoMajor(currentMajor + 1);
+        probeResult = await probeMajorVersions(currentMajor, firstProbe, probeGoMajor);
+      }
+    } else if (gitHighestMajor === null) {
+      // Git approach failed — full fallback to existing probing
       const firstProbe = await probeGoMajor(currentMajor + 1);
       probeResult = await probeMajorVersions(currentMajor, firstProbe, probeGoMajor);
     }
-  } else if (gitHighestMajor === null) {
-    // Git approach failed — full fallback to existing probing
-    const firstProbe = await probeGoMajor(currentMajor + 1);
-    probeResult = await probeMajorVersions(currentMajor, firstProbe, probeGoMajor);
+    // gitHighestMajor <= currentMajor means no upgrade, probeResult stays null
   }
-  // gitHighestMajor <= currentMajor means no upgrade, probeResult stays null
 
   return buildGoPackageInfo(name, type, currentVersion, probeResult, latestVersion, latestTime);
 }
@@ -388,6 +394,12 @@ export function updateGoMod(pkgStr: string, deps: Deps): [string, Record<string,
     if (depType === "replace") {
       // Update version in replace line: => targetModule vOLD -> => targetModule vNEW
       newPkgStr = newPkgStr.replace(new RegExp(`(=>\\s+${esc(name)}\\s+)v${esc(oldValue)}`, "g"), `$1v${newValue}`);
+      continue;
+    }
+
+    // Indirect deps: only bump version, no major version rewriting or replace removal
+    if (depType === "indirect") {
+      newPkgStr = newPkgStr.replace(new RegExp(`(${esc(name)}) +v${esc(oldValue)}`, "g"), `$1 v${newValue}`);
       continue;
     }
 

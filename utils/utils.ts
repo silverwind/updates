@@ -60,6 +60,7 @@ export const uvTypes = [
 
 export const goTypes = [
   "deps",
+  "indirect",
   "replace",
 ];
 
