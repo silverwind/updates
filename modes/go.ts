@@ -33,7 +33,7 @@ export function encodeGoModulePath(modulePath: string): string {
 
 export function extractGoMajor(name: string): number {
   const match = /\/v(\d+)$/.exec(name);
-  return match ? parseInt(match[1]) : 1;
+  return match ? Number.parseInt(match[1]) : 1;
 }
 
 export function buildGoModulePath(name: string, major: number): string {
@@ -73,8 +73,8 @@ function parsePktLineTags(buf: ArrayBuffer, prefix: string): string[] {
   while (pos < text.length) {
     if (text.startsWith("0000", pos)) break;
     const lenHex = text.substring(pos, pos + 4);
-    const len = parseInt(lenHex, 16);
-    if (len === 0 || isNaN(len)) break;
+    const len = Number.parseInt(lenHex, 16);
+    if (len === 0 || Number.isNaN(len)) break;
     const line = text.substring(pos + 4, pos + len);
     pos += len;
     // Each line: "<sha> <refname>\n" or "<sha> <refname>\n" with possible extras
@@ -95,7 +95,7 @@ function findHighestMajorFromTags(tags: string[], currentMajor: number): number 
   for (const tag of tags) {
     const m = /^v(\d+)\./.exec(tag);
     if (m) {
-      const major = parseInt(m[1]);
+      const major = Number.parseInt(m[1]);
       if (major > highest) highest = major;
     }
   }
@@ -404,7 +404,7 @@ export function updateGoMod(pkgStr: string, deps: Deps): [string, Record<string,
     }
 
     const oldMajor = extractGoMajor(name);
-    const newMajor = parseInt(newValue.split(".")[0]);
+    const newMajor = Number.parseInt(newValue.split(".")[0]);
 
     if (oldMajor !== newMajor && newMajor > 1) {
       const newPath = buildGoModulePath(name, newMajor);

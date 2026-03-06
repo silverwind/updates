@@ -199,7 +199,7 @@ function unescapeString(s: string): string {
       case "n": return "\n";
       case "r": return "\r";
       case "t": return "\t";
-      case "u": case "U": return String.fromCodePoint(parseInt(c.slice(1), 16));
+      case "u": case "U": return String.fromCodePoint(Number.parseInt(c.slice(1), 16));
       default: return c;
     }
   });

@@ -17,18 +17,18 @@
     "node": ">=22"
   },
   "devDependencies": {
-    "@types/node": "25.3.2",
-    "@typescript/native-preview": "7.0.0-dev.20260228.1",
+    "@types/node": "25.3.5",
+    "@typescript/native-preview": "7.0.0-dev.20260306.1",
     "eslint": "9.39.3",
-    "eslint-config-silverwind": "121.1.3",
+    "eslint-config-silverwind": "122.0.2",
     "p-map": "7.0.4",
     "timerel": "5.8.6",
-    "tsdown": "0.20.3",
-    "tsdown-config-silverwind": "1.7.5",
+    "tsdown": "0.21.0",
+    "tsdown-config-silverwind": "2.0.0",
     "typescript": "5.9.3",
     "typescript-config-silverwind": "15.0.0",
     "updates-config-silverwind": "1.0.3",
-    "versions": "14.2.0",
+    "versions": "14.2.1",
     "vitest": "4.0.18",
     "vitest-config-silverwind": "10.6.3"
   }
