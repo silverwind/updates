@@ -62,6 +62,7 @@ const options: ParseArgsOptionsConfig = {
   "greatest": {short: "g", type: "string", multiple: true},
   "help": {short: "h", type: "boolean"},
   "include": {short: "i", type: "string", multiple: true},
+  "indirect": {short: "I", type: "boolean"},
   "json": {short: "j", type: "boolean"},
   "jsrapi": {type: "string"}, // undocumented, only for tests
   "cooldown": {short: "C", type: "string"},
@@ -535,7 +536,7 @@ async function main(): Promise<void> {
 
   const maxSockets = 96;
   const concurrency = typeof args.sockets === "number" ? args.sockets : maxSockets;
-  const {help, version, file: filesArg, types, update, include: includeArg, exclude: excludeArg, pin: pinArg, cooldown: cooldownArg} = args;
+  const {help, version, file: filesArg, types, update, indirect, include: includeArg, exclude: excludeArg, pin: pinArg, cooldown: cooldownArg} = args;
 
   if (help) {
     stdout.write(`usage: updates [options] [files...]
@@ -560,6 +561,7 @@ async function main(): Promise<void> {
     -S, --sockets <num>                Maximum number of parallel HTTP sockets opened. Default: ${maxSockets}
     -T, --timeout <ms>                 Network request timeout in ms (go probes use half). Default: ${fetchTimeout}
     -M, --modes <mode,...>             Which modes to enable. Default: npm,pypi,go,actions,docker
+    -I, --indirect                     Include indirect Go dependencies
     -j, --json                         Output a JSON object
     -n, --no-color                     Disable color output
     -v, --version                      Print the version
@@ -705,7 +707,7 @@ async function main(): Promise<void> {
       } else if (mode === "pypi") {
         dependencyTypes = Array.from(uvTypes);
       } else if (mode === "go") {
-        dependencyTypes = Array.from(goTypes);
+        dependencyTypes = indirect ? Array.from(goTypes) : goTypes.filter(t => t !== "indirect");
       }
     }
 

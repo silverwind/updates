@@ -1123,6 +1123,39 @@ test.concurrent("go", async ({expect = globalExpect}: any = {}) => {
   `);
 });
 
+test.concurrent("go indirect excluded by default", async ({expect = globalExpect}: any = {}) => {
+  const result = await makeTest(`-j -f ${goFile}`)();
+  expect(result?.go?.indirect).toBeUndefined();
+});
+
+test.concurrent("go indirect with -I flag", async ({expect = globalExpect}: any = {}) => {
+  expect(await makeTest(`-j -f ${goFile} -I`)()).toMatchInlineSnapshot(`
+    {
+      "go": {
+        "deps": {
+          "github.com/google/go-github/v70": {
+            "info": "https://github.com/google/go-github/tree/HEAD/v82",
+            "new": "82.0.0",
+            "old": "70.0.0",
+          },
+          "github.com/google/uuid": {
+            "info": "https://github.com/google/uuid",
+            "new": "1.6.0",
+            "old": "1.5.0",
+          },
+        },
+        "indirect": {
+          "github.com/example/testpkg": {
+            "info": "https://github.com/example/testpkg",
+            "new": "1.0.0",
+            "old": "0.9.0",
+          },
+        },
+      },
+    }
+  `);
+});
+
 test.concurrent("go update", async ({expect = globalExpect}: any = {}) => {
   const testGoModDir = join(testDir, "test-go-update");
   mkdirSync(testGoModDir, {recursive: true});
