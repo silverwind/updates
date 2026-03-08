@@ -413,6 +413,17 @@ export async function fetchActionTags(apiUrl: string, owner: string, repo: strin
   }
 }
 
+export type CheckResult = {
+  key: string,
+  newRange: string,
+  user: string,
+  repo: string,
+  oldRef: string,
+  newRef: string,
+  newDate?: string,
+  newTag?: string,
+};
+
 export function throwFetchError(res: Response | undefined, url: string, name: string, source: string): never {
   if (res?.status && res?.statusText) {
     throw new Error(`Received ${res.status} ${res.statusText} from ${url}`);

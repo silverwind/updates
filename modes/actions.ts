@@ -1,9 +1,9 @@
 import {resolve, join} from "node:path";
 import {readdirSync} from "node:fs";
 import {parse} from "../utils/semver.ts";
-import {type ModeContext, type TagEntry, esc, stripv, hashRe, fetchForge, fetchActionTags, formatVersionPrecision} from "./shared.ts";
+import {type CheckResult, type ModeContext, type TagEntry, esc, stripv, hashRe, fetchForge, fetchActionTags, formatVersionPrecision} from "./shared.ts";
 
-export {hashRe, type TagEntry, fetchActionTags};
+export {hashRe, type CheckResult, type TagEntry, fetchActionTags};
 export const actionsUsesRe = /^\s*-?\s*uses:\s*['"]?([^'"#\s]+)['"]?/gm;
 
 export type ActionRef = {
@@ -75,13 +75,3 @@ export function resolveWorkflowFiles(dir: string): Array<string> {
   }
 }
 
-export type CheckResult = {
-  key: string,
-  newRange: string,
-  user: string,
-  repo: string,
-  oldRef: string,
-  newRef: string,
-  newDate?: string,
-  newTag?: string,
-};

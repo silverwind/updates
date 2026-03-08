@@ -2,7 +2,7 @@ import {env} from "node:process";
 import {basename} from "node:path";
 import rc from "../utils/rc.ts";
 import {
-  type Config, type Dep, type Deps, type ModeContext, type PackageInfo,
+  type Config, type CheckResult, type Dep, type Deps, type ModeContext, type PackageInfo,
   esc, normalizeUrl, getFetchOpts, fieldSep, fetchForge, selectTag,
   coerceToVersion, hashRe, fetchActionTags, throwFetchError,
 } from "./shared.ts";
@@ -280,17 +280,6 @@ export async function getTags(user: string, repo: string, ctx: ModeContext): Pro
   const entries = await fetchActionTags(ctx.forgeApiUrl, user, repo, ctx);
   return entries.map(e => e.name);
 }
-
-export type CheckResult = {
-  key: string,
-  newRange: string,
-  user: string,
-  repo: string,
-  oldRef: string,
-  newRef: string,
-  newDate?: string,
-  newTag?: string,
-};
 
 export async function checkUrlDep(key: string, dep: Dep, useGreatest: boolean, ctx: ModeContext): Promise<CheckResult | null> {
   const stripped = dep.old.replace(stripRe, "");

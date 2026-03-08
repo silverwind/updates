@@ -184,6 +184,38 @@ function findUpSync(filename: string, dir: string): string | null {
 }
 
 
+function readFileOrThrow(file: string): string {
+  try {
+    return readFileSync(file, "utf8");
+  } catch (err) {
+    throw new Error(`Unable to open ${file}: ${(err as Error).message}`);
+  }
+}
+
+function setDepAge(dep: Dep, date: string): void {
+  if (date) {
+    dep.date = date;
+    dep.age = timerel(date, {noAffix: true});
+  }
+}
+
+function applyCooldown(modeDeps: Deps, cooldown: string | number, now: number): void {
+  const days = parseDuration(String(cooldown));
+  for (const [key, {date}] of Object.entries(modeDeps)) {
+    if (!canIncludeByDate(date, days, now)) {
+      delete modeDeps[key];
+    }
+  }
+}
+
+function countDeps(deps: DepsByMode): number {
+  let num = 0;
+  for (const mode of Object.keys(deps)) {
+    num += Object.keys(deps[mode]).length;
+  }
+  return num;
+}
+
 function logVerbose(message: string): void {
   console.error(`${timestamp()} ${message}`);
 }
@@ -254,10 +286,7 @@ function outputDeps(deps: DepsByMode = {}): number {
     }
   }
 
-  let num = 0;
-  for (const mode of Object.keys(deps)) {
-    num += Object.keys(deps[mode]).length;
-  }
+  const num = countDeps(deps);
 
   if (args.json) {
     const output: Output = {results: {}};
@@ -606,6 +635,8 @@ async function main(): Promise<void> {
   const cliInclude = parseArgList(includeArg);
   const cliExclude = parseArgList(excludeArg);
   const cliPin = parsePinArg(pinArg);
+  const cliOnlyInclude = matchersToRegexSet(cliInclude, []);
+  const cliOnlyExclude = matchersToRegexSet(cliExclude, []);
 
   type ActionDepInfo = ActionRef & {key: string, apiUrl: string};
   const actionDepInfos: Array<ActionDepInfo> = [];
@@ -616,11 +647,9 @@ async function main(): Promise<void> {
 
   function collectDockerRefs(content: string, relPath: string, regexes: Array<RegExp>): void {
     if (!deps.docker) deps.docker = {};
-    const include = matchersToRegexSet(cliInclude, []);
-    const exclude = matchersToRegexSet(cliExclude, []);
     for (const regex of regexes) {
       for (const {ref} of extractDockerRefs(content, regex)) {
-        if (!canInclude(ref.fullImage, "docker", include, exclude, "docker")) continue;
+        if (!canInclude(ref.fullImage, "docker", cliOnlyInclude, cliOnlyExclude, "docker")) continue;
         const key = `${relPath}${fieldSep}${ref.fullImage}`;
         if (deps.docker[key]) continue;
         const parsed = parseDockerTag(ref.tag);
@@ -637,22 +666,15 @@ async function main(): Promise<void> {
       const dockerEnabled = enabledModes.has("docker") || explicitFiles.has(file);
       if (!actionsEnabled && !dockerEnabled) continue;
 
-      let content: string;
-      try {
-        content = readFileSync(file, "utf8");
-      } catch (err) {
-        throw new Error(`Unable to open ${file}: ${(err as Error).message}`);
-      }
+      const content = readFileOrThrow(file);
       const relPath = toRelPath(file);
       wfData[relPath] = {absPath: file, content};
 
       if (actionsEnabled) {
         if (!deps.actions) deps.actions = {};
-        const include = matchersToRegexSet(cliInclude, []);
-        const exclude = matchersToRegexSet(cliExclude, []);
         const actions = Array.from(content.matchAll(actionsUsesRe), m => parseActionRef(m[1])).filter(a => a !== null);
         for (const action of actions) {
-          if (!canInclude(action.name, "actions", include, exclude, "actions")) continue;
+          if (!canInclude(action.name, "actions", cliOnlyInclude, cliOnlyExclude, "actions")) continue;
           const key = `${relPath}${fieldSep}${action.name}`;
           if (deps.actions[key]) continue;
           deps.actions[key] = {old: action.ref} as Dep;
@@ -671,12 +693,7 @@ async function main(): Promise<void> {
 
     if (isDockerFileName(filename)) {
       if (!enabledModes.has("docker") && !explicitFiles.has(file)) continue;
-      let content: string;
-      try {
-        content = readFileSync(file, "utf8");
-      } catch (err) {
-        throw new Error(`Unable to open ${file}: ${(err as Error).message}`);
-      }
+      const content = readFileOrThrow(file);
       const relPath = toRelPath(file);
       const fileType = isDockerfile(filename) ? "dockerfile" : "compose";
       dockerFileData[relPath] = {absPath: file, content, fileType};
@@ -712,11 +729,7 @@ async function main(): Promise<void> {
     }
 
     let pkg: Record<string, any> = {};
-    try {
-      pkgStrs[mode] = readFileSync(file, "utf8");
-    } catch (err) {
-      throw new Error(`Unable to open ${file}: ${(err as Error).message}`);
-    }
+    pkgStrs[mode] = readFileOrThrow(file);
 
     try {
       if (mode === "npm") {
@@ -902,10 +915,7 @@ async function main(): Promise<void> {
           deps[mode][key].info = getGoInfoUrl(infoName);
         }
 
-        if (date) {
-          deps[mode][key].date = date;
-          deps[mode][key].age = timerel(date, {noAffix: true});
-        }
+        setDepAge(deps[mode][key], date);
       }
 
       if (Object.keys(maybeUrlDeps).length) {
@@ -924,19 +934,13 @@ async function main(): Promise<void> {
             oldPrint: npmHashRe.test(oldRef) ? oldRef.substring(0, 7) : oldRef,
             newPrint: npmHashRe.test(newRef) ? newRef.substring(0, 7) : newRef,
             info: `https://github.com/${user}/${repo}`,
-            ...(newDate ? {age: timerel(newDate, {noAffix: true})} : {}),
           };
+          if (newDate) setDepAge(deps[mode][key], newDate);
         }
       }
 
       const cooldown = cooldownArg ?? config.cooldown;
-      if (cooldown) {
-        for (const [key, {date}] of Object.entries(deps[mode])) {
-          if (!canIncludeByDate(date, parseDuration(String(cooldown)), now)) {
-            delete deps[mode][key];
-          }
-        }
-      }
+      if (cooldown) applyCooldown(deps[mode], String(cooldown), now);
     })());
   }
 
@@ -998,11 +1002,7 @@ async function main(): Promise<void> {
             dep.newPrint = newTag;
             dep.info = infoUrl;
 
-            const date = await getDate(newCommitSha);
-            if (date) {
-              dep.date = date;
-              dep.age = timerel(date, {noAffix: true});
-            }
+            setDepAge(dep, await getDate(newCommitSha));
           } else {
             const coerced = coerceToVersion(stripv(info.ref));
             if (!coerced) { delete deps.actions[info.key]; continue; }
@@ -1025,27 +1025,14 @@ async function main(): Promise<void> {
 
             const newEntry = tags.find(t => t.name === newTag);
             if (newEntry?.commitSha) {
-              const date = await getDate(newEntry.commitSha);
-              if (date) {
-                dep.date = date;
-                dep.age = timerel(date, {noAffix: true});
-              }
+              setDepAge(dep, await getDate(newEntry.commitSha));
             }
           }
         }
       }, {concurrency});
 
-      if (cooldownArg) {
-        for (const [key, {date}] of Object.entries(deps.actions)) {
-          if (!canIncludeByDate(date, parseDuration(String(cooldownArg)), now)) {
-            delete deps.actions[key];
-          }
-        }
-      }
-
-      if (!Object.keys(deps.actions).length) {
-        delete deps.actions;
-      }
+      if (cooldownArg) applyCooldown(deps.actions, String(cooldownArg), now);
+      if (!Object.keys(deps.actions).length) delete deps.actions;
     })());
   }
 
@@ -1079,36 +1066,18 @@ async function main(): Promise<void> {
 
           dep.new = result.newTag;
           dep.info = getDockerInfoUrl(info.ref);
-
-          if (result.date) {
-            dep.date = result.date;
-            dep.age = timerel(result.date, {noAffix: true});
-          }
+          setDepAge(dep, result.date);
         }
       }, {concurrency});
 
-      if (cooldownArg) {
-        for (const [key, {date}] of Object.entries(deps.docker)) {
-          if (!canIncludeByDate(date, parseDuration(String(cooldownArg)), now)) {
-            delete deps.docker[key];
-          }
-        }
-      }
-
-      if (!Object.keys(deps.docker).length) {
-        delete deps.docker;
-      }
+      if (cooldownArg) applyCooldown(deps.docker, String(cooldownArg), now);
+      if (!Object.keys(deps.docker).length) delete deps.docker;
     })());
   }
 
   await Promise.all(fetchTasks);
 
-  let numEntries = 0;
-  for (const mode of Object.keys(deps)) {
-    numEntries += Object.keys(deps[mode]).length;
-  }
-
-  if (!numEntries) {
+  if (!countDeps(deps)) {
     return finishWithMessage("All dependencies are up to date.");
   }
 
