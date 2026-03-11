@@ -6,7 +6,7 @@ type SemVer = {
   version: string;
 };
 
-const semverRe = /^v?(\d+)\.(\d+)\.(\d+)(?:-([a-zA-Z0-9._-]+(?:\.[a-zA-Z0-9._-]+)*))?(?:\+[a-zA-Z0-9._-]+)?$/;
+const semverRe = /^v?(\d+)\.(\d+)\.(\d+)(?:-([a-zA-Z0-9_-]+(?:\.[a-zA-Z0-9_-]+)*))?(?:\+[a-zA-Z0-9._-]+)?$/;
 
 const parseCache = new Map<string, SemVer | null>();
 
@@ -149,7 +149,7 @@ type Comparator = {
 };
 
 function parseComparator(comp: string): Comparator | null {
-  const m = /^(>=|<=|>|<|=)?\s*v?(\d+)(?:\.(\d+))?(?:\.(\d+))?((?:-[a-zA-Z0-9._-]+(?:\.[a-zA-Z0-9._-]+)*)?)$/.exec(comp.trim());
+  const m = /^(>=|<=|>|<|=)?\s*v?(\d+)(?:\.(\d+))?(?:\.(\d+))?((?:-[a-zA-Z0-9_-]+(?:\.[a-zA-Z0-9_-]+)*)?)$/.exec(comp.trim());
   if (!m) return null;
   const major = m[2];
   const minor = m[3] ?? "0";
@@ -324,7 +324,7 @@ function parseRange(range: string): Array<Array<Comparator>> | null {
     group = expandXRanges(group);
 
     // Normalize = prefix for exact versions
-    group = group.replace(/(^|[\s])v?(\d+\.\d+\.\d+(?:-[a-zA-Z0-9._-]+(?:\.[a-zA-Z0-9._-]+)*)?)\b/g, (match, prefix) => {
+    group = group.replace(/(^|[\s])v?(\d+\.\d+\.\d+(?:-[a-zA-Z0-9_-]+(?:\.[a-zA-Z0-9_-]+)*)?)\b/g, (match, prefix) => {
       if (/[<>=]/.test(prefix)) return match;
       return `${prefix}=${match.trim()}`;
     });

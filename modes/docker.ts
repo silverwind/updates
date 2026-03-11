@@ -17,9 +17,9 @@ const dockerTagRe = /^(v?\d+(?:\.\d+){0,2})(-.+)?$/;
 export const dockerfileFromRe = /^\s*FROM\s+(?:--platform=\S+\s+)?(\S+)/gm;
 export const composeImageRe = /^\s*image:\s*['"]?([^\s'"#]+)['"]?/gm;
 // Matches shorthand `container: image:tag` (not object form with `{`)
-export const workflowContainerRe = /^\s*container:\s*['"]?([^\s'"#{}]+:[^\s'"#{}]+)['"]?\s*$/gm;
+export const workflowContainerRe = /^\s*container:\s*['"]?([^\s'"#{}]+:[^\s'"#{}:]+)['"]?\s*$/gm;
 // Matches `uses: docker://image:tag`
-export const workflowDockerUsesRe = /^\s*-?\s*uses:\s*['"]?docker:\/\/([^'"#\s]+)['"]?/gm;
+export const workflowDockerUsesRe = /^\s*(?:-\s*)?uses:\s*['"]?docker:\/\/([^'"#\s]+)['"]?/gm;
 
 function parseImageParts(imagePart: string): {registry: string | null, namespace: string, repo: string} {
   const parts = imagePart.split("/");

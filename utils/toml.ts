@@ -51,7 +51,7 @@ export function parseToml(input: string): TomlObject {
         const aLine = lines[j].replace(/#.*$/, "").trim();
         if (!aLine) continue;
         if (aLine.includes("]")) {
-          parseArrayItems(aLine.replace(/].*$/, ""), items);
+          parseArrayItems(aLine.replace(/\].*$/, ""), items);
           i = j;
           break;
         }

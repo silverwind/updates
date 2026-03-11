@@ -4,7 +4,7 @@ import {parse} from "../utils/semver.ts";
 import {type CheckResult, type ModeContext, type TagEntry, esc, stripv, hashRe, fetchForge, fetchActionTags, formatVersionPrecision} from "./shared.ts";
 
 export {hashRe, type CheckResult, type TagEntry, fetchActionTags};
-export const actionsUsesRe = /^\s*-?\s*uses:\s*['"]?([^'"#\s]+)['"]?/gm;
+export const actionsUsesRe = /^\s*(?:-\s*)?uses:\s*['"]?([^'"#\s]+)['"]?/gm;
 
 export type ActionRef = {
   host: string | null,

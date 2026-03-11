@@ -247,7 +247,8 @@ async function end(err?: Error | void, exitCode?: number): Promise<void> {
       console.info(JSON.stringify({error, cause}));
     } else {
       console.info(red(error));
-      if (cause) console.info(red(`Caused by: ${String(cause)}`));
+      if (cause instanceof Error) console.info(red(`Caused by: ${cause.message}`));
+      else if (cause) console.info(red(`Caused by: ${typeof cause === "string" ? cause : JSON.stringify(cause)}`));
     }
   }
 

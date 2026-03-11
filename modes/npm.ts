@@ -31,7 +31,7 @@ export type AuthAndRegistry = {
 // regexes for url dependencies. does only github and only hash or exact semver
 // https://regex101.com/r/gCZzfK/2
 const stripRe = /^.*?:\/\/(.*?@)?(github\.com[:/])/i;
-const partsRe = /^([^/]+)\/([^/#]+)?.*?\/([0-9a-f]+|v?[0-9]+\.[0-9]+\.[0-9]+)$/i;
+const partsRe = /^([^/]+)\/([^/]+)\/(?:.*\/)?([0-9a-f]+|v?[0-9]+\.[0-9]+\.[0-9]+)$/i;
 export const npmVersionRe = /[0-9]+(\.[0-9]+)?(\.[0-9]+)?/g;
 const npmVersionRePre = /[0-9]+\.[0-9]+\.[0-9]+(-.+)?/g;
 
@@ -95,7 +95,7 @@ function registryUrl(scope: string, npmrcConfig: Npmrc): string {
 function getAuthAndRegistry(name: string, registry: string): AuthAndRegistry {
   if (!npmrc) npmrc = getNpmrc();
 
-  const scope = name.startsWith("@") ? (/@[a-z0-9][\w-.]+/.exec(name) || [""])[0] : "";
+  const scope = name.startsWith("@") ? (/@[a-z0-9][\w.-]+/.exec(name) || [""])[0] : "";
   const cacheKey = `${scope}:${registry}`;
   const cached = authCache.get(cacheKey);
   if (cached) return cached;
