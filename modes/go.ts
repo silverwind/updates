@@ -106,25 +106,27 @@ function findHighestMajorFromTags(tags: string[], currentMajor: number): number 
   return highest;
 }
 
+function subPathToTagPrefix(subPath: string | undefined): string {
+  return subPath ? `${subPath.substring(1)}/` : "";
+}
+
 function inferGitUrl(modulePath: string): {repoUrl: string, tagPrefix: string} | null {
-  // github.com, gitea.com: {host}/{owner}/{repo}[/sub/path]
-  const forgeMatch = /^((github\.com|gitea\.com)\/[^/]+\/[^/]+)(\/.*)?$/.exec(modulePath);
+  // Common forges: {host}/{owner}/{repo}[/sub/path]
+  const forgeMatch = /^((github\.com|gitea\.com|codeberg\.org|gitlab\.com|bitbucket\.org|git\.sr\.ht)\/[^/]+\/[^/]+)(\/.*)?$/.exec(modulePath);
   if (forgeMatch) {
-    const rootPath = forgeMatch[1];
-    const subPath = forgeMatch[3] || "";
-    return {
-      repoUrl: `https://${rootPath}.git`,
-      tagPrefix: subPath ? `${subPath.substring(1)}/` : "",
-    };
+    return {repoUrl: `https://${forgeMatch[1]}.git`, tagPrefix: subPathToTagPrefix(forgeMatch[3])};
   }
   // golang.org/x/{name}
   const goMatch = /^golang\.org\/x\/([^/]+)(\/.*)?$/.exec(modulePath);
   if (goMatch) {
-    const subPath = goMatch[2] || "";
-    return {
-      repoUrl: `https://go.googlesource.com/${goMatch[1]}`,
-      tagPrefix: subPath ? `${subPath.substring(1)}/` : "",
-    };
+    return {repoUrl: `https://go.googlesource.com/${goMatch[1]}`, tagPrefix: subPathToTagPrefix(goMatch[2])};
+  }
+  // gopkg.in/{name}.v{N} -> github.com/go-{name}/{name}
+  // gopkg.in/{user}/{name}.v{N} -> github.com/{user}/{name}
+  const gopkgMatch = /^gopkg\.in\/(?:([^/]+)\/)?([^.]+)\.v\d+(\/.*)?$/.exec(modulePath);
+  if (gopkgMatch) {
+    const user = gopkgMatch[1] || `go-${gopkgMatch[2]}`;
+    return {repoUrl: `https://github.com/${user}/${gopkgMatch[2]}.git`, tagPrefix: subPathToTagPrefix(gopkgMatch[3])};
   }
   return null;
 }
@@ -150,31 +152,44 @@ async function resolveGitUrl(modulePath: string, ctx: ModeContext): Promise<{rep
   }
 }
 
+const gitLsRefsCache = new Map<string, Promise<string[] | null>>();
+
+function fetchGitTags(basePath: string, ctx: ModeContext): Promise<string[] | null> {
+  const cached = gitLsRefsCache.get(basePath);
+  if (cached) return cached;
+  const promise = (async (): Promise<string[] | null> => {
+    try {
+      const resolved = await resolveGitUrl(basePath, ctx);
+      if (!resolved) return null;
+      const {repoUrl, tagPrefix} = resolved;
+
+      const body = buildLsRefsRequest(tagPrefix);
+      const res = await ctx.doFetch(`${repoUrl}/git-upload-pack`, {
+        method: "POST",
+        headers: {
+          "Git-Protocol": "version=2",
+          "Content-Type": "application/x-git-upload-pack-request",
+        },
+        body,
+        signal: AbortSignal.timeout(ctx.goProbeTimeout),
+      });
+      if (!res.ok) return null;
+
+      const buf = await res.arrayBuffer();
+      return parsePktLineTags(buf, tagPrefix);
+    } catch {
+      return null;
+    }
+  })();
+  gitLsRefsCache.set(basePath, promise);
+  return promise;
+}
+
 async function fetchHighestMajorViaGit(name: string, currentMajor: number, ctx: ModeContext): Promise<number | null> {
-  try {
-    const basePath = name.replace(/\/v\d+$/, "");
-    const resolved = await resolveGitUrl(basePath, ctx);
-    if (!resolved) return null;
-    const {repoUrl, tagPrefix} = resolved;
-
-    const body = buildLsRefsRequest(tagPrefix);
-    const res = await ctx.doFetch(`${repoUrl}/git-upload-pack`, {
-      method: "POST",
-      headers: {
-        "Git-Protocol": "version=2",
-        "Content-Type": "application/x-git-upload-pack-request",
-      },
-      body,
-      signal: AbortSignal.timeout(ctx.goProbeTimeout),
-    });
-    if (!res.ok) return null;
-
-    const buf = await res.arrayBuffer();
-    const tags = parsePktLineTags(buf, tagPrefix);
-    return findHighestMajorFromTags(tags, currentMajor);
-  } catch {
-    return null;
-  }
+  const basePath = name.replace(/\/v\d+$/, "");
+  const tags = await fetchGitTags(basePath, ctx);
+  if (!tags) return null;
+  return findHighestMajorFromTags(tags, currentMajor);
 }
 
 function noUpdateInfo(name: string, currentVersion: string, type: string): PackageInfo {
@@ -359,11 +374,16 @@ export async function fetchGoProxyInfo(name: string, type: string, currentVersio
   let probeResult: ProbeResult | null = null;
   if (!skip) {
     if (gitHighestMajor !== null && gitHighestMajor > currentMajor) {
-      // Git found a higher major — single proxy @latest to get Version+Time
-      probeResult = await probeGoMajor(gitHighestMajor);
-      if (!probeResult) {
-        // Proxy doesn't have this major yet — fall back to probing from early probe
-        probeResult = await probeMajorVersions(currentMajor, earlyProbe, probeGoMajor);
+      if (gitHighestMajor === currentMajor + 1 && earlyProbe) {
+        // Git found same major as earlyProbe — reuse it
+        probeResult = earlyProbe;
+      } else {
+        // Git found a higher major — single proxy @latest to get Version+Time
+        probeResult = await probeGoMajor(gitHighestMajor);
+        if (!probeResult) {
+          // Proxy doesn't have this major yet — fall back to probing from early probe
+          probeResult = await probeMajorVersions(currentMajor, earlyProbe, probeGoMajor);
+        }
       }
     } else if (gitHighestMajor === null && earlyProbe !== null) {
       // Git failed but proxy found v(current+1) — probe for highest
