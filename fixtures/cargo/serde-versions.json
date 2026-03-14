@@ -1,0 +1,8 @@
+{
+  "versions": [
+    {"num": "1.0.200", "created_at": "2025-01-15T12:00:00Z", "yanked": false},
+    {"num": "1.0.100", "created_at": "2024-06-01T12:00:00Z", "yanked": false},
+    {"num": "1.0.0", "created_at": "2024-01-01T12:00:00Z", "yanked": false}
+  ],
+  "meta": {"total": 3}
+}
