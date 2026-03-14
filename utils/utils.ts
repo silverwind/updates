@@ -64,6 +64,12 @@ export const goTypes = [
   "replace",
 ];
 
+export const cargoTypes = [
+  "dependencies",
+  "dev-dependencies",
+  "build-dependencies",
+];
+
 export function matchesAny(str: string, set: Set<RegExp> | boolean): boolean {
   for (const re of (set instanceof Set ? set : [])) {
     if (re.test(str)) return true;

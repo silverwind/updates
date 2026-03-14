@@ -10,6 +10,7 @@
 - `package.json` - supports all npm package managers
 - `pyproject.toml` - supports `uv`
 - `go.mod` - supports go dependencies
+- `Cargo.toml` - Cargo (crates.io) dependencies
 - `.{github,gitea,forgejo}/workflows` - supports actions
 - `Dockerfile*`, `docker-*.{yml,yaml}` - supports Docker Hub images
 
@@ -45,7 +46,7 @@ npx updates -u && npm i
 |`-r, --registry <url>`|Override npm registry URL|
 |`-S, --sockets <num>`|Maximum number of parallel HTTP sockets opened. Default: 96|
 |`-T, --timeout <ms>`|Network request timeout in ms (go probes use half). Default: 5000|
-|`-M, --modes <mode,...>`|Which modes to enable. Either `npm`, `pypi`, `go`, `actions`, `docker`. Default: `npm,pypi,go,actions,docker`|
+|`-M, --modes <mode,...>`|Which modes to enable. Either `npm`, `pypi`, `go`, `cargo`, `actions`, `docker`. Default: `npm,pypi,go,cargo,actions,docker`|
 |`-I, --indirect`|Include indirect Go dependencies|
 |`-j, --json`|Output a JSON object|
 |`-n, --no-color`|Disable color output|

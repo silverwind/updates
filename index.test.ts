@@ -36,6 +36,7 @@ const dockerActionsDir = fileURLToPath(new URL("fixtures/docker-actions/.github/
 const dockerfileDevFixture = fileURLToPath(new URL("fixtures/docker/Dockerfile.dev", import.meta.url));
 const dockerStackFixture = fileURLToPath(new URL("fixtures/docker/docker-stack.yml", import.meta.url));
 const dockerDir = fileURLToPath(new URL("fixtures/docker", import.meta.url));
+const cargoFile = fileURLToPath(new URL("fixtures/cargo/Cargo.toml", import.meta.url));
 
 const testPkg = JSON.parse(readFileSync(testFile, "utf8"));
 const testDir = mkdtempSync(join(tmpdir(), "updates-"));
@@ -124,6 +125,7 @@ let pypiServer: ReturnType<typeof makeServer>;
 let jsrServer: ReturnType<typeof makeServer>;
 let goProxyServer: ReturnType<typeof makeServer>;
 let dockerServer: ReturnType<typeof makeServer>;
+let cargoServer: ReturnType<typeof makeServer>;
 
 let githubUrl: string;
 let pypiUrl: string;
@@ -131,6 +133,7 @@ let npmUrl: string;
 let jsrUrl: string;
 let goProxyUrl: string;
 let dockerUrl: string;
+let cargoUrl: string;
 
 beforeAll(async () => {
   npmServer = makeServer(defaultRoute);
@@ -139,6 +142,7 @@ beforeAll(async () => {
   jsrServer = makeServer(defaultRoute);
   goProxyServer = makeServer((_, res) => { res.statusCode = 404; res.end(); });
   dockerServer = makeServer((_, res) => { res.statusCode = 404; res.end(); });
+  cargoServer = makeServer((_, res) => { res.statusCode = 404; res.end(); });
 
   const [commits, tags] = await Promise.all([
     readFile(fileURLToPath(new URL("fixtures/github/updates-commits.json", import.meta.url)), "utf8"),
@@ -240,6 +244,11 @@ beforeAll(async () => {
     dockerServer.get(route, (_, res) => res.send(gz));
   }
 
+  // Cargo / crates.io API fixtures
+  const serdeVersions = await readFile(fileURLToPath(new URL("fixtures/cargo/serde-versions.json", import.meta.url)), "utf8");
+  const serdeVersionsGz = await gzipPromise(serdeVersions);
+  cargoServer.get("/api/v1/crates/serde/versions", (_, res) => res.send(serdeVersionsGz));
+
   await Promise.all([
     githubServer.start(0),
     pypiServer.start(0),
@@ -247,6 +256,7 @@ beforeAll(async () => {
     jsrServer.start(0),
     goProxyServer.start(0),
     dockerServer.start(0),
+    cargoServer.start(0),
   ]);
 
   githubUrl = makeUrl(githubServer);
@@ -255,6 +265,7 @@ beforeAll(async () => {
   jsrUrl = makeUrl(jsrServer);
   goProxyUrl = makeUrl(goProxyServer);
   dockerUrl = makeUrl(dockerServer);
+  cargoUrl = makeUrl(cargoServer);
 
   await writeFile(join(testDir, ".npmrc"), `registry=${npmUrl}\nsave-exact=false`); // Fake registry
   await writeFile(join(testDir, "package.json"), JSON.stringify(testPkg, null, 2)); // Copy fixture
@@ -269,6 +280,7 @@ afterAll(async () => {
     jsrServer?.close(),
     goProxyServer?.close(),
     dockerServer?.close(),
+    cargoServer?.close(),
   ]);
 });
 
@@ -280,6 +292,7 @@ function makeTest(args: string) {
       "--pypiapi", pypiUrl,
       "--jsrapi", jsrUrl,
       "--goproxy", goProxyUrl,
+      "--cargoapi", cargoUrl,
     ];
 
     let stdout: string;
@@ -1116,6 +1129,22 @@ test.concurrent("go", async ({expect = globalExpect}: any = {}) => {
             "info": "https://github.com/google/uuid",
             "new": "1.6.0",
             "old": "1.5.0",
+          },
+        },
+      },
+    }
+  `);
+});
+
+test.concurrent("cargo", async ({expect = globalExpect}: any = {}) => {
+  expect(await makeTest(`-j -f ${cargoFile}`)()).toMatchInlineSnapshot(`
+    {
+      "cargo": {
+        "dependencies": {
+          "serde": {
+            "info": "https://crates.io/crates/serde",
+            "new": "1.0.200",
+            "old": "1.0",
           },
         },
       },
