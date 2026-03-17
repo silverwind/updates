@@ -1,4 +1,5 @@
 import {type Deps, type ModeContext, type PackageInfo, esc, fieldSep, getFetchOpts, normalizeUrl, throwFetchError} from "./shared.ts";
+import {cargoTypes} from "../utils/utils.ts";
 
 type CratesIoVersion = {num: string; created_at: string; yanked: boolean};
 type CratesIoVersionsResponse = {versions: Array<CratesIoVersion>};
@@ -40,6 +41,8 @@ export async function fetchCratesIoInfo(name: string, type: string, ctx: ModeCon
   return [data, type, null, name];
 }
 
+const sectionAlts = cargoTypes.map(t => esc(t)).join("|");
+
 export function updateCargoToml(pkgStr: string, deps: Deps): string {
   let newPkgStr = pkgStr;
   for (const [key, dep] of Object.entries(deps)) {
@@ -57,6 +60,11 @@ export function updateCargoToml(pkgStr: string, deps: Deps): string {
     // Inline table: name = { version = "x.y.z", ... }
     newPkgStr = newPkgStr.replace(
       new RegExp(`(\\s*${nameEsc}\\s*=\\s*\\{\\s*version\\s*=\\s*["'])${oldEsc}(["'])`, "g"),
+      `$1${newValue}$2`,
+    );
+    // Extended table: [section.name] with version = "x.y.z"
+    newPkgStr = newPkgStr.replace(
+      new RegExp(`(\\[(?:${sectionAlts})\\.${nameEsc}\\][^\\[]*?version\\s*=\\s*["'])${oldEsc}(["'])`, "g"),
       `$1${newValue}$2`,
     );
   }

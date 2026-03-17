@@ -248,6 +248,11 @@ beforeAll(async () => {
   const serdeVersions = await readFile(fileURLToPath(new URL("fixtures/cargo/serde-versions.json", import.meta.url)), "utf8");
   const serdeVersionsGz = await gzipPromise(serdeVersions);
   cargoServer.get("/api/v1/crates/serde/versions", (_, res) => res.send(serdeVersionsGz));
+  const makeCargoVersions = (version: string) => JSON.stringify({versions: [{num: version, created_at: "2025-01-15T12:00:00Z", yanked: false}], meta: {total: 1}});
+  for (const [name, version] of [["tokio", "1.35.0"], ["rand", "0.9.0"], ["serde_json", "1.0.120"]]) {
+    const gz = await gzipPromise(makeCargoVersions(version));
+    cargoServer.get(`/api/v1/crates/${name}/versions`, (_, res) => res.send(gz));
+  }
 
   await Promise.all([
     githubServer.start(0),
@@ -1145,6 +1150,23 @@ test.concurrent("cargo", async ({expect = globalExpect}: any = {}) => {
             "info": "https://crates.io/crates/serde",
             "new": "1.0.200",
             "old": "1.0",
+          },
+          "serde_json": {
+            "info": "https://crates.io/crates/serde_json",
+            "new": "1.0.120",
+            "old": "1.0",
+          },
+          "tokio": {
+            "info": "https://crates.io/crates/tokio",
+            "new": "1.35.0",
+            "old": "1.0",
+          },
+        },
+        "dev-dependencies": {
+          "rand": {
+            "info": "https://crates.io/crates/rand",
+            "new": "0.9.0",
+            "old": "0.8",
           },
         },
       },

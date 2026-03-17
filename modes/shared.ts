@@ -211,7 +211,7 @@ export function findNewVersion(data: any, {mode, range, useGreatest, useRel, use
   let versions: Array<string> = [];
   if (mode === "pypi") {
     versions = Object.keys(data.releases).filter((version: string) => valid(version));
-  } else if (mode === "npm") {
+  } else if (mode === "npm" || mode === "cargo") {
     versions = Object.keys(data.versions).filter((version: string) => valid(version));
   } else if (mode === "go") {
     const oldVersion = coerceToVersion(range);

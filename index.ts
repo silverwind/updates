@@ -757,7 +757,7 @@ async function main(): Promise<void> {
 
     for (const depType of dependencyTypes) {
       let obj: Record<string, string> | Array<string> | string;
-      if (mode === "npm" || mode === "go" || mode === "cargo") {
+      if (mode === "npm" || mode === "go") {
         obj = pkg[depType] || {};
       } else {
         obj = getProperty(pkg, depType) || {};

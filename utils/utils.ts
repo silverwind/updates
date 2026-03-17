@@ -68,6 +68,7 @@ export const cargoTypes = [
   "dependencies",
   "dev-dependencies",
   "build-dependencies",
+  "workspace.dependencies",
 ];
 
 export function matchesAny(str: string, set: Set<RegExp> | boolean): boolean {
