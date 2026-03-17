@@ -7,7 +7,7 @@
 
 # Supported files
 
-- `package.json` - npm packages
+- `package.json` - npm dependencies
 - `pyproject.toml` - `uv` dependencies
 - `go.mod` - go dependencies
 - `Cargo.toml` - Cargo dependencies
