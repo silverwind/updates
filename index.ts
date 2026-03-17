@@ -8,7 +8,7 @@ import pMap from "p-map";
 import {parseToml} from "./utils/toml.ts";
 import {valid, validRange} from "./utils/semver.ts";
 import {timerel} from "timerel";
-import {highlightDiff, npmTypes, uvTypes, goTypes, parseUvDependencies, nonPackageEngines, parseDuration, matchesAny, getProperty, commaSeparatedToArray, canIncludeByDate, timestamp, textTable} from "./utils/utils.ts";
+import {highlightDiff, npmTypes, uvTypes, goTypes, cargoTypes, parseUvDependencies, nonPackageEngines, parseDuration, matchesAny, getProperty, commaSeparatedToArray, canIncludeByDate, timestamp, textTable} from "./utils/utils.ts";
 import {enableDnsCache} from "./utils/dns.ts";
 import {
   type Config, type Dep, type Deps, type DepsByMode, type Output, type ModeContext,
@@ -41,6 +41,7 @@ import {
   updateDockerfile, updateComposeFile, updateWorkflowDockerImages,
   composeImageRe, workflowContainerRe, workflowDockerUsesRe,
 } from "./modes/docker.ts";
+import {fetchCratesIoInfo, updateCargoToml} from "./modes/cargo.ts";
 
 export type {Config, Dep, Deps, DepsByMode, Output};
 
@@ -48,6 +49,7 @@ const modeByFileName: Record<string, string> = {
   "package.json": "npm",
   "pyproject.toml": "pypi",
   "go.mod": "go",
+  "Cargo.toml": "cargo",
 };
 
 const options: ParseArgsOptionsConfig = {
@@ -58,6 +60,7 @@ const options: ParseArgsOptionsConfig = {
   "file": {short: "f", type: "string", multiple: true},
   "forgeapi": {type: "string"}, // undocumented, only for tests
   "goproxy": {type: "string"}, // undocumented, only for tests
+  "cargoapi": {type: "string"}, // undocumented, only for tests
   "dockerapi": {type: "string"}, // undocumented, only for tests
   "greatest": {short: "g", type: "string", multiple: true},
   "help": {short: "h", type: "boolean"},
@@ -147,11 +150,12 @@ const release = argSetToRegexes(parseMixedArg(args.release));
 const patch = argSetToRegexes(parseMixedArg(args.patch));
 const minor = argSetToRegexes(parseMixedArg(args.minor));
 const allowDowngrade = argSetToRegexes(parseMixedArg(args["allow-downgrade"]));
-const enabledModes = parseMixedArg(args.modes) as Set<string> || new Set(["npm", "pypi", "go", "actions", "docker"]);
+const enabledModes = parseMixedArg(args.modes) as Set<string> || new Set(["npm", "pypi", "go", "cargo", "actions", "docker"]);
 const forgeApiUrl = typeof args.forgeapi === "string" ? normalizeUrl(args.forgeapi) : "https://api.github.com";
 const pypiApiUrl = typeof args.pypiapi === "string" ? normalizeUrl(args.pypiapi) : "https://pypi.org";
 const jsrApiUrl = typeof args.jsrapi === "string" ? normalizeUrl(args.jsrapi) : "https://jsr.io";
 const goProxyUrl = typeof args.goproxy === "string" ? normalizeUrl(args.goproxy) : resolveGoProxy();
+const cratesIoUrl = typeof args.cargoapi === "string" ? normalizeUrl(args.cargoapi) : "https://crates.io";
 const dockerApiUrl = typeof args.dockerapi === "string" ? normalizeUrl(args.dockerapi) : "https://hub.docker.com";
 const goNoProxy = parseGoNoProxy();
 
@@ -229,6 +233,7 @@ const ctx: ModeContext = {
   pypiApiUrl,
   jsrApiUrl,
   goProxyUrl,
+  cratesIoUrl,
   dockerApiUrl,
   doFetch: (url: string, opts?: RequestInit) => doFetch(url, opts, Boolean(args.verbose), logVerbose, magenta, green, red),
   verbose: Boolean(args.verbose),
@@ -590,7 +595,7 @@ async function main(): Promise<void> {
     -r, --registry <url>               Override npm registry URL
     -S, --sockets <num>                Maximum number of parallel HTTP sockets opened. Default: ${maxSockets}
     -T, --timeout <ms>                 Network request timeout in ms (go probes use half). Default: ${fetchTimeout}
-    -M, --modes <mode,...>             Which modes to enable. Default: npm,pypi,go,actions,docker
+    -M, --modes <mode,...>             Which modes to enable. Default: npm,pypi,go,cargo,actions,docker
     -I, --indirect                     Include indirect Go dependencies
     -j, --json                         Output a JSON object
     -n, --no-color                     Disable color output
@@ -607,6 +612,7 @@ async function main(): Promise<void> {
     $ updates -f package.json
     $ updates -f pyproject.toml
     $ updates -f go.mod
+    $ updates -f Cargo.toml
     $ updates -f .github
     $ updates -f Dockerfile
     $ updates -f docker-compose.yml
@@ -726,6 +732,8 @@ async function main(): Promise<void> {
         dependencyTypes = Array.from(uvTypes);
       } else if (mode === "go") {
         dependencyTypes = indirect ? Array.from(goTypes) : goTypes.filter(t => t !== "indirect");
+      } else if (mode === "cargo") {
+        dependencyTypes = Array.from(cargoTypes);
       }
     }
 
@@ -735,9 +743,9 @@ async function main(): Promise<void> {
     try {
       if (mode === "npm") {
         pkg = JSON.parse(pkgStrs[mode]);
-      } else if (mode === "pypi") {
+      } else if (mode === "pypi" || mode === "cargo") {
         pkg = parseToml(pkgStrs[mode]);
-      } else {
+      } else if (mode === "go") {
         const parsed = parseGoMod(pkgStrs[mode]);
         pkg.deps = parsed.deps;
         pkg.indirect = parsed.indirect;
@@ -775,7 +783,15 @@ async function main(): Promise<void> {
           }
         } else { // object
           for (const [name, value] of Object.entries(obj)) {
-            if (mode === "npm" && isJsr(value) && canInclude(name, mode, include, exclude, depType)) {
+            if (mode === "cargo" && typeof value === "object" && value !== null && "version" in value && !("git" in value) && !("path" in value) && canInclude(name, mode, include, exclude, depType)) {
+              const versionStr = String((value as Record<string, string>).version);
+              if (validRange(versionStr)) {
+                deps[mode][`${depType}${fieldSep}${name}`] = {
+                  old: normalizeRange(versionStr),
+                  oldOrig: versionStr,
+                } as Dep;
+              }
+            } else if (mode === "npm" && isJsr(value) && canInclude(name, mode, include, exclude, depType)) {
               // Handle JSR dependencies
               const parsed = parseJsrDependency(value, name);
               deps[mode][`${depType}${fieldSep}${name}`] = {
@@ -844,6 +860,8 @@ async function main(): Promise<void> {
           return fetchNpmInfo(name, type, config, args, ctx);
         } else if (mode === "go") {
           return fetchGoProxyInfo(name, type, deps[mode][key].oldOrig || deps[mode][key].old, projectDir, ctx, goNoProxy);
+        } else if (mode === "cargo") {
+          return fetchCratesIoInfo(name, type, ctx);
         } else {
           return fetchPypiInfo(name, type, ctx);
         }
@@ -863,7 +881,7 @@ async function main(): Promise<void> {
         }, {allowDowngrade, matchesAny, isGoPseudoVersion});
 
         let newRange = "";
-        if (["go", "pypi"].includes(mode) && newVersion) {
+        if (["go", "pypi", "cargo"].includes(mode) && newVersion) {
           newRange = newVersion;
         } else if (newVersion) {
           if (oldOrig && isLocalDep(oldOrig)) {
@@ -899,6 +917,8 @@ async function main(): Promise<void> {
           date = data.releases[newVersion][0].upload_time_iso_8601;
         } else if (mode === "go" && data.Time) {
           date = data.Time;
+        } else if (mode === "cargo" && data.time?.[newVersion]) {
+          date = data.time[newVersion];
         }
 
         deps[mode][key].new = newRange;
@@ -914,6 +934,8 @@ async function main(): Promise<void> {
         } else if (mode === "go") {
           const infoName = data.newPath || name;
           deps[mode][key].info = getGoInfoUrl(infoName);
+        } else if (mode === "cargo") {
+          deps[mode][key].info = `https://crates.io/crates/${name}`;
         }
 
         setDepAge(deps[mode][key], date);
@@ -1149,6 +1171,8 @@ async function main(): Promise<void> {
           const [updatedContent, majorVersionRewrites] = updateGoMod(fileContent, deps[mode]);
           write(filePerMode[mode], updatedContent);
           rewriteGoImports(dirname(resolve(filePerMode[mode])), majorVersionRewrites, write);
+        } else if (mode === "cargo") {
+          write(filePerMode[mode], updateCargoToml(fileContent, deps[mode]));
         } else {
           const fn = (mode === "npm") ? updatePackageJson : updatePyprojectToml;
           write(filePerMode[mode], fn(fileContent, deps[mode]));

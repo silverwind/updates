@@ -1,0 +1,16 @@
+[package]
+name = "test-crate"
+version = "0.1.0"
+
+[dependencies]
+serde = "1.0"
+tokio = { version = "1.0", features = ["full"] }
+my-git-crate = { git = "https://github.com/example/crate" }
+my-path-crate = { path = "../local" }
+
+[dev-dependencies]
+rand = "0.8"
+
+[dependencies.serde_json]
+version = "1.0"
+features = ["std"]
