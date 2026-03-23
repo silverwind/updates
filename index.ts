@@ -437,9 +437,8 @@ function canInclude(name: string, mode: string, include: Set<RegExp>, exclude: S
   return include.size ? false : true;
 }
 
-function resolveFiles(filesArg: Set<string>): [Set<string>, Set<string>] {
+function resolveFiles(filesArg: Set<string>): Set<string> {
   const resolvedFiles = new Set<string>();
-  const explicitFiles = new Set<string>();
 
   if (filesArg) { // check passed files
     for (const file of filesArg) {
@@ -451,9 +450,7 @@ function resolveFiles(filesArg: Set<string>): [Set<string>, Set<string>] {
       }
 
       if (stat?.isFile()) {
-        const resolved = resolve(file);
-        resolvedFiles.add(resolved);
-        explicitFiles.add(resolved);
+        resolvedFiles.add(resolve(file));
       } else if (stat?.isDirectory()) {
         for (const filename of Object.keys(modeByFileName)) {
           const f = join(file, filename);
@@ -473,7 +470,6 @@ function resolveFiles(filesArg: Set<string>): [Set<string>, Set<string>] {
               try {
                 if (lstatSync(f).isFile()) {
                   resolvedFiles.add(resolve(f));
-                  explicitFiles.add(resolve(f));
                 }
               } catch {}
             }
@@ -486,7 +482,6 @@ function resolveFiles(filesArg: Set<string>): [Set<string>, Set<string>] {
         else wfDir = join(normalized, ".github", "workflows");
         for (const wf of resolveWorkflowFiles(wfDir)) {
           resolvedFiles.add(wf);
-          explicitFiles.add(wf);
         }
       } else {
         throw new Error(`${file} is neither a file nor directory`);
@@ -520,7 +515,7 @@ function resolveFiles(filesArg: Set<string>): [Set<string>, Set<string>] {
       }
     }
   }
-  return [resolvedFiles, explicitFiles];
+  return resolvedFiles;
 }
 
 async function loadConfig(rootDir: string): Promise<Config> {
@@ -635,7 +630,7 @@ async function main(): Promise<void> {
   const fileSet = parseMixedArg(filesArg);
   const mergedFiles = fileSet instanceof Set ? fileSet : (positionals.length ? new Set<string>() : false);
   if (mergedFiles instanceof Set) for (const p of positionals) mergedFiles.add(p);
-  const [files, explicitFiles] = resolveFiles(mergedFiles as Set<string>);
+  const files = resolveFiles(mergedFiles as Set<string>);
 
   const wfData: Record<string, {absPath: string, content: string}> = {};
   const dockerFileData: Record<string, {absPath: string, content: string, fileType: string}> = {};
@@ -669,8 +664,8 @@ async function main(): Promise<void> {
 
   for (const file of files) {
     if (isWorkflowFile(file)) {
-      const actionsEnabled = enabledModes.has("actions") || explicitFiles.has(file);
-      const dockerEnabled = enabledModes.has("docker") || explicitFiles.has(file);
+      const actionsEnabled = enabledModes.has("actions");
+      const dockerEnabled = enabledModes.has("docker");
       if (!actionsEnabled && !dockerEnabled) continue;
 
       const content = readFileOrThrow(file);
@@ -699,7 +694,7 @@ async function main(): Promise<void> {
     const filename = basename(file);
 
     if (isDockerFileName(filename)) {
-      if (!enabledModes.has("docker") && !explicitFiles.has(file)) continue;
+      if (!enabledModes.has("docker")) continue;
       const content = readFileOrThrow(file);
       const relPath = toRelPath(file);
       const fileType = isDockerfile(filename) ? "dockerfile" : "compose";
@@ -709,7 +704,7 @@ async function main(): Promise<void> {
     }
 
     const mode = modeByFileName[filename];
-    if (!enabledModes.has(mode) && !explicitFiles.has(file)) continue;
+    if (!enabledModes.has(mode)) continue;
     filePerMode[mode] = file;
     if (!deps[mode]) deps[mode] = {};
 

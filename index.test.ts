@@ -1571,6 +1571,13 @@ test.concurrent("docker workflow container/image", async ({expect = globalExpect
   expect(dockerDeps.postgres.new).toBe("17");
 });
 
+test.concurrent("actions mode does not include docker from workflows", async ({expect = globalExpect}: any = {}) => {
+  const {stdout, stderr} = await execFileAsync(process.execPath, actionsArgs("-j", "-f", dockerActionsDir));
+  expect(stderr).toEqual("");
+  const output = JSON.parse(stdout);
+  expect(output.results.docker).toBeUndefined();
+});
+
 test.concurrent("docker include filter", async ({expect = globalExpect}: any = {}) => {
   const {stdout, stderr} = await execFileAsync(process.execPath, dockerArgs("-j", "-f", composeFixture, "-i", "node"));
   expect(stderr).toEqual("");
