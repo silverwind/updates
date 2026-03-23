@@ -62,6 +62,7 @@ export const goTypes = [
   "deps",
   "indirect",
   "replace",
+  "tool",
 ];
 
 export const cargoTypes = [

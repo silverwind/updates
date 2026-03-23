@@ -750,6 +750,7 @@ async function main(): Promise<void> {
         pkg.deps = parsed.deps;
         pkg.indirect = parsed.indirect;
         pkg.replace = parsed.replace;
+        pkg.tool = parsed.tool;
       }
     } catch (err) {
       throw new Error(`Error parsing ${file}: ${(err as Error).message}`);

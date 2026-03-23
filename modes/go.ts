@@ -259,20 +259,32 @@ function buildGoPackageInfo(
   }, type, null, name];
 }
 
-export function parseGoMod(content: string): {deps: Record<string, string>, indirect: Record<string, string>, replace: Record<string, string>} {
+export function parseGoMod(content: string): {deps: Record<string, string>, indirect: Record<string, string>, replace: Record<string, string>, tool: Record<string, string>} {
   const deps: Record<string, string> = {};
   const indirect: Record<string, string> = {};
   const replace: Record<string, string> = {};
+  const tool: Record<string, string> = {};
   const replacedModules = new Set<string>();
+  const toolPaths: string[] = [];
   const lines = content.split(/\r?\n/);
   let inRequire = false;
   let inReplace = false;
+  let inTool = false;
 
   for (const line of lines) {
     const trimmed = line.trim();
     if (/^require\s*\(/.test(trimmed)) { inRequire = true; continue; }
     if (/^replace\s*\(/.test(trimmed)) { inReplace = true; continue; }
-    if (trimmed === ")") { inRequire = false; inReplace = false; continue; }
+    if (/^tool\s*\(/.test(trimmed)) { inTool = true; continue; }
+    if (trimmed === ")") { inRequire = false; inReplace = false; inTool = false; continue; }
+
+    if (inTool) {
+      if (trimmed && !trimmed.startsWith("//")) toolPaths.push(trimmed);
+      continue;
+    }
+
+    const toolMatch = /^tool\s+(\S+)/.exec(trimmed);
+    if (toolMatch) { toolPaths.push(toolMatch[1]); continue; }
 
     const isIndirect = trimmed.includes("// indirect");
 
@@ -306,7 +318,25 @@ export function parseGoMod(content: string): {deps: Record<string, string>, indi
     delete indirect[mod];
   }
 
-  return {deps, indirect, replace};
+  // Match tool paths to their modules in require and move them to tool
+  if (toolPaths.length) {
+    const allModules = [...Object.keys(indirect), ...Object.keys(deps)];
+    for (const toolPath of toolPaths) {
+      let bestMatch = "";
+      for (const mod of allModules) {
+        if ((toolPath === mod || toolPath.startsWith(`${mod}/`)) && mod.length > bestMatch.length) {
+          bestMatch = mod;
+        }
+      }
+      const source = bestMatch ? (indirect[bestMatch] ? indirect : deps[bestMatch] ? deps : null) : null;
+      if (source) {
+        tool[bestMatch] = source[bestMatch];
+        delete source[bestMatch];
+      }
+    }
+  }
+
+  return {deps, indirect, replace, tool};
 }
 
 export async function fetchGoVcsInfo(name: string, type: string, currentVersion: string, goCwd: string, ctx: ModeContext): Promise<PackageInfo> {
@@ -432,11 +462,15 @@ export function updateGoMod(pkgStr: string, deps: Deps): [string, Record<string,
     if (oldMajor !== newMajor && newMajor > 1) {
       const newPath = buildGoModulePath(name, newMajor);
       newPkgStr = newPkgStr.replace(new RegExp(`${esc(name)} +v${esc(oldValue)}`, "g"), `${newPath} v${newValue}`);
+      // Rewrite tool paths referencing the old module path
+      if (depType === "tool") {
+        newPkgStr = newPkgStr.replace(new RegExp(`(^\\s+|^tool\\s+)${esc(name)}(/\\S+)?\\s*$`, "gm"), `$1${newPath}$2`);
+      }
       majorVersionRewrites[name] = newPath;
     } else {
       newPkgStr = newPkgStr.replace(new RegExp(`(${esc(name)}) +v${esc(oldValue)}`, "g"), `$1 v${newValue}`);
     }
-    newPkgStr = removeGoReplace(newPkgStr, name);
+    if (depType !== "tool") newPkgStr = removeGoReplace(newPkgStr, name);
   }
   return [newPkgStr, majorVersionRewrites];
 }
