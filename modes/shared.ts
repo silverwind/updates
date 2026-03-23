@@ -105,9 +105,13 @@ export function getFetchOpts(authType?: string, authToken?: string): RequestInit
 
 export async function doFetch(url: string, opts?: RequestInit, verbose?: boolean, logVerbose?: (msg: string) => void, magenta?: (s: string | number) => string, green?: (s: string | number) => string, red?: (s: string | number) => string): Promise<Response> {
   if (verbose && logVerbose && magenta) logVerbose(`${magenta("fetch")} ${url}`);
-  const res = await fetch(url, opts);
-  if (verbose && logVerbose && green && red) logVerbose(`${res.ok ? green(res.status) : red(res.status)} ${url}`);
-  return res;
+  try {
+    const res = await fetch(url, opts);
+    if (verbose && logVerbose && green && red) logVerbose(`${res.ok ? green(res.status) : red(res.status)} ${url}`);
+    return res;
+  } catch (err: any) {
+    throw new Error(`Failed to fetch ${url}${err?.message ? `: ${err.message}` : ""}`);
+  }
 }
 
 export function isVersionPrerelease(version: string): boolean {

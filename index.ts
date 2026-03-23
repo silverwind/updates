@@ -246,14 +246,11 @@ async function finishWithMessage(message: string): Promise<void> {
 
 async function end(err?: Error | void, exitCode?: number): Promise<void> {
   if (err) {
-    const error = err.stack ?? err.message;
-    const cause = err.cause;
+    const error = err.message ?? String(err);
     if (args.json) {
-      console.info(JSON.stringify({error, cause}));
+      console.info(JSON.stringify({error}));
     } else {
       console.info(red(error));
-      if (cause instanceof Error) console.info(red(`Caused by: ${cause.message}`));
-      else if (cause) console.info(red(`Caused by: ${typeof cause === "string" ? cause : JSON.stringify(cause)}`));
     }
   }
 

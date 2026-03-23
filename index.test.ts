@@ -1678,3 +1678,17 @@ test.concurrent("docker directory discovery", async ({expect = globalExpect}: an
   expect(keys.some(k => k.endsWith("docker-compose.yaml"))).toBe(true);
   expect(keys.some(k => k.endsWith("docker-stack.yml"))).toBe(true);
 });
+
+test.concurrent("fetch error includes URL and no stack trace", async ({expect = globalExpect}: any = {}) => {
+  const url = "http://test.invalid";
+  try {
+    await execFileAsync(execPath, [
+      script, "-j", "-T", "1000", "--registry", url, "-f", testFile,
+    ]);
+    throw new Error("Expected error but got success");
+  } catch (err: any) {
+    const output = JSON.parse(err?.stdout || "{}");
+    expect(output.error).toContain(url);
+    expect(output.error).not.toContain("    at ");
+  }
+});
