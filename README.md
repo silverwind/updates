@@ -11,7 +11,7 @@
 - `pyproject.toml` - `uv` dependencies
 - `go.mod` - go dependencies
 - `Cargo.toml` - Cargo dependencies
-- `.{github,gitea,forgejo}/workflows` - Actions
+- `.{github,gitea,forgejo}/workflows` - Actions and Docker images
 - `Dockerfile*`, `docker-*.{yml,yaml}` - Docker images
 
 # Usage
