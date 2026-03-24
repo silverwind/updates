@@ -1,7 +1,7 @@
 import {execFile} from "node:child_process";
 import {createServer} from "node:http";
 import {join, parse} from "node:path";
-import {readFileSync, mkdtempSync, readdirSync, mkdirSync} from "node:fs";
+import {readFileSync, mkdtempSync, readdirSync, mkdirSync, symlinkSync, writeFileSync} from "node:fs";
 import {writeFile, readFile, rm} from "node:fs/promises";
 import {fileURLToPath} from "node:url";
 import {tmpdir} from "node:os";
