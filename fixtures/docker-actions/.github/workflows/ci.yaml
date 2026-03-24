@@ -10,3 +10,10 @@ jobs:
     steps:
       - uses: docker://node:18
       - run: echo "test"
+  test2:
+    runs-on: ubuntu-latest
+    container:
+      image: redis:7
+      options: --user root
+    steps:
+      - run: echo "test"

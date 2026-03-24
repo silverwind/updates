@@ -1569,6 +1569,10 @@ test.concurrent("docker workflow container/image", async ({expect = globalExpect
   // postgres:15 -> postgres:17 (from services image:)
   expect(dockerDeps.postgres.old).toBe("15");
   expect(dockerDeps.postgres.new).toBe("17");
+
+  // redis:7 -> redis:8 (from container.image object form)
+  expect(dockerDeps.redis.old).toBe("7");
+  expect(dockerDeps.redis.new).toBe("8");
 });
 
 test.concurrent("actions mode does not include docker from workflows", async ({expect = globalExpect}: any = {}) => {
@@ -1614,10 +1618,7 @@ test.concurrent("docker update Dockerfile", async ({expect = globalExpect}: any 
   const dockerfilePath = join(tmpDir, "Dockerfile");
   await writeFile(dockerfilePath, "FROM node:18\nRUN npm install\n");
 
-  const {stderr} = await execFileAsync(process.execPath, [
-    script, "-u", "-c", "--dockerapi", dockerUrl, "-M", "docker",
-    "-f", dockerfilePath,
-  ]);
+  const {stderr} = await execFileAsync(process.execPath, dockerArgs("-u", "-f", dockerfilePath));
   expect(stderr).toEqual("");
 
   const updatedContent = await readFile(dockerfilePath, "utf8");
@@ -1631,15 +1632,53 @@ test.concurrent("docker update compose", async ({expect = globalExpect}: any = {
   const composePath = join(tmpDir, "docker-compose.yaml");
   await writeFile(composePath, "services:\n  web:\n    image: node:18\n  db:\n    image: redis:7\n");
 
-  const {stderr} = await execFileAsync(process.execPath, [
-    script, "-u", "-c", "--dockerapi", dockerUrl, "-M", "docker",
-    "-f", composePath,
-  ]);
+  const {stderr} = await execFileAsync(process.execPath, dockerArgs("-u", "-f", composePath));
   expect(stderr).toEqual("");
 
   const updatedContent = await readFile(composePath, "utf8");
   expect(updatedContent).toContain("image: node:22");
   expect(updatedContent).not.toContain("image: node:18");
+  expect(updatedContent).toContain("image: redis:8");
+  expect(updatedContent).not.toContain("image: redis:7");
+});
+
+test.concurrent("docker update workflow", async ({expect = globalExpect}: any = {}) => {
+  const tmpDir = join(testDir, "docker-workflow-update-test");
+  mkdirSync(tmpDir, {recursive: true});
+  const wfDir = join(tmpDir, ".github", "workflows");
+  mkdirSync(wfDir, {recursive: true});
+  const wfPath = join(wfDir, "ci.yaml");
+  await writeFile(wfPath, [
+    "name: ci",
+    "on: [push]",
+    "jobs:",
+    "  test:",
+    "    runs-on: ubuntu-latest",
+    "    container: node:18",
+    "    services:",
+    "      db:",
+    "        image: postgres:15",
+    "    steps:",
+    "      - uses: docker://node:18",
+    "  test2:",
+    "    runs-on: ubuntu-latest",
+    "    container:",
+    "      image: redis:7",
+    "    steps:",
+    "      - run: echo test",
+    "",
+  ].join("\n"));
+
+  const {stderr} = await execFileAsync(process.execPath, dockerArgs("-u", "-f", wfDir));
+  expect(stderr).toEqual("");
+
+  const updatedContent = await readFile(wfPath, "utf8");
+  expect(updatedContent).toContain("container: node:22");
+  expect(updatedContent).not.toContain("container: node:18");
+  expect(updatedContent).toContain("image: postgres:17");
+  expect(updatedContent).not.toContain("image: postgres:15");
+  expect(updatedContent).toContain("docker://node:22");
+  expect(updatedContent).not.toContain("docker://node:18");
   expect(updatedContent).toContain("image: redis:8");
   expect(updatedContent).not.toContain("image: redis:7");
 });
