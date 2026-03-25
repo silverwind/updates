@@ -18,7 +18,7 @@ import {
   stripv, hashRe as npmHashRe,
 } from "./modes/shared.ts";
 import {
-  fetchNpmInfo, fetchJsrInfo, isJsr, isLocalDep, parseJsrDependency,
+  type NpmVersionInfo, fetchNpmInfo, fetchNpmVersionInfo, fetchJsrInfo, isJsr, isLocalDep, parseJsrDependency,
   getNpmrc, updatePackageJson, updateNpmRange, normalizeRange, checkUrlDep,
 } from "./modes/npm.ts";
 import {fetchPypiInfo, updatePyprojectToml} from "./modes/pypi.ts";
@@ -860,6 +860,8 @@ async function main(): Promise<void> {
         }
       }, {concurrency})).filter(Boolean) as Array<PackageInfo>;
 
+      const npmFollowUps = new Map<string, Promise<NpmVersionInfo>>();
+
       for (const [data, type, registry, name] of entries) {
         if (data?.error) throw new Error(data.error);
 
@@ -904,9 +906,7 @@ async function main(): Promise<void> {
         }
 
         let date = "";
-        if (mode === "npm" && data.time?.[newVersion]) {
-          date = data.time[newVersion];
-        } else if (mode === "pypi" && data.releases?.[newVersion]?.[0]?.upload_time_iso_8601) {
+        if (mode === "pypi" && data.releases?.[newVersion]?.[0]?.upload_time_iso_8601) {
           date = data.releases[newVersion][0].upload_time_iso_8601;
         } else if (mode === "go" && data.Time) {
           date = data.Time;
@@ -921,7 +921,8 @@ async function main(): Promise<void> {
         }
 
         if (mode === "npm") {
-          deps[mode][key].info = getInfoUrl(data?.versions?.[newVersion], registry, data.name);
+          // Abbreviated metadata lacks repository/homepage/time — fire per-version fetch eagerly
+          npmFollowUps.set(key, fetchNpmVersionInfo(data.name, newVersion, config, args, ctx));
         } else if (mode === "pypi") {
           deps[mode][key].info = getInfoUrl(data as {repository: PackageRepository, homepage: string, info: Record<string, any>}, registry, data.info.name);
         } else if (mode === "go") {
@@ -931,7 +932,15 @@ async function main(): Promise<void> {
           deps[mode][key].info = `https://crates.io/crates/${name}`;
         }
 
-        setDepAge(deps[mode][key], date);
+        if (date) setDepAge(deps[mode][key], date);
+      }
+
+      // Resolve eagerly-fired version-specific fetches for updated npm packages
+      for (const [key, promise] of npmFollowUps) {
+        const info = await promise;
+        if (!deps[mode][key]) continue;
+        deps[mode][key].info = getInfoUrl({repository: info.repository, homepage: info.homepage}, null, key.split(fieldSep)[1]);
+        if (info.date) setDepAge(deps[mode][key], info.date);
       }
 
       if (Object.keys(maybeUrlDeps).length) {

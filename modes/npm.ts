@@ -2,7 +2,7 @@ import {env} from "node:process";
 import {basename} from "node:path";
 import rc from "../utils/rc.ts";
 import {
-  type Config, type CheckResult, type Dep, type Deps, type ModeContext, type PackageInfo,
+  type Config, type CheckResult, type Dep, type Deps, type ModeContext, type PackageInfo, type PackageRepository,
   esc, normalizeUrl, getFetchOpts, fieldSep, fetchForge, selectTag,
   coerceToVersion, hashRe, fetchActionTags, throwFetchError,
 } from "./shared.ts";
@@ -121,21 +121,53 @@ function getAuthAndRegistry(name: string, registry: string): AuthAndRegistry {
   return result;
 }
 
-export async function fetchNpmInfo(name: string, type: string, config: Config, args: Record<string, any>, ctx: ModeContext): Promise<PackageInfo> {
+function resolveNpmRegistry(name: string, config: Config, args: Record<string, any>): AuthAndRegistry & {originalRegistry: string} {
   if (!npmrc) npmrc = getNpmrc();
   const originalRegistry = normalizeUrl((typeof args.registry === "string" ? args.registry : false) ||
     config.registry || npmrc.registry || defaultRegistry,
   );
+  return {...getAuthAndRegistry(name, originalRegistry), originalRegistry};
+}
 
-  const {auth, registry} = getAuthAndRegistry(name, originalRegistry);
+function npmPackageUrl(registry: string, name: string, version?: string): string {
+  const base = `${registry}/${name.replace(/\//g, "%2f")}`;
+  return version ? `${base}/${version}` : base;
+}
+
+export async function fetchNpmInfo(name: string, type: string, config: Config, args: Record<string, any>, ctx: ModeContext): Promise<PackageInfo> {
+  const {auth, registry} = resolveNpmRegistry(name, config, args);
   const packageName = type === "resolutions" ? basename(name) : name;
-  const url = `${registry}/${packageName.replace(/\//g, "%2f")}`;
+  const url = npmPackageUrl(registry, packageName);
 
-  const res = await ctx.doFetch(url, {signal: AbortSignal.timeout(ctx.fetchTimeout), ...getFetchOpts(auth?.type, auth?.token)});
+  const opts = getFetchOpts(auth?.type, auth?.token);
+  opts.headers = {...opts.headers as Record<string, string>, "accept": "application/vnd.npm.install-v1+json"};
+  const res = await ctx.doFetch(url, {signal: AbortSignal.timeout(ctx.fetchTimeout), ...opts});
   if (res?.ok) {
     return [await res.json(), type, registry, name];
   }
   throwFetchError(res, url, name, registry);
+}
+
+export type NpmVersionInfo = {repository?: PackageRepository, homepage?: string, date?: string};
+
+export async function fetchNpmVersionInfo(name: string, version: string, config: Config, args: Record<string, any>, ctx: ModeContext): Promise<NpmVersionInfo> {
+  const {auth, registry} = resolveNpmRegistry(name, config, args);
+  const url = npmPackageUrl(registry, name, version);
+  try {
+    const res = await ctx.doFetch(url, {signal: AbortSignal.timeout(ctx.fetchTimeout), ...getFetchOpts(auth?.type, auth?.token)});
+    if (!res?.ok) return {};
+    const data = await res.json();
+    let date = "";
+    // Best-effort: extract publish timestamp from npm's internal field
+    const tmp: string | undefined = data?._npmOperationalInternal?.tmp;
+    if (tmp) {
+      const match = /(\d{13})/.exec(tmp);
+      if (match) date = new Date(Number(match[1])).toISOString();
+    }
+    return {repository: data.repository, homepage: data.homepage, date};
+  } catch {
+    return {};
+  }
 }
 
 export function isJsr(value: string): boolean {

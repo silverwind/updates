@@ -192,6 +192,19 @@ beforeAll(async () => {
     server.get(key, (_, res) => res.send(gz));
   }
 
+  // Register npm version-specific routes for abbreviated metadata follow-up fetches
+  const npmVersionGzips = await Promise.all(npmFiles.filter(Boolean).flatMap((file) => {
+    let data: any;
+    try { data = JSON.parse(file.data); } catch { return []; }
+    return Object.entries(data.versions || {}).map(async ([version, versionData]: [string, any]) => {
+      const vData = {...versionData, _npmOperationalInternal: {tmp: `tmp/${file.urlName}_${version}_${Date.parse(data.time?.[version] || "2024-01-01") || 0}_0`}};
+      return {key: `/${file.urlName}/${version}`, gz: await gzipPromise(JSON.stringify(vData))};
+    });
+  }));
+  for (const {key, gz} of npmVersionGzips) {
+    npmServer.get(key, (_, res) => res.send(gz));
+  }
+
   // Go proxy fixtures
   const goProxyRoutes: Array<{path: string, response: string}> = [
     {path: "/github.com/google/uuid/@latest", response: JSON.stringify({Version: "v1.6.0", Time: "2024-06-13T02:52:04Z"})},

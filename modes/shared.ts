@@ -456,7 +456,7 @@ export function getSubDir(url: string): string {
   }
 }
 
-export function getInfoUrl({repository, homepage, info}: {repository: PackageRepository, homepage: string, info: Record<string, any>}, registry: string | null, name: string): string {
+export function getInfoUrl({repository, homepage, info}: {repository?: PackageRepository, homepage?: string, info?: Record<string, any>}, registry: string | null, name: string): string {
   if (info) { // pypi
     repository =
       info.project_urls.repository ||
