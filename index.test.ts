@@ -205,6 +205,11 @@ beforeAll(async () => {
     npmServer.get(key, (_, res) => res.send(gz));
   }
 
+  // Override noty/3.1.4 to omit _npmOperationalInternal so the fallback to full packument is tested
+  const notyFixture = JSON.parse(npmFiles.find(f => f.urlName === "noty")!.data);
+  const notyVersionGz = await gzipPromise(JSON.stringify(notyFixture.versions["3.1.4"]));
+  npmServer.get("/noty/3.1.4", (_, res) => res.send(notyVersionGz));
+
   // Go proxy fixtures
   const goProxyRoutes: Array<{path: string, response: string}> = [
     {path: "/github.com/google/uuid/@latest", response: JSON.stringify({Version: "v1.6.0", Time: "2024-06-13T02:52:04Z"})},
@@ -348,6 +353,23 @@ test.concurrent("simple", async ({expect = globalExpect}: any = {}) => {
   expect(stderr).toEqual("");
   expect(stdout).toContain("prismjs");
   expect(stdout).toContain("https://github.com/silverwind/updates");
+});
+
+test.concurrent("version info fallback", async ({expect = globalExpect}: any = {}) => {
+  const {stdout, stderr} = await execFileAsync(process.execPath, [
+    script,
+    "-j", "-n",
+    "--forgeapi", githubUrl,
+    "--pypiapi", pypiUrl,
+    "--registry", npmUrl,
+    "-f", testFile,
+    "-i", "noty",
+  ]);
+  expect(stderr).toEqual("");
+  const {results} = JSON.parse(stdout);
+  const noty = results.npm.dependencies.noty;
+  expect(noty.new).toBe("3.1.4");
+  expect(noty.age).toBeTruthy();
 });
 
 test.concurrent("empty", async ({expect = globalExpect}: any = {}) => {

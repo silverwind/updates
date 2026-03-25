@@ -154,15 +154,24 @@ export async function fetchNpmVersionInfo(name: string, version: string, config:
   const {auth, registry} = resolveNpmRegistry(name, config, args);
   const url = npmPackageUrl(registry, name, version);
   try {
-    const res = await ctx.doFetch(url, {signal: AbortSignal.timeout(ctx.fetchTimeout), ...getFetchOpts(auth?.type, auth?.token)});
+    const opts = getFetchOpts(auth?.type, auth?.token);
+    const res = await ctx.doFetch(url, {signal: AbortSignal.timeout(ctx.fetchTimeout), ...opts});
     if (!res?.ok) return {};
     const data = await res.json();
     let date = "";
-    // Best-effort: extract publish timestamp from npm's internal field
     const tmp: string | undefined = data?._npmOperationalInternal?.tmp;
     if (tmp) {
       const match = /(\d{13})/.exec(tmp);
       if (match) date = new Date(Number(match[1])).toISOString();
+    }
+    if (!date) {
+      // _npmOperationalInternal is absent on some registries
+      const fullUrl = npmPackageUrl(registry, name);
+      const fullRes = await ctx.doFetch(fullUrl, {signal: AbortSignal.timeout(ctx.fetchTimeout), ...opts});
+      if (fullRes?.ok) {
+        const fullData = await fullRes.json();
+        date = fullData?.time?.[version] || "";
+      }
     }
     return {repository: data.repository, homepage: data.homepage, date};
   } catch {
