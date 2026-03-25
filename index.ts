@@ -580,7 +580,7 @@ async function main(): Promise<void> {
     -P, --patch [<dep,...>]            Consider only up to semver-patch
     -m, --minor [<dep,...>]            Consider only up to semver-minor
     -d, --allow-downgrade [<dep,...>]  Allow version downgrades when using latest version
-    -C, --cooldown <duration>           Minimum dependency age, e.g. 7, 1w, 2d, 6h
+    -C, --cooldown <duration>          Minimum dependency age, e.g. 7, 1w, 2d, 6h
     -l, --pin <dep=range>              Pin dependency to given semver range
     -E, --error-on-outdated            Exit with code 2 when updates are available and 0 when not
     -U, --error-on-unchanged           Exit with code 0 when updates are available and 2 when not
