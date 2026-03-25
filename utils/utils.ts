@@ -145,3 +145,17 @@ export function parseDuration(str: string): number {
   if (!Number.isFinite(num)) throw new Error(`Invalid cooldown value: ${str}`);
   return num;
 }
+
+export async function pMap<T, R>(iterable: Iterable<T>, mapper: (item: T) => Promise<R>, {concurrency = Infinity}: {concurrency?: number} = {}): Promise<Array<R>> {
+  const items = Array.from(iterable);
+  if (!Number.isFinite(concurrency)) return Promise.all(items.map(mapper));
+  const results = new Array<R>(items.length);
+  let i = 0;
+  await Promise.all(Array.from({length: Math.min(concurrency, items.length)}, async () => {
+    while (i < items.length) {
+      const idx = i++;
+      results[idx] = await mapper(items[idx]);
+    }
+  }));
+  return results;
+}
