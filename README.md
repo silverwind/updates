@@ -5,7 +5,7 @@
 
 `updates` is a CLI tool which checks for dependency updates. It is typically able to complete in less than a second.
 
-# Supported files
+## Supported files
 
 - `package.json` - npm dependencies
 - `pyproject.toml` - `uv` dependencies
@@ -14,7 +14,7 @@
 - `.{github,gitea,forgejo}/workflows` - Actions and Docker images
 - `Dockerfile*`, `docker-*.{yml,yaml}` - Docker images
 
-# Usage
+## Usage
 
 ```bash
 # check for updates
@@ -30,8 +30,11 @@ npx updates -u && npm i
 |:-|:-|
 |`-u, --update`|Update versions and write dependency file|
 |`-f, --file <path,...>`|File or directory to use, defaults to current directory|
+|`-M, --modes <mode,...>`|Which modes to enable. Either `npm`, `pypi`, `go`, `cargo`, `actions`, `docker`. Default: `npm,pypi,go,cargo,actions,docker`|
 |`-i, --include <dep,...>`|Include only given dependencies|
 |`-e, --exclude <dep,...>`|Exclude given dependencies|
+|`-l, --pin <dep=range>`|Pin dependency to given semver range|
+|`-C, --cooldown <duration>`|Minimum dependency age, e.g. `7`, `1w`, `2d`, `6h`|
 |`-p, --prerelease [<dep,...>]`|Consider prerelease versions|
 |`-R, --release [<dep,...>]`|Only use release versions, may downgrade|
 |`-g, --greatest [<dep,...>]`|Prefer greatest over latest version|
@@ -39,15 +42,12 @@ npx updates -u && npm i
 |`-P, --patch [<dep,...>]`|Consider only up to semver-patch|
 |`-m, --minor [<dep,...>]`|Consider only up to semver-minor|
 |`-d, --allow-downgrade [<dep,...>]`|Allow version downgrades when using latest version|
-|`-C, --cooldown <days>`|Minimum dependency age in days|
-|`-l, --pin <dep=range>`|Pin dependency to given semver range|
-|`-E, --error-on-outdated`|Exit with code 2 when updates are available and 0 when not|
-|`-U, --error-on-unchanged`|Exit with code 0 when updates are available and 2 when not|
-|`-r, --registry <url>`|Override npm registry URL|
 |`-S, --sockets <num>`|Maximum number of parallel HTTP sockets opened. Default: 96|
 |`-T, --timeout <ms>`|Network request timeout in ms (go probes use half). Default: 5000|
-|`-M, --modes <mode,...>`|Which modes to enable. Either `npm`, `pypi`, `go`, `cargo`, `actions`, `docker`. Default: `npm,pypi,go,cargo,actions,docker`|
+|`-r, --registry <url>`|Override npm registry URL|
 |`-I, --indirect`|Include indirect Go dependencies|
+|`-E, --error-on-outdated`|Exit with code 2 when updates are available and 0 when not|
+|`-U, --error-on-unchanged`|Exit with code 0 when updates are available and 2 when not|
 |`-j, --json`|Output a JSON object|
 |`-n, --no-color`|Disable color output|
 |`-v, --version`|Print the version|
