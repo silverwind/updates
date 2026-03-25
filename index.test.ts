@@ -341,7 +341,7 @@ function makeTest(args: string) {
   };
 }
 
-test.concurrent("simple", async ({expect = globalExpect}: any = {}) => {
+test("simple", async ({expect = globalExpect}: any = {}) => {
   const {stdout, stderr} = await execFileAsync(process.execPath, [
     script,
     "-n",
@@ -355,7 +355,7 @@ test.concurrent("simple", async ({expect = globalExpect}: any = {}) => {
   expect(stdout).toContain("https://github.com/silverwind/updates");
 });
 
-test.concurrent("version info fallback", async ({expect = globalExpect}: any = {}) => {
+test("version info fallback", async ({expect = globalExpect}: any = {}) => {
   const {stdout, stderr} = await execFileAsync(process.execPath, [
     script,
     "-j", "-n",
@@ -372,7 +372,7 @@ test.concurrent("version info fallback", async ({expect = globalExpect}: any = {
   expect(noty.age).toBeTruthy();
 });
 
-test.concurrent("empty", async ({expect = globalExpect}: any = {}) => {
+test("empty", async ({expect = globalExpect}: any = {}) => {
   const {stdout, stderr} = await execFileAsync(process.execPath, [
     script,
     "-n",
@@ -384,7 +384,7 @@ test.concurrent("empty", async ({expect = globalExpect}: any = {}) => {
   expect(stdout).toContain("No dependencies");
 });
 
-test.concurrent("jsr", async ({expect = globalExpect}: any = {}) => {
+test("jsr", async ({expect = globalExpect}: any = {}) => {
   const {stdout, stderr} = await execFileAsync(process.execPath, [
     script,
     "-n",
@@ -405,7 +405,7 @@ test.concurrent("jsr", async ({expect = globalExpect}: any = {}) => {
 });
 
 if (!versions.bun) {
-  test.concurrent("global", async ({expect = globalExpect}: any = {}) => {
+  test("global", async ({expect = globalExpect}: any = {}) => {
     const prefix = mkdtempSync(join(tmpdir(), "updates-global-"));
     try {
       let bin: string;
@@ -433,7 +433,7 @@ if (!versions.bun) {
 }
 
 
-test.concurrent("latest", async ({expect = globalExpect}: any = {}) => {
+test("latest", async ({expect = globalExpect}: any = {}) => {
   expect(await makeTest("-j")()).toMatchInlineSnapshot(`
     {
       "npm": {
@@ -542,7 +542,7 @@ test.concurrent("latest", async ({expect = globalExpect}: any = {}) => {
   `);
 });
 
-test.concurrent("greatest", async ({expect = globalExpect}: any = {}) => {
+test("greatest", async ({expect = globalExpect}: any = {}) => {
   expect(await makeTest("-j -g")()).toMatchInlineSnapshot(`
     {
       "npm": {
@@ -646,7 +646,7 @@ test.concurrent("greatest", async ({expect = globalExpect}: any = {}) => {
   `);
 });
 
-test.concurrent("prerelease", async ({expect = globalExpect}: any = {}) => {
+test("prerelease", async ({expect = globalExpect}: any = {}) => {
   expect(await makeTest("-j -g -p")()).toMatchInlineSnapshot(`
     {
       "npm": {
@@ -760,7 +760,7 @@ test.concurrent("prerelease", async ({expect = globalExpect}: any = {}) => {
   `);
 });
 
-test.concurrent("release", async ({expect = globalExpect}: any = {}) => {
+test("release", async ({expect = globalExpect}: any = {}) => {
   expect(await makeTest("-j -R")()).toMatchInlineSnapshot(`
     {
       "npm": {
@@ -869,7 +869,7 @@ test.concurrent("release", async ({expect = globalExpect}: any = {}) => {
   `);
 });
 
-test.concurrent("patch", async ({expect = globalExpect}: any = {}) => {
+test("patch", async ({expect = globalExpect}: any = {}) => {
   expect(await makeTest("-j -P")()).toMatchInlineSnapshot(`
     {
       "npm": {
@@ -923,7 +923,7 @@ test.concurrent("patch", async ({expect = globalExpect}: any = {}) => {
   `);
 });
 
-test.concurrent("include", async ({expect = globalExpect}: any = {}) => {
+test("include", async ({expect = globalExpect}: any = {}) => {
   expect(await makeTest("-j -i noty")()).toMatchInlineSnapshot(`
     {
       "npm": {
@@ -939,7 +939,7 @@ test.concurrent("include", async ({expect = globalExpect}: any = {}) => {
   `);
 });
 
-test.concurrent("cooldown duration", async ({expect = globalExpect}: any = {}) => {
+test("cooldown duration", async ({expect = globalExpect}: any = {}) => {
   expect(await makeTest("-j -i noty -C 12h")()).toMatchInlineSnapshot(`
     {
       "npm": {
@@ -955,7 +955,7 @@ test.concurrent("cooldown duration", async ({expect = globalExpect}: any = {}) =
   `);
 });
 
-test.concurrent("include 2", async ({expect = globalExpect}: any = {}) => {
+test("include 2", async ({expect = globalExpect}: any = {}) => {
   expect(await makeTest("-j -i /^noty/")()).toMatchInlineSnapshot(`
     {
       "npm": {
@@ -971,7 +971,7 @@ test.concurrent("include 2", async ({expect = globalExpect}: any = {}) => {
   `);
 });
 
-test.concurrent("packageManager", async ({expect = globalExpect}: any = {}) => {
+test("packageManager", async ({expect = globalExpect}: any = {}) => {
   expect(await makeTest("-j -i npm")()).toMatchInlineSnapshot(`
     {
       "npm": {
@@ -987,7 +987,7 @@ test.concurrent("packageManager", async ({expect = globalExpect}: any = {}) => {
   `);
 });
 
-test.concurrent("exclude", async ({expect = globalExpect}: any = {}) => {
+test("exclude", async ({expect = globalExpect}: any = {}) => {
   expect(await makeTest("-j -e gulp-sourcemaps -i /react/")()).toMatchInlineSnapshot(`
     {
       "npm": {
@@ -1003,7 +1003,7 @@ test.concurrent("exclude", async ({expect = globalExpect}: any = {}) => {
   `);
 });
 
-test.concurrent("exclude 2", async ({expect = globalExpect}: any = {}) => {
+test("exclude 2", async ({expect = globalExpect}: any = {}) => {
   expect(await makeTest("-j -i gulp*")()).toMatchInlineSnapshot(`
     {
       "npm": {
@@ -1026,7 +1026,7 @@ test.concurrent("exclude 2", async ({expect = globalExpect}: any = {}) => {
   `);
 });
 
-test.concurrent("exclude 3", async ({expect = globalExpect}: any = {}) => {
+test("exclude 3", async ({expect = globalExpect}: any = {}) => {
   expect(await makeTest("-j -i /^gulp/ -P gulp*")()).toMatchInlineSnapshot(`
     {
       "npm": {
@@ -1049,7 +1049,7 @@ test.concurrent("exclude 3", async ({expect = globalExpect}: any = {}) => {
   `);
 });
 
-test.concurrent("uv", async ({expect = globalExpect}: any = {}) => {
+test("uv", async ({expect = globalExpect}: any = {}) => {
   expect(await makeTest(`-j -f ${uvFile}`)()).toMatchInlineSnapshot(`
     {
       "pypi": {
@@ -1087,7 +1087,7 @@ test.concurrent("uv", async ({expect = globalExpect}: any = {}) => {
   `);
 });
 
-test.concurrent("invalid config", async ({expect = globalExpect}: any = {}) => {
+test("invalid config", async ({expect = globalExpect}: any = {}) => {
   const args = ["-j", "-f", invalidConfigFile, "-c", "--forgeapi", githubUrl, "--pypiapi", pypiUrl];
   try {
     await execFileAsync(execPath, [script, ...args]);
@@ -1100,7 +1100,7 @@ test.concurrent("invalid config", async ({expect = globalExpect}: any = {}) => {
   }
 });
 
-test.concurrent("preup", async ({expect = globalExpect}: any = {}) => {
+test("preup", async ({expect = globalExpect}: any = {}) => {
   // Test that we don't upgrade from stable to prerelease when latest dist-tag is a prerelease
   // noty: 3.1.0 -> should suggest 3.1.4 (not 3.2.0-beta which is on latest dist-tag)
   expect(await makeTest("-j -i noty")()).toMatchInlineSnapshot(`
@@ -1118,7 +1118,7 @@ test.concurrent("preup", async ({expect = globalExpect}: any = {}) => {
   `);
 });
 
-test.concurrent("preup 1", async ({expect = globalExpect}: any = {}) => {
+test("preup 1", async ({expect = globalExpect}: any = {}) => {
   // Test that we DO upgrade to prerelease when explicitly requested with -p flag
   // noty: 3.1.0 -> should suggest 3.2.0-beta (from latest dist-tag) when -p is used
   expect(await makeTest("-j -i noty -p")()).toMatchInlineSnapshot(`
@@ -1143,7 +1143,7 @@ test.concurrent("preup 1", async ({expect = globalExpect}: any = {}) => {
   `);
 });
 
-test.concurrent("preup 2", async ({expect = globalExpect}: any = {}) => {
+test("preup 2", async ({expect = globalExpect}: any = {}) => {
   // Test that upgrading from prerelease to prerelease works without -p flag
   // eslint-plugin-storybook: 10.0.0-beta.5 -> should allow upgrade to another prerelease
   expect(await makeTest("-j -i eslint-plugin-storybook")()).toMatchInlineSnapshot(`
@@ -1161,7 +1161,7 @@ test.concurrent("preup 2", async ({expect = globalExpect}: any = {}) => {
   `);
 });
 
-test.concurrent("go", async ({expect = globalExpect}: any = {}) => {
+test("go", async ({expect = globalExpect}: any = {}) => {
   expect(await makeTest(`-j -f ${goFile}`)()).toMatchInlineSnapshot(`
     {
       "go": {
@@ -1182,7 +1182,7 @@ test.concurrent("go", async ({expect = globalExpect}: any = {}) => {
   `);
 });
 
-test.concurrent("cargo", async ({expect = globalExpect}: any = {}) => {
+test("cargo", async ({expect = globalExpect}: any = {}) => {
   expect(await makeTest(`-j -f ${cargoFile}`)()).toMatchInlineSnapshot(`
     {
       "cargo": {
@@ -1215,12 +1215,12 @@ test.concurrent("cargo", async ({expect = globalExpect}: any = {}) => {
   `);
 });
 
-test.concurrent("go indirect excluded by default", async ({expect = globalExpect}: any = {}) => {
+test("go indirect excluded by default", async ({expect = globalExpect}: any = {}) => {
   const result = await makeTest(`-j -f ${goFile}`)();
   expect(result?.go?.indirect).toBeUndefined();
 });
 
-test.concurrent("go indirect with -I flag", async ({expect = globalExpect}: any = {}) => {
+test("go indirect with -I flag", async ({expect = globalExpect}: any = {}) => {
   expect(await makeTest(`-j -f ${goFile} -I`)()).toMatchInlineSnapshot(`
     {
       "go": {
@@ -1248,7 +1248,7 @@ test.concurrent("go indirect with -I flag", async ({expect = globalExpect}: any 
   `);
 });
 
-test.concurrent("go update", async ({expect = globalExpect}: any = {}) => {
+test("go update", async ({expect = globalExpect}: any = {}) => {
   const testGoModDir = join(testDir, "test-go-update");
   mkdirSync(testGoModDir, {recursive: true});
 
@@ -1281,7 +1281,7 @@ test.concurrent("go update", async ({expect = globalExpect}: any = {}) => {
   expect(updatedMain).toMatch(/go-github\/v\d+\/github/);
 });
 
-test.concurrent("go update v1 to v2", async ({expect = globalExpect}: any = {}) => {
+test("go update v1 to v2", async ({expect = globalExpect}: any = {}) => {
   const testGoModDir = join(testDir, "test-go-update-v2");
   mkdirSync(testGoModDir, {recursive: true});
 
@@ -1306,12 +1306,12 @@ test.concurrent("go update v1 to v2", async ({expect = globalExpect}: any = {}) 
   expect(updatedMain).not.toMatch(/"github\.com\/example\/testpkg"(?!\/v2)/);
 });
 
-test.concurrent("go prerelease excluded by default", async ({expect = globalExpect}: any = {}) => {
+test("go prerelease excluded by default", async ({expect = globalExpect}: any = {}) => {
   // Without --prerelease, Go prerelease versions should not be offered
   expect(await makeTest(`-j -f ${goPreFile}`)()).toMatchInlineSnapshot(`undefined`);
 });
 
-test.concurrent("go prerelease with -p flag", async ({expect = globalExpect}: any = {}) => {
+test("go prerelease with -p flag", async ({expect = globalExpect}: any = {}) => {
   // With global --prerelease, Go prerelease versions should be offered
   expect(await makeTest(`-j -f ${goPreFile} -p`)()).toMatchInlineSnapshot(`
     {
@@ -1328,12 +1328,12 @@ test.concurrent("go prerelease with -p flag", async ({expect = globalExpect}: an
   `);
 });
 
-test.concurrent("go pseudo-version no downgrade", async ({expect = globalExpect}: any = {}) => {
+test("go pseudo-version no downgrade", async ({expect = globalExpect}: any = {}) => {
   // A pseudo-version like v0.4.2-0.xxx should not be downgraded to a lower release like v0.4.1
   expect(await makeTest(`-j -f ${goPseudoFile}`)()).toMatchInlineSnapshot(`undefined`);
 });
 
-test.concurrent("go prerelease with -p per-package", async ({expect = globalExpect}: any = {}) => {
+test("go prerelease with -p per-package", async ({expect = globalExpect}: any = {}) => {
   // With per-package --prerelease, Go prerelease versions should be offered for that package
   expect(await makeTest(`-j -f ${goPreFile} -p github.com/example/prerelpkg`)()).toMatchInlineSnapshot(`
     {
@@ -1350,7 +1350,7 @@ test.concurrent("go prerelease with -p per-package", async ({expect = globalExpe
   `);
 });
 
-test.concurrent("go replace", async ({expect = globalExpect}: any = {}) => {
+test("go replace", async ({expect = globalExpect}: any = {}) => {
   expect(await makeTest(`-j -f ${goReplaceFile}`)()).toMatchInlineSnapshot(`
     {
       "go": {
@@ -1366,7 +1366,7 @@ test.concurrent("go replace", async ({expect = globalExpect}: any = {}) => {
   `);
 });
 
-test.concurrent("go replace update", async ({expect = globalExpect}: any = {}) => {
+test("go replace update", async ({expect = globalExpect}: any = {}) => {
   const testGoModDir = join(testDir, "test-go-replace");
   mkdirSync(testGoModDir, {recursive: true});
 
@@ -1388,7 +1388,7 @@ test.concurrent("go replace update", async ({expect = globalExpect}: any = {}) =
   expect(updatedContent).toContain("replace");
 });
 
-test.concurrent("pin", async ({expect = globalExpect}: any = {}) => {
+test("pin", async ({expect = globalExpect}: any = {}) => {
   const {stdout, stderr} = await execFileAsync(process.execPath, [
     script,
     "-j",
@@ -1423,7 +1423,7 @@ function getActionsDeps(results: any) {
   return results.actions[ciType!];
 }
 
-test.concurrent("actions basic", async ({expect = globalExpect}: any = {}) => {
+test("actions basic", async ({expect = globalExpect}: any = {}) => {
   const {stdout, stderr} = await execFileAsync(process.execPath, actionsArgs("-j"));
   expect(stderr).toEqual("");
   const output = JSON.parse(stdout);
@@ -1443,7 +1443,7 @@ test.concurrent("actions basic", async ({expect = globalExpect}: any = {}) => {
   expect(actionsDeps["tj-actions/changed-files"]).toBeUndefined();
 });
 
-test.concurrent("actions include filter", async ({expect = globalExpect}: any = {}) => {
+test("actions include filter", async ({expect = globalExpect}: any = {}) => {
   const {stdout, stderr} = await execFileAsync(process.execPath, actionsArgs("-j", "-i", "actions/checkout"));
   expect(stderr).toEqual("");
   const actionsDeps = getActionsDeps(JSON.parse(stdout).results);
@@ -1451,7 +1451,7 @@ test.concurrent("actions include filter", async ({expect = globalExpect}: any = 
   expect(actionsDeps["actions/setup-node"]).toBeUndefined();
 });
 
-test.concurrent("actions exclude filter", async ({expect = globalExpect}: any = {}) => {
+test("actions exclude filter", async ({expect = globalExpect}: any = {}) => {
   const {stdout, stderr} = await execFileAsync(process.execPath, actionsArgs("-j", "-e", "actions/checkout"));
   expect(stderr).toEqual("");
   const actionsDeps = getActionsDeps(JSON.parse(stdout).results);
@@ -1459,14 +1459,14 @@ test.concurrent("actions exclude filter", async ({expect = globalExpect}: any = 
   expect(actionsDeps["actions/setup-node"]).toBeDefined();
 });
 
-test.concurrent("actions text output", async ({expect = globalExpect}: any = {}) => {
+test("actions text output", async ({expect = globalExpect}: any = {}) => {
   const {stdout, stderr} = await execFileAsync(process.execPath, actionsArgs());
   expect(stderr).toEqual("");
   expect(stdout).toContain("actions/checkout");
   expect(stdout).toContain("actions/setup-node");
 });
 
-test.concurrent("actions positional args", async ({expect = globalExpect}: any = {}) => {
+test("actions positional args", async ({expect = globalExpect}: any = {}) => {
   const {stdout, stderr} = await execFileAsync(process.execPath, [script, "-c", "--forgeapi", githubUrl, "-M", "actions", "-j", actionsDir]);
   expect(stderr).toEqual("");
   const output = JSON.parse(stdout);
@@ -1477,7 +1477,7 @@ test.concurrent("actions positional args", async ({expect = globalExpect}: any =
   expect(actionsDeps["actions/setup-node"].new).toBe("10.0");
 });
 
-test.concurrent("actions update", async ({expect = globalExpect}: any = {}) => {
+test("actions update", async ({expect = globalExpect}: any = {}) => {
   const tmpActionsDir = join(testDir, "actions-update-test/.github/workflows");
   mkdirSync(tmpActionsDir, {recursive: true});
   const wfPath = join(tmpActionsDir, "ci.yaml");
@@ -1494,7 +1494,7 @@ test.concurrent("actions update", async ({expect = globalExpect}: any = {}) => {
   expect(updatedContent).not.toContain("actions/checkout@v2");
 });
 
-test.concurrent("actions no false upgrade on same major", async ({expect = globalExpect}: any = {}) => {
+test("actions no false upgrade on same major", async ({expect = globalExpect}: any = {}) => {
   const {stdout, stderr} = await execFileAsync(process.execPath, actionsArgs("-j", "-i", "actions/checkout"));
   expect(stderr).toEqual("");
   const actionsDeps = getActionsDeps(JSON.parse(stdout).results);
@@ -1508,7 +1508,7 @@ test.concurrent("actions no false upgrade on same major", async ({expect = globa
   expect(v10Entries).toHaveLength(0);
 });
 
-test.concurrent("actions hash-pinned", async ({expect = globalExpect}: any = {}) => {
+test("actions hash-pinned", async ({expect = globalExpect}: any = {}) => {
   const tmpActionsDir = join(testDir, "actions-hash-test/.github/workflows");
   mkdirSync(tmpActionsDir, {recursive: true});
   const wfPath = join(tmpActionsDir, "ci.yaml");
@@ -1526,7 +1526,7 @@ test.concurrent("actions hash-pinned", async ({expect = globalExpect}: any = {})
   expect(actionsDeps["actions/checkout"].new).toBe("10.0.1");
 });
 
-test.concurrent("actions hash-pinned update", async ({expect = globalExpect}: any = {}) => {
+test("actions hash-pinned update", async ({expect = globalExpect}: any = {}) => {
   const tmpActionsDir = join(testDir, "actions-hash-update/.github/workflows");
   mkdirSync(tmpActionsDir, {recursive: true});
   const wfPath = join(tmpActionsDir, "ci.yaml");
@@ -1549,7 +1549,7 @@ function dockerArgs(...extra: Array<string>) {
   return [script, "-c", "--dockerapi", dockerUrl, "-M", "docker", ...extra];
 }
 
-test.concurrent("docker Dockerfile basic", async ({expect = globalExpect}: any = {}) => {
+test("docker Dockerfile basic", async ({expect = globalExpect}: any = {}) => {
   const {stdout, stderr} = await execFileAsync(process.execPath, dockerArgs("-j", "-f", dockerfileFixture));
   expect(stderr).toEqual("");
   const output = JSON.parse(stdout);
@@ -1570,7 +1570,7 @@ test.concurrent("docker Dockerfile basic", async ({expect = globalExpect}: any =
   expect(dockerDeps.postgres.info).toBe("https://hub.docker.com/_/postgres");
 });
 
-test.concurrent("docker compose basic", async ({expect = globalExpect}: any = {}) => {
+test("docker compose basic", async ({expect = globalExpect}: any = {}) => {
   const {stdout, stderr} = await execFileAsync(process.execPath, dockerArgs("-j", "-f", composeFixture));
   expect(stderr).toEqual("");
   const output = JSON.parse(stdout);
@@ -1593,7 +1593,7 @@ test.concurrent("docker compose basic", async ({expect = globalExpect}: any = {}
   expect(dockerDeps.redis.new).toBe("8");
 });
 
-test.concurrent("docker workflow container/image", async ({expect = globalExpect}: any = {}) => {
+test("docker workflow container/image", async ({expect = globalExpect}: any = {}) => {
   const {stdout, stderr} = await execFileAsync(process.execPath, dockerArgs("-j", "-f", dockerActionsDir));
   expect(stderr).toEqual("");
   const output = JSON.parse(stdout);
@@ -1616,14 +1616,14 @@ test.concurrent("docker workflow container/image", async ({expect = globalExpect
   expect(dockerDeps.redis.new).toBe("8");
 });
 
-test.concurrent("actions mode does not include docker from workflows", async ({expect = globalExpect}: any = {}) => {
+test("actions mode does not include docker from workflows", async ({expect = globalExpect}: any = {}) => {
   const {stdout, stderr} = await execFileAsync(process.execPath, actionsArgs("-j", "-f", dockerActionsDir));
   expect(stderr).toEqual("");
   const output = JSON.parse(stdout);
   expect(output.results.docker).toBeUndefined();
 });
 
-test.concurrent("docker include filter", async ({expect = globalExpect}: any = {}) => {
+test("docker include filter", async ({expect = globalExpect}: any = {}) => {
   const {stdout, stderr} = await execFileAsync(process.execPath, dockerArgs("-j", "-f", composeFixture, "-i", "node"));
   expect(stderr).toEqual("");
   const output = JSON.parse(stdout);
@@ -1634,7 +1634,7 @@ test.concurrent("docker include filter", async ({expect = globalExpect}: any = {
   expect(dockerDeps.redis).toBeUndefined();
 });
 
-test.concurrent("docker exclude filter", async ({expect = globalExpect}: any = {}) => {
+test("docker exclude filter", async ({expect = globalExpect}: any = {}) => {
   const {stdout, stderr} = await execFileAsync(process.execPath, dockerArgs("-j", "-f", composeFixture, "-e", "node"));
   expect(stderr).toEqual("");
   const output = JSON.parse(stdout);
@@ -1645,7 +1645,7 @@ test.concurrent("docker exclude filter", async ({expect = globalExpect}: any = {
   expect(dockerDeps.redis).toBeDefined();
 });
 
-test.concurrent("docker text output", async ({expect = globalExpect}: any = {}) => {
+test("docker text output", async ({expect = globalExpect}: any = {}) => {
   const {stdout, stderr} = await execFileAsync(process.execPath, dockerArgs("-f", composeFixture));
   expect(stderr).toEqual("");
   expect(stdout).toContain("node");
@@ -1653,7 +1653,7 @@ test.concurrent("docker text output", async ({expect = globalExpect}: any = {}) 
   expect(stdout).toContain("redis");
 });
 
-test.concurrent("docker update Dockerfile", async ({expect = globalExpect}: any = {}) => {
+test("docker update Dockerfile", async ({expect = globalExpect}: any = {}) => {
   const tmpDir = join(testDir, "docker-update-test");
   mkdirSync(tmpDir, {recursive: true});
   const dockerfilePath = join(tmpDir, "Dockerfile");
@@ -1667,7 +1667,7 @@ test.concurrent("docker update Dockerfile", async ({expect = globalExpect}: any 
   expect(updatedContent).not.toContain("FROM node:18");
 });
 
-test.concurrent("docker update compose", async ({expect = globalExpect}: any = {}) => {
+test("docker update compose", async ({expect = globalExpect}: any = {}) => {
   const tmpDir = join(testDir, "docker-compose-update-test");
   mkdirSync(tmpDir, {recursive: true});
   const composePath = join(tmpDir, "docker-compose.yaml");
@@ -1683,7 +1683,7 @@ test.concurrent("docker update compose", async ({expect = globalExpect}: any = {
   expect(updatedContent).not.toContain("image: redis:7");
 });
 
-test.concurrent("docker update workflow", async ({expect = globalExpect}: any = {}) => {
+test("docker update workflow", async ({expect = globalExpect}: any = {}) => {
   const tmpDir = join(testDir, "docker-workflow-update-test");
   mkdirSync(tmpDir, {recursive: true});
   const wfDir = join(tmpDir, ".github", "workflows");
@@ -1724,7 +1724,7 @@ test.concurrent("docker update workflow", async ({expect = globalExpect}: any = 
   expect(updatedContent).not.toContain("image: redis:7");
 });
 
-test.concurrent("docker Dockerfile.dev pattern", async ({expect = globalExpect}: any = {}) => {
+test("docker Dockerfile.dev pattern", async ({expect = globalExpect}: any = {}) => {
   const {stdout, stderr} = await execFileAsync(process.execPath, dockerArgs("-j", "-f", dockerfileDevFixture));
   expect(stderr).toEqual("");
   const output = JSON.parse(stdout);
@@ -1735,7 +1735,7 @@ test.concurrent("docker Dockerfile.dev pattern", async ({expect = globalExpect}:
   expect(output.results.docker[key!].node.new).toBe("22");
 });
 
-test.concurrent("docker docker-stack.yml pattern", async ({expect = globalExpect}: any = {}) => {
+test("docker docker-stack.yml pattern", async ({expect = globalExpect}: any = {}) => {
   const {stdout, stderr} = await execFileAsync(process.execPath, dockerArgs("-j", "-f", dockerStackFixture));
   expect(stderr).toEqual("");
   const output = JSON.parse(stdout);
@@ -1746,7 +1746,7 @@ test.concurrent("docker docker-stack.yml pattern", async ({expect = globalExpect
   expect(output.results.docker[key!].node.new).toBe("22");
 });
 
-test.concurrent("docker directory discovery", async ({expect = globalExpect}: any = {}) => {
+test("docker directory discovery", async ({expect = globalExpect}: any = {}) => {
   const {stdout, stderr} = await execFileAsync(process.execPath, dockerArgs("-j", "-f", dockerDir));
   expect(stderr).toEqual("");
   const output = JSON.parse(stdout);
@@ -1759,7 +1759,7 @@ test.concurrent("docker directory discovery", async ({expect = globalExpect}: an
   expect(keys.some(k => k.endsWith("docker-stack.yml"))).toBe(true);
 });
 
-test.concurrent("fetch error includes URL and no stack trace", async ({expect = globalExpect}: any = {}) => {
+test("fetch error includes URL and no stack trace", async ({expect = globalExpect}: any = {}) => {
   const url = "http://test.invalid";
   try {
     await execFileAsync(execPath, [
