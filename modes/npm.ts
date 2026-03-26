@@ -1,6 +1,7 @@
 import {env} from "node:process";
 import {basename} from "node:path";
 import rc from "../utils/rc.ts";
+import {getCache, setCache} from "../utils/fetchCache.ts";
 import {
   type Config, type CheckResult, type Dep, type Deps, type ModeContext, type PackageInfo, type PackageRepository,
   esc, normalizeUrl, getFetchOpts, fieldSep, fetchForge, selectTag,
@@ -147,8 +148,18 @@ export async function fetchNpmInfo(name: string, type: string, config: Config, a
   if (!dataPromise) {
     const opts = getFetchOpts(auth?.type, auth?.token);
     opts.headers = {...opts.headers as Record<string, string>, "accept": "application/vnd.npm.install-v1+json"};
-    dataPromise = ctx.doFetch(url, {signal: AbortSignal.timeout(ctx.fetchTimeout), ...opts}).then(res => {
-      if (res?.ok) return res.json();
+    const cached = getCache(url);
+    if (cached) {
+      opts.headers["if-none-match"] = cached.etag;
+    }
+    dataPromise = ctx.doFetch(url, {signal: AbortSignal.timeout(ctx.fetchTimeout), ...opts}).then(async res => {
+      if (res?.status === 304 && cached) return JSON.parse(cached.body);
+      if (res?.ok) {
+        const text = await res.text();
+        const etag = res.headers.get("etag");
+        if (etag) setCache(url, etag, text);
+        return JSON.parse(text);
+      }
       throwFetchError(res, url, name, registry);
     }).catch(err => { npmDataCache.delete(url); throw err; });
     npmDataCache.set(url, dataPromise);

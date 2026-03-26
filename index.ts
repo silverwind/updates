@@ -560,8 +560,8 @@ async function main(): Promise<void> {
 
   enableDnsCache();
 
-  const maxSockets = 96;
-  const concurrency = typeof args.sockets === "number" ? args.sockets : maxSockets;
+  const maxSockets = 25;
+  const concurrency = typeof args.sockets === "string" ? (Number(args.sockets) || maxSockets) : maxSockets;
   const {help, version, file: filesArg, types, update, indirect, include: includeArg, exclude: excludeArg, pin: pinArg, cooldown: cooldownArg} = args;
 
   if (help) {
