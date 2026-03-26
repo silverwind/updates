@@ -82,6 +82,7 @@ export type ModeContext = {
   dockerApiUrl: string,
   doFetch: typeof doFetch,
   verbose: boolean,
+  noCache: boolean,
 };
 
 export const packageVersion = pkg.version;

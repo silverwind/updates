@@ -148,7 +148,7 @@ export async function fetchNpmInfo(name: string, type: string, config: Config, a
   if (!dataPromise) {
     const opts = getFetchOpts(auth?.type, auth?.token);
     opts.headers = {...opts.headers as Record<string, string>, "accept": "application/vnd.npm.install-v1+json"};
-    const cached = getCache(url);
+    const cached = ctx.noCache ? null : getCache(url);
     if (cached) {
       opts.headers["if-none-match"] = cached.etag;
     }
@@ -157,7 +157,7 @@ export async function fetchNpmInfo(name: string, type: string, config: Config, a
       if (res?.ok) {
         const text = await res.text();
         const etag = res.headers.get("etag");
-        if (etag) setCache(url, etag, text);
+        if (etag && !ctx.noCache) setCache(url, etag, text);
         return JSON.parse(text);
       }
       throwFetchError(res, url, name, registry);

@@ -71,6 +71,7 @@ const options: ParseArgsOptionsConfig = {
   "minor": {short: "m", type: "string", multiple: true},
   "modes": {short: "M", type: "string", multiple: true},
   "color": {short: "c", type: "boolean"},
+  "no-cache": {short: "x", type: "boolean"},
   "no-color": {short: "n", type: "boolean"},
   "patch": {short: "P", type: "string", multiple: true},
   "pin": {short: "l", type: "string", multiple: true},
@@ -236,6 +237,7 @@ const ctx: ModeContext = {
   dockerApiUrl,
   doFetch: (url: string, opts?: RequestInit) => doFetch(url, opts, Boolean(args.verbose), logVerbose, magenta, green, red),
   verbose: Boolean(args.verbose),
+  noCache: Boolean(args["no-cache"]),
 };
 
 async function finishWithMessage(message: string): Promise<void> {
@@ -589,6 +591,7 @@ async function main(): Promise<void> {
     -E, --error-on-outdated            Exit with code 2 when updates are available and 0 when not
     -U, --error-on-unchanged           Exit with code 0 when updates are available and 2 when not
     -j, --json                         Output a JSON object
+    -x, --no-cache                     Disable HTTP cache
     -n, --no-color                     Disable color output
     -v, --version                      Print the version
     -V, --verbose                      Print verbose output to stderr

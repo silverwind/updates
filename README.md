@@ -49,6 +49,7 @@ npx updates -u && npm i
 |`-E, --error-on-outdated`|Exit with code 2 when updates are available and 0 when not|
 |`-U, --error-on-unchanged`|Exit with code 0 when updates are available and 2 when not|
 |`-j, --json`|Output a JSON object|
+|`-x, --no-cache`|Disable HTTP cache|
 |`-n, --no-color`|Disable color output|
 |`-v, --version`|Print the version|
 |`-V, --verbose`|Print verbose output to stderr|
