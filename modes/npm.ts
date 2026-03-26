@@ -134,18 +134,26 @@ function npmPackageUrl(registry: string, name: string, version?: string): string
   return version ? `${base}/${version}` : base;
 }
 
+const npmDataCache = new Map<string, Promise<Record<string, any>>>();
+const npmVersionInfoCache = new Map<string, Promise<NpmVersionInfo>>();
+const npmFullDataCache = new Map<string, Promise<Record<string, any> | null>>();
+
 export async function fetchNpmInfo(name: string, type: string, config: Config, args: Record<string, any>, ctx: ModeContext): Promise<PackageInfo> {
   const {auth, registry} = resolveNpmRegistry(name, config, args);
   const packageName = type === "resolutions" ? basename(name) : name;
   const url = npmPackageUrl(registry, packageName);
 
-  const opts = getFetchOpts(auth?.type, auth?.token);
-  opts.headers = {...opts.headers as Record<string, string>, "accept": "application/vnd.npm.install-v1+json"};
-  const res = await ctx.doFetch(url, {signal: AbortSignal.timeout(ctx.fetchTimeout), ...opts});
-  if (res?.ok) {
-    return [await res.json(), type, registry, name];
+  let dataPromise = npmDataCache.get(url);
+  if (!dataPromise) {
+    const opts = getFetchOpts(auth?.type, auth?.token);
+    opts.headers = {...opts.headers as Record<string, string>, "accept": "application/vnd.npm.install-v1+json"};
+    dataPromise = ctx.doFetch(url, {signal: AbortSignal.timeout(ctx.fetchTimeout), ...opts}).then(res => {
+      if (res?.ok) return res.json();
+      throwFetchError(res, url, name, registry);
+    }).catch(err => { npmDataCache.delete(url); throw err; });
+    npmDataCache.set(url, dataPromise);
   }
-  throwFetchError(res, url, name, registry);
+  return [await dataPromise, type, registry, name];
 }
 
 export type NpmVersionInfo = {repository?: PackageRepository, homepage?: string, date?: string};
@@ -153,30 +161,43 @@ export type NpmVersionInfo = {repository?: PackageRepository, homepage?: string,
 export async function fetchNpmVersionInfo(name: string, version: string, config: Config, args: Record<string, any>, ctx: ModeContext): Promise<NpmVersionInfo> {
   const {auth, registry} = resolveNpmRegistry(name, config, args);
   const url = npmPackageUrl(registry, name, version);
-  try {
-    const opts = getFetchOpts(auth?.type, auth?.token);
-    const res = await ctx.doFetch(url, {signal: AbortSignal.timeout(ctx.fetchTimeout), ...opts});
-    if (!res?.ok) return {};
-    const data = await res.json();
-    let date = "";
-    const tmp: string | undefined = data?._npmOperationalInternal?.tmp;
-    if (tmp) {
-      const match = /(\d{13})/.exec(tmp);
-      if (match) date = new Date(Number(match[1])).toISOString();
-    }
-    if (!date) {
-      // _npmOperationalInternal is absent on some registries
-      const fullUrl = npmPackageUrl(registry, name);
-      const fullRes = await ctx.doFetch(fullUrl, {signal: AbortSignal.timeout(ctx.fetchTimeout), ...opts});
-      if (fullRes?.ok) {
-        const fullData = await fullRes.json();
+
+  const cached = npmVersionInfoCache.get(url);
+  if (cached) return cached;
+
+  const promise = (async (): Promise<NpmVersionInfo> => {
+    try {
+      const opts = getFetchOpts(auth?.type, auth?.token);
+      const res = await ctx.doFetch(url, {signal: AbortSignal.timeout(ctx.fetchTimeout), ...opts});
+      if (!res?.ok) return {};
+      const data = await res.json();
+      let date = "";
+      const tmp: string | undefined = data?._npmOperationalInternal?.tmp;
+      if (tmp) {
+        const match = /(\d{13})/.exec(tmp);
+        if (match) date = new Date(Number(match[1])).toISOString();
+      }
+      if (!date) {
+        // _npmOperationalInternal is absent on some registries, fetch full metadata
+        const fullUrl = npmPackageUrl(registry, name);
+        let fullPromise = npmFullDataCache.get(fullUrl);
+        if (!fullPromise) {
+          fullPromise = ctx.doFetch(fullUrl, {signal: AbortSignal.timeout(ctx.fetchTimeout), ...opts}).then(res => {
+            if (res?.ok) return res.json();
+            return null;
+          }).catch(() => { npmFullDataCache.delete(fullUrl); return null; });
+          npmFullDataCache.set(fullUrl, fullPromise);
+        }
+        const fullData = await fullPromise;
         date = fullData?.time?.[version] || "";
       }
+      return {repository: data.repository, homepage: data.homepage, date};
+    } catch {
+      return {};
     }
-    return {repository: data.repository, homepage: data.homepage, date};
-  } catch {
-    return {};
-  }
+  })();
+  npmVersionInfoCache.set(url, promise);
+  return promise;
 }
 
 export function isJsr(value: string): boolean {

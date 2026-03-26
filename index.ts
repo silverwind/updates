@@ -17,7 +17,7 @@ import {
   stripv, hashRe as npmHashRe,
 } from "./modes/shared.ts";
 import {
-  type NpmVersionInfo, fetchNpmInfo, fetchNpmVersionInfo, fetchJsrInfo, isJsr, isLocalDep, parseJsrDependency,
+  fetchNpmInfo, fetchNpmVersionInfo, fetchJsrInfo, isJsr, isLocalDep, parseJsrDependency,
   getNpmrc, updatePackageJson, updateNpmRange, normalizeRange, checkUrlDep,
 } from "./modes/npm.ts";
 import {fetchPypiInfo, updatePyprojectToml} from "./modes/pypi.ts";
@@ -834,39 +834,40 @@ async function main(): Promise<void> {
     if (!deps[mode] || !Object.keys(deps[mode]).length && !Object.keys(maybeUrlDeps).length) continue;
     const {config, projectDir, pin} = modeConfigs[mode];
     fetchTasks.push((async () => {
-      const entries = (await pMap(Object.keys(deps[mode]), async (key) => {
+      // Abbreviated npm metadata lacks repository/homepage/time, so follow-up
+      // fetches are fired eagerly (not awaited) to avoid blocking pMap slots.
+      const npmFollowUps = new Map<string, {name: string, promise: Promise<{repository?: PackageRepository, homepage?: string, date?: string}>}>();
+
+      await pMap(Object.keys(deps[mode]), async (key) => {
         const [type, name] = key.split(fieldSep);
+        let info: PackageInfo | null = null;
         if (mode === "npm") {
           const {oldOrig} = deps[mode][key];
           if (oldOrig && isJsr(oldOrig)) {
-            return fetchJsrInfo(name, type, ctx);
-          }
-          if (oldOrig && isLocalDep(oldOrig)) {
+            info = await fetchJsrInfo(name, type, ctx);
+          } else if (oldOrig && isLocalDep(oldOrig)) {
             try {
-              return await fetchNpmInfo(name, type, config, args, ctx);
+              info = await fetchNpmInfo(name, type, config, args, ctx);
             } catch {
               delete deps[mode][key];
-              return null;
+              return;
             }
+          } else {
+            info = await fetchNpmInfo(name, type, config, args, ctx);
           }
-          return fetchNpmInfo(name, type, config, args, ctx);
         } else if (mode === "go") {
-          return fetchGoProxyInfo(name, type, deps[mode][key].oldOrig || deps[mode][key].old, projectDir, ctx, goNoProxy);
+          info = await fetchGoProxyInfo(name, type, deps[mode][key].oldOrig || deps[mode][key].old, projectDir, ctx, goNoProxy);
         } else if (mode === "cargo") {
-          return fetchCratesIoInfo(name, type, ctx);
+          info = await fetchCratesIoInfo(name, type, ctx);
         } else {
-          return fetchPypiInfo(name, type, ctx);
+          info = await fetchPypiInfo(name, type, ctx);
         }
-      }, {concurrency})).filter(Boolean) as Array<PackageInfo>;
+        if (!info) return;
 
-      const npmFollowUps = new Map<string, Promise<NpmVersionInfo>>();
-
-      for (const [data, type, registry, name] of entries) {
+        const [data, , registry] = info;
         if (data?.error) throw new Error(data.error);
 
         const {useGreatest, usePre, useRel, semvers} = getVersionOpts(data.name);
-
-        const key = `${type}${fieldSep}${name}`;
         const oldRange = deps[mode][key].old;
         const oldOrig = deps[mode][key].oldOrig;
         const pinnedRange = pin[name];
@@ -901,7 +902,7 @@ async function main(): Promise<void> {
 
         if (!newVersion || newVersion === oldRange || oldOrig && (oldOrig === newRange)) {
           delete deps[mode][key];
-          continue;
+          return;
         }
 
         let date = "";
@@ -920,8 +921,7 @@ async function main(): Promise<void> {
         }
 
         if (mode === "npm") {
-          // Abbreviated metadata lacks repository/homepage/time — fire per-version fetch eagerly
-          npmFollowUps.set(key, fetchNpmVersionInfo(data.name, newVersion, config, args, ctx));
+          npmFollowUps.set(key, {name, promise: fetchNpmVersionInfo(data.name, newVersion, config, args, ctx)});
         } else if (mode === "pypi") {
           deps[mode][key].info = getInfoUrl(data as {repository: PackageRepository, homepage: string, info: Record<string, any>}, registry, data.info.name);
         } else if (mode === "go") {
@@ -932,14 +932,13 @@ async function main(): Promise<void> {
         }
 
         if (date) setDepAge(deps[mode][key], date);
-      }
+      }, {concurrency});
 
-      // Resolve eagerly-fired version-specific fetches for updated npm packages
-      for (const [key, promise] of npmFollowUps) {
-        const info = await promise;
+      for (const [key, {name, promise}] of npmFollowUps) {
+        const followUp = await promise;
         if (!deps[mode][key]) continue;
-        deps[mode][key].info = getInfoUrl({repository: info.repository, homepage: info.homepage}, null, key.split(fieldSep)[1]);
-        if (info.date) setDepAge(deps[mode][key], info.date);
+        deps[mode][key].info = getInfoUrl({repository: followUp.repository, homepage: followUp.homepage}, null, name);
+        if (followUp.date) setDepAge(deps[mode][key], followUp.date);
       }
 
       if (Object.keys(maybeUrlDeps).length) {
