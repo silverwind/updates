@@ -134,6 +134,7 @@ export function textTable(rows: Array<Array<string>>, ansiLen: (str: string) => 
 
 const durationUnits: Record<string, number> = {y: 365, m: 30, w: 7, d: 1, h: 1 / 24, s: 1 / 86400};
 
+/** Parse a duration string (e.g. "7d", "2w", "1y") into days. Without unit, the value is treated as days. */
 export function parseDuration(str: string): number {
   const match = /^(\d+(?:\.\d+)?)\s*([a-z])$/i.exec(str);
   if (match) {

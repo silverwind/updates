@@ -576,7 +576,7 @@ async function main(): Promise<void> {
     -i, --include <dep,...>            Include only given dependencies
     -e, --exclude <dep,...>            Exclude given dependencies
     -l, --pin <dep=range>              Pin dependency to given semver range
-    -C, --cooldown <duration>          Minimum dependency age, e.g. 7, 1w, 2d, 6h
+    -C, --cooldown <duration>          Minimum dependency age, e.g. 7 (days), 1w, 2d, 6h
     -p, --prerelease [<dep,...>]       Consider prerelease versions
     -R, --release [<dep,...>]          Only use release versions, may downgrade
     -g, --greatest [<dep,...>]         Prefer greatest over latest version
