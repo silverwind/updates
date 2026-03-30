@@ -8,11 +8,11 @@
 ## Supported files
 
 - `package.json` - npm dependencies
-- `pyproject.toml` - `uv` dependencies
+- `pyproject.toml` - uv dependencies
 - `go.mod` - go dependencies
-- `Cargo.toml` - Cargo dependencies
-- `.{github,gitea,forgejo}/workflows` - Actions and Docker images
-- `Dockerfile*`, `docker-*.{yml,yaml}` - Docker images
+- `Cargo.toml` - rust dependencies
+- `.{github,gitea,forgejo}/workflows` - actions and docker images
+- `Dockerfile*`, `docker-*.{yml,yaml}` - docker images
 
 ## Usage
 
