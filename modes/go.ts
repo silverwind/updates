@@ -41,8 +41,8 @@ export function buildGoModulePath(name: string, major: number): string {
   return `${name.replace(/\/v\d+$/, "")}/v${major}`;
 }
 
-function shouldSkipMajorProbe(name: string, type: string): boolean {
-  return type === "indirect" || name.startsWith("golang.org/x/");
+function shouldSkipMajorProbe(name: string, type: string, currentVersion: string): boolean {
+  return type === "indirect" || name.startsWith("golang.org/x/") || isGoPseudoVersion(currentVersion);
 }
 
 // TODO: maybe include pseudo-versions with --prerelease
@@ -52,145 +52,6 @@ export function isGoPseudoVersion(version: string): boolean {
 
 type ProbeResult = {Version: string, Time: string, path: string};
 
-function pktLine(s: string): string {
-  const len = (s.length + 4).toString(16).padStart(4, "0");
-  return `${len}${s}`;
-}
-
-function buildLsRefsRequest(refPrefix: string): Blob {
-  const lines = [
-    pktLine("command=ls-refs\n"),
-    pktLine("object-format=sha1\n"),
-    "0001", // delimiter
-    pktLine("peel\n"),
-    pktLine(`ref-prefix refs/tags/${refPrefix}v\n`),
-    "0000", // flush
-  ];
-  return new Blob([lines.join("")]);
-}
-
-function parsePktLineTags(buf: ArrayBuffer, prefix: string): string[] {
-  const text = new TextDecoder().decode(buf);
-  const tags: string[] = [];
-  const fullPrefix = `refs/tags/${prefix}`;
-  let pos = 0;
-  while (pos < text.length) {
-    if (text.startsWith("0000", pos)) break;
-    const lenHex = text.substring(pos, pos + 4);
-    const len = Number.parseInt(lenHex, 16);
-    if (len === 0 || Number.isNaN(len)) break;
-    const line = text.substring(pos + 4, pos + len);
-    pos += len;
-    // Each line: "<sha> <refname>\n" or "<sha> <refname>\n" with possible extras
-    const spaceIdx = line.indexOf(" ");
-    if (spaceIdx === -1) continue;
-    const refname = line.substring(spaceIdx + 1).trim();
-    // Skip annotated tag dereferences
-    if (refname.endsWith("^{}")) continue;
-    if (!refname.startsWith(fullPrefix)) continue;
-    const tag = refname.substring(fullPrefix.length);
-    if (tag) tags.push(tag);
-  }
-  return tags;
-}
-
-function findHighestMajorFromTags(tags: string[], currentMajor: number): number {
-  let highest = currentMajor;
-  for (const tag of tags) {
-    const m = /^v(\d+)\./.exec(tag);
-    if (m) {
-      const major = Number.parseInt(m[1]);
-      if (major > highest) highest = major;
-    }
-  }
-  return highest;
-}
-
-function subPathToTagPrefix(subPath: string | undefined): string {
-  return subPath ? `${subPath.substring(1)}/` : "";
-}
-
-function inferGitUrl(modulePath: string): {repoUrl: string, tagPrefix: string} | null {
-  // Common forges: {host}/{owner}/{repo}[/sub/path]
-  const forgeMatch = /^((github\.com|gitea\.com|codeberg\.org|gitlab\.com|bitbucket\.org|git\.sr\.ht)\/[^/]+\/[^/]+)(\/.*)?$/.exec(modulePath);
-  if (forgeMatch) {
-    return {repoUrl: `https://${forgeMatch[1]}.git`, tagPrefix: subPathToTagPrefix(forgeMatch[3])};
-  }
-  // golang.org/x/{name}
-  const goMatch = /^golang\.org\/x\/([^/]+)(\/.*)?$/.exec(modulePath);
-  if (goMatch) {
-    return {repoUrl: `https://go.googlesource.com/${goMatch[1]}`, tagPrefix: subPathToTagPrefix(goMatch[2])};
-  }
-  // gopkg.in/{name}.v{N} -> github.com/go-{name}/{name}
-  // gopkg.in/{user}/{name}.v{N} -> github.com/{user}/{name}
-  const gopkgMatch = /^gopkg\.in\/(?:([^/]+)\/)?([^.]+)\.v\d+(\/.*)?$/.exec(modulePath);
-  if (gopkgMatch) {
-    const user = gopkgMatch[1] || `go-${gopkgMatch[2]}`;
-    return {repoUrl: `https://github.com/${user}/${gopkgMatch[2]}.git`, tagPrefix: subPathToTagPrefix(gopkgMatch[3])};
-  }
-  return null;
-}
-
-async function resolveGitUrl(modulePath: string, ctx: ModeContext): Promise<{repoUrl: string, tagPrefix: string} | null> {
-  const inferred = inferGitUrl(modulePath);
-  if (inferred) return inferred;
-  try {
-    const res = await ctx.doFetch(`https://${modulePath}?go-get=1`, {signal: AbortSignal.timeout(ctx.goProbeTimeout)});
-    if (!res.ok) return null;
-    const html = await res.text();
-    const metaMatch = /<meta\s+name="go-import"\s+content="([^"]+)"/.exec(html) ||
-      /<meta\s+content="([^"]+)"\s+name="go-import"/.exec(html);
-    if (!metaMatch) return null;
-    const [rootPath, vcs, repoUrl] = metaMatch[1].trim().split(/\s+/);
-    if (vcs !== "git") return null;
-    const tagPrefix = modulePath.length > rootPath.length ?
-      `${modulePath.substring(rootPath.length + 1)}/` :
-      "";
-    return {repoUrl, tagPrefix};
-  } catch {
-    return null;
-  }
-}
-
-const gitLsRefsCache = new Map<string, Promise<string[] | null>>();
-
-function fetchGitTags(basePath: string, ctx: ModeContext): Promise<string[] | null> {
-  const cached = gitLsRefsCache.get(basePath);
-  if (cached) return cached;
-  const promise = (async (): Promise<string[] | null> => {
-    try {
-      const resolved = await resolveGitUrl(basePath, ctx);
-      if (!resolved) return null;
-      const {repoUrl, tagPrefix} = resolved;
-
-      const body = buildLsRefsRequest(tagPrefix);
-      const res = await ctx.doFetch(`${repoUrl}/git-upload-pack`, {
-        method: "POST",
-        headers: {
-          "Git-Protocol": "version=2",
-          "Content-Type": "application/x-git-upload-pack-request",
-        },
-        body,
-        signal: AbortSignal.timeout(ctx.goProbeTimeout),
-      });
-      if (!res.ok) return null;
-
-      const buf = await res.arrayBuffer();
-      return parsePktLineTags(buf, tagPrefix);
-    } catch {
-      return null;
-    }
-  })();
-  gitLsRefsCache.set(basePath, promise);
-  return promise;
-}
-
-async function fetchHighestMajorViaGit(name: string, currentMajor: number, ctx: ModeContext): Promise<number | null> {
-  const basePath = name.replace(/\/v\d+$/, "");
-  const tags = await fetchGitTags(basePath, ctx);
-  if (!tags) return null;
-  return findHighestMajorFromTags(tags, currentMajor);
-}
 
 function noUpdateInfo(name: string, currentVersion: string, type: string): PackageInfo {
   return [{name, old: currentVersion, new: currentVersion}, type, null, name];
@@ -357,14 +218,14 @@ export async function fetchGoVcsInfo(name: string, type: string, currentVersion:
   };
 
   // Fetch @latest and first major probe in parallel
-  const skip = shouldSkipMajorProbe(name, type);
+  const skip = shouldSkipMajorProbe(name, type, currentVersion);
   const [latest, firstProbe] = await Promise.all([
     goListQuery(name, ctx.fetchTimeout),
     skip ? null : goListQuery(buildGoModulePath(name, currentMajor + 1), ctx.goProbeTimeout),
   ]);
   if (!latest) return noUpdateInfo(name, currentVersion, type);
 
-  const probeResult = skip ? null : await probeMajorVersions(currentMajor, firstProbe, (major) =>
+  const probeResult = await probeMajorVersions(currentMajor, firstProbe, (major) =>
     goListQuery(buildGoModulePath(name, major), ctx.goProbeTimeout),
   );
   return buildGoPackageInfo(name, type, currentVersion, probeResult, latest.Version, latest.Time);
@@ -382,11 +243,10 @@ export async function fetchGoProxyInfo(name: string, type: string, currentVersio
       .catch(() => null);
   };
 
-  // Fetch @latest, git-based major version discovery, and early proxy probe in parallel
-  const skip = shouldSkipMajorProbe(name, type);
-  const [res, gitHighestMajor, earlyProbe] = await Promise.all([
+  // Fetch @latest and probe for next major version in parallel
+  const skip = shouldSkipMajorProbe(name, type, currentVersion);
+  const [res, earlyProbe] = await Promise.all([
     ctx.doFetch(`${ctx.goProxyUrl}/${encoded}/@latest`, {signal: AbortSignal.timeout(ctx.fetchTimeout)}),
-    skip ? null : fetchHighestMajorViaGit(name, currentMajor, ctx),
     skip ? null : probeGoMajor(currentMajor + 1),
   ]);
   if (!res.ok) return noUpdateInfo(name, currentVersion, type);
@@ -401,26 +261,7 @@ export async function fetchGoProxyInfo(name: string, type: string, currentVersio
     return noUpdateInfo(name, currentVersion, type);
   }
 
-  let probeResult: ProbeResult | null = null;
-  if (!skip) {
-    if (gitHighestMajor !== null && gitHighestMajor > currentMajor) {
-      if (gitHighestMajor === currentMajor + 1 && earlyProbe) {
-        // Git found same major as earlyProbe — reuse it
-        probeResult = earlyProbe;
-      } else {
-        // Git found a higher major — single proxy @latest to get Version+Time
-        probeResult = await probeGoMajor(gitHighestMajor);
-        if (!probeResult) {
-          // Proxy doesn't have this major yet — fall back to probing from early probe
-          probeResult = await probeMajorVersions(currentMajor, earlyProbe, probeGoMajor);
-        }
-      }
-    } else if (gitHighestMajor === null && earlyProbe !== null) {
-      // Git failed but proxy found v(current+1) — probe for highest
-      probeResult = await probeMajorVersions(currentMajor, earlyProbe, probeGoMajor);
-    }
-    // gitHighestMajor <= currentMajor means no upgrade, probeResult stays null
-  }
+  const probeResult = await probeMajorVersions(currentMajor, earlyProbe, probeGoMajor);
 
   return buildGoPackageInfo(name, type, currentVersion, probeResult, latestVersion, latestTime);
 }

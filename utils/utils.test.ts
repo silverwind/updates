@@ -108,7 +108,7 @@ test("canIncludeByDate", () => {
 
 test("timestamp", () => {
   const ts = timestamp();
-  expect(ts).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
+  expect(ts).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}$/);
 });
 
 test("textTable", () => {
