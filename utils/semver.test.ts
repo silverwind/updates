@@ -241,3 +241,12 @@ test("validRange non-string input", () => {
   expect(validRange(undefined as any)).toBeNull();
   expect(validRange(null as any)).toBeNull();
 });
+
+test("satisfies partial hyphen ranges", () => {
+  // 1.2.3 - 2.3 := >=1.2.3 <2.4.0-0
+  expect(satisfies("2.3.9", "1.2.3 - 2.3")).toBe(true);
+  expect(satisfies("2.4.0", "1.2.3 - 2.3")).toBe(false);
+  // 1.2.3 - 2 := >=1.2.3 <3.0.0-0
+  expect(satisfies("2.99.99", "1.2.3 - 2")).toBe(true);
+  expect(satisfies("3.0.0", "1.2.3 - 2")).toBe(false);
+});

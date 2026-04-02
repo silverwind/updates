@@ -95,6 +95,26 @@ test("mixed types in array", () => {
   expect(parseToml(`vals = [1, "two", true]`)).toEqual({vals: [1, "two", true]});
 });
 
+test("multi-line basic string with escapes", () => {
+  expect(parseToml(`key = """hello\\nworld"""`)).toEqual({key: "hello\nworld"});
+});
+
+test("multi-line literal string preserves content", () => {
+  expect(parseToml(`key = '''raw\\nstring'''`)).toEqual({key: "raw\\nstring"});
+});
+
+test("nested inline table within table", () => {
+  expect(parseToml(`[section]\npoint = {x = 1, y = 2}`)).toEqual({section: {point: {x: 1, y: 2}}});
+});
+
+test("backspace and form feed escape sequences", () => {
+  expect(parseToml(`a = "\\b"\nb = "\\f"`)).toEqual({a: "\b", b: "\f"});
+});
+
+test("carriage return escape sequence", () => {
+  expect(parseToml(`key = "\\r"`)).toEqual({key: "\r"});
+});
+
 test("real-world pyproject.toml", () => {
   const content = readFileSync("fixtures/uv/pyproject.toml", "utf8");
   const result = parseToml(content);

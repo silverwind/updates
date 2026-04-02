@@ -403,3 +403,230 @@ test("getInfoUrl pypi info with project_urls", () => {
   }, null, "pkg");
   expect(result).toBe("https://github.com/user/repo");
 });
+
+test("findNewVersion wildcard range returns null", () => {
+  const data = {
+    name: "pkg",
+    "dist-tags": {latest: "2.0.0"},
+    versions: {"1.0.0": {}, "2.0.0": {}},
+  };
+  const result = findNewVersion(data, {
+    mode: "npm",
+    range: "*",
+    useGreatest: false,
+    useRel: false,
+    usePre: false,
+    semvers: new Set(["patch", "minor", "major"]),
+  }, defaultOpts);
+  expect(result).toBeNull();
+});
+
+test("findNewVersion or-chain range returns null", () => {
+  const data = {
+    name: "pkg",
+    "dist-tags": {latest: "2.0.0"},
+    versions: {"1.0.0": {}, "2.0.0": {}},
+  };
+  const result = findNewVersion(data, {
+    mode: "npm",
+    range: "^1.0.0 || ^2.0.0",
+    useGreatest: false,
+    useRel: false,
+    usePre: false,
+    semvers: new Set(["patch", "minor", "major"]),
+  }, defaultOpts);
+  expect(result).toBeNull();
+});
+
+test("findNewVersion useGreatest returns version directly", () => {
+  const data = {
+    name: "pkg",
+    "dist-tags": {latest: "2.0.0"},
+    versions: {"1.0.0": {}, "1.1.0": {}, "2.0.0": {}},
+    time: {"1.0.0": "2025-01-01", "1.1.0": "2025-02-01", "2.0.0": "2025-03-01"},
+  };
+  const result = findNewVersion(data, {
+    mode: "npm",
+    range: "1.0.0",
+    useGreatest: true,
+    useRel: false,
+    usePre: false,
+    semvers: new Set(["patch", "minor", "major"]),
+  }, defaultOpts);
+  expect(result).toBe("2.0.0");
+});
+
+test("findNewVersion npm latest dist-tag", () => {
+  const data = {
+    name: "pkg",
+    "dist-tags": {latest: "2.0.0"},
+    versions: {"1.0.0": {}, "1.1.0": {}, "2.0.0": {}},
+    time: {"1.0.0": "2025-01-01", "1.1.0": "2025-02-01", "2.0.0": "2025-03-01"},
+  };
+  const result = findNewVersion(data, {
+    mode: "npm",
+    range: "1.0.0",
+    useGreatest: false,
+    useRel: false,
+    usePre: false,
+    semvers: new Set(["patch", "minor", "major"]),
+  }, defaultOpts);
+  expect(result).toBe("2.0.0");
+});
+
+test("findNewVersion prerelease with usePre", () => {
+  const data = {
+    name: "pkg",
+    "dist-tags": {latest: "1.1.0"},
+    versions: {"1.0.0": {}, "1.1.0": {}, "2.0.0-beta.1": {}},
+    time: {"1.0.0": "2025-01-01", "1.1.0": "2025-02-01", "2.0.0-beta.1": "2025-03-01"},
+  };
+  const result = findNewVersion(data, {
+    mode: "npm",
+    range: "1.0.0",
+    useGreatest: false,
+    useRel: false,
+    usePre: true,
+    semvers: new Set(["patch", "minor", "major"]),
+  }, defaultOpts);
+  expect(result).toBe("2.0.0-beta.1");
+});
+
+test("findNewVersion pre-to-release transition", () => {
+  const data = {
+    name: "pkg",
+    "dist-tags": {latest: "1.1.0"},
+    versions: {"1.0.0-alpha": {}, "1.1.0": {}},
+    time: {"1.0.0-alpha": "2025-01-01", "1.1.0": "2025-02-01"},
+  };
+  const result = findNewVersion(data, {
+    mode: "npm",
+    range: "1.0.0-alpha",
+    useGreatest: false,
+    useRel: false,
+    usePre: false,
+    semvers: new Set(["patch", "minor", "major"]),
+  }, defaultOpts);
+  expect(result).toBe("1.1.0");
+});
+
+test("findNewVersion latestTag blocked by semver filter", () => {
+  const data = {
+    name: "pkg",
+    "dist-tags": {latest: "2.0.0"},
+    versions: {"1.0.0": {}, "1.0.1": {}, "2.0.0": {}},
+    time: {"1.0.0": "2025-01-01", "1.0.1": "2025-02-01", "2.0.0": "2025-03-01"},
+  };
+  const result = findNewVersion(data, {
+    mode: "npm",
+    range: "1.0.0",
+    useGreatest: false,
+    useRel: false,
+    usePre: false,
+    semvers: new Set(["patch"]),
+  }, defaultOpts);
+  expect(result).toBe("1.0.1");
+});
+
+test("findNewVersion useRel with prerelease latest", () => {
+  const data = {
+    name: "pkg",
+    "dist-tags": {latest: "2.0.0-rc.1"},
+    versions: {"1.0.0": {}, "1.1.0": {}, "2.0.0-rc.1": {}},
+    time: {"1.0.0": "2025-01-01", "1.1.0": "2025-02-01", "2.0.0-rc.1": "2025-03-01"},
+  };
+  const result = findNewVersion(data, {
+    mode: "npm",
+    range: "1.0.0",
+    useGreatest: false,
+    useRel: true,
+    usePre: false,
+    semvers: new Set(["patch", "minor", "major"]),
+  }, defaultOpts);
+  expect(result).toBe("1.1.0");
+});
+
+test("findNewVersion latestTag is prerelease, no usePre", () => {
+  const data = {
+    name: "pkg",
+    "dist-tags": {latest: "2.0.0-beta.1"},
+    versions: {"1.0.0": {}, "1.1.0": {}, "2.0.0-beta.1": {}},
+    time: {"1.0.0": "2025-01-01", "1.1.0": "2025-02-01", "2.0.0-beta.1": "2025-03-01"},
+  };
+  const result = findNewVersion(data, {
+    mode: "npm",
+    range: "1.0.0",
+    useGreatest: false,
+    useRel: false,
+    usePre: false,
+    semvers: new Set(["patch", "minor", "major"]),
+  }, defaultOpts);
+  expect(result).toBe("1.1.0");
+});
+
+test("findNewVersion pinnedRange excludes latestTag", () => {
+  const data = {
+    name: "pkg",
+    "dist-tags": {latest: "2.0.0"},
+    versions: {"1.0.0": {}, "1.1.0": {}, "2.0.0": {}},
+    time: {"1.0.0": "2025-01-01", "1.1.0": "2025-02-01", "2.0.0": "2025-03-01"},
+  };
+  const result = findNewVersion(data, {
+    mode: "npm",
+    range: "1.0.0",
+    useGreatest: false,
+    useRel: false,
+    usePre: false,
+    semvers: new Set(["patch", "minor", "major"]),
+    pinnedRange: "^1.0.0",
+  }, defaultOpts);
+  expect(result).toBe("1.1.0");
+});
+
+test("findNewVersion go mode cross-major upgrade", () => {
+  const data = {
+    name: "github.com/foo/bar",
+    old: "1.0.0",
+    new: "3.0.0",
+    sameMajorNew: "1.5.0",
+    sameMajorTime: "2025-02-01",
+    Time: "2025-03-01",
+  };
+  const result = findNewVersion(data, {
+    mode: "go",
+    range: "1.0.0",
+    useGreatest: false,
+    useRel: false,
+    usePre: false,
+    semvers: new Set(["patch", "minor", "major"]),
+  }, defaultOpts);
+  expect(result).toBe("3.0.0");
+});
+
+test("findNewVersion go mode same-major fallback", () => {
+  const data = {
+    name: "github.com/foo/bar",
+    old: "1.0.0",
+    new: "3.0.0",
+    sameMajorNew: "1.5.0",
+    sameMajorTime: "2025-02-01",
+    Time: "2025-03-01",
+  };
+  const result = findNewVersion(data, {
+    mode: "go",
+    range: "1.0.0",
+    useGreatest: false,
+    useRel: false,
+    usePre: false,
+    semvers: new Set(["patch", "minor"]),
+  }, defaultOpts);
+  expect(result).toBe("1.5.0");
+});
+
+test("resolvePackageJsonUrl shorthand foo:u/r", () => {
+  expect(resolvePackageJsonUrl("g:u/r")).toBe("https://g.com/u/r");
+});
+
+test("resolvePackageJsonUrl shorthand u/r", () => {
+  expect(resolvePackageJsonUrl("u/r")).toBe("https://github.com/u/r");
+});

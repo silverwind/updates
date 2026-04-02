@@ -1,4 +1,4 @@
-import {highlightDiff, parseUvDependencies, parseDuration, matchesAny, getProperty, commaSeparatedToArray, canIncludeByDate, timestamp, textTable} from "./utils.ts";
+import {highlightDiff, parseUvDependencies, parseDuration, matchesAny, getProperty, commaSeparatedToArray, canIncludeByDate, timestamp, textTable, pMap} from "./utils.ts";
 
 const c = (s: string) => `[${s}]`;
 
@@ -129,4 +129,19 @@ test("parseDuration", () => {
   expect(parseDuration("10s")).toBeCloseTo(10 / 86400);
   expect(() => parseDuration("abc")).toThrow("Invalid cooldown value");
   expect(() => parseDuration("12x")).toThrow("Invalid cooldown value");
+});
+
+test("pMap basic", async () => {
+  const result = await pMap([1, 2, 3], (n) => Promise.resolve(n * 2));
+  expect(result).toEqual([2, 4, 6]);
+});
+
+test("pMap limited concurrency", async () => {
+  const result = await pMap([10, 20, 30], (n) => Promise.resolve(n + 1), {concurrency: 2});
+  expect(result).toEqual([11, 21, 31]);
+});
+
+test("pMap empty iterable", async () => {
+  const result = await pMap([], (n: number) => Promise.resolve(n));
+  expect(result).toEqual([]);
 });

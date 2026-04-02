@@ -220,3 +220,23 @@ test("updateGoMod major version rewrite", () => {
   expect(result).not.toContain("/v2");
   expect(rewrites).toEqual({"github.com/foo/bar/v2": "github.com/foo/bar/v3"});
 });
+
+test("updateGoMod tool major version rewrite", () => {
+  const content = [
+    "module example.com/mod",
+    "",
+    "require (",
+    "\tgithub.com/foo/bar/v2 v2.1.0",
+    ")",
+    "",
+    "tool (",
+    "\tgithub.com/foo/bar/v2/cmd/mytool",
+    ")",
+  ].join("\n");
+  const deps = {[`tool${fieldSep}github.com/foo/bar/v2`]: {old: "2.1.0", new: "3.0.0"}};
+  const [result, rewrites] = updateGoMod(content, deps);
+  expect(result).toContain("github.com/foo/bar/v3 v3.0.0");
+  expect(result).toContain("github.com/foo/bar/v3/cmd/mytool");
+  expect(result).not.toContain("/v2");
+  expect(rewrites).toEqual({"github.com/foo/bar/v2": "github.com/foo/bar/v3"});
+});
