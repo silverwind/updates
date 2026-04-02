@@ -190,8 +190,6 @@ export function updateWorkflowDockerImages(content: string, deps: Deps): string 
   ]);
 }
 
-export const dockerTypes = ["docker"];
-
 // Exact filenames for auto-discovery via findUpSync
 export const dockerExactFileNames = [
   "Dockerfile",

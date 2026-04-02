@@ -139,8 +139,9 @@ for (const [index, token] of result.tokens.entries()) {
 const args = result.values;
 const positionals = result.positionals;
 
+const useColor = args.color === true || (args["no-color"] !== true && stdout.isTTY);
 const [magenta, red, green] = (["magenta", "red", "green"] as const).map(color => {
-  if (args["no-color"]) return String;
+  if (!useColor) return String;
   return (text: string | number) => styleText(color, String(text));
 });
 
@@ -158,7 +159,6 @@ const goProxyUrl = typeof args.goproxy === "string" ? normalizeUrl(args.goproxy)
 const cratesIoUrl = typeof args.cargoapi === "string" ? normalizeUrl(args.cargoapi) : "https://crates.io";
 const dockerApiUrl = typeof args.dockerapi === "string" ? normalizeUrl(args.dockerapi) : "https://hub.docker.com";
 const goNoProxy = parseGoNoProxy();
-
 
 function parsePinArg(arg: Arg): Record<string, string> {
   const result: Record<string, string> = {};
@@ -592,6 +592,7 @@ async function main(): Promise<void> {
     -U, --error-on-unchanged           Exit with code 0 when updates are available and 2 when not
     -j, --json                         Output a JSON object
     -x, --no-cache                     Disable HTTP cache
+    -c, --color                        Force color output
     -n, --no-color                     Disable color output
     -v, --version                      Print the version
     -V, --verbose                      Print verbose output to stderr

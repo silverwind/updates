@@ -40,10 +40,6 @@ export const npmTypes = [
   "packageManager",
 ];
 
-export const optionalNpmTypes = [
-  "engines",
-];
-
 export const nonPackageEngines = [
   "node",
   "deno",

@@ -33,7 +33,7 @@ export type AuthAndRegistry = {
 // https://regex101.com/r/gCZzfK/2
 const stripRe = /^.*?:\/\/(.*?@)?(github\.com[:/])/i;
 const partsRe = /^([^/]+)\/([^/]+)\/(?:.*\/)?([0-9a-f]+|v?[0-9]+\.[0-9]+\.[0-9]+)$/i;
-export const npmVersionRe = /[0-9]+(\.[0-9]+)?(\.[0-9]+)?/g;
+const npmVersionRe = /[0-9]+(\.[0-9]+)?(\.[0-9]+)?/g;
 const npmVersionRePre = /[0-9]+\.[0-9]+\.[0-9]+(-.+)?/g;
 
 const defaultRegistry = "https://registry.npmjs.org";
@@ -337,7 +337,7 @@ type CommitInfo = {
   commit: Record<string, any>,
 };
 
-export async function getLastestCommit(user: string, repo: string, ctx: ModeContext): Promise<CommitInfo> {
+export async function getLatestCommit(user: string, repo: string, ctx: ModeContext): Promise<CommitInfo> {
   try {
     const res = await fetchForge(`${ctx.forgeApiUrl}/repos/${user}/${repo}/commits`, ctx);
     if (!res?.ok) return {hash: "", commit: {}};
@@ -360,7 +360,7 @@ export async function checkUrlDep(key: string, dep: Dep, useGreatest: boolean, c
   if (!user || !repo || !oldRef) return null;
 
   if (hashRe.test(oldRef)) {
-    const {hash, commit} = await getLastestCommit(user, repo, ctx);
+    const {hash, commit} = await getLatestCommit(user, repo, ctx);
     if (!hash) return null;
 
     const newDate = commit?.committer?.date ?? commit?.author?.date;
