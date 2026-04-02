@@ -8,9 +8,14 @@ import {
   getDockerInfoUrl,
   extractDockerRefs,
   findDockerVersion,
+  updateDockerfile,
+  updateComposeFile,
+  updateWorkflowDockerImages,
+  getExtractionRegex,
   dockerfileFromRe,
   composeImageRe,
 } from "./docker.ts";
+import {fieldSep} from "./shared.ts";
 
 // parseDockerImageRef
 test("parseDockerImageRef simple library image", () => {
@@ -197,4 +202,60 @@ test("findDockerVersion filters by suffix", () => {
 
 test("findDockerVersion returns null for invalid tag", () => {
   expect(findDockerVersion({"20": "2024-01-01"}, "latest", new Set(["patch", "minor", "major"]))).toBeNull();
+});
+
+// updateDockerfile
+test("updateDockerfile replaces FROM image tag", () => {
+  const content = "FROM node:18\nRUN echo hello\n";
+  const deps = {[`docker${fieldSep}node`]: {old: "18", new: "20"}};
+  expect(updateDockerfile(content, deps)).toBe("FROM node:20\nRUN echo hello\n");
+});
+
+test("updateDockerfile replaces FROM with platform", () => {
+  const content = "FROM --platform=linux/amd64 nginx:1.25.3\n";
+  const deps = {[`docker${fieldSep}nginx`]: {old: "1.25.3", new: "1.27.0"}};
+  expect(updateDockerfile(content, deps)).toBe("FROM --platform=linux/amd64 nginx:1.27.0\n");
+});
+
+test("updateDockerfile uses oldOrig when present", () => {
+  const content = "FROM node:18\n";
+  const deps = {[`docker${fieldSep}node`]: {old: "18.0.0", new: "20", oldOrig: "18"}};
+  expect(updateDockerfile(content, deps)).toBe("FROM node:20\n");
+});
+
+// updateComposeFile
+test("updateComposeFile replaces image tag", () => {
+  const content = "services:\n  web:\n    image: node:20.11.1\n";
+  const deps = {[`docker${fieldSep}node`]: {old: "20.11.1", new: "22.0.0"}};
+  expect(updateComposeFile(content, deps)).toBe("services:\n  web:\n    image: node:22.0.0\n");
+});
+
+test("updateComposeFile replaces quoted image tag", () => {
+  const content = "services:\n  db:\n    image: 'postgres:16.2'\n";
+  const deps = {[`docker${fieldSep}postgres`]: {old: "16.2", new: "17.0"}};
+  expect(updateComposeFile(content, deps)).toBe("services:\n  db:\n    image: 'postgres:17.0'\n");
+});
+
+// updateWorkflowDockerImages
+test("updateWorkflowDockerImages replaces container shorthand", () => {
+  const content = "jobs:\n  build:\n    container: node:18\n";
+  const deps = {[`docker${fieldSep}node`]: {old: "18", new: "20"}};
+  expect(updateWorkflowDockerImages(content, deps)).toBe("jobs:\n  build:\n    container: node:20\n");
+});
+
+test("updateWorkflowDockerImages replaces uses docker://", () => {
+  const content = "steps:\n  - uses: docker://node:18\n";
+  const deps = {[`docker${fieldSep}node`]: {old: "18", new: "20"}};
+  expect(updateWorkflowDockerImages(content, deps)).toBe("steps:\n  - uses: docker://node:20\n");
+});
+
+// getExtractionRegex
+test("getExtractionRegex returns dockerfileFromRe for Dockerfile", () => {
+  expect(getExtractionRegex("Dockerfile")).toBe(dockerfileFromRe);
+  expect(getExtractionRegex("Dockerfile.dev")).toBe(dockerfileFromRe);
+});
+
+test("getExtractionRegex returns composeImageRe for compose files", () => {
+  expect(getExtractionRegex("docker-compose.yml")).toBe(composeImageRe);
+  expect(getExtractionRegex("docker-compose.yaml")).toBe(composeImageRe);
 });

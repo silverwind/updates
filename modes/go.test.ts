@@ -11,7 +11,9 @@ import {
   shortenGoVersion,
   removeGoReplace,
   getGoInfoUrl,
+  updateGoMod,
 } from "./go.ts";
+import {fieldSep} from "./shared.ts";
 
 test("resolveGoProxy", () => {
   const origProxy = process.env.GOPROXY;
@@ -182,3 +184,41 @@ test("getGoInfoUrl", () => {
   expect(getGoInfoUrl("github.com/foo/bar/v2")).toBe("https://github.com/foo/bar");
   expect(getGoInfoUrl("github.com/foo/bar/pkg/sub")).toBe("https://github.com/foo/bar/tree/HEAD/pkg/sub");
 });
+
+// updateGoMod
+test("updateGoMod simple version bump", () => {
+  const content = "module example.com/mod\n\nrequire (\n\tgithub.com/foo/bar v1.0.0\n)\n";
+  const deps = {[`deps${fieldSep}github.com/foo/bar`]: {old: "1.0.0", new: "1.1.0"}};
+  const [result, rewrites] = updateGoMod(content, deps);
+  expect(result).toContain("github.com/foo/bar v1.1.0");
+  expect(result).not.toContain("v1.0.0");
+  expect(rewrites).toEqual({});
+});
+
+test("updateGoMod indirect dep bump", () => {
+  const content = "module example.com/mod\n\nrequire (\n\tgithub.com/foo/bar v1.0.0 // indirect\n)\n";
+  const deps = {[`indirect${fieldSep}github.com/foo/bar`]: {old: "1.0.0", new: "1.2.0"}};
+  const [result, rewrites] = updateGoMod(content, deps);
+  expect(result).toContain("github.com/foo/bar v1.2.0");
+  expect(rewrites).toEqual({});
+});
+
+test("updateGoMod replace dep bump", () => {
+  const content = "module example.com/mod\n\nrequire (\n\tgithub.com/orig/mod v1.0.0\n)\n\nreplace github.com/orig/mod => github.com/new/mod v1.0.0\n";
+  const deps = {[`replace${fieldSep}github.com/new/mod`]: {old: "1.0.0", new: "1.5.0"}};
+  const [result, rewrites] = updateGoMod(content, deps);
+  expect(result).toContain("=> github.com/new/mod v1.5.0");
+  expect(result).not.toContain("=> github.com/new/mod v1.0.0");
+  expect(rewrites).toEqual({});
+});
+
+test("updateGoMod major version rewrite", () => {
+  const content = "module example.com/mod\n\nrequire (\n\tgithub.com/foo/bar/v2 v2.1.0\n)\n";
+  const deps = {[`deps${fieldSep}github.com/foo/bar/v2`]: {old: "2.1.0", new: "3.0.0"}};
+  const [result, rewrites] = updateGoMod(content, deps);
+  expect(result).toContain("github.com/foo/bar/v3 v3.0.0");
+  expect(result).not.toContain("/v2");
+  expect(rewrites).toEqual({"github.com/foo/bar/v2": "github.com/foo/bar/v3"});
+});
+
+

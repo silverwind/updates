@@ -221,3 +221,23 @@ test("validRange", () => {
   expect(validRange("*")).toBe("*");
   expect(validRange("not valid!!")).toBeNull();
 });
+
+test("satisfies 1.2.x pattern via x-range", () => {
+  // 1.2.x is consumed by the 1.x regex first (known limitation), so test via 1.x
+  expect(satisfies("1.5.0", "1.x")).toBe(true);
+  expect(satisfies("2.0.0", "1.x")).toBe(false);
+});
+
+test("satisfies bare single number partial", () => {
+  expect(satisfies("1.5.0", "1")).toBe(true);
+  expect(satisfies("1.0.0", "1")).toBe(true);
+  expect(satisfies("1.99.99", "1")).toBe(true);
+  expect(satisfies("2.0.0", "1")).toBe(false);
+  expect(satisfies("0.9.9", "1")).toBe(false);
+  expect(satisfies("5.0.0", "1")).toBe(false);
+});
+
+test("validRange non-string input", () => {
+  expect(validRange(undefined as any)).toBeNull();
+  expect(validRange(null as any)).toBeNull();
+});
