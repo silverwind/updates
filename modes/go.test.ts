@@ -220,5 +220,3 @@ test("updateGoMod major version rewrite", () => {
   expect(result).not.toContain("/v2");
   expect(rewrites).toEqual({"github.com/foo/bar/v2": "github.com/foo/bar/v3"});
 });
-
-
