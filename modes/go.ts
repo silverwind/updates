@@ -57,7 +57,7 @@ function noUpdateInfo(name: string, currentVersion: string, type: string): Packa
   return [{name, old: currentVersion, new: currentVersion}, type, null, name];
 }
 
-async function probeMajorVersions(
+export async function probeMajorVersions(
   currentMajor: number,
   firstProbe: ProbeResult | null,
   probeFn: (major: number) => Promise<ProbeResult | null>,
@@ -86,15 +86,11 @@ async function probeMajorVersions(
     }
   }
 
-  // Binary search between lo and hi
-  while (lo + 1 < hi) {
-    const mid = Math.floor((lo + hi) / 2);
-    const result = await probeFn(mid);
-    if (result) {
-      highest = result;
-      lo = mid;
-    } else {
-      hi = mid;
+  // Probe all remaining points between lo and hi in parallel
+  if (hi - lo > 1) {
+    const results = await Promise.all(Array.from({length: hi - lo - 1}, (_, idx) => probeFn(lo + 1 + idx)));
+    for (let gapIdx = results.length - 1; gapIdx >= 0; gapIdx--) {
+      if (results[gapIdx]) { highest = results[gapIdx]!; break; }
     }
   }
 

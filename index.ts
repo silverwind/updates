@@ -1001,6 +1001,8 @@ async function main(): Promise<void> {
           return date;
         }
 
+        const dateFetches: Array<{key: string, commitSha: string}> = [];
+
         for (const info of infos) {
           const dep = deps.actions[info.key];
           const infoUrl = `https://${info.host || "github.com"}/${owner}/${repo}`;
@@ -1029,7 +1031,7 @@ async function main(): Promise<void> {
             dep.newPrint = newTag;
             dep.info = infoUrl;
 
-            setDepAge(dep, await getDate(newCommitSha));
+            dateFetches.push({key: info.key, commitSha: newCommitSha});
           } else {
             const coerced = coerceToVersion(stripv(info.ref));
             if (!coerced) { delete deps.actions[info.key]; continue; }
@@ -1052,9 +1054,15 @@ async function main(): Promise<void> {
 
             const newEntry = tags.find(t => t.name === newTag);
             if (newEntry?.commitSha) {
-              setDepAge(dep, await getDate(newEntry.commitSha));
+              dateFetches.push({key: info.key, commitSha: newEntry.commitSha});
             }
           }
+        }
+
+        const dates = await Promise.all(dateFetches.map(({commitSha}) => getDate(commitSha)));
+        for (const [idx, {key}] of dateFetches.entries()) {
+          const dep = deps.actions[key];
+          if (dep && dates[idx]) setDepAge(dep, dates[idx]);
         }
       }, {concurrency});
 

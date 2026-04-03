@@ -12,6 +12,7 @@ import {
   removeGoReplace,
   getGoInfoUrl,
   updateGoMod,
+  probeMajorVersions,
 } from "./go.ts";
 import {fieldSep} from "./shared.ts";
 
@@ -239,4 +240,40 @@ test("updateGoMod tool major version rewrite", () => {
   expect(result).toContain("github.com/foo/bar/v3/cmd/mytool");
   expect(result).not.toContain("/v2");
   expect(rewrites).toEqual({"github.com/foo/bar/v2": "github.com/foo/bar/v3"});
+});
+
+// probeMajorVersions
+function makeProbe(existing: Set<number>) {
+  return (major: number) => Promise.resolve(
+    existing.has(major) ? {Version: `v${major}.0.0`, Time: "", path: `mod/v${major}`} : null,
+  );
+}
+
+test("probeMajorVersions returns null when firstProbe is null", async () => {
+  expect(await probeMajorVersions(1, null, makeProbe(new Set([99])))).toBeNull();
+});
+
+test("probeMajorVersions returns firstProbe when no higher versions exist", async () => {
+  const firstProbe = {Version: "v2.0.0", Time: "2024-01-01", path: "mod/v2"};
+  expect(await probeMajorVersions(1, firstProbe, makeProbe(new Set()))).toEqual(firstProbe);
+});
+
+test("probeMajorVersions finds highest major version", async () => {
+  const firstProbe = {Version: "v2.0.0", Time: "", path: "mod/v2"};
+  const result = await probeMajorVersions(1, firstProbe, makeProbe(new Set([2, 3, 4, 5])));
+  expect(result).toEqual({Version: "v5.0.0", Time: "", path: "mod/v5"});
+});
+
+test("probeMajorVersions finds correct version with large gap", async () => {
+  const existing = new Set(Array.from({length: 19}, (_, idx) => idx + 2));
+  const firstProbe = {Version: "v2.0.0", Time: "", path: "mod/v2"};
+  const result = await probeMajorVersions(1, firstProbe, makeProbe(existing));
+  expect(result).toEqual({Version: "v20.0.0", Time: "", path: "mod/v20"});
+});
+
+test("probeMajorVersions stops at first gap in exponential search", async () => {
+  // v2 exists but v3 does not — exponential search hits v3 first and stops
+  const firstProbe = {Version: "v2.0.0", Time: "", path: "mod/v2"};
+  const result = await probeMajorVersions(1, firstProbe, makeProbe(new Set([2, 4])));
+  expect(result).toEqual(firstProbe);
 });

@@ -1,4 +1,4 @@
-import {coerce, diff, gte, valid} from "../utils/semver.ts";
+import {coerce, diff, gte} from "../utils/semver.ts";
 import {type Deps, type ModeContext, type PackageInfo, esc, fieldSep, stripv, formatVersionPrecision} from "./shared.ts";
 
 export type DockerImageRef = {
@@ -89,23 +89,30 @@ export async function fetchDockerHubTags(namespace: string, repo: string, ctx: M
     }
   };
 
-  // Speculatively fetch all pages in parallel (pages beyond actual count return errors and are ignored)
-  const fetches = Array.from({length: maxPages}, (_, i) =>
-    ctx.doFetch(pageUrl(i + 1), {signal: AbortSignal.timeout(ctx.fetchTimeout)})
-      .then(async (res) => {
-        if (!res?.ok) return null;
-        return res.json();
-      })
-      .catch(() => null)
-  );
+  // Fetch page 1 first to determine actual page count, then fetch remaining pages in parallel
+  let firstPage: Record<string, any>;
+  try {
+    const res = await ctx.doFetch(pageUrl(1), {signal: AbortSignal.timeout(ctx.fetchTimeout)});
+    if (!res?.ok) return tags;
+    firstPage = await res.json();
+  } catch {
+    return tags;
+  }
 
-  const results = await Promise.all(fetches);
-  const firstPage = results[0];
-  if (!firstPage) return tags;
-
+  collectResults(firstPage);
   const totalPages = Math.min(Math.ceil((firstPage.count || 0) / 100), maxPages);
-  for (let i = 0; i < totalPages; i++) {
-    if (results[i]) collectResults(results[i]);
+
+  if (totalPages > 1) {
+    const remaining = await Promise.all(
+      Array.from({length: totalPages - 1}, (_, idx) =>
+        ctx.doFetch(pageUrl(idx + 2), {signal: AbortSignal.timeout(ctx.fetchTimeout)})
+          .then((res) => res?.ok ? res.json() : null)
+          .catch(() => null)
+      ),
+    );
+    for (const page of remaining) {
+      if (page) collectResults(page);
+    }
   }
   return tags;
 }
@@ -141,7 +148,7 @@ export function findDockerVersion(
     if (!parsed || parsed.suffix !== oldParsed.suffix) continue;
 
     const coerced = coerce(stripv(parsed.version))?.version;
-    if (!coerced || !valid(coerced)) continue;
+    if (!coerced) continue;
 
     const d = diff(bestVersion, coerced);
     if (!d || !semvers.has(d)) continue;

@@ -20,8 +20,11 @@ function cacheKey(url: string): string {
 export function getCache(url: string): {etag: string, body: string} | null {
   try {
     const key = cacheKey(url);
-    const etag = readFileSync(join(cacheDir, `${key}.etag`), "utf8");
-    const body = readFileSync(join(cacheDir, `${key}.body`), "utf8");
+    const content = readFileSync(join(cacheDir, `${key}.cache`), "utf8");
+    const idx = content.indexOf("\n");
+    if (idx === -1) return null;
+    const etag = content.substring(0, idx);
+    const body = content.substring(idx + 1);
     return etag && body ? {etag, body} : null;
   } catch {
     return null;
@@ -32,7 +35,6 @@ export function setCache(url: string, etag: string, body: string): void {
   try {
     if (!dirCreated) { mkdirSync(cacheDir, {recursive: true}); dirCreated = true; }
     const key = cacheKey(url);
-    writeFileSync(join(cacheDir, `${key}.etag`), etag);
-    writeFileSync(join(cacheDir, `${key}.body`), body);
+    writeFileSync(join(cacheDir, `${key}.cache`), `${etag}\n${body}`);
   } catch {}
 }

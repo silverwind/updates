@@ -204,6 +204,18 @@ test("findDockerVersion returns null for invalid tag", () => {
   expect(findDockerVersion({"20": "2024-01-01"}, "latest", new Set(["patch", "minor", "major"]))).toBeNull();
 });
 
+test("findDockerVersion handles partial version tags", () => {
+  const tagMap: Record<string, string> = {
+    "18": "2024-01-01",
+    "20": "2024-06-01",
+    "20.11": "2024-06-01",
+    "20.11.1": "2024-06-15",
+  };
+  // Tags "20", "20.11", "20.11.1" all coerce; highest coerced (20.11.1) wins
+  const result = findDockerVersion(tagMap, "18", new Set(["patch", "minor", "major"]));
+  expect(result).toEqual({newTag: "20", date: "2024-06-15"});
+});
+
 // updateDockerfile
 test("updateDockerfile replaces FROM image tag", () => {
   const content = "FROM node:18\nRUN echo hello\n";
