@@ -1430,14 +1430,14 @@ test("actions basic", async ({expect = globalExpect}: any = {}) => {
   expect(output.results.actions).toBeDefined();
   const actionsDeps = getActionsDeps(output.results);
 
-  // actions/checkout v2 -> v10 (major format preserved, v stripped)
+  // actions/checkout v2 -> v10 (v10 tag exists, precision preserved)
   expect(actionsDeps["actions/checkout"].old).toBe("2");
   expect(actionsDeps["actions/checkout"].new).toBe("10");
   expect(actionsDeps["actions/checkout"].info).toContain("actions/checkout");
 
-  // actions/setup-node v1.0 -> v10.0 (minor format preserved, v stripped)
+  // actions/setup-node v1.0 -> v10.0.0 (no v10.0 tag exists, falls back to full tag)
   expect(actionsDeps["actions/setup-node"].old).toBe("1.0");
-  expect(actionsDeps["actions/setup-node"].new).toBe("10.0");
+  expect(actionsDeps["actions/setup-node"].new).toBe("10.0.0");
 
   // Docker, local, and hash-pinned without tags should be skipped
   expect(actionsDeps["tj-actions/changed-files"]).toBeUndefined();
@@ -1474,7 +1474,7 @@ test("actions positional args", async ({expect = globalExpect}: any = {}) => {
   expect(actionsDeps["actions/checkout"].old).toBe("2");
   expect(actionsDeps["actions/checkout"].new).toBe("10");
   expect(actionsDeps["actions/setup-node"].old).toBe("1.0");
-  expect(actionsDeps["actions/setup-node"].new).toBe("10.0");
+  expect(actionsDeps["actions/setup-node"].new).toBe("10.0.0");
 });
 
 test("actions update", async ({expect = globalExpect}: any = {}) => {
@@ -1506,6 +1506,54 @@ test("actions no false upgrade on same major", async ({expect = globalExpect}: a
   const allKeys = Object.keys(actionsDeps);
   const v10Entries = allKeys.filter(k => actionsDeps[k].old === "10");
   expect(v10Entries).toHaveLength(0);
+});
+
+test("actions tag fallback when short tag missing", async ({expect = globalExpect}: any = {}) => {
+  const tmpDir = join(testDir, "actions-tag-fallback/.github/workflows");
+  mkdirSync(tmpDir, {recursive: true});
+  const wfPath = join(tmpDir, "ci.yaml");
+  await writeFile(wfPath, "name: ci\non: push\njobs:\n  ci:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/setup-node@v1\n      - uses: actions/setup-node@v1.0\n      - uses: actions/setup-node@v1.0.0\n");
+
+  const {stdout, stderr} = await execFileAsync(process.execPath, [
+    script, "-j", "-c", "--forgeapi", githubUrl, "-M", "actions",
+    "-f", tmpDir,
+  ]);
+  expect(stderr).toEqual("");
+  const actionsDeps = getActionsDeps(JSON.parse(stdout).results);
+  expect(actionsDeps["actions/setup-node"].old).toBe("1");
+  expect(actionsDeps["actions/setup-node"].new).toBe("10.0.0");
+});
+
+test("actions tag fallback preserves precision when tag exists", async ({expect = globalExpect}: any = {}) => {
+  const tmpDir = join(testDir, "actions-tag-precision/.github/workflows");
+  mkdirSync(tmpDir, {recursive: true});
+  const wfPath = join(tmpDir, "ci.yaml");
+  await writeFile(wfPath, "name: ci\non: push\njobs:\n  ci:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v2\n");
+
+  const {stdout, stderr} = await execFileAsync(process.execPath, [
+    script, "-j", "-c", "--forgeapi", githubUrl, "-M", "actions",
+    "-f", tmpDir,
+  ]);
+  expect(stderr).toEqual("");
+  const actionsDeps = getActionsDeps(JSON.parse(stdout).results);
+  expect(actionsDeps["actions/checkout"].old).toBe("2");
+  expect(actionsDeps["actions/checkout"].new).toBe("10");
+});
+
+test("actions tag fallback updates workflow file", async ({expect = globalExpect}: any = {}) => {
+  const tmpDir = join(testDir, "actions-tag-fallback-update/.github/workflows");
+  mkdirSync(tmpDir, {recursive: true});
+  const wfPath = join(tmpDir, "ci.yaml");
+  await writeFile(wfPath, "name: ci\non: push\njobs:\n  ci:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/setup-node@v1\n");
+
+  const {stderr} = await execFileAsync(process.execPath, [
+    script, "-u", "-c", "--forgeapi", githubUrl, "-M", "actions",
+    "-f", tmpDir,
+  ]);
+  expect(stderr).toEqual("");
+  const updatedContent = await readFile(wfPath, "utf8");
+  expect(updatedContent).toContain("actions/setup-node@v10.0.0");
+  expect(updatedContent).not.toContain("actions/setup-node@v1\n");
 });
 
 test("actions hash-pinned", async ({expect = globalExpect}: any = {}) => {

@@ -1049,7 +1049,7 @@ async function main(): Promise<void> {
             const formatted = formatActionVersion(newTag, info.ref);
             if (formatted === info.ref) { delete deps.actions[info.key]; continue; }
 
-            dep.new = formatted;
+            dep.new = tagNames.includes(formatted) ? formatted : newTag;
             dep.info = infoUrl;
 
             const newEntry = tags.find(t => t.name === newTag);
