@@ -89,25 +89,23 @@ export async function fetchDockerHubTags(namespace: string, repo: string, ctx: M
     }
   };
 
-  // Fetch page 1 first to determine actual page count, then fetch remaining pages in parallel
-  let firstPage: Record<string, any>;
-  try {
-    const res = await ctx.doFetch(pageUrl(1), {signal: AbortSignal.timeout(ctx.fetchTimeout)});
-    if (!res?.ok) return tags;
-    firstPage = await res.json();
-  } catch {
-    return tags;
-  }
+  // Fetch page 1 and speculatively page 2 in parallel to reduce sequential round-trips
+  const [firstPage, specPage2] = await Promise.all([
+    ctx.doFetch(pageUrl(1), {signal: AbortSignal.timeout(ctx.fetchTimeout)}).then(res => res?.ok ? res.json() : null).catch(() => null),
+    ctx.doFetch(pageUrl(2), {signal: AbortSignal.timeout(ctx.fetchTimeout)}).then(res => res?.ok ? res.json() : null).catch(() => null),
+  ]);
+  if (!firstPage) return tags;
 
   collectResults(firstPage);
   const totalPages = Math.min(Math.ceil((firstPage.count || 0) / 100), maxPages);
 
-  if (totalPages > 1) {
+  if (totalPages >= 2 && specPage2) collectResults(specPage2);
+  if (totalPages > 2) {
     const remaining = await Promise.all(
-      Array.from({length: totalPages - 1}, (_, idx) =>
-        ctx.doFetch(pageUrl(idx + 2), {signal: AbortSignal.timeout(ctx.fetchTimeout)})
-          .then((res) => res?.ok ? res.json() : null)
-          .catch(() => null)
+      Array.from({length: totalPages - 2}, (_, idx) =>
+        ctx.doFetch(pageUrl(idx + 3), {signal: AbortSignal.timeout(ctx.fetchTimeout)})
+          .then(res => res?.ok ? res.json() : null)
+          .catch(() => null),
       ),
     );
     for (const page of remaining) {
