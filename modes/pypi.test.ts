@@ -1,5 +1,5 @@
 import {updatePyprojectToml, fetchPypiInfo} from "./pypi.ts";
-import {type ModeContext, fieldSep} from "./shared.ts";
+import {type ModeContext, fetchTimeout, fieldSep} from "./shared.ts";
 
 test("replaces >= operator", () => {
   const input = `dependencies = [\n  "requests >=2.28.0",\n]\n`;
@@ -68,7 +68,7 @@ test("fetchPypiInfo happy path", async () => {
   const mockData = {info: {version: "2.31.0"}, releases: {"2.31.0": [{}]}};
   const ctx = {
     pypiApiUrl: "https://pypi.org",
-    fetchTimeout: 5000,
+    fetchTimeout,
     doFetch: () => Promise.resolve({ok: true, json: () => Promise.resolve(mockData)}),
   } as unknown as ModeContext;
   const result = await fetchPypiInfo("requests", "dependencies", ctx);
@@ -78,7 +78,7 @@ test("fetchPypiInfo happy path", async () => {
 test("fetchPypiInfo fetch failure throws", async () => {
   const ctx = {
     pypiApiUrl: "https://pypi.org",
-    fetchTimeout: 5000,
+    fetchTimeout,
     doFetch: () => Promise.resolve({ok: false, status: 404, statusText: "Not Found"}),
   } as unknown as ModeContext;
   await expect(fetchPypiInfo("nonexistent", "dependencies", ctx)).rejects.toThrow("404");
@@ -87,7 +87,7 @@ test("fetchPypiInfo fetch failure throws", async () => {
 test("fetchPypiInfo null response throws", async () => {
   const ctx = {
     pypiApiUrl: "https://pypi.org",
-    fetchTimeout: 5000,
+    fetchTimeout,
     doFetch: () => Promise.resolve(undefined),
   } as unknown as ModeContext;
   await expect(fetchPypiInfo("nonexistent", "dependencies", ctx)).rejects.toThrow("Unable to fetch");

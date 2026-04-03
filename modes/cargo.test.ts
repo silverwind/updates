@@ -1,5 +1,5 @@
 import {updateCargoToml, fetchCratesIoInfo} from "./cargo.ts";
-import {type ModeContext, fieldSep} from "./shared.ts";
+import {type ModeContext, fetchTimeout, fieldSep} from "./shared.ts";
 
 test("simple form: name = \"version\"", () => {
   const input = `[dependencies]\nserde = "1.0.0"\n`;
@@ -85,7 +85,7 @@ test("fetchCratesIoInfo happy path", async () => {
   };
   const ctx = {
     cratesIoUrl: "https://crates.io",
-    fetchTimeout: 5000,
+    fetchTimeout,
     doFetch: () => Promise.resolve({ok: true, json: () => Promise.resolve(responseData)}),
   } as unknown as ModeContext;
   const [data, type, registry, name] = await fetchCratesIoInfo("serde", "dependencies", ctx);
@@ -106,7 +106,7 @@ test("fetchCratesIoInfo filters yanked versions", async () => {
   };
   const ctx = {
     cratesIoUrl: "https://crates.io",
-    fetchTimeout: 5000,
+    fetchTimeout,
     doFetch: () => Promise.resolve({ok: true, json: () => Promise.resolve(responseData)}),
   } as unknown as ModeContext;
   const [data] = await fetchCratesIoInfo("serde", "dependencies", ctx);
@@ -117,7 +117,7 @@ test("fetchCratesIoInfo filters yanked versions", async () => {
 test("fetchCratesIoInfo fetch failure throws", async () => {
   const ctx = {
     cratesIoUrl: "https://crates.io",
-    fetchTimeout: 5000,
+    fetchTimeout,
     doFetch: () => Promise.resolve({ok: false, status: 404, statusText: "Not Found"}),
   } as unknown as ModeContext;
   await expect(fetchCratesIoInfo("nonexistent", "dependencies", ctx)).rejects.toThrow("404");
@@ -126,7 +126,7 @@ test("fetchCratesIoInfo fetch failure throws", async () => {
 test("fetchCratesIoInfo invalid JSON throws", async () => {
   const ctx = {
     cratesIoUrl: "https://crates.io",
-    fetchTimeout: 5000,
+    fetchTimeout,
     doFetch: () => Promise.resolve({ok: true, json: () => Promise.reject(new Error("parse error"))}),
   } as unknown as ModeContext;
   await expect(fetchCratesIoInfo("serde", "dependencies", ctx)).rejects.toThrow("Invalid JSON");
@@ -135,7 +135,7 @@ test("fetchCratesIoInfo invalid JSON throws", async () => {
 test("fetchCratesIoInfo empty versions", async () => {
   const ctx = {
     cratesIoUrl: "https://crates.io",
-    fetchTimeout: 5000,
+    fetchTimeout,
     doFetch: () => Promise.resolve({ok: true, json: () => Promise.resolve({versions: []})}),
   } as unknown as ModeContext;
   const [data] = await fetchCratesIoInfo("serde", "dependencies", ctx);

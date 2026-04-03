@@ -17,7 +17,7 @@ import {
   fetchDockerHubTags,
   fetchDockerInfo,
 } from "./docker.ts";
-import {type ModeContext, fieldSep} from "./shared.ts";
+import {type ModeContext, fetchTimeout, fieldSep} from "./shared.ts";
 
 // parseDockerImageRef
 test("parseDockerImageRef simple library image", () => {
@@ -278,7 +278,7 @@ test("getExtractionRegex returns composeImageRe for compose files", () => {
 test("fetchDockerHubTags single page", async () => {
   const ctx = {
     dockerApiUrl: "https://hub.docker.com",
-    fetchTimeout: 5000,
+    fetchTimeout,
     doFetch: () => Promise.resolve({ok: true, json: () => Promise.resolve({count: 2, results: [{name: "18", tag_last_pushed: "2024-01-01"}, {name: "20", tag_last_pushed: "2024-06-01"}]})}),
   } as unknown as ModeContext;
   const tags = await fetchDockerHubTags("library", "node", ctx);
@@ -293,7 +293,7 @@ test("fetchDockerHubTags multi-page", async () => {
   };
   const ctx = {
     dockerApiUrl: "https://hub.docker.com",
-    fetchTimeout: 5000,
+    fetchTimeout,
     doFetch: (url: string) => {
       for (const [key, data] of Object.entries(pages)) {
         if (url.includes(key)) return Promise.resolve({ok: true, json: () => Promise.resolve(data)});
@@ -308,7 +308,7 @@ test("fetchDockerHubTags multi-page", async () => {
 test("fetchDockerHubTags first page fails", async () => {
   const ctx = {
     dockerApiUrl: "https://hub.docker.com",
-    fetchTimeout: 5000,
+    fetchTimeout,
     doFetch: () => Promise.resolve({ok: false}),
   } as unknown as ModeContext;
   expect(await fetchDockerHubTags("library", "node", ctx)).toEqual({});
@@ -317,7 +317,7 @@ test("fetchDockerHubTags first page fails", async () => {
 test("fetchDockerHubTags falls back to last_updated", async () => {
   const ctx = {
     dockerApiUrl: "https://hub.docker.com",
-    fetchTimeout: 5000,
+    fetchTimeout,
     doFetch: () => Promise.resolve({ok: true, json: () => Promise.resolve({count: 1, results: [{name: "18", last_updated: "2024-01-01"}]})}),
   } as unknown as ModeContext;
   const tags = await fetchDockerHubTags("library", "node", ctx);
@@ -328,7 +328,7 @@ test("fetchDockerHubTags falls back to last_updated", async () => {
 test("fetchDockerInfo library image", async () => {
   const ctx = {
     dockerApiUrl: "https://hub.docker.com",
-    fetchTimeout: 5000,
+    fetchTimeout,
     doFetch: () => Promise.resolve({ok: true, json: () => Promise.resolve({count: 1, results: [{name: "18", tag_last_pushed: "2024-01-01"}]})}),
   } as unknown as ModeContext;
   const [data, , , name] = await fetchDockerInfo("node", "docker", ctx);
@@ -339,7 +339,7 @@ test("fetchDockerInfo library image", async () => {
 test("fetchDockerInfo namespaced image", async () => {
   const ctx = {
     dockerApiUrl: "https://hub.docker.com",
-    fetchTimeout: 5000,
+    fetchTimeout,
     doFetch: () => Promise.resolve({ok: true, json: () => Promise.resolve({count: 0, results: []})}),
   } as unknown as ModeContext;
   const [data, , , name] = await fetchDockerInfo("myorg/myapp", "docker", ctx);

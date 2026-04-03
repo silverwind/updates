@@ -8,7 +8,7 @@ import {
   fetchActionTagDate,
   resolveWorkflowFiles,
 } from "./actions.ts";
-import type {ModeContext} from "./shared.ts";
+import {type ModeContext, fetchTimeout} from "./shared.ts";
 
 // parseActionRef
 test("parseActionRef standard ref", () => {
@@ -117,7 +117,7 @@ test("updateWorkflowFile multiple replacements", () => {
 // fetchActionTagDate
 test("fetchActionTagDate returns committer date", async () => {
   const ctx = {
-    fetchTimeout: 5000,
+    fetchTimeout,
     doFetch: () => Promise.resolve({ok: true, json: () => Promise.resolve({committer: {date: "2025-01-01T00:00:00Z"}, author: {date: "2024-12-01T00:00:00Z"}})}),
   } as unknown as ModeContext;
   expect(await fetchActionTagDate("https://api.github.com", "actions", "checkout", "abc123", ctx)).toBe("2025-01-01T00:00:00Z");
@@ -125,7 +125,7 @@ test("fetchActionTagDate returns committer date", async () => {
 
 test("fetchActionTagDate falls back to author date", async () => {
   const ctx = {
-    fetchTimeout: 5000,
+    fetchTimeout,
     doFetch: () => Promise.resolve({ok: true, json: () => Promise.resolve({author: {date: "2024-12-01T00:00:00Z"}})}),
   } as unknown as ModeContext;
   expect(await fetchActionTagDate("https://api.github.com", "actions", "checkout", "abc123", ctx)).toBe("2024-12-01T00:00:00Z");
@@ -133,7 +133,7 @@ test("fetchActionTagDate falls back to author date", async () => {
 
 test("fetchActionTagDate returns empty on failure", async () => {
   const ctx = {
-    fetchTimeout: 5000,
+    fetchTimeout,
     doFetch: () => Promise.resolve({ok: false}),
   } as unknown as ModeContext;
   expect(await fetchActionTagDate("https://api.github.com", "actions", "checkout", "abc123", ctx)).toBe("");
@@ -141,7 +141,7 @@ test("fetchActionTagDate returns empty on failure", async () => {
 
 test("fetchActionTagDate returns empty on throw", async () => {
   const ctx = {
-    fetchTimeout: 5000,
+    fetchTimeout,
     doFetch: () => Promise.reject(new Error("network error")),
   } as unknown as ModeContext;
   expect(await fetchActionTagDate("https://api.github.com", "actions", "checkout", "abc123", ctx)).toBe("");

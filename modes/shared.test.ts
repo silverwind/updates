@@ -19,6 +19,7 @@ import {
   packageVersion,
   getForgeToken,
   fetchActionTags,
+  fetchTimeout,
   type ModeContext,
 } from "./shared.ts";
 
@@ -669,7 +670,7 @@ test("getForgeToken", () => {
 test("fetchActionTags single page no link header", async () => {
   const tagsData = [{name: "v1.0.0", commit: {sha: "abc"}}, {name: "v2.0.0", commit: {sha: "def"}}];
   const ctx = {
-    fetchTimeout: 5000,
+    fetchTimeout,
     doFetch: () => Promise.resolve({ok: true, json: () => Promise.resolve(tagsData), headers: new Headers()}),
   } as unknown as ModeContext;
   const result = await fetchActionTags("https://api.github.com", "actions", "checkout", ctx);
@@ -681,7 +682,7 @@ test("fetchActionTags multi-page with link header", async () => {
   const page2Data = [{name: "v2.0.0", commit: {sha: "bbb"}}];
   const page3Data = [{name: "v3.0.0", commit: {sha: "ccc"}}];
   const ctx = {
-    fetchTimeout: 5000,
+    fetchTimeout,
     doFetch: (url: string) => {
       if (url.includes("page=2")) return Promise.resolve({ok: true, json: () => Promise.resolve(page2Data), headers: new Headers()});
       if (url.includes("page=3")) return Promise.resolve({ok: true, json: () => Promise.resolve(page3Data), headers: new Headers()});
@@ -698,7 +699,7 @@ test("fetchActionTags multi-page with link header", async () => {
 
 test("fetchActionTags fetch throws returns empty", async () => {
   const ctx = {
-    fetchTimeout: 5000,
+    fetchTimeout,
     doFetch: () => Promise.reject(new Error("network error")),
   } as unknown as ModeContext;
   expect(await fetchActionTags("https://api.github.com", "actions", "checkout", ctx)).toEqual([]);

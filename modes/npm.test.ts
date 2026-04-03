@@ -2,7 +2,7 @@ import {
   isJsr, isLocalDep, parseJsrDependency, updateNpmRange, normalizeRange,
   updatePackageJson, fetchJsrInfo, getLatestCommit, getTags, checkUrlDep,
 } from "./npm.ts";
-import {type ModeContext, fieldSep} from "./shared.ts";
+import {type ModeContext, fetchTimeout, fieldSep} from "./shared.ts";
 
 test("isJsr", () => {
   expect(isJsr("npm:@jsr/std__semver@1.0.5")).toBe(true);
@@ -74,7 +74,7 @@ test("fetchJsrInfo happy path", async () => {
   const jsrData = {latest: "1.0.0", versions: {"1.0.0": {createdAt: "2025-01-01T00:00:00Z"}, "0.9.0": {createdAt: "2024-06-01T00:00:00Z"}}};
   const ctx = {
     jsrApiUrl: "https://jsr.io",
-    fetchTimeout: 5000,
+    fetchTimeout,
     doFetch: () => Promise.resolve({ok: true, json: () => Promise.resolve(jsrData)}),
   } as unknown as ModeContext;
   const [data, type, registry, name] = await fetchJsrInfo("@std/semver", "dependencies", ctx);
@@ -94,7 +94,7 @@ test("fetchJsrInfo invalid package name throws", async () => {
 test("fetchJsrInfo fetch failure throws", async () => {
   const ctx = {
     jsrApiUrl: "https://jsr.io",
-    fetchTimeout: 5000,
+    fetchTimeout,
     doFetch: () => Promise.resolve({ok: false, status: 404, statusText: "Not Found"}),
   } as unknown as ModeContext;
   await expect(fetchJsrInfo("@std/semver", "dependencies", ctx)).rejects.toThrow("404");
@@ -105,7 +105,7 @@ test("getLatestCommit happy path", async () => {
   const commitData = [{sha: "abc1234567890", commit: {committer: {date: "2025-01-01"}}}];
   const ctx = {
     forgeApiUrl: "https://api.github.com",
-    fetchTimeout: 5000,
+    fetchTimeout,
     doFetch: () => Promise.resolve({ok: true, json: () => Promise.resolve(commitData)}),
   } as unknown as ModeContext;
   const result = await getLatestCommit("user", "repo", ctx);
@@ -116,7 +116,7 @@ test("getLatestCommit happy path", async () => {
 test("getLatestCommit fetch failure returns empty", async () => {
   const ctx = {
     forgeApiUrl: "https://api.github.com",
-    fetchTimeout: 5000,
+    fetchTimeout,
     doFetch: () => Promise.resolve({ok: false}),
   } as unknown as ModeContext;
   expect(await getLatestCommit("user", "repo", ctx)).toEqual({hash: "", commit: {}});
@@ -125,7 +125,7 @@ test("getLatestCommit fetch failure returns empty", async () => {
 test("getLatestCommit fetch throws returns empty", async () => {
   const ctx = {
     forgeApiUrl: "https://api.github.com",
-    fetchTimeout: 5000,
+    fetchTimeout,
     doFetch: () => Promise.reject(new Error("network error")),
   } as unknown as ModeContext;
   expect(await getLatestCommit("user", "repo", ctx)).toEqual({hash: "", commit: {}});
@@ -136,7 +136,7 @@ test("getTags returns tag names", async () => {
   const tagsData = [{name: "v1.0.0", commit: {sha: "abc"}}, {name: "v2.0.0", commit: {sha: "def"}}];
   const ctx = {
     forgeApiUrl: "https://api.github.com",
-    fetchTimeout: 5000,
+    fetchTimeout,
     doFetch: () => Promise.resolve({ok: true, json: () => Promise.resolve(tagsData), headers: new Headers()}),
   } as unknown as ModeContext;
   expect(await getTags("user", "repo", ctx)).toEqual(["v1.0.0", "v2.0.0"]);
@@ -145,7 +145,7 @@ test("getTags returns tag names", async () => {
 test("getTags fetch failure returns empty", async () => {
   const ctx = {
     forgeApiUrl: "https://api.github.com",
-    fetchTimeout: 5000,
+    fetchTimeout,
     doFetch: () => Promise.resolve({ok: false}),
   } as unknown as ModeContext;
   expect(await getTags("user", "repo", ctx)).toEqual([]);
@@ -155,7 +155,7 @@ test("getTags fetch failure returns empty", async () => {
 test("checkUrlDep unparseable URL returns null", async () => {
   const ctx = {
     forgeApiUrl: "https://api.github.com",
-    fetchTimeout: 5000,
+    fetchTimeout,
     doFetch: () => Promise.resolve({ok: false}),
   } as unknown as ModeContext;
   const dep = {old: "not-a-url", new: ""};
@@ -165,7 +165,7 @@ test("checkUrlDep unparseable URL returns null", async () => {
 test("checkUrlDep hash-based with update", async () => {
   const ctx = {
     forgeApiUrl: "https://api.github.com",
-    fetchTimeout: 5000,
+    fetchTimeout,
     doFetch: () => Promise.resolve({ok: true, json: () => Promise.resolve([{sha: "def5678901234", commit: {committer: {date: "2025-03-01"}}}])}),
   } as unknown as ModeContext;
   const dep = {old: "https://github.com/user/repo/abc1234", new: ""};
@@ -178,7 +178,7 @@ test("checkUrlDep hash-based with update", async () => {
 test("checkUrlDep hash-based no change returns null", async () => {
   const ctx = {
     forgeApiUrl: "https://api.github.com",
-    fetchTimeout: 5000,
+    fetchTimeout,
     doFetch: () => Promise.resolve({ok: true, json: () => Promise.resolve([{sha: "abc1234567890", commit: {}}])}),
   } as unknown as ModeContext;
   const dep = {old: "https://github.com/user/repo/abc1234", new: ""};
