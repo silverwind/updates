@@ -1,5 +1,5 @@
-import {updateCargoToml} from "./cargo.ts";
-import {fieldSep} from "./shared.ts";
+import {updateCargoToml, fetchCratesIoInfo} from "./cargo.ts";
+import {type ModeContext, fieldSep} from "./shared.ts";
 
 test("simple form: name = \"version\"", () => {
   const input = `[dependencies]\nserde = "1.0.0"\n`;
@@ -72,6 +72,76 @@ test("extended table with dev-dependencies", () => {
     [`dev-dependencies${fieldSep}tokio`]: {old: "1.28.0", new: "1.30.0"} as any,
   };
   expect(updateCargoToml(input, deps)).toBe(`[dev-dependencies.tokio]\nversion = "1.30.0"\nfeatures = ["full"]\n`);
+});
+
+// fetchCratesIoInfo
+test("fetchCratesIoInfo happy path", async () => {
+  const responseData = {
+    versions: [
+      {num: "1.0.200", created_at: "2025-01-15T12:00:00Z", yanked: false},
+      {num: "1.0.100", created_at: "2024-06-01T12:00:00Z", yanked: false},
+      {num: "1.0.0", created_at: "2024-01-01T12:00:00Z", yanked: false},
+    ],
+  };
+  const ctx = {
+    cratesIoUrl: "https://crates.io",
+    fetchTimeout: 5000,
+    doFetch: () => Promise.resolve({ok: true, json: () => Promise.resolve(responseData)}),
+  } as unknown as ModeContext;
+  const [data, type, registry, name] = await fetchCratesIoInfo("serde", "dependencies", ctx);
+  expect(type).toBe("dependencies");
+  expect(registry).toBeNull();
+  expect(name).toBe("serde");
+  expect(data["dist-tags"].latest).toBe("1.0.200");
+  expect(Object.keys(data.versions)).toEqual(["1.0.200", "1.0.100", "1.0.0"]);
+  expect(data.time["1.0.200"]).toBe("2025-01-15T12:00:00Z");
+});
+
+test("fetchCratesIoInfo filters yanked versions", async () => {
+  const responseData = {
+    versions: [
+      {num: "2.0.0", created_at: "2025-02-01T00:00:00Z", yanked: true},
+      {num: "1.0.0", created_at: "2024-01-01T00:00:00Z", yanked: false},
+    ],
+  };
+  const ctx = {
+    cratesIoUrl: "https://crates.io",
+    fetchTimeout: 5000,
+    doFetch: () => Promise.resolve({ok: true, json: () => Promise.resolve(responseData)}),
+  } as unknown as ModeContext;
+  const [data] = await fetchCratesIoInfo("serde", "dependencies", ctx);
+  expect(Object.keys(data.versions)).toEqual(["1.0.0"]);
+  expect(data["dist-tags"].latest).toBe("1.0.0");
+});
+
+test("fetchCratesIoInfo fetch failure throws", async () => {
+  const ctx = {
+    cratesIoUrl: "https://crates.io",
+    fetchTimeout: 5000,
+    doFetch: () => Promise.resolve({ok: false, status: 404, statusText: "Not Found"}),
+  } as unknown as ModeContext;
+  await expect(fetchCratesIoInfo("nonexistent", "dependencies", ctx)).rejects.toThrow("404");
+});
+
+test("fetchCratesIoInfo invalid JSON throws", async () => {
+  const ctx = {
+    cratesIoUrl: "https://crates.io",
+    fetchTimeout: 5000,
+    doFetch: () => Promise.resolve({ok: true, json: () => Promise.reject(new Error("parse error"))}),
+  } as unknown as ModeContext;
+  await expect(fetchCratesIoInfo("serde", "dependencies", ctx)).rejects.toThrow("Invalid JSON");
+});
+
+test("fetchCratesIoInfo empty versions", async () => {
+  const ctx = {
+    cratesIoUrl: "https://crates.io",
+    fetchTimeout: 5000,
+    doFetch: () => Promise.resolve({ok: true, json: () => Promise.resolve({versions: []})}),
+  } as unknown as ModeContext;
+  const [data] = await fetchCratesIoInfo("serde", "dependencies", ctx);
+  expect(data.versions).toEqual({});
+  expect(data.time).toEqual({});
+  expect(data["dist-tags"].latest).toBe("");
 });
 
 test("extended table with build-dependencies", () => {

@@ -17,6 +17,9 @@ import {
   findVersion,
   getInfoUrl,
   packageVersion,
+  getForgeToken,
+  fetchActionTags,
+  type ModeContext,
 } from "./shared.ts";
 
 const defaultOpts = {
@@ -629,4 +632,95 @@ test("resolvePackageJsonUrl shorthand foo:u/r", () => {
 
 test("resolvePackageJsonUrl shorthand u/r", () => {
   expect(resolvePackageJsonUrl("u/r")).toBe("https://github.com/u/r");
+});
+
+// getForgeToken
+test("getForgeToken returns GH_TOKEN", () => {
+  const orig = process.env.GH_TOKEN;
+  process.env.GH_TOKEN = "test-gh-token";
+  try {
+    expect(getForgeToken("https://api.github.com/repos")).toBe("test-gh-token");
+  } finally {
+    if (orig === undefined) delete process.env.GH_TOKEN;
+    else process.env.GH_TOKEN = orig;
+  }
+});
+
+test("getForgeToken falls back to GITHUB_TOKEN", () => {
+  const origKeys = ["UPDATES_GITHUB_API_TOKEN", "GITHUB_API_TOKEN", "GH_TOKEN", "GITHUB_TOKEN", "HOMEBREW_GITHUB_API_TOKEN"] as const;
+  const origValues = origKeys.map(k => process.env[k]);
+  for (const k of origKeys) delete process.env[k];
+  process.env.GITHUB_TOKEN = "fallback-token";
+  try {
+    expect(getForgeToken("https://api.github.com/repos")).toBe("fallback-token");
+  } finally {
+    for (const [idx, k] of origKeys.entries()) {
+      if (origValues[idx] === undefined) delete process.env[k];
+      else process.env[k] = origValues[idx];
+    }
+  }
+});
+
+test("getForgeToken returns undefined when no tokens set", () => {
+  const origKeys = ["UPDATES_FORGE_TOKENS", "UPDATES_GITHUB_API_TOKEN", "GITHUB_API_TOKEN", "GH_TOKEN", "GITHUB_TOKEN", "HOMEBREW_GITHUB_API_TOKEN"] as const;
+  const origValues = origKeys.map(k => process.env[k]);
+  for (const k of origKeys) delete process.env[k];
+  try {
+    expect(getForgeToken("https://api.github.com/repos")).toBeUndefined();
+  } finally {
+    for (const [idx, k] of origKeys.entries()) {
+      if (origValues[idx] === undefined) delete process.env[k];
+      else process.env[k] = origValues[idx];
+    }
+  }
+});
+
+test("getForgeToken invalid URL falls through to env vars", () => {
+  const orig = process.env.GH_TOKEN;
+  process.env.GH_TOKEN = "fallback";
+  try {
+    expect(getForgeToken("not-a-url")).toBe("fallback");
+  } finally {
+    if (orig === undefined) delete process.env.GH_TOKEN;
+    else process.env.GH_TOKEN = orig;
+  }
+});
+
+// fetchActionTags
+test("fetchActionTags single page no link header", async () => {
+  const tagsData = [{name: "v1.0.0", commit: {sha: "abc"}}, {name: "v2.0.0", commit: {sha: "def"}}];
+  const ctx = {
+    fetchTimeout: 5000,
+    doFetch: () => Promise.resolve({ok: true, json: () => Promise.resolve(tagsData), headers: new Headers()}),
+  } as unknown as ModeContext;
+  const result = await fetchActionTags("https://api.github.com", "actions", "checkout", ctx);
+  expect(result).toEqual([{name: "v1.0.0", commitSha: "abc"}, {name: "v2.0.0", commitSha: "def"}]);
+});
+
+test("fetchActionTags multi-page with link header", async () => {
+  const page1Data = [{name: "v1.0.0", commit: {sha: "aaa"}}];
+  const page2Data = [{name: "v2.0.0", commit: {sha: "bbb"}}];
+  const page3Data = [{name: "v3.0.0", commit: {sha: "ccc"}}];
+  const ctx = {
+    fetchTimeout: 5000,
+    doFetch: (url: string) => {
+      if (url.includes("page=2")) return Promise.resolve({ok: true, json: () => Promise.resolve(page2Data), headers: new Headers()});
+      if (url.includes("page=3")) return Promise.resolve({ok: true, json: () => Promise.resolve(page3Data), headers: new Headers()});
+      return Promise.resolve({ok: true, json: () => Promise.resolve(page1Data), headers: new Headers([["link", `<https://api.github.com/repos/actions/checkout/tags?per_page=100&page=3>; rel="last"`]])});
+    },
+  } as unknown as ModeContext;
+  const result = await fetchActionTags("https://api.github.com", "actions", "checkout", ctx);
+  expect(result).toEqual([
+    {name: "v1.0.0", commitSha: "aaa"},
+    {name: "v2.0.0", commitSha: "bbb"},
+    {name: "v3.0.0", commitSha: "ccc"},
+  ]);
+});
+
+test("fetchActionTags fetch throws returns empty", async () => {
+  const ctx = {
+    fetchTimeout: 5000,
+    doFetch: () => Promise.reject(new Error("network error")),
+  } as unknown as ModeContext;
+  expect(await fetchActionTags("https://api.github.com", "actions", "checkout", ctx)).toEqual([]);
 });

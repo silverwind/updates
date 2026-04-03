@@ -1,10 +1,14 @@
+import {resolve} from "node:path";
 import {
   parseActionRef,
   getForgeApiBaseUrl,
   formatActionVersion,
   isWorkflowFile,
   updateWorkflowFile,
+  fetchActionTagDate,
+  resolveWorkflowFiles,
 } from "./actions.ts";
+import type {ModeContext} from "./shared.ts";
 
 // parseActionRef
 test("parseActionRef standard ref", () => {
@@ -108,6 +112,55 @@ test("updateWorkflowFile multiple replacements", () => {
     {name: "actions/setup-node", oldRef: "v3", newRef: "v4"},
   ]);
   expect(result).toBe("    uses: actions/checkout@v4\n    uses: actions/setup-node@v4\n");
+});
+
+// fetchActionTagDate
+test("fetchActionTagDate returns committer date", async () => {
+  const ctx = {
+    fetchTimeout: 5000,
+    doFetch: () => Promise.resolve({ok: true, json: () => Promise.resolve({committer: {date: "2025-01-01T00:00:00Z"}, author: {date: "2024-12-01T00:00:00Z"}})}),
+  } as unknown as ModeContext;
+  expect(await fetchActionTagDate("https://api.github.com", "actions", "checkout", "abc123", ctx)).toBe("2025-01-01T00:00:00Z");
+});
+
+test("fetchActionTagDate falls back to author date", async () => {
+  const ctx = {
+    fetchTimeout: 5000,
+    doFetch: () => Promise.resolve({ok: true, json: () => Promise.resolve({author: {date: "2024-12-01T00:00:00Z"}})}),
+  } as unknown as ModeContext;
+  expect(await fetchActionTagDate("https://api.github.com", "actions", "checkout", "abc123", ctx)).toBe("2024-12-01T00:00:00Z");
+});
+
+test("fetchActionTagDate returns empty on failure", async () => {
+  const ctx = {
+    fetchTimeout: 5000,
+    doFetch: () => Promise.resolve({ok: false}),
+  } as unknown as ModeContext;
+  expect(await fetchActionTagDate("https://api.github.com", "actions", "checkout", "abc123", ctx)).toBe("");
+});
+
+test("fetchActionTagDate returns empty on throw", async () => {
+  const ctx = {
+    fetchTimeout: 5000,
+    doFetch: () => Promise.reject(new Error("network error")),
+  } as unknown as ModeContext;
+  expect(await fetchActionTagDate("https://api.github.com", "actions", "checkout", "abc123", ctx)).toBe("");
+});
+
+// resolveWorkflowFiles
+test("resolveWorkflowFiles finds yaml files", () => {
+  const dir = resolve("fixtures/docker-actions/.github/workflows");
+  const result = resolveWorkflowFiles(dir);
+  expect(result.length).toBe(1);
+  expect(result[0]).toContain("ci.yaml");
+});
+
+test("resolveWorkflowFiles returns empty for non-existent dir", () => {
+  expect(resolveWorkflowFiles("/nonexistent/path")).toEqual([]);
+});
+
+test("resolveWorkflowFiles returns empty for dir without yaml", () => {
+  expect(resolveWorkflowFiles(resolve("fixtures/cargo"))).toEqual([]);
 });
 
 test("updateWorkflowFile quoted uses", () => {

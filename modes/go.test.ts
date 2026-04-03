@@ -1,3 +1,5 @@
+import {resolve} from "node:path";
+import {vi} from "vitest";
 import {
   resolveGoProxy,
   parseGoNoProxy,
@@ -13,6 +15,7 @@ import {
   getGoInfoUrl,
   updateGoMod,
   probeMajorVersions,
+  rewriteGoImports,
 } from "./go.ts";
 import {fieldSep} from "./shared.ts";
 
@@ -276,4 +279,25 @@ test("probeMajorVersions stops at first gap in exponential search", async () => 
   const firstProbe = {Version: "v2.0.0", Time: "", path: "mod/v2"};
   const result = await probeMajorVersions(1, firstProbe, makeProbe(new Set([2, 4])));
   expect(result).toEqual(firstProbe);
+});
+
+// rewriteGoImports
+test("rewriteGoImports empty map does nothing", () => {
+  const write = vi.fn();
+  rewriteGoImports(resolve("fixtures/go"), {}, write);
+  expect(write).not.toHaveBeenCalled();
+});
+
+test("rewriteGoImports no .go files does nothing", () => {
+  const write = vi.fn();
+  rewriteGoImports(resolve("fixtures/cargo"), {"github.com/old": "github.com/new"}, write);
+  expect(write).not.toHaveBeenCalled();
+});
+
+test("rewriteGoImports rewrites matching imports", () => {
+  const write = vi.fn();
+  rewriteGoImports(resolve("fixtures/go"), {"github.com/google/uuid": "github.com/google/uuid/v2"}, write);
+  expect(write).toHaveBeenCalledTimes(1);
+  expect(write.mock.calls[0][1]).toContain(`"github.com/google/uuid/v2"`);
+  expect(write.mock.calls[0][1]).not.toContain(`"github.com/google/uuid"`);
 });

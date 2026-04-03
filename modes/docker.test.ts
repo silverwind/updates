@@ -14,8 +14,10 @@ import {
   getExtractionRegex,
   dockerfileFromRe,
   composeImageRe,
+  fetchDockerHubTags,
+  fetchDockerInfo,
 } from "./docker.ts";
-import {fieldSep} from "./shared.ts";
+import {type ModeContext, fieldSep} from "./shared.ts";
 
 // parseDockerImageRef
 test("parseDockerImageRef simple library image", () => {
@@ -270,4 +272,82 @@ test("getExtractionRegex returns dockerfileFromRe for Dockerfile", () => {
 test("getExtractionRegex returns composeImageRe for compose files", () => {
   expect(getExtractionRegex("docker-compose.yml")).toBe(composeImageRe);
   expect(getExtractionRegex("docker-compose.yaml")).toBe(composeImageRe);
+});
+
+// fetchDockerHubTags
+test("fetchDockerHubTags single page", async () => {
+  const ctx = {
+    dockerApiUrl: "https://hub.docker.com",
+    fetchTimeout: 5000,
+    doFetch: () => Promise.resolve({ok: true, json: () => Promise.resolve({count: 2, results: [{name: "18", tag_last_pushed: "2024-01-01"}, {name: "20", tag_last_pushed: "2024-06-01"}]})}),
+  } as unknown as ModeContext;
+  const tags = await fetchDockerHubTags("library", "node", ctx);
+  expect(tags).toEqual({"18": "2024-01-01", "20": "2024-06-01"});
+});
+
+test("fetchDockerHubTags multi-page", async () => {
+  const pages: Record<string, any> = {
+    "page=1": {count: 250, results: [{name: "18", tag_last_pushed: "2024-01-01"}]},
+    "page=2": {count: 250, results: [{name: "20", tag_last_pushed: "2024-06-01"}]},
+    "page=3": {count: 250, results: [{name: "22", tag_last_pushed: "2025-01-01"}]},
+  };
+  const ctx = {
+    dockerApiUrl: "https://hub.docker.com",
+    fetchTimeout: 5000,
+    doFetch: (url: string) => {
+      for (const [key, data] of Object.entries(pages)) {
+        if (url.includes(key)) return Promise.resolve({ok: true, json: () => Promise.resolve(data)});
+      }
+      return Promise.resolve({ok: true, json: () => Promise.resolve({count: 0, results: []})});
+    },
+  } as unknown as ModeContext;
+  const tags = await fetchDockerHubTags("library", "node", ctx);
+  expect(tags).toEqual({"18": "2024-01-01", "20": "2024-06-01", "22": "2025-01-01"});
+});
+
+test("fetchDockerHubTags first page fails", async () => {
+  const ctx = {
+    dockerApiUrl: "https://hub.docker.com",
+    fetchTimeout: 5000,
+    doFetch: () => Promise.resolve({ok: false}),
+  } as unknown as ModeContext;
+  expect(await fetchDockerHubTags("library", "node", ctx)).toEqual({});
+});
+
+test("fetchDockerHubTags falls back to last_updated", async () => {
+  const ctx = {
+    dockerApiUrl: "https://hub.docker.com",
+    fetchTimeout: 5000,
+    doFetch: () => Promise.resolve({ok: true, json: () => Promise.resolve({count: 1, results: [{name: "18", last_updated: "2024-01-01"}]})}),
+  } as unknown as ModeContext;
+  const tags = await fetchDockerHubTags("library", "node", ctx);
+  expect(tags).toEqual({"18": "2024-01-01"});
+});
+
+// fetchDockerInfo
+test("fetchDockerInfo library image", async () => {
+  const ctx = {
+    dockerApiUrl: "https://hub.docker.com",
+    fetchTimeout: 5000,
+    doFetch: () => Promise.resolve({ok: true, json: () => Promise.resolve({count: 1, results: [{name: "18", tag_last_pushed: "2024-01-01"}]})}),
+  } as unknown as ModeContext;
+  const [data, , , name] = await fetchDockerInfo("node", "docker", ctx);
+  expect(name).toBe("node");
+  expect(data.tags).toEqual({"18": "2024-01-01"});
+});
+
+test("fetchDockerInfo namespaced image", async () => {
+  const ctx = {
+    dockerApiUrl: "https://hub.docker.com",
+    fetchTimeout: 5000,
+    doFetch: () => Promise.resolve({ok: true, json: () => Promise.resolve({count: 0, results: []})}),
+  } as unknown as ModeContext;
+  const [data, , , name] = await fetchDockerInfo("myorg/myapp", "docker", ctx);
+  expect(name).toBe("myorg/myapp");
+  expect(data.name).toBe("myorg/myapp");
+});
+
+test("fetchDockerInfo non-Docker-Hub registry throws", async () => {
+  const ctx = {} as unknown as ModeContext;
+  await expect(fetchDockerInfo("ghcr.io/owner/repo", "docker", ctx)).rejects.toThrow("not yet supported");
 });
