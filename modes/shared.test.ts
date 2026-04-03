@@ -634,55 +634,34 @@ test("resolvePackageJsonUrl shorthand u/r", () => {
   expect(resolvePackageJsonUrl("u/r")).toBe("https://github.com/u/r");
 });
 
-// getForgeToken
-test("getForgeToken returns GH_TOKEN", () => {
-  const orig = process.env.GH_TOKEN;
-  process.env.GH_TOKEN = "test-gh-token";
-  try {
-    expect(getForgeToken("https://api.github.com/repos")).toBe("test-gh-token");
-  } finally {
-    if (orig === undefined) delete process.env.GH_TOKEN;
-    else process.env.GH_TOKEN = orig;
-  }
-});
-
-test("getForgeToken falls back to GITHUB_TOKEN", () => {
-  const origKeys = ["UPDATES_GITHUB_API_TOKEN", "GITHUB_API_TOKEN", "GH_TOKEN", "GITHUB_TOKEN", "HOMEBREW_GITHUB_API_TOKEN"] as const;
-  const origValues = origKeys.map(k => process.env[k]);
-  for (const k of origKeys) delete process.env[k];
-  process.env.GITHUB_TOKEN = "fallback-token";
-  try {
-    expect(getForgeToken("https://api.github.com/repos")).toBe("fallback-token");
-  } finally {
-    for (const [idx, k] of origKeys.entries()) {
-      if (origValues[idx] === undefined) delete process.env[k];
-      else process.env[k] = origValues[idx];
-    }
-  }
-});
-
-test("getForgeToken returns undefined when no tokens set", () => {
+// getForgeToken — single test block to avoid env var races under concurrent execution
+test("getForgeToken", () => {
   const origKeys = ["UPDATES_FORGE_TOKENS", "UPDATES_GITHUB_API_TOKEN", "GITHUB_API_TOKEN", "GH_TOKEN", "GITHUB_TOKEN", "HOMEBREW_GITHUB_API_TOKEN"] as const;
   const origValues = origKeys.map(k => process.env[k]);
-  for (const k of origKeys) delete process.env[k];
   try {
+    // returns GH_TOKEN when set
+    for (const k of origKeys) delete process.env[k];
+    process.env.GH_TOKEN = "test-gh-token";
+    expect(getForgeToken("https://api.github.com/repos")).toBe("test-gh-token");
+
+    // falls back to GITHUB_TOKEN
+    for (const k of origKeys) delete process.env[k];
+    process.env.GITHUB_TOKEN = "fallback-token";
+    expect(getForgeToken("https://api.github.com/repos")).toBe("fallback-token");
+
+    // returns undefined when no tokens set
+    for (const k of origKeys) delete process.env[k];
     expect(getForgeToken("https://api.github.com/repos")).toBeUndefined();
+
+    // invalid URL falls through to env vars
+    for (const k of origKeys) delete process.env[k];
+    process.env.GH_TOKEN = "fallback";
+    expect(getForgeToken("not-a-url")).toBe("fallback");
   } finally {
     for (const [idx, k] of origKeys.entries()) {
       if (origValues[idx] === undefined) delete process.env[k];
       else process.env[k] = origValues[idx];
     }
-  }
-});
-
-test("getForgeToken invalid URL falls through to env vars", () => {
-  const orig = process.env.GH_TOKEN;
-  process.env.GH_TOKEN = "fallback";
-  try {
-    expect(getForgeToken("not-a-url")).toBe("fallback");
-  } finally {
-    if (orig === undefined) delete process.env.GH_TOKEN;
-    else process.env.GH_TOKEN = orig;
   }
 });
 
