@@ -1,5 +1,4 @@
 import {resolve} from "node:path";
-import {vi} from "vitest";
 import {
   resolveGoProxy,
   parseGoNoProxy,
@@ -283,21 +282,16 @@ test("probeMajorVersions stops at first gap in exponential search", async () => 
 
 // rewriteGoImports
 test("rewriteGoImports empty map does nothing", () => {
-  const write = vi.fn();
-  rewriteGoImports(resolve("fixtures/go"), {}, write);
-  expect(write).not.toHaveBeenCalled();
+  rewriteGoImports(resolve("fixtures/go"), {}, () => { throw new Error("unexpected write"); });
 });
 
 test("rewriteGoImports no .go files does nothing", () => {
-  const write = vi.fn();
-  rewriteGoImports(resolve("fixtures/cargo"), {"github.com/old": "github.com/new"}, write);
-  expect(write).not.toHaveBeenCalled();
+  rewriteGoImports(resolve("fixtures/cargo"), {"github.com/old": "github.com/new"}, () => { throw new Error("unexpected write"); });
 });
 
 test("rewriteGoImports rewrites matching imports", () => {
-  const write = vi.fn();
-  rewriteGoImports(resolve("fixtures/go"), {"github.com/google/uuid": "github.com/google/uuid/v2"}, write);
-  expect(write).toHaveBeenCalledTimes(1);
-  expect(write.mock.calls[0][1]).toContain(`"github.com/google/uuid/v2"`);
-  expect(write.mock.calls[0][1]).not.toContain(`"github.com/google/uuid"`);
+  let written = "";
+  rewriteGoImports(resolve("fixtures/go"), {"github.com/google/uuid": "github.com/google/uuid/v2"}, (_, content) => { written = content; });
+  expect(written).toContain(`"github.com/google/uuid/v2"`);
+  expect(written).not.toContain(`"github.com/google/uuid"`);
 });
