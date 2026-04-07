@@ -40,7 +40,7 @@ const cargoFile = fileURLToPath(new URL("fixtures/cargo/Cargo.toml", import.meta
 
 const testPkg = JSON.parse(readFileSync(testFile, "utf8"));
 const testDir = mkdtempSync(join(tmpdir(), "updates-"));
-const script = fileURLToPath(new URL("dist/index.js", import.meta.url));
+const script = fileURLToPath(new URL("dist/cli.js", import.meta.url));
 
 type RouteHandler = (req: any, res: any) => void | Promise<void>;
 
@@ -1819,4 +1819,78 @@ test("fetch error includes URL and no stack trace", async ({expect = globalExpec
     expect(output.error).toContain(url);
     expect(output.error).not.toContain("    at ");
   }
+});
+
+// Config option tests — each test gets its own temp dir for concurrency safety
+async function configTest(config: string, args: string): Promise<{stdout: string, stderr: string}> {
+  const dir = mkdtempSync(join(tmpdir(), "updates-cfg-"));
+  writeFileSync(join(dir, "package.json"), JSON.stringify(testPkg, null, 2));
+  writeFileSync(join(dir, ".npmrc"), `registry=${npmUrl}\nsave-exact=false`);
+  writeFileSync(join(dir, "updates.config.js"), `module.exports = ${config};\n`);
+  const argsArr = [
+    ...args.split(/\s+/), "-c",
+    "--forgeapi", githubUrl, "--pypiapi", pypiUrl,
+    "--jsrapi", jsrUrl, "--goproxy", goProxyUrl, "--cargoapi", cargoUrl,
+  ];
+  try {
+    return await execFileAsync(execPath, [script, ...argsArr], {cwd: dir});
+  } finally {
+    await rm(dir, {recursive: true, force: true});
+  }
+}
+
+test("config greatest", async ({expect = globalExpect}: any = {}) => {
+  const {stdout} = await configTest(`{ greatest: true }`, "-j -i gulp-sourcemaps");
+  expect(JSON.parse(stdout).results.npm.dependencies["gulp-sourcemaps"].new).toBe("2.6.5");
+});
+
+test("config greatest array", async ({expect = globalExpect}: any = {}) => {
+  const {stdout} = await configTest(`{ greatest: ["gulp-sourcemaps"] }`, "-j -i gulp-sourcemaps,noty");
+  const {results} = JSON.parse(stdout);
+  expect(results.npm.dependencies["gulp-sourcemaps"].new).toBe("2.6.5");
+  expect(results.npm.dependencies.noty.new).toBe("3.1.4");
+});
+
+test("config patch", async ({expect = globalExpect}: any = {}) => {
+  const {stdout} = await configTest(`{ patch: true }`, "-j -i gulp-sourcemaps");
+  expect(JSON.parse(stdout).results.npm.dependencies["gulp-sourcemaps"].new).toBe("2.0.1");
+});
+
+test("config minor", async ({expect = globalExpect}: any = {}) => {
+  const {stdout} = await configTest(`{ minor: true }`, "-j -i gulp-sourcemaps");
+  expect(JSON.parse(stdout).results.npm.dependencies["gulp-sourcemaps"].new).toBe("2.6.5");
+});
+
+test("config modes", async ({expect = globalExpect}: any = {}) => {
+  const {stdout} = await configTest(`{ modes: ["npm"] }`, "-j -i updates");
+  const {results} = JSON.parse(stdout);
+  expect(results.npm).toBeDefined();
+  expect(results.go).toBeUndefined();
+  expect(results.pypi).toBeUndefined();
+});
+
+test("config errorOnOutdated", async ({expect = globalExpect}: any = {}) => {
+  try {
+    await configTest(`{ errorOnOutdated: true }`, "-j -i noty");
+    throw new Error("Expected non-zero exit");
+  } catch (err: any) {
+    expect(err?.stdout || err?.message).toContain("noty");
+    expect(err?.code).toBe(2);
+  }
+});
+
+test("config errorOnUnchanged", async ({expect = globalExpect}: any = {}) => {
+  const {stdout} = await configTest(`{ errorOnUnchanged: true }`, "-j -i updates");
+  expect(JSON.parse(stdout).results.npm).toBeDefined();
+});
+
+test("config cli overrides config", async ({expect = globalExpect}: any = {}) => {
+  // Config has minor (patch+minor), CLI -P overrides to patch-only
+  const {stdout} = await configTest(`{ minor: true }`, "-j -i gulp-sourcemaps -P");
+  expect(JSON.parse(stdout).results.npm.dependencies["gulp-sourcemaps"].new).toBe("2.0.1");
+});
+
+test("config cooldown", async ({expect = globalExpect}: any = {}) => {
+  const {stdout} = await configTest(`{ cooldown: 999999 }`, "-j -M npm -i updates");
+  expect(JSON.parse(stdout).message).toBe("All dependencies are up to date.");
 });

@@ -4,9 +4,10 @@ import rc from "../utils/rc.ts";
 import {getCache, setCache} from "../utils/fetchCache.ts";
 import {
   type Config, type CheckResult, type Dep, type Deps, type ModeContext, type PackageInfo, type PackageRepository,
-  esc, normalizeUrl, getFetchOpts, fieldSep, fetchForge, selectTag,
+  normalizeUrl, getFetchOpts, fieldSep, fetchForge, selectTag,
   coerceToVersion, hashRe, fetchActionTags, throwFetchError,
 } from "./shared.ts";
+import {esc} from "../utils/utils.ts";
 
 export type Npmrc = {
   registry: string,

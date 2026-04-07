@@ -1,5 +1,6 @@
 import {coerce, diff, gte} from "../utils/semver.ts";
-import {type Deps, type ModeContext, type PackageInfo, esc, fieldSep, stripv, formatVersionPrecision} from "./shared.ts";
+import {type Deps, type ModeContext, type PackageInfo, fieldSep, stripv, formatVersionPrecision} from "./shared.ts";
+import {esc} from "../utils/utils.ts";
 
 export type DockerImageRef = {
   registry: string | null,

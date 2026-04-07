@@ -158,3 +158,5 @@ export async function pMap<T, R>(iterable: Iterable<T>, mapper: (item: T) => Pro
   }));
   return results;
 }
+
+export const esc = (str: string) => str.replace(/[|\\{}()[\]^$+*?.-]/g, "\\$&");

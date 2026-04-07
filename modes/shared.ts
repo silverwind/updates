@@ -2,20 +2,7 @@ import {env} from "node:process";
 import {parse, coerce, diff, gt, gte, lt, neq, satisfies, valid} from "../utils/semver.ts";
 import pkg from "../package.json" with {type: "json"};
 
-export type Config = {
-  /** Array of dependencies to include */
-  include?: Array<string | RegExp>;
-  /** Array of dependencies to exclude */
-  exclude?: Array<string | RegExp>;
-  /** Array of package types to use */
-  types?: Array<string>;
-  /** URL to npm registry */
-  registry?: string;
-  /** Minimum dependency age in days */
-  cooldown?: number,
-  /** Pin dependencies to semver ranges */
-  pin?: Record<string, string>,
-};
+export type {Config} from "../config.ts";
 
 export type Dep = {
   old: string,
@@ -41,7 +28,8 @@ export type Output = {
     [mode: string]: {
       [type: string]: Deps,
     }
-  }
+  },
+  message?: string,
 };
 
 export type FindVersionOpts = {
@@ -91,7 +79,6 @@ export const fetchTimeout = 5000;
 export const goProbeTimeout = 2500;
 
 export const stripv = (str: string): string => str.replace(/^v/, "");
-export const esc = (str: string) => str.replace(/[|\\{}()[\]^$+*?.-]/g, "\\$&");
 export const normalizeUrl = (url: string) => url.endsWith("/") ? url.substring(0, url.length - 1) : url;
 
 export function getFetchOpts(authType?: string, authToken?: string): RequestInit {

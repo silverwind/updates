@@ -1,6 +1,7 @@
-import {nodeCli} from "tsdown-config-silverwind";
+import {nodeCli, nodeLib} from "tsdown-config-silverwind";
 import {defineConfig} from "tsdown";
 
-export default defineConfig(nodeCli({
-  url: import.meta.url,
-}));
+export default defineConfig([
+  nodeLib({url: import.meta.url}),
+  nodeCli({url: import.meta.url, entry: ["cli.ts"]}),
+]);
