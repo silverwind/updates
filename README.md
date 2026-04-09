@@ -107,30 +107,10 @@ const output = await updates({
   include: [/^react/],
   modes: ["npm"],
 });
-
-for (const [mode, types] of Object.entries(output.results)) {
-  for (const [type, deps] of Object.entries(types)) {
-    for (const [name, dep] of Object.entries(deps)) {
-      console.log(`${name}: ${dep.old} → ${dep.new}`);
-    }
-  }
-}
+//=> {results: {npm: {dependencies: {react: {old: "18.0.0", new: "19.1.0", info: "https://...", age: "11mo"}}}}}
 ```
 
-The `updates()` function accepts all [config options](#config-options) and returns:
-
-```ts
-type Output = {
-  results: {
-    [mode: string]: {
-      [type: string]: {
-        [name: string]: {old: string, new: string, info?: string, age?: string},
-      },
-    },
-  },
-  message?: string, // set when there are no results
-};
-```
+The `updates()` function accepts all [config options](#config-options).
 
 ## Environment Variables
 
