@@ -1,4 +1,5 @@
-import {cwd, platform} from "node:process";
+import {cwd, platform, stderr} from "node:process";
+import {styleText} from "node:util";
 import {join, dirname, basename, resolve} from "node:path";
 import {lstatSync, readFileSync, readdirSync, truncateSync, writeFileSync, accessSync, type Stats} from "node:fs";
 import {parseToml} from "./utils/toml.ts";
@@ -252,6 +253,12 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
   const dockerApiUrl = typeof opts.dockerapi === "string" ? normalizeUrl(opts.dockerapi) : "https://hub.docker.com";
   const goNoProxy = parseGoNoProxy();
 
+  const useVerboseColor = config.color === true || (config.noColor !== true && stderr.isTTY);
+  const colorFn = (color: "magenta" | "green" | "red") => useVerboseColor ? (text: string | number) => styleText(color, String(text)) : String;
+  const magenta = colorFn("magenta");
+  const vGreen = colorFn("green");
+  const vRed = colorFn("red");
+
   const ctx: ModeContext = {
     fetchTimeout: userTimeout || fetchTimeout,
     goProbeTimeout: userTimeout ? userTimeout / 2 : goProbeTimeout,
@@ -261,7 +268,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
     goProxyUrl,
     cratesIoUrl,
     dockerApiUrl,
-    doFetch: (url: string, fetchOpts?: RequestInit) => doFetch(url, fetchOpts, Boolean(config.verbose), logVerbose, String, String, String),
+    doFetch: (url: string, fetchOpts?: RequestInit) => doFetch(url, fetchOpts, Boolean(config.verbose), logVerbose, magenta, vGreen, vRed),
     verbose: Boolean(config.verbose),
     noCache: Boolean(config.noCache),
   };
@@ -376,8 +383,8 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
     const projectDir = dirname(resolve(file));
     const modeConfig = projectDir === cwd() ? config : await loadConfig(projectDir);
 
-    const modeInclude = modeConfig?.include ? patternsToRegexSet(modeConfig.include) : include;
-    const modeExclude = modeConfig?.exclude ? patternsToRegexSet(modeConfig.exclude) : exclude;
+    const modeInclude = modeConfig !== config && modeConfig?.include ? patternsToRegexSet([...(config.include ?? []), ...modeConfig.include]) : include;
+    const modeExclude = modeConfig !== config && modeConfig?.exclude ? patternsToRegexSet([...(config.exclude ?? []), ...modeConfig.exclude]) : exclude;
     const pin: Record<string, string> = {...modeConfig?.pin, ...configPin};
 
     let dependencyTypes: Array<string> = [];

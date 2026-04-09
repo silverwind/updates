@@ -39,11 +39,11 @@ function cliPatternToRegex(pattern: string): string | RegExp {
   return /^\/.+\/$/.test(pattern) ? new RegExp(pattern.slice(1, -1)) : pattern;
 }
 
-function argToConfigMixed(arg: Arg): boolean | Array<string> | undefined {
+function argToConfigMixed(arg: Arg): boolean | Array<string | RegExp> | undefined {
   const parsed = parseMixedArg(arg);
   if (parsed === false) return undefined;
   if (parsed === true) return true;
-  return Array.from(parsed);
+  return Array.from(parsed).map(cliPatternToRegex);
 }
 
 let red: (text: string | number) => string = String;
@@ -147,7 +147,7 @@ async function main(): Promise<void> {
   if (typeof args.timeout === "string") config.timeout = Number(args.timeout) || undefined;
   if (typeof args.sockets === "string") config.sockets = Number(args.sockets) || undefined;
   if (typeof args.registry === "string") config.registry = args.registry;
-  if (typeof args.cooldown === "string") config.cooldown = Number(args.cooldown) || args.cooldown as any;
+  if (typeof args.cooldown === "string") config.cooldown = Number(args.cooldown) || args.cooldown;
 
   const cliInclude = parseArgList(args.include).map(cliPatternToRegex);
   const cliExclude = parseArgList(args.exclude).map(cliPatternToRegex);
