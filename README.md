@@ -82,10 +82,35 @@ export default {
 - `exclude` *Array\<string | RegExp>*: Array of dependencies to exclude
 - `types` *Array\<string>*: Array of dependency types to use
 - `registry` *string*: URL to npm registry
-- `minAge` *number*: Minimum dependency age in hours
+- `cooldown` *number | string*: Minimum dependency age, e.g. `7` (days), `"1w"`, `"2d"`, `"6h"`
 - `pin` *Record\<string, string>*: Pin dependencies to semver ranges
+- `files` *Array\<string>*: File or directory paths to use
+- `modes` *Array\<string>*: Which modes to enable
+- `greatest` *boolean | Array\<string | RegExp>*: Prefer greatest over latest version
+- `prerelease` *boolean | Array\<string | RegExp>*: Consider prerelease versions
+- `release` *boolean | Array\<string | RegExp>*: Only use release versions
+- `patch` *boolean | Array\<string | RegExp>*: Consider only up to semver-patch
+- `minor` *boolean | Array\<string | RegExp>*: Consider only up to semver-minor
+- `allowDowngrade` *boolean | Array\<string | RegExp>*: Allow version downgrades
 
 CLI arguments have precedence over options in the config file. `include`, `exclude`, and `pin` options are merged.
+
+## API
+
+`updates` can be used as a library:
+
+```ts
+import {updates} from "updates";
+
+const output = await updates({
+  files: ["package.json"],
+  include: [/^react/],
+  modes: ["npm"],
+});
+//=> {results: {npm: {dependencies: {react: {old: "18.0.0", new: "19.1.0", info: "https://...", age: "11mo"}}}}}
+```
+
+The `updates()` function accepts all [config options](#config-options).
 
 ## Environment Variables
 

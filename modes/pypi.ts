@@ -1,4 +1,5 @@
-import {type Deps, type ModeContext, type PackageInfo, esc, fieldSep, throwFetchError} from "./shared.ts";
+import {type Deps, type ModeContext, type PackageInfo, fieldSep, throwFetchError} from "./shared.ts";
+import {esc} from "../utils/utils.ts";
 
 export async function fetchPypiInfo(name: string, type: string, ctx: ModeContext): Promise<PackageInfo> {
   const url = `${ctx.pypiApiUrl}/pypi/${name}/json`;

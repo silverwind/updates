@@ -1,7 +1,6 @@
 import {
   findNewVersion,
   stripv,
-  esc,
   normalizeUrl,
   getFetchOpts,
   isVersionPrerelease,
@@ -22,6 +21,7 @@ import {
   fetchTimeout,
   type ModeContext,
 } from "./shared.ts";
+import {esc} from "../utils/utils.ts";
 
 const defaultOpts = {
   allowDowngrade: false as any,

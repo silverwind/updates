@@ -1,21 +1,21 @@
-#!/usr/bin/env node
-import {cwd, stdout, stderr, exit, platform, versions} from "node:process";
+import {cwd, platform, stderr} from "node:process";
+import {styleText} from "node:util";
 import {join, dirname, basename, resolve} from "node:path";
-import {pathToFileURL} from "node:url";
 import {lstatSync, readFileSync, readdirSync, truncateSync, writeFileSync, accessSync, type Stats} from "node:fs";
-import {stripVTControlCharacters, styleText, parseArgs, type ParseArgsOptionsConfig} from "node:util";
 import {parseToml} from "./utils/toml.ts";
 import {valid, validRange} from "./utils/semver.ts";
 import {timerel} from "timerel";
-import {highlightDiff, npmTypes, uvTypes, goTypes, cargoTypes, parseUvDependencies, nonPackageEngines, parseDuration, matchesAny, getProperty, commaSeparatedToArray, canIncludeByDate, timestamp, textTable, pMap} from "./utils/utils.ts";
+import {npmTypes, uvTypes, goTypes, cargoTypes, parseUvDependencies, nonPackageEngines, parseDuration, matchesAny, getProperty, canIncludeByDate, timestamp, pMap} from "./utils/utils.ts";
 import {enableDnsCache} from "./utils/dns.ts";
 import {
-  type Config, type Dep, type Deps, type DepsByMode, type Output, type ModeContext,
+  type Dep, type Deps, type DepsByMode, type Output, type ModeContext,
   type PackageRepository, type PackageInfo,
-  fieldSep, normalizeUrl, esc, packageVersion, fetchTimeout, goProbeTimeout,
+  fieldSep, normalizeUrl, fetchTimeout, goProbeTimeout,
   doFetch, findVersion, findNewVersion, coerceToVersion, getInfoUrl,
   stripv, hashRe as npmHashRe,
 } from "./modes/shared.ts";
+import {loadConfig, configMixedToRegexes, patternsToRegexSet} from "./config.ts";
+import type {Config} from "./config.ts";
 import {
   fetchNpmInfo, fetchNpmVersionInfo, fetchJsrInfo, isJsr, isLocalDep, parseJsrDependency,
   getNpmrc, updatePackageJson, updateNpmRange, normalizeRange, checkUrlDep,
@@ -24,7 +24,7 @@ import {fetchPypiInfo, updatePyprojectToml} from "./modes/pypi.ts";
 import {
   resolveGoProxy, parseGoNoProxy, isGoPseudoVersion,
   parseGoMod, fetchGoProxyInfo, updateGoMod, rewriteGoImports,
-  getGoInfoUrl, shortenGoModule, shortenGoVersion,
+  getGoInfoUrl, shortenGoVersion,
 } from "./modes/go.ts";
 import {
   type ActionRef,
@@ -51,134 +51,7 @@ const modeByFileName: Record<string, string> = {
   "Cargo.toml": "cargo",
 };
 
-const options: ParseArgsOptionsConfig = {
-  "allow-downgrade": {short: "d", type: "string", multiple: true},
-  "error-on-outdated": {short: "E", type: "boolean"},
-  "error-on-unchanged": {short: "U", type: "boolean"},
-  "exclude": {short: "e", type: "string", multiple: true},
-  "file": {short: "f", type: "string", multiple: true},
-  "forgeapi": {type: "string"}, // undocumented, only for tests
-  "goproxy": {type: "string"}, // undocumented, only for tests
-  "cargoapi": {type: "string"}, // undocumented, only for tests
-  "dockerapi": {type: "string"}, // undocumented, only for tests
-  "greatest": {short: "g", type: "string", multiple: true},
-  "help": {short: "h", type: "boolean"},
-  "include": {short: "i", type: "string", multiple: true},
-  "indirect": {short: "I", type: "boolean"},
-  "json": {short: "j", type: "boolean"},
-  "jsrapi": {type: "string"}, // undocumented, only for tests
-  "cooldown": {short: "C", type: "string"},
-  "minor": {short: "m", type: "string", multiple: true},
-  "modes": {short: "M", type: "string", multiple: true},
-  "color": {short: "c", type: "boolean"},
-  "no-cache": {short: "x", type: "boolean"},
-  "no-color": {short: "n", type: "boolean"},
-  "patch": {short: "P", type: "string", multiple: true},
-  "pin": {short: "l", type: "string", multiple: true},
-  "prerelease": {short: "p", type: "string", multiple: true},
-  "pypiapi": {type: "string"}, // undocumented, only for tests
-  "registry": {short: "r", type: "string"},
-  "release": {short: "R", type: "string", multiple: true},
-  "sockets": {short: "s", type: "string"},
-  "timeout": {short: "T", type: "string"},
-  "types": {short: "t", type: "string", multiple: true},
-  "update": {short: "u", type: "boolean"},
-  "verbose": {short: "V", type: "boolean"},
-  "version": {short: "v", type: "boolean"},
-};
-
-type Arg = string | boolean | Array<string | boolean> | undefined;
-
-function parseMixedArg(arg: Arg): boolean | Set<string> {
-  if (Array.isArray(arg) && arg.every(a => a === true)) {
-    return true;
-  } else if (Array.isArray(arg)) {
-    return new Set(arg.flatMap(val => {
-      return typeof val === "string" ? commaSeparatedToArray(val) : "";
-    }).filter(Boolean));
-  } else if (typeof arg === "string") {
-    return new Set([arg]);
-  } else if (typeof arg === "boolean") {
-    return arg;
-  } else {
-    return false;
-  }
-}
-
-function getOptionKey(name: string): string {
-  for (const [key, {short}] of Object.entries(options)) {
-    if (key === name) return key;
-    if (short === name) return key;
-  }
-  return "";
-}
-
-const result = parseArgs({
-  strict: false,
-  allowPositionals: true,
-  tokens: true,
-  options,
-});
-
-// fix parseArgs defect parsing "-a -b" as {a: "-b"} when a is string
-const values = result.values as Record<string, Arg>;
-for (const [index, token] of result.tokens.entries()) {
-  if (token.kind === "option" && token.value?.startsWith("-")) {
-    const key = getOptionKey(token.value.substring(1));
-    const next = result.tokens[index + 1];
-    values[token.name] = [true];
-    if (!values[key]) values[key] = [];
-    if (next?.kind === "positional" && next.value) {
-      (values[key] as Array<string | boolean>).push(next.value);
-    } else {
-      (values[key] as Array<string | boolean>).push(true);
-    }
-  }
-}
-
-const args = result.values;
-const positionals = result.positionals;
-
-const useColor = args.color === true || (args["no-color"] !== true && stdout.isTTY);
-const [magenta, red, green] = (["magenta", "red", "green"] as const).map(color => {
-  if (!useColor) return String;
-  return (text: string | number) => styleText(color, String(text));
-});
-
-const greatest = argSetToRegexes(parseMixedArg(args.greatest));
-const prerelease = argSetToRegexes(parseMixedArg(args.prerelease));
-const release = argSetToRegexes(parseMixedArg(args.release));
-const patch = argSetToRegexes(parseMixedArg(args.patch));
-const minor = argSetToRegexes(parseMixedArg(args.minor));
-const allowDowngrade = argSetToRegexes(parseMixedArg(args["allow-downgrade"]));
-const enabledModes = parseMixedArg(args.modes) as Set<string> || new Set(["npm", "pypi", "go", "cargo", "actions", "docker"]);
-const forgeApiUrl = typeof args.forgeapi === "string" ? normalizeUrl(args.forgeapi) : "https://api.github.com";
-const pypiApiUrl = typeof args.pypiapi === "string" ? normalizeUrl(args.pypiapi) : "https://pypi.org";
-const jsrApiUrl = typeof args.jsrapi === "string" ? normalizeUrl(args.jsrapi) : "https://jsr.io";
-const goProxyUrl = typeof args.goproxy === "string" ? normalizeUrl(args.goproxy) : resolveGoProxy();
-const cratesIoUrl = typeof args.cargoapi === "string" ? normalizeUrl(args.cargoapi) : "https://crates.io";
-const dockerApiUrl = typeof args.dockerapi === "string" ? normalizeUrl(args.dockerapi) : "https://hub.docker.com";
-const goNoProxy = parseGoNoProxy();
-
-function parsePinArg(arg: Arg): Record<string, string> {
-  const result: Record<string, string> = {};
-  if (Array.isArray(arg)) {
-    for (const val of arg) {
-      if (typeof val === "string") {
-        const [pkg, range] = val.split("=", 2);
-        if (pkg && range && validRange(range)) {
-          result[pkg] = range;
-        }
-      }
-    }
-  } else if (typeof arg === "string") {
-    const [pkg, range] = arg.split("=", 2);
-    if (pkg && range && validRange(range)) {
-      result[pkg] = range;
-    }
-  }
-  return result;
-}
+const defaultModes = new Set(["npm", "pypi", "go", "cargo", "actions", "docker"]);
 
 function findUpSync(filename: string, dir: string): string | null {
   const path = join(dir, filename);
@@ -186,7 +59,6 @@ function findUpSync(filename: string, dir: string): string | null {
   const parent = dirname(dir);
   return parent === dir ? null : findUpSync(filename, parent);
 }
-
 
 function readFileOrThrow(file: string): string {
   try {
@@ -224,199 +96,6 @@ function logVerbose(message: string): void {
   console.error(`${timestamp()} ${message}`);
 }
 
-// Build mode context for passing to mode functions
-const userTimeout = typeof args.timeout === "string" ? Number(args.timeout) : 0;
-const ctx: ModeContext = {
-  fetchTimeout: userTimeout || fetchTimeout,
-  goProbeTimeout: userTimeout ? userTimeout / 2 : goProbeTimeout,
-  forgeApiUrl,
-  pypiApiUrl,
-  jsrApiUrl,
-  goProxyUrl,
-  cratesIoUrl,
-  dockerApiUrl,
-  doFetch: (url: string, opts?: RequestInit) => doFetch(url, opts, Boolean(args.verbose), logVerbose, magenta, green, red),
-  verbose: Boolean(args.verbose),
-  noCache: Boolean(args["no-cache"]),
-};
-
-async function finishWithMessage(message: string): Promise<void> {
-  console.info(args.json ? JSON.stringify({message}) : message);
-  await end();
-}
-
-async function end(err?: Error | void, exitCode?: number): Promise<void> {
-  if (err) {
-    const error = err.message ?? String(err);
-    if (args.json) {
-      console.info(JSON.stringify({error}));
-    } else {
-      console.info(red(error));
-    }
-  }
-
-  // workaround https://github.com/nodejs/node/issues/56645
-  if (platform === "win32" && Number(versions?.node?.split(".")[0]) >= 23) {
-    await new Promise(resolve => setTimeout(resolve, 50));
-  }
-
-  exit(exitCode || err ? 1 : 0);
-}
-
-function outputDeps(deps: DepsByMode = {}): number {
-  for (const mode of Object.keys(deps)) {
-    for (const props of Object.values(deps[mode])) {
-      if (typeof props.oldPrint === "string") {
-        props.old = props.oldPrint;
-      }
-      if (typeof props.newPrint === "string") {
-        props.new = props.newPrint;
-      }
-      // Don't overwrite old with oldOrig for JSR dependencies
-      if (typeof props.oldOrig === "string" && !isJsr(props.oldOrig)) {
-        props.old = mode === "go" ? shortenGoVersion(props.oldOrig) : props.oldOrig;
-      }
-      if (mode === "go") {
-        props.new = shortenGoVersion(props.new);
-      }
-      if (mode === "actions") {
-        props.old = stripv(props.old);
-        props.new = stripv(props.new);
-      }
-      delete props.oldPrint;
-      delete props.newPrint;
-      delete props.oldOrig;
-      delete props.date;
-    }
-  }
-
-  const num = countDeps(deps);
-
-  if (args.json) {
-    const output: Output = {results: {}};
-    for (const mode of Object.keys(deps)) {
-      for (const [key, value] of Object.entries(deps[mode])) {
-        const [type, name] = key.split(fieldSep);
-        if (!output.results[mode]) output.results[mode] = {};
-        if (!output.results[mode][type]) output.results[mode][type] = {};
-        output.results[mode][type][name] = value;
-      }
-    }
-    console.info(JSON.stringify(output));
-  } else if (num) {
-    console.info(formatDeps(deps));
-  }
-
-  if (args["error-on-outdated"]) {
-    return num ? 2 : 0;
-  } else if (args["error-on-unchanged"]) {
-    return num ? 0 : 2;
-  } else {
-    return 0;
-  }
-}
-
-// preserve file metadata on windows
-function write(file: string, content: string): void {
-  if (platform === "win32") truncateSync(file, 0);
-  writeFileSync(file, content, platform === "win32" ? {flag: "r+"} : undefined);
-}
-
-const ansiLen = (str: string): number => stripVTControlCharacters(str).length;
-
-function formatDeps(deps: DepsByMode): string {
-  // Check if there are multiple modes
-  const modes = Object.keys(deps).filter(mode => Object.keys(deps[mode]).length > 0);
-  const hasMultipleModes = modes.length > 1;
-
-  const header = hasMultipleModes ?
-    ["NAME", "MODE", "OLD", "NEW", "AGE", "INFO"] :
-    ["NAME", "OLD", "NEW", "AGE", "INFO"];
-  const arr = [header];
-  const seen = new Set<string>();
-
-  for (const mode of modes) {
-    for (const [key, data] of Object.entries(deps[mode])) {
-      const [_type, name] = key.split(fieldSep);
-      const id = `${mode}|${name}`;
-      if (seen.has(id)) continue;
-      seen.add(id);
-      const row = [];
-      row.push(mode === "go" ? shortenGoModule(name) : name);
-      if (hasMultipleModes) row.push(mode);
-      row.push(highlightDiff(data.old, data.new, red));
-      row.push(highlightDiff(data.new, data.old, green));
-      row.push(data.age || "");
-      row.push(data.info || "");
-      arr.push(row);
-    }
-  }
-
-  return textTable(arr, ansiLen);
-}
-
-function globToRegex(glob: string, insensitive: boolean): RegExp {
-  return new RegExp(`^${esc(glob).replaceAll("\\*", ".*")}$`, insensitive ? "i" : "");
-}
-
-// convert arg from cli or config to regex
-function argToRegex(arg: string | RegExp, cli: boolean, insensitive: boolean): RegExp {
-  if (cli && typeof arg === "string") {
-    return /^\/.+\/$/.test(arg) ? new RegExp(arg.slice(1, -1)) : globToRegex(arg, insensitive);
-  } else {
-    return arg instanceof RegExp ? arg : globToRegex(arg, insensitive);
-  }
-}
-
-// parse cli arg into regex set
-function argSetToRegexes(arg: Set<string> | boolean): Set<RegExp> | boolean {
-  if (arg instanceof Set) {
-    const ret = new Set<RegExp>();
-    for (const entry of arg) {
-      ret.add(argToRegex(entry, true, false));
-    }
-    return ret;
-  }
-  return arg;
-}
-
-// parse include/exclude into a Set of regexes
-function matchersToRegexSet(cliArgs: Array<string>, configArgs: Array<string | RegExp>): Set<RegExp> {
-  const ret = new Set();
-  for (const arg of cliArgs || []) {
-    ret.add(argToRegex(arg, true, true));
-  }
-  for (const arg of configArgs || []) {
-    ret.add(argToRegex(arg, false, true));
-  }
-  return ret as Set<RegExp>;
-}
-
-function parseArgList(arg: Arg): Array<string> {
-  if (Array.isArray(arg)) {
-    return arg.filter(v => typeof v === "string").flatMap(item => commaSeparatedToArray(item));
-  }
-  return [];
-}
-
-function getSemvers(name: string): Set<string> {
-  if (patch === true || matchesAny(name, patch)) {
-    return new Set<string>(["patch"]);
-  } else if (minor === true || matchesAny(name, minor)) {
-    return new Set<string>(["patch", "minor"]);
-  }
-  return new Set<string>(["patch", "minor", "major"]);
-}
-
-function getVersionOpts(name: string) {
-  return {
-    useGreatest: typeof greatest === "boolean" ? greatest : matchesAny(name, greatest),
-    usePre: typeof prerelease === "boolean" ? prerelease : matchesAny(name, prerelease),
-    useRel: typeof release === "boolean" ? release : matchesAny(name, release),
-    semvers: getSemvers(name),
-  };
-}
-
 function toRelPath(absPath: string): string {
   return absPath.replace(`${cwd()}/`, "").replace(`${cwd()}\\`, "");
 }
@@ -435,10 +114,10 @@ function canInclude(name: string, mode: string, include: Set<RegExp>, exclude: S
   return include.size ? false : true;
 }
 
-function resolveFiles(filesArg: Set<string>): Set<string> {
+function resolveFiles(filesArg: Set<string> | false): Set<string> {
   const resolvedFiles = new Set<string>();
 
-  if (filesArg) { // check passed files
+  if (filesArg) {
     for (const file of filesArg) {
       let stat: Stats;
       try {
@@ -453,23 +132,14 @@ function resolveFiles(filesArg: Set<string>): Set<string> {
         for (const filename of Object.keys(modeByFileName)) {
           const f = join(file, filename);
           let stat: Stats | null = null;
-          try {
-            stat = lstatSync(f);
-          } catch {}
-          if (stat?.isFile()) {
-            resolvedFiles.add(resolve(f));
-          }
+          try { stat = lstatSync(f); } catch {}
+          if (stat?.isFile()) resolvedFiles.add(resolve(f));
         }
-        // Scan for Docker files by pattern
         try {
           for (const entry of readdirSync(file)) {
             if (isDockerFileName(entry)) {
               const f = join(file, entry);
-              try {
-                if (lstatSync(f).isFile()) {
-                  resolvedFiles.add(resolve(f));
-                }
-              } catch {}
+              try { if (lstatSync(f).isFile()) resolvedFiles.add(resolve(f)); } catch {}
             }
           }
         } catch {}
@@ -478,147 +148,156 @@ function resolveFiles(filesArg: Set<string>): Set<string> {
         if (normalized.endsWith(".github/workflows")) wfDir = normalized;
         else if (normalized.endsWith(".github")) wfDir = join(normalized, "workflows");
         else wfDir = join(normalized, ".github", "workflows");
-        for (const wf of resolveWorkflowFiles(wfDir)) {
-          resolvedFiles.add(wf);
-        }
+        for (const wf of resolveWorkflowFiles(wfDir)) resolvedFiles.add(wf);
       } else {
         throw new Error(`${file} is neither a file nor directory`);
       }
     }
-  } else { // search for files
+  } else {
     for (const filename of Object.keys(modeByFileName)) {
       const file = findUpSync(filename, cwd());
       if (file) resolvedFiles.add(resolve(file));
     }
-    // Auto-discover Docker files by exact name (findUpSync) and pattern (directory scan)
     for (const filename of dockerExactFileNames) {
       const file = findUpSync(filename, cwd());
       if (file) resolvedFiles.add(resolve(file));
     }
-    // Scan cwd for Docker files matching patterns (Dockerfile.*, docker-*.yml)
     try {
       for (const entry of readdirSync(cwd())) {
         if (isDockerFileName(entry) && !dockerExactFileNames.includes(entry)) {
           const f = join(cwd(), entry);
-          try {
-            if (lstatSync(f).isFile()) resolvedFiles.add(resolve(f));
-          } catch {}
+          try { if (lstatSync(f).isFile()) resolvedFiles.add(resolve(f)); } catch {}
         }
       }
     } catch {}
     const workflowDir = findUpSync(join(".github", "workflows"), cwd());
     if (workflowDir) {
-      for (const wf of resolveWorkflowFiles(workflowDir)) {
-        resolvedFiles.add(wf);
-      }
+      for (const wf of resolveWorkflowFiles(workflowDir)) resolvedFiles.add(wf);
     }
   }
   return resolvedFiles;
 }
 
-async function loadConfig(rootDir: string): Promise<Config> {
-  const filenames: Array<string> = [];
-  for (const ext of ["js", "ts", "mjs", "mts"]) {
-    filenames.push(`updates.config.${ext}`);
-  }
-  let config: Config = {};
+// preserve file metadata on windows
+function write(file: string, content: string): void {
+  if (platform === "win32") truncateSync(file, 0);
+  writeFileSync(file, content, platform === "win32" ? {flag: "r+"} : undefined);
+}
 
-  try {
-    ({default: config} = await Promise.any(filenames.map(async (filename) => {
-      const fullPath = join(rootDir, ...filename.split("/"));
-      const fileUrl = pathToFileURL(fullPath);
-
-      try {
-        accessSync(fullPath);
-      } catch {
-        throw new Error(`File not found: ${filename}`);
+function buildOutput(deps: DepsByMode): Output {
+  for (const mode of Object.keys(deps)) {
+    for (const props of Object.values(deps[mode])) {
+      if (typeof props.oldPrint === "string") props.old = props.oldPrint;
+      if (typeof props.newPrint === "string") props.new = props.newPrint;
+      if (typeof props.oldOrig === "string" && !isJsr(props.oldOrig)) {
+        props.old = mode === "go" ? shortenGoVersion(props.oldOrig) : props.oldOrig;
       }
-
-      try {
-        return await import(fileUrl.href);
-      } catch (err) {
-        throw new Error(`Unable to parse config file ${filename}: ${err.message}`);
+      if (mode === "go") props.new = shortenGoVersion(props.new);
+      if (mode === "actions") {
+        props.old = stripv(props.old);
+        props.new = stripv(props.new);
       }
-    })));
-  } catch (err) {
-    if (err instanceof AggregateError) {
-      const parseErrors = err.errors.filter(e => e.message.startsWith("Unable to parse"));
-      if (parseErrors.length > 0) {
-        throw parseErrors[0];
-      }
+      delete props.oldPrint;
+      delete props.newPrint;
+      delete props.oldOrig;
+      delete props.date;
     }
   }
 
-  return config;
+  const output: Output = {results: {}};
+  for (const mode of Object.keys(deps)) {
+    for (const [key, value] of Object.entries(deps[mode])) {
+      const [type, name] = key.split(fieldSep);
+      if (!output.results[mode]) output.results[mode] = {};
+      if (!output.results[mode][type]) output.results[mode][type] = {};
+      output.results[mode][type][name] = value;
+    }
+  }
+  return output;
 }
 
-async function main(): Promise<void> {
-  // Node.js does not guarantee that stdio streams are flushed when calling process.exit(). Prevent Node
-  // from cutting off long output by setting those streams into blocking mode.
-  // Ref: https://github.com/nodejs/node/issues/6379
-  for (const stream of [stdout, stderr]) {
-    (stream as any)?._handle?.setBlocking?.(true);
+export type UpdatesOptions = Config & {
+  /** Override GitHub/Gitea API URL (for testing) */
+  forgeapi?: string;
+  /** Override PyPI API URL (for testing) */
+  pypiapi?: string;
+  /** Override JSR API URL (for testing) */
+  jsrapi?: string;
+  /** Override Go proxy URL (for testing) */
+  goproxy?: string;
+  /** Override crates.io API URL (for testing) */
+  cargoapi?: string;
+  /** Override Docker Hub API URL (for testing) */
+  dockerapi?: string;
+};
+
+let dnsCacheEnabled = false;
+
+export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
+  if (!dnsCacheEnabled) {
+    enableDnsCache();
+    dnsCacheEnabled = true;
   }
 
-  enableDnsCache();
+  const config: Config = {...opts};
 
   const maxSockets = 25;
-  const concurrency = typeof args.sockets === "string" ? (Number(args.sockets) || maxSockets) : maxSockets;
-  const {help, version, file: filesArg, types, update, indirect, include: includeArg, exclude: excludeArg, pin: pinArg, cooldown: cooldownArg} = args;
+  const concurrency = config.sockets ?? maxSockets;
+  const userTimeout = config.timeout ?? 0;
+  const forgeApiUrl = typeof opts.forgeapi === "string" ? normalizeUrl(opts.forgeapi) : "https://api.github.com";
+  const pypiApiUrl = typeof opts.pypiapi === "string" ? normalizeUrl(opts.pypiapi) : "https://pypi.org";
+  const jsrApiUrl = typeof opts.jsrapi === "string" ? normalizeUrl(opts.jsrapi) : "https://jsr.io";
+  const goProxyUrl = typeof opts.goproxy === "string" ? normalizeUrl(opts.goproxy) : resolveGoProxy();
+  const cratesIoUrl = typeof opts.cargoapi === "string" ? normalizeUrl(opts.cargoapi) : "https://crates.io";
+  const dockerApiUrl = typeof opts.dockerapi === "string" ? normalizeUrl(opts.dockerapi) : "https://hub.docker.com";
+  const goNoProxy = parseGoNoProxy();
 
-  if (help) {
-    stdout.write(`usage: updates [options] [files...]
+  const useVerboseColor = config.color === true || (config.noColor !== true && stderr.isTTY);
+  const colorFn = (color: "magenta" | "green" | "red") => useVerboseColor ? (text: string | number) => styleText(color, String(text)) : String;
+  const magenta = colorFn("magenta");
+  const vGreen = colorFn("green");
+  const vRed = colorFn("red");
 
-  Options:
-    -u, --update                       Update versions and write dependency file
-    -f, --file <path,...>              File or directory to use, defaults to current directory
-    -M, --modes <mode,...>             Which modes to enable. Default: npm,pypi,go,cargo,actions,docker
-    -i, --include <dep,...>            Include only given dependencies
-    -e, --exclude <dep,...>            Exclude given dependencies
-    -l, --pin <dep=range>              Pin dependency to given semver range
-    -C, --cooldown <duration>          Minimum dependency age, e.g. 7 (days), 1w, 2d, 6h
-    -p, --prerelease [<dep,...>]       Consider prerelease versions
-    -R, --release [<dep,...>]          Only use release versions, may downgrade
-    -g, --greatest [<dep,...>]         Prefer greatest over latest version
-    -t, --types <type,...>             Dependency types to update
-    -P, --patch [<dep,...>]            Consider only up to semver-patch
-    -m, --minor [<dep,...>]            Consider only up to semver-minor
-    -d, --allow-downgrade [<dep,...>]  Allow version downgrades when using latest version
-    -S, --sockets <num>                Maximum number of parallel HTTP sockets opened. Default: ${maxSockets}
-    -T, --timeout <ms>                 Network request timeout in ms (go probes use half). Default: ${fetchTimeout}
-    -r, --registry <url>               Override npm registry URL
-    -I, --indirect                     Include indirect Go dependencies
-    -E, --error-on-outdated            Exit with code 2 when updates are available and 0 when not
-    -U, --error-on-unchanged           Exit with code 0 when updates are available and 2 when not
-    -j, --json                         Output a JSON object
-    -x, --no-cache                     Disable HTTP cache
-    -c, --color                        Force color output
-    -n, --no-color                     Disable color output
-    -v, --version                      Print the version
-    -V, --verbose                      Print verbose output to stderr
-    -h, --help                         Print this help
+  const ctx: ModeContext = {
+    fetchTimeout: userTimeout || fetchTimeout,
+    goProbeTimeout: userTimeout ? userTimeout / 2 : goProbeTimeout,
+    forgeApiUrl,
+    pypiApiUrl,
+    jsrApiUrl,
+    goProxyUrl,
+    cratesIoUrl,
+    dockerApiUrl,
+    doFetch: (url: string, fetchOpts?: RequestInit) => doFetch(url, fetchOpts, Boolean(config.verbose), logVerbose, magenta, vGreen, vRed),
+    verbose: Boolean(config.verbose),
+    noCache: Boolean(config.noCache),
+  };
 
-  Examples:
-    $ updates
-    $ updates -u
-    $ updates -C 7
-    $ updates -M npm
-    $ updates -e react,react-dom
-    $ updates -f package.json
-    $ updates -f pyproject.toml
-    $ updates -f go.mod
-    $ updates -f Cargo.toml
-    $ updates -f .github
-    $ updates -f Dockerfile
-    $ updates -f docker-compose.yml
-`);
-    await end();
+  const greatest = configMixedToRegexes(config.greatest);
+  const prerelease = configMixedToRegexes(config.prerelease);
+  const release = configMixedToRegexes(config.release);
+  const patch = configMixedToRegexes(config.patch);
+  const minor = configMixedToRegexes(config.minor);
+  const allowDowngrade = configMixedToRegexes(config.allowDowngrade);
+  const enabledModes = config.modes?.length ? new Set(config.modes) : defaultModes;
+
+  function getSemvers(name: string): Set<string> {
+    if (patch === true || matchesAny(name, patch)) return new Set<string>(["patch"]);
+    if (minor === true || matchesAny(name, minor)) return new Set<string>(["patch", "minor"]);
+    return new Set<string>(["patch", "minor", "major"]);
   }
 
-  if (version) {
-    console.info(packageVersion);
-    await end();
+  function getVersionOpts(name: string) {
+    return {
+      useGreatest: typeof greatest === "boolean" ? greatest : matchesAny(name, greatest),
+      usePre: typeof prerelease === "boolean" ? prerelease : matchesAny(name, prerelease),
+      useRel: typeof release === "boolean" ? release : matchesAny(name, release),
+      semvers: getSemvers(name),
+    };
   }
+
+  const include = patternsToRegexSet(config.include ?? []);
+  const exclude = patternsToRegexSet(config.exclude ?? []);
+  const configPin: Record<string, string> = config.pin ?? {};
 
   const deps: DepsByMode = {};
   const maybeUrlDeps: Deps = {};
@@ -627,31 +306,23 @@ async function main(): Promise<void> {
   const now = Date.now();
   let numDependencies = 0;
 
-  const fileSet = parseMixedArg(filesArg);
-  const mergedFiles = fileSet instanceof Set ? fileSet : (positionals.length ? new Set<string>() : false);
-  if (mergedFiles instanceof Set) for (const p of positionals) mergedFiles.add(p);
-  const files = resolveFiles(mergedFiles as Set<string>);
+  const files = resolveFiles(config.files?.length ? new Set(config.files) : false);
 
   const wfData: Record<string, {absPath: string, content: string}> = {};
   const dockerFileData: Record<string, {absPath: string, content: string, fileType: string}> = {};
-  const cliInclude = parseArgList(includeArg);
-  const cliExclude = parseArgList(excludeArg);
-  const cliPin = parsePinArg(pinArg);
-  const cliOnlyInclude = matchersToRegexSet(cliInclude, []);
-  const cliOnlyExclude = matchersToRegexSet(cliExclude, []);
 
   type ActionDepInfo = ActionRef & {key: string, apiUrl: string};
   const actionDepInfos: Array<ActionDepInfo> = [];
   type DockerDepInfo = {key: string, fullImage: string, ref: DockerImageRef};
   const dockerDepInfos: Array<DockerDepInfo> = [];
-  type ModeCtx = {config: Config, projectDir: string, pin: Record<string, string>};
+  type ModeCtx = {modeConfig: Config, projectDir: string, pin: Record<string, string>};
   const modeConfigs: Record<string, ModeCtx> = {};
 
   function collectDockerRefs(content: string, relPath: string, regexes: Array<RegExp>): void {
     if (!deps.docker) deps.docker = {};
     for (const regex of regexes) {
       for (const {ref} of extractDockerRefs(content, regex)) {
-        if (!canInclude(ref.fullImage, "docker", cliOnlyInclude, cliOnlyExclude, "docker")) continue;
+        if (!canInclude(ref.fullImage, "docker", include, exclude, "docker")) continue;
         const key = `${relPath}${fieldSep}${ref.fullImage}`;
         if (deps.docker[key]) continue;
         const parsed = parseDockerTag(ref.tag);
@@ -676,7 +347,7 @@ async function main(): Promise<void> {
         if (!deps.actions) deps.actions = {};
         const actions = Array.from(content.matchAll(actionsUsesRe), m => parseActionRef(m[1])).filter(a => a !== null);
         for (const action of actions) {
-          if (!canInclude(action.name, "actions", cliOnlyInclude, cliOnlyExclude, "actions")) continue;
+          if (!canInclude(action.name, "actions", include, exclude, "actions")) continue;
           const key = `${relPath}${fieldSep}${action.name}`;
           if (deps.actions[key]) continue;
           deps.actions[key] = {old: action.ref} as Dep;
@@ -709,24 +380,24 @@ async function main(): Promise<void> {
     if (!deps[mode]) deps[mode] = {};
 
     const projectDir = dirname(resolve(file));
-    const config = await loadConfig(projectDir);
+    const modeConfig = projectDir === cwd() ? config : await loadConfig(projectDir);
 
-    const include = matchersToRegexSet(cliInclude, config?.include ?? []);
-    const exclude = matchersToRegexSet(cliExclude, config?.exclude ?? []);
-    const pin: Record<string, string> = {...config?.pin, ...cliPin};
+    const modeInclude = modeConfig !== config && modeConfig?.include ? patternsToRegexSet([...(config.include ?? []), ...modeConfig.include]) : include;
+    const modeExclude = modeConfig !== config && modeConfig?.exclude ? patternsToRegexSet([...(config.exclude ?? []), ...modeConfig.exclude]) : exclude;
+    const pin: Record<string, string> = {...modeConfig?.pin, ...configPin};
 
     let dependencyTypes: Array<string> = [];
-    if (Array.isArray(types)) {
-      dependencyTypes = types.filter(v => typeof v === "string");
-    } else if ("types" in config && Array.isArray(config.types)) {
+    if (config.types?.length) {
       dependencyTypes = config.types;
+    } else if (modeConfig?.types?.length) {
+      dependencyTypes = modeConfig.types;
     } else {
       if (mode === "npm") {
         dependencyTypes = npmTypes;
       } else if (mode === "pypi") {
         dependencyTypes = Array.from(uvTypes);
       } else if (mode === "go") {
-        dependencyTypes = indirect ? Array.from(goTypes) : goTypes.filter(t => t !== "indirect");
+        dependencyTypes = config.indirect ? Array.from(goTypes) : goTypes.filter(t => t !== "indirect");
       } else if (mode === "cargo") {
         dependencyTypes = Array.from(cargoTypes);
       }
@@ -759,60 +430,36 @@ async function main(): Promise<void> {
         obj = getProperty(pkg, depType) || {};
       }
 
-      if (Array.isArray(obj) && mode === "pypi") { // array for uv
+      if (Array.isArray(obj) && mode === "pypi") {
         for (const {name, version} of parseUvDependencies(obj)) {
-          if (canInclude(name, mode, include, exclude, depType)) {
-            deps[mode][`${depType}${fieldSep}${name}`] = {
-              old: normalizeRange(version),
-              oldOrig: version,
-            } as Dep;
+          if (canInclude(name, mode, modeInclude, modeExclude, depType)) {
+            deps[mode][`${depType}${fieldSep}${name}`] = {old: normalizeRange(version), oldOrig: version} as Dep;
           }
         }
       } else {
-        if (typeof obj === "string") { // string (packageManager)
+        if (typeof obj === "string") {
           const [name, value] = obj.split("@");
-          if (canInclude(name, mode, include, exclude, depType)) {
-            deps[mode][`${depType}${fieldSep}${name}`] = {
-              old: normalizeRange(value),
-              oldOrig: value,
-            } as Dep;
+          if (canInclude(name, mode, modeInclude, modeExclude, depType)) {
+            deps[mode][`${depType}${fieldSep}${name}`] = {old: normalizeRange(value), oldOrig: value} as Dep;
           }
-        } else { // object
+        } else {
           for (const [name, value] of Object.entries(obj)) {
-            if (mode === "cargo" && typeof value === "object" && value !== null && "version" in value && !("git" in value) && !("path" in value) && canInclude(name, mode, include, exclude, depType)) {
+            if (mode === "cargo" && typeof value === "object" && value !== null && "version" in value && !("git" in value) && !("path" in value) && canInclude(name, mode, modeInclude, modeExclude, depType)) {
               const versionStr = String((value as Record<string, string>).version);
               if (validRange(versionStr)) {
-                deps[mode][`${depType}${fieldSep}${name}`] = {
-                  old: normalizeRange(versionStr),
-                  oldOrig: versionStr,
-                } as Dep;
+                deps[mode][`${depType}${fieldSep}${name}`] = {old: normalizeRange(versionStr), oldOrig: versionStr} as Dep;
               }
-            } else if (mode === "npm" && isJsr(value) && canInclude(name, mode, include, exclude, depType)) {
-              // Handle JSR dependencies
+            } else if (mode === "npm" && isJsr(value) && canInclude(name, mode, modeInclude, modeExclude, depType)) {
               const parsed = parseJsrDependency(value, name);
-              deps[mode][`${depType}${fieldSep}${name}`] = {
-                old: parsed.version,
-                oldOrig: value,
-              } as Dep;
-            } else if (mode !== "go" && validRange(value) && canInclude(name, mode, include, exclude, depType)) {
-              deps[mode][`${depType}${fieldSep}${name}`] = {
-                old: normalizeRange(value),
-                oldOrig: value,
-              } as Dep;
-            } else if (mode === "npm" && isLocalDep(value) && canInclude(name, mode, include, exclude, depType)) {
-              deps[mode][`${depType}${fieldSep}${name}`] = {
-                old: "0.0.0",
-                oldOrig: value,
-              } as Dep;
-            } else if (mode === "npm" && !isJsr(value) && canInclude(name, mode, include, exclude, depType)) {
-              maybeUrlDeps[`${depType}${fieldSep}${name}`] = {
-                old: value,
-              } as Dep;
-            } else if (mode === "go" && canInclude(name, mode, include, exclude, depType)) {
-              deps[mode][`${depType}${fieldSep}${name}`] = {
-                old: shortenGoVersion(value),
-                oldOrig: stripv(value),
-              } as Dep;
+              deps[mode][`${depType}${fieldSep}${name}`] = {old: parsed.version, oldOrig: value} as Dep;
+            } else if (mode !== "go" && validRange(value) && canInclude(name, mode, modeInclude, modeExclude, depType)) {
+              deps[mode][`${depType}${fieldSep}${name}`] = {old: normalizeRange(value), oldOrig: value} as Dep;
+            } else if (mode === "npm" && isLocalDep(value) && canInclude(name, mode, modeInclude, modeExclude, depType)) {
+              deps[mode][`${depType}${fieldSep}${name}`] = {old: "0.0.0", oldOrig: value} as Dep;
+            } else if (mode === "npm" && !isJsr(value) && canInclude(name, mode, modeInclude, modeExclude, depType)) {
+              maybeUrlDeps[`${depType}${fieldSep}${name}`] = {old: value} as Dep;
+            } else if (mode === "go" && canInclude(name, mode, modeInclude, modeExclude, depType)) {
+              deps[mode][`${depType}${fieldSep}${name}`] = {old: shortenGoVersion(value), oldOrig: stripv(value)} as Dep;
             }
           }
         }
@@ -820,26 +467,24 @@ async function main(): Promise<void> {
     }
 
     numDependencies += Object.keys(deps[mode]).length + Object.keys(maybeUrlDeps).length;
-    modeConfigs[mode] = {config, projectDir, pin};
+    modeConfigs[mode] = {modeConfig, projectDir, pin};
   }
 
   if (deps.actions) numDependencies += Object.keys(deps.actions).length;
   if (deps.docker) numDependencies += Object.keys(deps.docker).length;
 
   if (numDependencies === 0) {
-    return finishWithMessage("No dependencies found, nothing to do.");
+    return {results: {}, message: "No dependencies found, nothing to do."};
   }
 
   // Fetch and process all modes in parallel
   const fetchTasks: Array<Promise<void>> = [];
+  const argsForNpm = {registry: config.registry};
 
-  // npm/go/pypi fetch tasks
   for (const mode of Object.keys(modeConfigs)) {
     if (!deps[mode] || !Object.keys(deps[mode]).length && !Object.keys(maybeUrlDeps).length) continue;
-    const {config, projectDir, pin} = modeConfigs[mode];
+    const {modeConfig, projectDir, pin} = modeConfigs[mode];
     fetchTasks.push((async () => {
-      // Abbreviated npm metadata lacks repository/homepage/time, so follow-up
-      // fetches are fired eagerly (not awaited) to avoid blocking pMap slots.
       const npmFollowUps = new Map<string, {name: string, promise: Promise<{repository?: PackageRepository, homepage?: string, date?: string}>}>();
 
       await pMap(Object.keys(deps[mode]), async (key) => {
@@ -851,13 +496,13 @@ async function main(): Promise<void> {
             info = await fetchJsrInfo(name, type, ctx);
           } else if (oldOrig && isLocalDep(oldOrig)) {
             try {
-              info = await fetchNpmInfo(name, type, config, args, ctx);
+              info = await fetchNpmInfo(name, type, modeConfig, argsForNpm, ctx);
             } catch {
               delete deps[mode][key];
               return;
             }
           } else {
-            info = await fetchNpmInfo(name, type, config, args, ctx);
+            info = await fetchNpmInfo(name, type, modeConfig, argsForNpm, ctx);
           }
         } else if (mode === "go") {
           info = await fetchGoProxyInfo(name, type, deps[mode][key].oldOrig || deps[mode][key].old, projectDir, ctx, goNoProxy);
@@ -888,14 +533,10 @@ async function main(): Promise<void> {
           } else if (oldOrig && isJsr(oldOrig)) {
             if (oldOrig.startsWith("npm:@jsr/")) {
               const match = /^(npm:@jsr\/[^@]+@)(.+)$/.exec(oldOrig);
-              if (match) {
-                newRange = `${match[1]}${newVersion}`;
-              }
+              if (match) newRange = `${match[1]}${newVersion}`;
             } else if (oldOrig.startsWith("jsr:@")) {
               const match = /^(jsr:@[^@]+@)(.+)$/.exec(oldOrig);
-              if (match) {
-                newRange = `${match[1]}${newVersion}`;
-              }
+              if (match) newRange = `${match[1]}${newVersion}`;
             } else if (oldOrig.startsWith("jsr:")) {
               newRange = `jsr:${newVersion}`;
             }
@@ -919,18 +560,14 @@ async function main(): Promise<void> {
         }
 
         deps[mode][key].new = newRange;
-
-        if (oldOrig && isJsr(oldOrig)) {
-          deps[mode][key].newPrint = newVersion;
-        }
+        if (oldOrig && isJsr(oldOrig)) deps[mode][key].newPrint = newVersion;
 
         if (mode === "npm") {
-          npmFollowUps.set(key, {name, promise: fetchNpmVersionInfo(data.name, newVersion, config, args, ctx)});
+          npmFollowUps.set(key, {name, promise: fetchNpmVersionInfo(data.name, newVersion, modeConfig, argsForNpm, ctx)});
         } else if (mode === "pypi") {
           deps[mode][key].info = getInfoUrl(data as {repository: PackageRepository, homepage: string, info: Record<string, any>}, registry, data.info.name);
         } else if (mode === "go") {
-          const infoName = data.newPath || name;
-          deps[mode][key].info = getGoInfoUrl(infoName);
+          deps[mode][key].info = getGoInfoUrl(data.newPath || name);
         } else if (mode === "cargo") {
           deps[mode][key].info = `https://crates.io/crates/${name}`;
         }
@@ -954,7 +591,6 @@ async function main(): Promise<void> {
 
         for (const res of results) {
           const {key, newRange, user, repo, oldRef, newRef, newDate} = res;
-
           deps[mode][key] = {
             old: maybeUrlDeps[key].old,
             new: newRange,
@@ -966,7 +602,7 @@ async function main(): Promise<void> {
         }
       }
 
-      const cooldown = cooldownArg ?? config.cooldown;
+      const cooldown = config.cooldown ?? modeConfig.cooldown;
       if (cooldown) applyCooldown(deps[mode], String(cooldown), now);
     })());
   }
@@ -1011,7 +647,7 @@ async function main(): Promise<void> {
             const {usePre, useRel} = getVersionOpts(info.name);
             const newVersion = findVersion({}, versions, {
               range: "0.0.0", semvers: new Set(["patch", "minor", "major"]), usePre, useRel,
-              useGreatest: true, pinnedRange: cliPin[info.name],
+              useGreatest: true, pinnedRange: configPin[info.name],
             });
             if (!newVersion) { delete deps.actions[info.key]; continue; }
 
@@ -1039,7 +675,7 @@ async function main(): Promise<void> {
             const {useGreatest, usePre, useRel, semvers} = getVersionOpts(info.name);
             const newVersion = findVersion({}, versions, {
               range: coerced, semvers, usePre, useRel,
-              useGreatest: useGreatest || true, pinnedRange: cliPin[info.name],
+              useGreatest: useGreatest || true, pinnedRange: configPin[info.name],
             });
             if (!newVersion || newVersion === coerced) { delete deps.actions[info.key]; continue; }
 
@@ -1066,7 +702,7 @@ async function main(): Promise<void> {
         }
       }, {concurrency});
 
-      if (cooldownArg) applyCooldown(deps.actions, String(cooldownArg), now);
+      if (config.cooldown) applyCooldown(deps.actions, String(config.cooldown), now);
       if (!Object.keys(deps.actions).length) delete deps.actions;
     })());
   }
@@ -1076,9 +712,7 @@ async function main(): Promise<void> {
     fetchTasks.push((async () => {
       const depsByImage = new Map<string, Array<DockerDepInfo>>();
       for (const info of dockerDepInfos) {
-        if (!depsByImage.has(info.fullImage)) {
-          depsByImage.set(info.fullImage, []);
-        }
+        if (!depsByImage.has(info.fullImage)) depsByImage.set(info.fullImage, []);
         depsByImage.get(info.fullImage)!.push(info);
       }
 
@@ -1105,7 +739,7 @@ async function main(): Promise<void> {
         }
       }, {concurrency});
 
-      if (cooldownArg) applyCooldown(deps.docker, String(cooldownArg), now);
+      if (config.cooldown) applyCooldown(deps.docker, String(config.cooldown), now);
       if (!Object.keys(deps.docker).length) delete deps.docker;
     })());
   }
@@ -1113,32 +747,32 @@ async function main(): Promise<void> {
   await Promise.all(fetchTasks);
 
   if (!countDeps(deps)) {
-    return finishWithMessage("All dependencies are up to date.");
+    return {results: {}, message: "All dependencies are up to date."};
   }
 
-  // Pre-build actions update data before outputDeps modifies dep values
-  const actionsUpdatesByRelPath = new Map<string, Array<{name: string, oldRef: string, newRef: string}>>();
-  if (deps.actions) {
-    for (const [key, dep] of Object.entries(deps.actions)) {
-      const [relPath, name] = key.split(fieldSep);
-      if (!actionsUpdatesByRelPath.has(relPath)) actionsUpdatesByRelPath.set(relPath, []);
-      actionsUpdatesByRelPath.get(relPath)!.push({name, oldRef: dep.old, newRef: dep.new});
+  // Handle --update: write files
+  if (config.update) {
+    // Pre-build update data before buildOutput modifies dep values
+    const actionsUpdatesByRelPath = new Map<string, Array<{name: string, oldRef: string, newRef: string}>>();
+    if (deps.actions) {
+      for (const [key, dep] of Object.entries(deps.actions)) {
+        const [relPath, name] = key.split(fieldSep);
+        if (!actionsUpdatesByRelPath.has(relPath)) actionsUpdatesByRelPath.set(relPath, []);
+        actionsUpdatesByRelPath.get(relPath)!.push({name, oldRef: dep.old, newRef: dep.new});
+      }
     }
-  }
 
-  // Pre-build docker update data before outputDeps modifies dep values
-  const dockerUpdatesByRelPath = new Map<string, Deps>();
-  if (deps.docker) {
-    for (const [key, dep] of Object.entries(deps.docker)) {
-      const [relPath] = key.split(fieldSep);
-      if (!dockerUpdatesByRelPath.has(relPath)) dockerUpdatesByRelPath.set(relPath, {});
-      dockerUpdatesByRelPath.get(relPath)![key] = dep;
+    const dockerUpdatesByRelPath = new Map<string, Deps>();
+    if (deps.docker) {
+      for (const [key, dep] of Object.entries(deps.docker)) {
+        const [relPath] = key.split(fieldSep);
+        if (!dockerUpdatesByRelPath.has(relPath)) dockerUpdatesByRelPath.set(relPath, {});
+        dockerUpdatesByRelPath.get(relPath)![key] = dep;
+      }
     }
-  }
 
-  const exitCode = outputDeps(deps);
+    const output = buildOutput(deps);
 
-  if (update) {
     for (const mode of Object.keys(deps)) {
       if (!Object.keys(deps[mode]).length) continue;
 
@@ -1146,12 +780,7 @@ async function main(): Promise<void> {
         for (const [relPath, actionDeps] of actionsUpdatesByRelPath) {
           const {absPath, content} = wfData[relPath] || {};
           if (!absPath) continue;
-          try {
-            write(absPath, updateWorkflowFile(content, actionDeps));
-          } catch (err) {
-            throw new Error(`Error writing ${basename(absPath)}: ${(err as Error).message}`);
-          }
-          console.info(green(`✨ ${relPath} updated`));
+          write(absPath, updateWorkflowFile(content, actionDeps));
         }
         continue;
       }
@@ -1161,48 +790,30 @@ async function main(): Promise<void> {
           const fileInfo = dockerFileData[relPath];
           if (!fileInfo) continue;
           const {absPath, fileType} = fileInfo;
-          // Read latest content (may have been updated by actions mode for workflow files)
           let content: string;
           try { content = readFileSync(absPath, "utf8"); } catch { continue; }
-          try {
-            const updateFn = fileType === "dockerfile" ? updateDockerfile :
-              fileType === "compose" ? updateComposeFile :
-                updateWorkflowDockerImages;
-            write(absPath, updateFn(content, dockerDeps));
-          } catch (err) {
-            throw new Error(`Error writing ${basename(absPath)}: ${(err as Error).message}`);
-          }
-          console.info(green(`✨ ${relPath} updated`));
+          const updateFn = fileType === "dockerfile" ? updateDockerfile :
+            fileType === "compose" ? updateComposeFile : updateWorkflowDockerImages;
+          write(absPath, updateFn(content, dockerDeps));
         }
         continue;
       }
 
-      try {
-        const fileContent = pkgStrs[mode];
-        if (mode === "go") {
-          const [updatedContent, majorVersionRewrites] = updateGoMod(fileContent, deps[mode]);
-          write(filePerMode[mode], updatedContent);
-          rewriteGoImports(dirname(resolve(filePerMode[mode])), majorVersionRewrites, write);
-        } else if (mode === "cargo") {
-          write(filePerMode[mode], updateCargoToml(fileContent, deps[mode]));
-        } else {
-          const fn = (mode === "npm") ? updatePackageJson : updatePyprojectToml;
-          write(filePerMode[mode], fn(fileContent, deps[mode]));
-        }
-      } catch (err) {
-        throw new Error(`Error writing ${basename(filePerMode[mode])}: ${(err as Error).message}`);
+      const fileContent = pkgStrs[mode];
+      if (mode === "go") {
+        const [updatedContent, majorVersionRewrites] = updateGoMod(fileContent, deps[mode]);
+        write(filePerMode[mode], updatedContent);
+        rewriteGoImports(dirname(resolve(filePerMode[mode])), majorVersionRewrites, write);
+      } else if (mode === "cargo") {
+        write(filePerMode[mode], updateCargoToml(fileContent, deps[mode]));
+      } else {
+        const fn = (mode === "npm") ? updatePackageJson : updatePyprojectToml;
+        write(filePerMode[mode], fn(fileContent, deps[mode]));
       }
-
-      // TODO: json
-      console.info(green(`✨ ${basename(filePerMode[mode])} updated`));
     }
+
+    return output;
   }
 
-  await end(undefined, exitCode);
-}
-
-try {
-  await main();
-} catch (err) {
-  await end(err);
+  return buildOutput(deps);
 }

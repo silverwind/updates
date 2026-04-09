@@ -3,7 +3,8 @@ import {join, dirname} from "node:path";
 import {readFileSync, globSync} from "node:fs";
 import {execFile as execFileCb} from "node:child_process";
 import {promisify} from "node:util";
-import {type Deps, type ModeContext, type PackageInfo, esc, fieldSep, stripv, getSubDir} from "./shared.ts";
+import {type Deps, type ModeContext, type PackageInfo, fieldSep, stripv, getSubDir} from "./shared.ts";
+import {esc} from "../utils/utils.ts";
 
 const execFile = promisify(execFileCb);
 

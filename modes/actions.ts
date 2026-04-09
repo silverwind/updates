@@ -1,7 +1,8 @@
 import {resolve, join} from "node:path";
 import {readdirSync} from "node:fs";
 import {parse} from "../utils/semver.ts";
-import {type CheckResult, type ModeContext, type TagEntry, esc, stripv, hashRe, fetchForge, fetchActionTags, formatVersionPrecision} from "./shared.ts";
+import {type CheckResult, type ModeContext, type TagEntry, stripv, hashRe, fetchForge, fetchActionTags, formatVersionPrecision} from "./shared.ts";
+import {esc} from "../utils/utils.ts";
 
 export {hashRe, type CheckResult, type TagEntry, fetchActionTags};
 export const actionsUsesRe = /^\s*(?:-\s*)?uses:\s*['"]?([^'"#\s]+)['"]?/gm;

@@ -1,5 +1,5 @@
-import {type Deps, type ModeContext, type PackageInfo, esc, fieldSep, getFetchOpts, normalizeUrl, throwFetchError} from "./shared.ts";
-import {cargoTypes} from "../utils/utils.ts";
+import {type Deps, type ModeContext, type PackageInfo, fieldSep, getFetchOpts, normalizeUrl, throwFetchError} from "./shared.ts";
+import {cargoTypes, esc} from "../utils/utils.ts";
 
 type CratesIoVersion = {num: string; created_at: string; yanked: boolean};
 type CratesIoVersionsResponse = {versions: Array<CratesIoVersion>};
