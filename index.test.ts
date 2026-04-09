@@ -11,6 +11,8 @@ import {promisify} from "node:util";
 import type {Server} from "node:http";
 import {satisfies} from "./utils/semver.ts";
 import {npmTypes} from "./utils/utils.ts";
+import {updates} from "./index.ts";
+import type {UpdatesOptions} from "./index.ts";
 
 const execFileAsync = promisify(execFile);
 
@@ -1893,4 +1895,132 @@ test("config cli overrides config", async ({expect = globalExpect}: any = {}) =>
 test("config cooldown", async ({expect = globalExpect}: any = {}) => {
   const {stdout} = await configTest(`{ cooldown: 999999 }`, "-j -M npm -i updates");
   expect(JSON.parse(stdout).message).toBe("All dependencies are up to date.");
+});
+
+test("config cooldown string duration", async ({expect = globalExpect}: any = {}) => {
+  const {stdout} = await configTest(`{ cooldown: "999999d" }`, "-j -M npm -i updates");
+  expect(JSON.parse(stdout).message).toBe("All dependencies are up to date.");
+});
+
+test("config include with RegExp", async ({expect = globalExpect}: any = {}) => {
+  const {stdout} = await configTest(`{ include: [/^noty$/] }`, "-j");
+  const {results} = JSON.parse(stdout);
+  expect(results.npm.dependencies.noty).toBeDefined();
+  expect(Object.keys(results.npm.dependencies)).toHaveLength(1);
+});
+
+test("config exclude with RegExp", async ({expect = globalExpect}: any = {}) => {
+  const {stdout} = await configTest(`{ exclude: [/sourcemaps/] }`, "-j -i gulp-sourcemaps,noty");
+  const {results} = JSON.parse(stdout);
+  expect(results.npm.dependencies.noty).toBeDefined();
+  expect(results.npm.dependencies["gulp-sourcemaps"]).toBeUndefined();
+});
+
+test("cli greatest with regex", async ({expect = globalExpect}: any = {}) => {
+  const {stdout} = await configTest(`{}`, "-j -i gulp-sourcemaps,noty -g /^gulp/");
+  const {results} = JSON.parse(stdout);
+  expect(results.npm.dependencies["gulp-sourcemaps"].new).toBe("2.6.5");
+  expect(results.npm.dependencies.noty.new).toBe("3.1.4");
+});
+
+test("cli prerelease with regex", async ({expect = globalExpect}: any = {}) => {
+  const {stdout} = await configTest(`{}`, "-j -i prismjs -p /^prism/");
+  const {results} = JSON.parse(stdout);
+  expect(results.npm.dependencies.prismjs).toBeDefined();
+});
+
+// Direct API tests
+function apiOpts(overrides: UpdatesOptions = {}): UpdatesOptions {
+  return {
+    files: [testFile],
+    modes: ["npm"],
+    registry: npmUrl,
+    forgeapi: githubUrl,
+    pypiapi: pypiUrl,
+    jsrapi: jsrUrl,
+    goproxy: goProxyUrl,
+    cargoapi: cargoUrl,
+    dockerapi: dockerUrl,
+    ...overrides,
+  };
+}
+
+test("api basic", async ({expect = globalExpect}: any = {}) => {
+  const output = await updates(apiOpts({include: ["noty"]}));
+  expect(output.results.npm.dependencies.noty).toBeDefined();
+  expect(output.results.npm.dependencies.noty.old).toBe("3.1.0");
+  expect(output.results.npm.dependencies.noty.new).toBe("3.1.4");
+  expect(output.results.npm.dependencies.noty.info).toBeTruthy();
+});
+
+test("api no deps", async ({expect = globalExpect}: any = {}) => {
+  const output = await updates(apiOpts({files: [emptyFile]}));
+  expect(output.message).toBe("No dependencies found, nothing to do.");
+  expect(Object.keys(output.results)).toHaveLength(0);
+});
+
+test("api all up to date", async ({expect = globalExpect}: any = {}) => {
+  const output = await updates(apiOpts({include: ["updates"], cooldown: "999999d"}));
+  expect(output.message).toBe("All dependencies are up to date.");
+});
+
+test("api include regex", async ({expect = globalExpect}: any = {}) => {
+  const output = await updates(apiOpts({include: [/^noty$/]}));
+  expect(output.results.npm.dependencies.noty).toBeDefined();
+  const depNames = Object.keys(output.results.npm.dependencies);
+  expect(depNames).toEqual(["noty"]);
+});
+
+test("api exclude regex", async ({expect = globalExpect}: any = {}) => {
+  const output = await updates(apiOpts({include: ["noty", "gulp-sourcemaps"], exclude: [/sourcemaps/]}));
+  expect(output.results.npm.dependencies.noty).toBeDefined();
+  expect(output.results.npm.dependencies["gulp-sourcemaps"]).toBeUndefined();
+});
+
+test("api greatest", async ({expect = globalExpect}: any = {}) => {
+  const output = await updates(apiOpts({include: ["gulp-sourcemaps"], greatest: true}));
+  expect(output.results.npm.dependencies["gulp-sourcemaps"].new).toBe("2.6.5");
+});
+
+test("api greatest array", async ({expect = globalExpect}: any = {}) => {
+  const output = await updates(apiOpts({include: ["gulp-sourcemaps", "noty"], greatest: ["gulp-sourcemaps"]}));
+  expect(output.results.npm.dependencies["gulp-sourcemaps"].new).toBe("2.6.5");
+  expect(output.results.npm.dependencies.noty.new).toBe("3.1.4");
+});
+
+test("api greatest regex", async ({expect = globalExpect}: any = {}) => {
+  const output = await updates(apiOpts({include: ["gulp-sourcemaps", "noty"], greatest: [/^gulp/]}));
+  expect(output.results.npm.dependencies["gulp-sourcemaps"].new).toBe("2.6.5");
+  expect(output.results.npm.dependencies.noty.new).toBe("3.1.4");
+});
+
+test("api patch", async ({expect = globalExpect}: any = {}) => {
+  const output = await updates(apiOpts({include: ["gulp-sourcemaps"], patch: true}));
+  expect(output.results.npm.dependencies["gulp-sourcemaps"].new).toBe("2.0.1");
+});
+
+test("api minor", async ({expect = globalExpect}: any = {}) => {
+  const output = await updates(apiOpts({include: ["gulp-sourcemaps"], minor: true}));
+  expect(output.results.npm.dependencies["gulp-sourcemaps"].new).toBe("2.6.5");
+});
+
+test("api cooldown string", async ({expect = globalExpect}: any = {}) => {
+  const output = await updates(apiOpts({include: ["updates"], cooldown: "999999d"}));
+  expect(output.message).toBe("All dependencies are up to date.");
+});
+
+test("api modes filter", async ({expect = globalExpect}: any = {}) => {
+  const output = await updates(apiOpts({include: ["noty"], modes: ["pypi"]}));
+  expect(output.message).toBe("No dependencies found, nothing to do.");
+});
+
+test("api output structure", async ({expect = globalExpect}: any = {}) => {
+  const output = await updates(apiOpts({include: ["noty"]}));
+  expect(output).toHaveProperty("results");
+  expect(output.results).toHaveProperty("npm");
+  expect(output.results.npm).toHaveProperty("dependencies");
+  const dep = output.results.npm.dependencies.noty;
+  expect(dep).toHaveProperty("old");
+  expect(dep).toHaveProperty("new");
+  expect(dep).toHaveProperty("info");
 });

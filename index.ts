@@ -43,7 +43,6 @@ import {
 import {fetchCratesIoInfo, updateCargoToml} from "./modes/cargo.ts";
 
 export type {Config, Dep, Deps, DepsByMode, Output};
-export {loadConfig} from "./config.ts";
 
 const modeByFileName: Record<string, string> = {
   "package.json": "npm",

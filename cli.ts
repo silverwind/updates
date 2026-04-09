@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 import {cwd, stdout, stderr, exit, platform, versions} from "node:process";
 import {stripVTControlCharacters, styleText, parseArgs} from "node:util";
-import {updates, loadConfig} from "./index.ts";
-import {options, parseMixedArg, getOptionKey, parseArgList, parsePinArg} from "./config.ts";
+import {updates} from "./index.ts";
+import {options, parseMixedArg, getOptionKey, parseArgList, parsePinArg, loadConfig} from "./config.ts";
 import {packageVersion, fetchTimeout} from "./modes/shared.ts";
 import {highlightDiff, textTable} from "./utils/utils.ts";
 import {shortenGoModule} from "./modes/go.ts";
