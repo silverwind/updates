@@ -92,7 +92,7 @@ export function getFetchOpts(authType?: string, authToken?: string): RequestInit
 }
 
 export async function doFetch(url: string, opts?: RequestInit, verbose?: boolean, logVerbose?: (msg: string) => void, magenta?: (s: string | number) => string, green?: (s: string | number) => string, red?: (s: string | number) => string): Promise<Response> {
-  if (verbose && logVerbose && magenta) logVerbose(`${magenta("fetch")} ${url}`);
+  if (verbose && logVerbose && magenta) logVerbose(`${magenta(opts?.method || "GET")} ${url}`);
   try {
     const res = await fetch(url, opts);
     if (verbose && logVerbose && green && red) logVerbose(`${res.ok ? green(res.status) : red(res.status)} ${url}`);
