@@ -128,7 +128,7 @@ async function main(): Promise<void> {
   }
 
   const fileConfig = await loadConfig(cwd());
-  const useColor = args.color === true || fileConfig.color === true || (args["no-color"] !== true && fileConfig.noColor !== true && stdout.isTTY);
+  const useColor = args["no-color"] === true ? false : args.color === true ? true : fileConfig.noColor === true ? false : fileConfig.color === true ? true : stdout.isTTY;
   const [, redFn, greenFn] = (["magenta", "red", "green"] as const).map(color => {
     if (!useColor) return String;
     return (text: string | number) => styleText(color, String(text));
@@ -186,15 +186,15 @@ async function main(): Promise<void> {
   const hasResults = Object.keys(output.results).length > 0;
 
   if (output.message) {
-    console.info(args.json ? JSON.stringify({message: output.message}) : output.message);
+    console.info(config.json ? JSON.stringify({message: output.message}) : output.message);
   } else if (hasResults) {
-    if (args.json) {
+    if (config.json) {
       console.info(JSON.stringify({results: output.results}));
     } else {
       console.info(formatOutput(output));
     }
 
-    if (args.update) {
+    if (config.update) {
       for (const mode of Object.keys(output.results)) {
         for (const type of Object.keys(output.results[mode])) {
           if (Object.keys(output.results[mode][type]).length) {
