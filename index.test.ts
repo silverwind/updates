@@ -11,8 +11,8 @@ import {promisify} from "node:util";
 import type {Server} from "node:http";
 import {satisfies} from "./utils/semver.ts";
 import {npmTypes} from "./utils/utils.ts";
-import {updates} from "./index.ts";
-import type {UpdatesOptions} from "./index.ts";
+import {updates} from "./api.ts";
+import type {UpdatesOptions} from "./api.ts";
 
 const execFileAsync = promisify(execFile);
 
@@ -42,7 +42,7 @@ const cargoFile = fileURLToPath(new URL("fixtures/cargo/Cargo.toml", import.meta
 
 const testPkg = JSON.parse(readFileSync(testFile, "utf8"));
 const testDir = mkdtempSync(join(tmpdir(), "updates-"));
-const script = fileURLToPath(new URL("dist/cli.js", import.meta.url));
+const script = fileURLToPath(new URL("dist/index.js", import.meta.url));
 
 type RouteHandler = (req: any, res: any) => void | Promise<void>;
 

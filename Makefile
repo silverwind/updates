@@ -1,5 +1,5 @@
-SOURCE_FILES := index.ts cli.ts config.ts $(wildcard modes/*.ts utils/*.ts)
-DIST_FILES := dist/index.js dist/index.d.ts dist/cli.js dist/shared.js
+SOURCE_FILES := index.ts api.ts config.ts $(wildcard modes/*.ts utils/*.ts)
+DIST_FILES := dist/index.js dist/api.js dist/api.d.ts dist/shared.js
 
 node_modules: pnpm-lock.yaml
 	pnpm install
@@ -39,7 +39,7 @@ $(DIST_FILES): $(SOURCE_FILES) pnpm-lock.yaml tsdown.config.ts
 
 .PHONY: update
 update: node_modules
-	./dist/cli.js -cu
+	./dist/index.js -cu
 	rm -rf node_modules pnpm-lock.yaml
 	pnpm install
 	@touch node_modules

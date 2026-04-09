@@ -5,11 +5,11 @@
   "author": "silverwind",
   "repository": "silverwind/updates",
   "license": "BSD-2-Clause",
-  "bin": "dist/cli.js",
+  "bin": "dist/index.js",
   "exports": {
     ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "import": "./dist/api.js",
+      "types": "./dist/api.d.ts"
     }
   },
   "type": "module",
