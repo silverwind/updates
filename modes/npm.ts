@@ -51,20 +51,19 @@ function replaceEnvVar(token: string): string {
 }
 
 function getAuthInfoForUrl(regUrl: string, config: Npmrc): AuthAndRegistry["auth"] {
-  // Bearer token
-  const bearerToken = config[`${regUrl}:_authToken`] || config[`${regUrl}/:_authToken`];
+  const get = (key: string) => config[`${regUrl}:${key}`] || config[`${regUrl}/:${key}`];
+
+  const bearerToken = get("_authToken");
   if (bearerToken) return {token: replaceEnvVar(bearerToken), type: "Bearer"};
 
-  // Basic auth (username + password)
-  const username = config[`${regUrl}:username`] || config[`${regUrl}/:username`];
-  const password = config[`${regUrl}:_password`] || config[`${regUrl}/:_password`];
+  const username = get("username");
+  const password = get("_password");
   if (username && password) {
     const pass = Buffer.from(replaceEnvVar(password), "base64").toString("utf8");
     return {token: Buffer.from(`${username}:${pass}`).toString("base64"), type: "Basic", username, password: pass};
   }
 
-  // Legacy auth token
-  const legacyToken = config[`${regUrl}:_auth`] || config[`${regUrl}/:_auth`];
+  const legacyToken = get("_auth");
   if (legacyToken) return {token: replaceEnvVar(legacyToken), type: "Basic"};
 
   return undefined;

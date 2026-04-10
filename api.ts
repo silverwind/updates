@@ -267,8 +267,12 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
     goProxyUrl,
     cratesIoUrl,
     dockerApiUrl,
-    doFetch: (url: string, fetchOpts?: RequestInit) => doFetch(url, fetchOpts, Boolean(config.verbose), logVerbose, magenta, vGreen, vRed),
-    verbose: Boolean(config.verbose),
+    doFetch: async (url: string, fetchOpts?: RequestInit) => {
+      if (config.verbose) logVerbose(`${magenta(fetchOpts?.method || "GET")} ${url}`);
+      const res = await doFetch(url, fetchOpts);
+      if (config.verbose) logVerbose(`${res.ok ? vGreen(res.status) : vRed(res.status)} ${url}`);
+      return res;
+    },
     noCache: Boolean(config.noCache),
   };
 

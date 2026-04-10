@@ -113,32 +113,26 @@ export function diff(v1: string, v2: string): string | null {
   return "prerelease";
 }
 
-export function gt(v1: string, v2: string): boolean {
+function compare(v1: string, v2: string): number | null {
   const a = parseVersion(v1);
   const b = parseVersion(v2);
-  if (!a || !b) return false;
-  return compareVersions(a, b) > 0;
+  return a && b ? compareVersions(a, b) : null;
+}
+
+export function gt(v1: string, v2: string): boolean {
+  return (compare(v1, v2) ?? -1) > 0;
 }
 
 export function gte(v1: string, v2: string): boolean {
-  const a = parseVersion(v1);
-  const b = parseVersion(v2);
-  if (!a || !b) return false;
-  return compareVersions(a, b) >= 0;
+  return (compare(v1, v2) ?? -1) >= 0;
 }
 
 export function lt(v1: string, v2: string): boolean {
-  const a = parseVersion(v1);
-  const b = parseVersion(v2);
-  if (!a || !b) return false;
-  return compareVersions(a, b) < 0;
+  return (compare(v1, v2) ?? 1) < 0;
 }
 
 export function neq(v1: string, v2: string): boolean {
-  const a = parseVersion(v1);
-  const b = parseVersion(v2);
-  if (!a || !b) return true;
-  return compareVersions(a, b) !== 0;
+  return (compare(v1, v2) ?? 1) !== 0;
 }
 
 // --- Range parsing ---

@@ -69,7 +69,6 @@ export type ModeContext = {
   cratesIoUrl: string,
   dockerApiUrl: string,
   doFetch: typeof doFetch,
-  verbose: boolean,
   noCache: boolean,
 };
 
@@ -79,7 +78,7 @@ export const fetchTimeout = 5000;
 export const goProbeTimeout = 2500;
 
 export const stripv = (str: string): string => str.replace(/^v/, "");
-export const normalizeUrl = (url: string) => url.endsWith("/") ? url.substring(0, url.length - 1) : url;
+export const normalizeUrl = (url: string) => url.endsWith("/") ? url.slice(0, -1) : url;
 
 export function getFetchOpts(authType?: string, authToken?: string): RequestInit {
   return {
@@ -91,21 +90,16 @@ export function getFetchOpts(authType?: string, authToken?: string): RequestInit
   };
 }
 
-export async function doFetch(url: string, opts?: RequestInit, verbose?: boolean, logVerbose?: (msg: string) => void, magenta?: (s: string | number) => string, green?: (s: string | number) => string, red?: (s: string | number) => string): Promise<Response> {
-  if (verbose && logVerbose && magenta) logVerbose(`${magenta(opts?.method || "GET")} ${url}`);
+export async function doFetch(url: string, opts?: RequestInit): Promise<Response> {
   try {
-    const res = await fetch(url, opts);
-    if (verbose && logVerbose && green && red) logVerbose(`${res.ok ? green(res.status) : red(res.status)} ${url}`);
-    return res;
+    return await fetch(url, opts);
   } catch (err: any) {
     throw new Error(`Failed to fetch ${url}${err?.message ? `: ${err.message}` : ""}`);
   }
 }
 
 export function isVersionPrerelease(version: string): boolean {
-  const parsed = parse(version);
-  if (!parsed) return false;
-  return Boolean(parsed.prerelease.length);
+  return (parse(version)?.prerelease.length ?? 0) > 0;
 }
 
 export function isRangePrerelease(range: string): boolean {
@@ -447,19 +441,11 @@ export function getSubDir(url: string): string {
 
 export function getInfoUrl({repository, homepage, info}: {repository?: PackageRepository, homepage?: string, info?: Record<string, any>}, registry: string | null, name: string): string {
   if (info) { // pypi
-    repository =
-      info.project_urls.repository ||
-      info.project_urls.Repository ||
-      info.project_urls.repo ||
-      info.project_urls.Repo ||
-      info.project_urls.source ||
-      info.project_urls.Source ||
-      info.project_urls["source code"] ||
-      info.project_urls["Source code"] ||
-      info.project_urls["Source Code"] ||
-      info.project_urls.homepage ||
-      info.project_urls.Homepage ||
-      `https://pypi.org/project/${name}/`;
+    const urls = info.project_urls;
+    for (const key of ["repository", "Repository", "repo", "Repo", "source", "Source", "source code", "Source code", "Source Code", "homepage", "Homepage"]) {
+      if (urls[key]) { repository = urls[key]; break; }
+    }
+    repository ??= `https://pypi.org/project/${name}/`;
   }
 
   let infoUrl = "";

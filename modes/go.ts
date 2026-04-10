@@ -3,7 +3,7 @@ import {join, dirname} from "node:path";
 import {readFileSync, globSync} from "node:fs";
 import {execFile as execFileCb} from "node:child_process";
 import {promisify} from "node:util";
-import {type Deps, type ModeContext, type PackageInfo, fieldSep, stripv, getSubDir} from "./shared.ts";
+import {type Deps, type ModeContext, type PackageInfo, fieldSep, stripv, getSubDir, normalizeUrl} from "./shared.ts";
 import {esc} from "../utils/utils.ts";
 
 const execFile = promisify(execFileCb);
@@ -13,7 +13,7 @@ export function resolveGoProxy(): string {
   for (const entry of proxyEnv.split(/[,|]/)) {
     const trimmed = entry.trim();
     if (trimmed && trimmed !== "direct" && trimmed !== "off") {
-      return trimmed.endsWith("/") ? trimmed.substring(0, trimmed.length - 1) : trimmed;
+      return normalizeUrl(trimmed);
     }
   }
   return "https://proxy.golang.org";

@@ -109,8 +109,7 @@ function parseValue(raw: string): TomlValue {
 function inferScalar(raw: string): TomlValue {
   if (raw === "true") return true;
   if (raw === "false") return false;
-  if (/^[+-]?\d+$/.test(raw)) return Number(raw);
-  if (/^[+-]?\d+\.\d+$/.test(raw)) return Number(raw);
+  if (/^[+-]?\d+(\.\d+)?$/.test(raw)) return Number(raw);
   return raw;
 }
 
