@@ -107,7 +107,20 @@ const output = await updates({
   include: [/^react/],
   modes: ["npm"],
 });
-//=> {results: {npm: {dependencies: {react: {old: "18.0.0", new: "19.1.0", info: "https://...", age: "11mo"}}}}}
+//=> {
+//=>   "results": {
+//=>     "npm": {
+//=>       "dependencies": {
+//=>         "react": {
+//=>           "old": "18.0.0",
+//=>           "new": "19.2.0",
+//=>           "info": "https://github.com/facebook/react",
+//=>           "age": "2 days"
+//=>         }
+//=>       }
+//=>     }
+//=>   }
+//=> }
 ```
 
 The `updates()` function accepts all [config options](#config-options).
