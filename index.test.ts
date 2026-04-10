@@ -30,6 +30,8 @@ const goUpdateV2MainFile = fileURLToPath(new URL("fixtures/go-update-v2/main.go"
 const goReplaceFile = fileURLToPath(new URL("fixtures/go-replace/go.mod", import.meta.url));
 const goPreFile = fileURLToPath(new URL("fixtures/go-prerelease/go.mod", import.meta.url));
 const goPseudoFile = fileURLToPath(new URL("fixtures/go-pseudo/go.mod", import.meta.url));
+const goWorkspaceDir = fileURLToPath(new URL("fixtures/go-workspace", import.meta.url));
+const goWorkspaceFile = fileURLToPath(new URL("fixtures/go-workspace/go.work", import.meta.url));
 const invalidConfigFile = fileURLToPath(new URL("fixtures/invalid-config/package.json", import.meta.url));
 const actionsDir = fileURLToPath(new URL("fixtures/actions/.github/workflows", import.meta.url));
 const dockerfileFixture = fileURLToPath(new URL("fixtures/docker/Dockerfile", import.meta.url));
@@ -1380,30 +1382,72 @@ test("go replace update", async ({expect = globalExpect}: any = {}) => {
   expect(updatedContent).toContain("replace");
 });
 
-test("pin", async ({expect = globalExpect}: any = {}) => {
-  const {stdout, stderr} = await execFileAsync(process.execPath, [
+test("go workspace", async ({expect = globalExpect}: any = {}) => {
+  const result = await updates({
+    files: [goWorkspaceFile],
+    goproxy: goProxyUrl,
+    color: false,
+    noCache: true,
+  });
+  const {go} = result.results;
+  expect(go).toBeDefined();
+
+  // Should find deps from both workspace members
+  const appDeps = go["deps|./app"];
+  const libDeps = go["deps|./lib"];
+  expect(appDeps).toBeDefined();
+  expect(libDeps).toBeDefined();
+  expect(appDeps["github.com/google/uuid"]).toBeDefined();
+  expect(libDeps["github.com/google/uuid"]).toBeDefined();
+  expect(appDeps["github.com/google/uuid"].old).toBe("1.5.0");
+  expect(libDeps["github.com/google/uuid"].old).toBe("1.5.0");
+});
+
+test("go workspace update", async ({expect = globalExpect}: any = {}) => {
+  const testGoWorkDir = join(testDir, "test-go-workspace");
+  mkdirSync(join(testGoWorkDir, "app"), {recursive: true});
+  mkdirSync(join(testGoWorkDir, "lib"), {recursive: true});
+
+  writeFileSync(join(testGoWorkDir, "go.work"), readFileSync(join(goWorkspaceDir, "go.work"), "utf8"));
+  writeFileSync(join(testGoWorkDir, "app", "go.mod"), readFileSync(join(goWorkspaceDir, "app", "go.mod"), "utf8"));
+  writeFileSync(join(testGoWorkDir, "app", "main.go"), readFileSync(join(goWorkspaceDir, "app", "main.go"), "utf8"));
+  writeFileSync(join(testGoWorkDir, "lib", "go.mod"), readFileSync(join(goWorkspaceDir, "lib", "go.mod"), "utf8"));
+
+  await execFileAsync(execPath, [
     script,
-    "-j",
+    "-u",
+    "-f", join(testGoWorkDir, "go.work"),
     "-c",
-    "--forgeapi", githubUrl,
-    "--pypiapi", pypiUrl,
-    "--registry", npmUrl,
-    "-f", testFile,
-    "--pin", "prismjs=^1.0.0",
-    "--pin", "react=^18.0.0",
-  ]);
-  expect(stderr).toEqual("");
-  const {results} = JSON.parse(stdout);
+    "--goproxy", goProxyUrl,
+  ], {cwd: testGoWorkDir});
+
+  const appMod = await readFile(join(testGoWorkDir, "app", "go.mod"), "utf8");
+  const libMod = await readFile(join(testGoWorkDir, "lib", "go.mod"), "utf8");
+  expect(appMod).toContain("github.com/google/uuid v1.6.0");
+  expect(appMod).not.toContain("uuid v1.5.0");
+  expect(libMod).toContain("github.com/google/uuid v1.6.0");
+  expect(libMod).not.toContain("uuid v1.5.0");
+});
+
+test("pin", async ({expect = globalExpect}: any = {}) => {
+  const result = await updates({
+    files: [testFile],
+    forgeapi: githubUrl,
+    pypiapi: pypiUrl,
+    registry: npmUrl,
+    color: false,
+    noCache: true,
+    pin: {"prismjs": "^1.0.0", "react": "^18.0.0"},
+  });
+  const {npm} = result.results;
 
   // prismjs should be updated but only within the ^1.0.0 range
-  expect(results.npm.dependencies.prismjs).toBeDefined();
-  const prismjsNew = results.npm.dependencies.prismjs.new;
-  expect(satisfies(prismjsNew, "^1.0.0")).toBe(true);
+  expect(npm.dependencies.prismjs).toBeDefined();
+  expect(satisfies(npm.dependencies.prismjs.new, "^1.0.0")).toBe(true);
 
   // react should not be updated beyond ^18.0.0 range
-  expect(results.npm.dependencies.react).toBeDefined();
-  const reactNew = results.npm.dependencies.react.new;
-  expect(satisfies(reactNew, "^18.0.0")).toBe(true);
+  expect(npm.dependencies.react).toBeDefined();
+  expect(satisfies(npm.dependencies.react.new, "^18.0.0")).toBe(true);
 });
 
 function actionsArgs(...extra: Array<string>) {

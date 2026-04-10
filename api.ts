@@ -23,8 +23,8 @@ import {
 import {fetchPypiInfo, updatePyprojectToml} from "./modes/pypi.ts";
 import {
   resolveGoProxy, parseGoNoProxy, isGoPseudoVersion,
-  parseGoMod, fetchGoProxyInfo, updateGoMod, rewriteGoImports,
-  getGoInfoUrl, shortenGoVersion,
+  parseGoMod, parseGoWork, fetchGoProxyInfo, updateGoMod, rewriteGoImports,
+  getGoInfoUrl, shortenGoVersion, baseGoType,
 } from "./modes/go.ts";
 import {
   type ActionRef,
@@ -47,6 +47,7 @@ export type {Config, Dep, Deps, DepsByMode, Output};
 const modeByFileName: Record<string, string> = {
   "package.json": "npm",
   "pyproject.toml": "pypi",
+  "go.work": "go",
   "go.mod": "go",
   "Cargo.toml": "cargo",
 };
@@ -175,6 +176,15 @@ function resolveFiles(filesArg: Set<string> | false): Set<string> {
       for (const wf of resolveWorkflowFiles(workflowDir)) resolvedFiles.add(wf);
     }
   }
+
+  // go.work supersedes go.mod in the same directory
+  for (const file of resolvedFiles) {
+    if (basename(file) === "go.work") {
+      const goMod = join(dirname(file), "go.mod");
+      resolvedFiles.delete(goMod);
+    }
+  }
+
   return resolvedFiles;
 }
 
@@ -315,12 +325,34 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
   const wfData: Record<string, {absPath: string, content: string}> = {};
   const dockerFileData: Record<string, {absPath: string, content: string, fileType: string}> = {};
 
+  type GoModFileInfo = {absPath: string, content: string, projectDir: string, usePath: string};
+  const goModFiles: GoModFileInfo[] = [];
+  let goWorkData: {file: string, content: string} | null = null;
+
   type ActionDepInfo = ActionRef & {key: string, apiUrl: string};
   const actionDepInfos: Array<ActionDepInfo> = [];
   type DockerDepInfo = {key: string, fullImage: string, ref: DockerImageRef};
   const dockerDepInfos: Array<DockerDepInfo> = [];
   type ModeCtx = {modeConfig: Config, projectDir: string, pin: Record<string, string>};
   const modeConfigs: Record<string, ModeCtx> = {};
+
+  async function resolveModeFilters(projectDir: string) {
+    const modeConfig = projectDir === cwd() ? config : await loadConfig(projectDir);
+    const modeInclude = modeConfig !== config && modeConfig?.include ? patternsToRegexSet([...(config.include ?? []), ...modeConfig.include]) : include;
+    const modeExclude = modeConfig !== config && modeConfig?.exclude ? patternsToRegexSet([...(config.exclude ?? []), ...modeConfig.exclude]) : exclude;
+    const pin: Record<string, string> = {...modeConfig?.pin, ...configPin};
+    return {modeConfig, modeInclude, modeExclude, pin};
+  }
+
+  function resolveDepTypes(mode: string, modeConfig: Config): Array<string> {
+    if (config.types?.length) return config.types;
+    if (modeConfig?.types?.length) return modeConfig.types;
+    if (mode === "npm") return npmTypes;
+    if (mode === "pypi") return Array.from(uvTypes);
+    if (mode === "go") return config.indirect ? Array.from(goTypes) : goTypes.filter(t => t !== "indirect");
+    if (mode === "cargo") return Array.from(cargoTypes);
+    return [];
+  }
 
   function collectDockerRefs(content: string, relPath: string, regexes: Array<RegExp>): void {
     if (!deps.docker) deps.docker = {};
@@ -380,32 +412,58 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
 
     const mode = modeByFileName[filename];
     if (!enabledModes.has(mode)) continue;
+
+    if (filename === "go.work") {
+      if (!deps[mode]) deps[mode] = {};
+      const workspaceDir = dirname(resolve(file));
+      const workContent = readFileOrThrow(file);
+      goWorkData = {file, content: workContent};
+      const goWork = parseGoWork(workContent);
+
+      const {modeConfig, modeInclude, modeExclude, pin} = await resolveModeFilters(workspaceDir);
+      const dependencyTypes = resolveDepTypes(mode, modeConfig);
+      filePerMode[mode] = file;
+      modeConfigs[mode] = {modeConfig, projectDir: workspaceDir, pin};
+
+      for (const usePath of goWork.use) {
+        const modPath = resolve(join(workspaceDir, usePath, "go.mod"));
+        let modContent: string;
+        try { modContent = readFileSync(modPath, "utf8"); } catch { continue; }
+
+        const parsed = parseGoMod(modContent);
+        const modProjectDir = dirname(modPath);
+        goModFiles.push({absPath: modPath, content: modContent, projectDir: modProjectDir, usePath});
+
+        const typePrefix = usePath === "." ? "" : `|${usePath}`;
+        for (const depType of dependencyTypes) {
+          const obj = parsed[depType as keyof typeof parsed] || {};
+          for (const [name, value] of Object.entries(obj)) {
+            if (canInclude(name, mode, modeInclude, modeExclude, depType)) {
+              deps[mode][`${depType}${typePrefix}${fieldSep}${name}`] = {old: shortenGoVersion(value), oldOrig: stripv(value)} as Dep;
+            }
+          }
+        }
+      }
+
+      for (const [name, value] of Object.entries(goWork.replace)) {
+        if (canInclude(name, mode, modeInclude, modeExclude, "replace")) {
+          deps[mode][`replace${fieldSep}${name}`] = {old: shortenGoVersion(value), oldOrig: stripv(value)} as Dep;
+        }
+      }
+
+      numDependencies += Object.keys(deps[mode]).length;
+      continue;
+    }
+
+    if (filename === "go.mod" && goWorkData) continue;
+
     filePerMode[mode] = file;
     if (!deps[mode]) deps[mode] = {};
 
     const projectDir = dirname(resolve(file));
-    const modeConfig = projectDir === cwd() ? config : await loadConfig(projectDir);
+    const {modeConfig, modeInclude, modeExclude, pin} = await resolveModeFilters(projectDir);
 
-    const modeInclude = modeConfig !== config && modeConfig?.include ? patternsToRegexSet([...(config.include ?? []), ...modeConfig.include]) : include;
-    const modeExclude = modeConfig !== config && modeConfig?.exclude ? patternsToRegexSet([...(config.exclude ?? []), ...modeConfig.exclude]) : exclude;
-    const pin: Record<string, string> = {...modeConfig?.pin, ...configPin};
-
-    let dependencyTypes: Array<string> = [];
-    if (config.types?.length) {
-      dependencyTypes = config.types;
-    } else if (modeConfig?.types?.length) {
-      dependencyTypes = modeConfig.types;
-    } else {
-      if (mode === "npm") {
-        dependencyTypes = npmTypes;
-      } else if (mode === "pypi") {
-        dependencyTypes = Array.from(uvTypes);
-      } else if (mode === "go") {
-        dependencyTypes = config.indirect ? Array.from(goTypes) : goTypes.filter(t => t !== "indirect");
-      } else if (mode === "cargo") {
-        dependencyTypes = Array.from(cargoTypes);
-      }
-    }
+    const dependencyTypes = resolveDepTypes(mode, modeConfig);
 
     let pkg: Record<string, any> = {};
     pkgStrs[mode] = readFileOrThrow(file);
@@ -517,7 +575,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
             info = await fetchNpmInfo(name, type, modeConfig, argsForNpm, ctx);
           }
         } else if (mode === "go") {
-          info = await fetchGoProxyInfo(name, type, deps[mode][key].oldOrig || deps[mode][key].old, projectDir, ctx, goNoProxy);
+          info = await fetchGoProxyInfo(name, baseGoType(type), deps[mode][key].oldOrig || deps[mode][key].old, projectDir, ctx, goNoProxy);
         } else if (mode === "cargo") {
           info = await fetchCratesIoInfo(name, type, ctx);
         } else {
@@ -814,7 +872,32 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
       }
 
       const fileContent = pkgStrs[mode];
-      if (mode === "go") {
+      if (mode === "go" && goWorkData) {
+        for (const goMod of goModFiles) {
+          const localDeps: Deps = {};
+          const expectedSuffix = goMod.usePath === "." ? "" : `|${goMod.usePath}`;
+          for (const [key, dep] of Object.entries(deps[mode])) {
+            const [type, name] = key.split(fieldSep);
+            const base = baseGoType(type);
+            if (type === `${base}${expectedSuffix}`) {
+              localDeps[`${base}${fieldSep}${name}`] = dep;
+            }
+          }
+          if (!Object.keys(localDeps).length) continue;
+          const [updatedContent, majorVersionRewrites] = updateGoMod(goMod.content, localDeps);
+          if (updatedContent !== goMod.content) write(goMod.absPath, updatedContent);
+          rewriteGoImports(goMod.projectDir, majorVersionRewrites, write);
+        }
+        const workDeps: Deps = {};
+        for (const [key, dep] of Object.entries(deps[mode])) {
+          const [type] = key.split(fieldSep);
+          if (type === "replace") workDeps[key] = dep;
+        }
+        if (Object.keys(workDeps).length) {
+          const [updatedWork] = updateGoMod(goWorkData.content, workDeps);
+          if (updatedWork !== goWorkData.content) write(goWorkData.file, updatedWork);
+        }
+      } else if (mode === "go") {
         const [updatedContent, majorVersionRewrites] = updateGoMod(fileContent, deps[mode]);
         write(filePerMode[mode], updatedContent);
         rewriteGoImports(dirname(resolve(filePerMode[mode])), majorVersionRewrites, write);

@@ -42,6 +42,22 @@ export function buildGoModulePath(name: string, major: number): string {
   return `${name.replace(/\/v\d+$/, "")}/v${major}`;
 }
 
+type ReplaceMatch = {origModule: string, targetModule: string, targetVersion: string};
+
+function parseReplaceDirective(trimmed: string, inBlock: boolean): ReplaceMatch | null {
+  const match = inBlock ?
+    /^(\S+)(?:\s+v\S+)?\s+=>\s+(\S+)\s+(v\S+)/.exec(trimmed) :
+    /^replace\s+(\S+)(?:\s+v\S+)?\s+=>\s+(\S+)\s+(v\S+)/.exec(trimmed);
+  if (!match) return null;
+  const [, origModule, targetModule, targetVersion] = match;
+  if (targetModule.startsWith("./") || targetModule.startsWith("/") || targetModule.startsWith("../")) return null;
+  return {origModule, targetModule, targetVersion};
+}
+
+export function baseGoType(type: string): string {
+  return type.split("|")[0];
+}
+
 function shouldSkipMajorProbe(name: string, type: string, currentVersion: string): boolean {
   return type === "indirect" || name.startsWith("golang.org/x/") || isGoPseudoVersion(currentVersion);
 }
@@ -147,16 +163,10 @@ export function parseGoMod(content: string): {deps: Record<string, string>, indi
     const isIndirect = trimmed.includes("// indirect");
 
     if (inReplace || /^replace\s+/.test(trimmed)) {
-      const m = inReplace ?
-        /^(\S+)(?:\s+v\S+)?\s+=>\s+(\S+)\s+(v\S+)/.exec(trimmed) :
-        /^replace\s+(\S+)(?:\s+v\S+)?\s+=>\s+(\S+)\s+(v\S+)/.exec(trimmed);
-      if (m) {
-        const [, origModule, targetModule, targetVersion] = m;
-        // Skip local path replacements
-        if (!targetModule.startsWith("./") && !targetModule.startsWith("/") && !targetModule.startsWith("../")) {
-          replace[targetModule] = targetVersion;
-          replacedModules.add(origModule);
-        }
+      const parsed = parseReplaceDirective(trimmed, inReplace);
+      if (parsed) {
+        replace[parsed.targetModule] = parsed.targetVersion;
+        replacedModules.add(parsed.origModule);
       }
       continue;
     }
@@ -332,6 +342,38 @@ export function rewriteGoImports(projectDir: string, majorVersionRewrites: Recor
       write(filePath, content);
     }
   }
+}
+
+export function parseGoWork(content: string): {use: string[], replace: Record<string, string>} {
+  const use: string[] = [];
+  const replace: Record<string, string> = {};
+  const lines = content.split(/\r?\n/);
+  let inUse = false;
+  let inReplace = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (/^use\s*\(/.test(trimmed)) { inUse = true; continue; }
+    if (/^replace\s*\(/.test(trimmed)) { inReplace = true; continue; }
+    if (trimmed === ")") { inUse = false; inReplace = false; continue; }
+
+    if (inUse) {
+      const useEntry = /^(\S+)/.exec(trimmed);
+      if (useEntry && !trimmed.startsWith("//")) use.push(useEntry[1]);
+      continue;
+    }
+
+    const useMatch = /^use\s+(\S+)/.exec(trimmed);
+    if (useMatch) { use.push(useMatch[1]); continue; }
+
+    if (inReplace || /^replace\s+/.test(trimmed)) {
+      const parsed = parseReplaceDirective(trimmed, inReplace);
+      if (parsed) replace[parsed.targetModule] = parsed.targetVersion;
+      continue;
+    }
+  }
+
+  return {use, replace};
 }
 
 export function getGoInfoUrl(name: string): string {
