@@ -325,10 +325,9 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
   const wfData: Record<string, {absPath: string, content: string}> = {};
   const dockerFileData: Record<string, {absPath: string, content: string, fileType: string}> = {};
 
-  type GoModFileInfo = {absPath: string, content: string, projectDir: string, usePath: string, parsed: ReturnType<typeof parseGoMod>};
+  type GoModFileInfo = {absPath: string, content: string, projectDir: string, usePath: string};
   const goModFiles: GoModFileInfo[] = [];
-  let goWorkFile = "";
-  let goWorkContent = "";
+  let goWorkData: {file: string, content: string} | null = null;
 
   type ActionDepInfo = ActionRef & {key: string, apiUrl: string};
   const actionDepInfos: Array<ActionDepInfo> = [];
@@ -418,8 +417,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
       if (!deps[mode]) deps[mode] = {};
       const workspaceDir = dirname(resolve(file));
       const workContent = readFileOrThrow(file);
-      goWorkFile = file;
-      goWorkContent = workContent;
+      goWorkData = {file, content: workContent};
       const goWork = parseGoWork(workContent);
 
       const {modeConfig, modeInclude, modeExclude, pin} = await resolveModeFilters(workspaceDir);
@@ -434,7 +432,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
 
         const parsed = parseGoMod(modContent);
         const modProjectDir = dirname(modPath);
-        goModFiles.push({absPath: modPath, content: modContent, projectDir: modProjectDir, usePath, parsed});
+        goModFiles.push({absPath: modPath, content: modContent, projectDir: modProjectDir, usePath});
 
         const typePrefix = usePath === "." ? "" : `|${usePath}`;
         for (const depType of dependencyTypes) {
@@ -457,7 +455,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
       continue;
     }
 
-    if (filename === "go.mod" && goWorkFile) continue;
+    if (filename === "go.mod" && goWorkData) continue;
 
     filePerMode[mode] = file;
     if (!deps[mode]) deps[mode] = {};
@@ -874,7 +872,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
       }
 
       const fileContent = pkgStrs[mode];
-      if (mode === "go" && goWorkFile) {
+      if (mode === "go" && goWorkData) {
         for (const goMod of goModFiles) {
           const localDeps: Deps = {};
           const expectedSuffix = goMod.usePath === "." ? "" : `|${goMod.usePath}`;
@@ -896,8 +894,8 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
           if (type === "replace") workDeps[key] = dep;
         }
         if (Object.keys(workDeps).length) {
-          const [updatedWork] = updateGoMod(goWorkContent, workDeps);
-          if (updatedWork !== goWorkContent) write(goWorkFile, updatedWork);
+          const [updatedWork] = updateGoMod(goWorkData.content, workDeps);
+          if (updatedWork !== goWorkData.content) write(goWorkData.file, updatedWork);
         }
       } else if (mode === "go") {
         const [updatedContent, majorVersionRewrites] = updateGoMod(fileContent, deps[mode]);
