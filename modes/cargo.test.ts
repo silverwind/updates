@@ -1,4 +1,4 @@
-import {updateCargoToml, fetchCratesIoInfo, isCargoImplicitCaret} from "./cargo.ts";
+import {updateCargoToml, fetchCratesIoInfo, parseCargoLock} from "./cargo.ts";
 import {type ModeContext, fetchTimeout, fieldSep} from "./shared.ts";
 
 test("simple form: name = \"version\"", () => {
@@ -152,20 +152,53 @@ test("extended table with build-dependencies", () => {
   expect(updateCargoToml(input, deps)).toBe(`[build-dependencies.cc]\nversion = "1.1.0"\n`);
 });
 
-// isCargoImplicitCaret
-test("isCargoImplicitCaret: bare versions return true", () => {
-  expect(isCargoImplicitCaret("1.0")).toBe(true);
-  expect(isCargoImplicitCaret("0.8")).toBe(true);
-  expect(isCargoImplicitCaret("1.0.0")).toBe(true);
-  expect(isCargoImplicitCaret("1")).toBe(true);
-  expect(isCargoImplicitCaret("0.0.3")).toBe(true);
+// parseCargoLock
+test("parseCargoLock returns name→version map", () => {
+  const lock = `
+[[package]]
+name = "serde"
+version = "1.0.200"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
+name = "rand"
+version = "0.8.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+`;
+  const map = parseCargoLock(lock);
+  expect(map.get("serde")).toBe("1.0.200");
+  expect(map.get("rand")).toBe("0.8.5");
+  expect(map.size).toBe(2);
 });
 
-test("isCargoImplicitCaret: explicit qualifiers return false", () => {
-  expect(isCargoImplicitCaret("^1.0")).toBe(false);
-  expect(isCargoImplicitCaret("~1.0")).toBe(false);
-  expect(isCargoImplicitCaret(">=1.0.0")).toBe(false);
-  expect(isCargoImplicitCaret("=1.0.0")).toBe(false);
-  expect(isCargoImplicitCaret(">1.0.0")).toBe(false);
-  expect(isCargoImplicitCaret("<2.0.0")).toBe(false);
+test("parseCargoLock keeps highest version when package appears multiple times", () => {
+  const lock = `
+[[package]]
+name = "serde"
+version = "1.0.100"
+
+[[package]]
+name = "serde"
+version = "1.0.200"
+`;
+  expect(parseCargoLock(lock).get("serde")).toBe("1.0.200");
+});
+
+test("parseCargoLock ignores entries without valid semver", () => {
+  const lock = `
+[[package]]
+name = "my-crate"
+version = "0.1.0"
+
+[[package]]
+name = "bad"
+version = "not-a-version"
+`;
+  const map = parseCargoLock(lock);
+  expect(map.get("my-crate")).toBe("0.1.0");
+  expect(map.has("bad")).toBe(false);
+});
+
+test("parseCargoLock returns empty map for empty input", () => {
+  expect(parseCargoLock("").size).toBe(0);
 });

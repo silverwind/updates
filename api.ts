@@ -3,7 +3,7 @@ import {styleText} from "node:util";
 import {join, dirname, basename, resolve} from "node:path";
 import {lstatSync, readFileSync, readdirSync, truncateSync, writeFileSync, accessSync, type Stats} from "node:fs";
 import {parseToml} from "./utils/toml.ts";
-import {valid, validRange, satisfies} from "./utils/semver.ts";
+import {valid, validRange} from "./utils/semver.ts";
 import {timerel} from "timerel";
 import {npmTypes, uvTypes, goTypes, cargoTypes, parseUvDependencies, nonPackageEngines, parseDuration, matchesAny, getProperty, canIncludeByDate, timestamp, pMap} from "./utils/utils.ts";
 import {enableDnsCache} from "./utils/dns.ts";
@@ -40,7 +40,7 @@ import {
   updateDockerfile, updateComposeFile, updateWorkflowDockerImages,
   composeImageRe, workflowContainerRe, workflowDockerUsesRe,
 } from "./modes/docker.ts";
-import {fetchCratesIoInfo, updateCargoToml, isCargoImplicitCaret} from "./modes/cargo.ts";
+import {fetchCratesIoInfo, updateCargoToml, parseCargoLock} from "./modes/cargo.ts";
 
 export type {Config, Dep, Deps, DepsByMode, Output};
 
@@ -426,6 +426,15 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
       throw new Error(`Error parsing ${file}: ${(err as Error).message}`);
     }
 
+    let lockedVersions = new Map<string, string>();
+    if (mode === "cargo") {
+      try {
+        lockedVersions = parseCargoLock(readFileOrThrow(join(dirname(file), "Cargo.lock")));
+      } catch {
+        // No Cargo.lock or unreadable — proceed without locked versions
+      }
+    }
+
     for (const depType of dependencyTypes) {
       let obj: Record<string, string> | Array<string> | string;
       if (mode === "npm" || mode === "go") {
@@ -451,13 +460,15 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
             if (mode === "cargo" && typeof value === "object" && value !== null && "version" in value && !("git" in value) && !("path" in value) && canInclude(name, mode, modeInclude, modeExclude, depType)) {
               const versionStr = String((value as Record<string, string>).version);
               if (validRange(versionStr)) {
-                deps[mode][`${depType}${fieldSep}${name}`] = {old: normalizeRange(versionStr), oldOrig: versionStr} as Dep;
+                const lockedVersion = lockedVersions.get(name);
+                deps[mode][`${depType}${fieldSep}${name}`] = {old: lockedVersion ?? normalizeRange(versionStr), oldOrig: versionStr} as Dep;
               }
             } else if (mode === "npm" && isJsr(value) && canInclude(name, mode, modeInclude, modeExclude, depType)) {
               const parsed = parseJsrDependency(value, name);
               deps[mode][`${depType}${fieldSep}${name}`] = {old: parsed.version, oldOrig: value} as Dep;
             } else if (mode !== "go" && validRange(value) && canInclude(name, mode, modeInclude, modeExclude, depType)) {
-              deps[mode][`${depType}${fieldSep}${name}`] = {old: normalizeRange(value), oldOrig: value} as Dep;
+              const lockedVersion = mode === "cargo" ? lockedVersions.get(name) : undefined;
+              deps[mode][`${depType}${fieldSep}${name}`] = {old: lockedVersion ?? normalizeRange(value), oldOrig: value} as Dep;
             } else if (mode === "npm" && isLocalDep(value) && canInclude(name, mode, modeInclude, modeExclude, depType)) {
               deps[mode][`${depType}${fieldSep}${name}`] = {old: "0.0.0", oldOrig: value} as Dep;
             } else if (mode === "npm" && !isJsr(value) && canInclude(name, mode, modeInclude, modeExclude, depType)) {
@@ -547,13 +558,6 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
           } else {
             newRange = updateNpmRange(oldRange, newVersion, oldOrig);
           }
-        }
-
-        // For cargo: bare version specs (e.g. "1.0", "0.8") are implicit caret requirements.
-        // "1.0" means "^1.0 = >=1.0.0 <2.0.0", so 1.0.333 is already within range — no update needed.
-        if (mode === "cargo" && newVersion && oldOrig && isCargoImplicitCaret(oldOrig) && satisfies(newVersion, `^${oldOrig}`)) {
-          delete deps[mode][key];
-          return;
         }
 
         if (!newVersion || newVersion === oldRange || oldOrig && (oldOrig === newRange)) {

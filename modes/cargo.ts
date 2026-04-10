@@ -1,5 +1,6 @@
 import {type Deps, type ModeContext, type PackageInfo, fieldSep, getFetchOpts, normalizeUrl, throwFetchError} from "./shared.ts";
 import {cargoTypes, esc} from "../utils/utils.ts";
+import {gt, valid} from "../utils/semver.ts";
 
 type CratesIoVersion = {num: string; created_at: string; yanked: boolean};
 type CratesIoVersionsResponse = {versions: Array<CratesIoVersion>};
@@ -41,10 +42,23 @@ export async function fetchCratesIoInfo(name: string, type: string, ctx: ModeCon
   return [data, type, null, name];
 }
 
-// In Cargo, a bare version spec (starting with a digit) has an implicit caret requirement.
-// e.g. "1.0" means "^1.0 = >=1.0.0 <2.0.0", "0.8" means "^0.8 = >=0.8.0 <0.9.0"
-export function isCargoImplicitCaret(versionStr: string): boolean {
-  return /^\d/.test(versionStr.trim());
+// Parse Cargo.lock and return a map of package name → resolved version.
+// When a package appears multiple times (multiple versions), the highest is kept.
+export function parseCargoLock(lockStr: string): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const block of lockStr.split("[[package]]")) {
+    const nameMatch = /\bname\s*=\s*"([^"]+)"/.exec(block);
+    const versionMatch = /\bversion\s*=\s*"([^"]+)"/.exec(block);
+    if (!nameMatch || !versionMatch) continue;
+    const name = nameMatch[1];
+    const version = versionMatch[1];
+    if (!valid(version)) continue;
+    const existing = map.get(name);
+    if (!existing || gt(version, existing)) {
+      map.set(name, version);
+    }
+  }
+  return map;
 }
 
 const sectionAlts = cargoTypes.map(t => esc(t)).join("|");

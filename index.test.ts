@@ -1188,6 +1188,13 @@ test("cargo", async ({expect = globalExpect}: any = {}) => {
   expect(await makeTest(`-j -f ${cargoFile}`)()).toMatchInlineSnapshot(`
     {
       "cargo": {
+        "dependencies": {
+          "tokio": {
+            "info": "https://crates.io/crates/tokio",
+            "new": "1.35.0",
+            "old": "1.0",
+          },
+        },
         "dev-dependencies": {
           "rand": {
             "info": "https://crates.io/crates/rand",
