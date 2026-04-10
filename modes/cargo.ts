@@ -1,6 +1,6 @@
 import {type Deps, type ModeContext, type PackageInfo, fieldSep, getFetchOpts, normalizeUrl, throwFetchError} from "./shared.ts";
 import {cargoTypes, esc} from "../utils/utils.ts";
-import {gt, valid} from "../utils/semver.ts";
+import {gt, valid, satisfies} from "../utils/semver.ts";
 
 type CratesIoVersion = {num: string; created_at: string; yanked: boolean};
 type CratesIoVersionsResponse = {versions: Array<CratesIoVersion>};
@@ -42,10 +42,8 @@ export async function fetchCratesIoInfo(name: string, type: string, ctx: ModeCon
   return [data, type, null, name];
 }
 
-// Parse Cargo.lock and return a map of package name → resolved version.
-// When a package appears multiple times (multiple versions), the highest is kept.
-export function parseCargoLock(lockStr: string): Map<string, string> {
-  const map = new Map<string, string>();
+export function parseCargoLock(lockStr: string): Map<string, string[]> {
+  const map = new Map<string, string[]>();
   for (const block of lockStr.split("[[package]]")) {
     const nameMatch = /\bname\s*=\s*"([^"]+)"/.exec(block);
     const versionMatch = /\bversion\s*=\s*"([^"]+)"/.exec(block);
@@ -53,12 +51,26 @@ export function parseCargoLock(lockStr: string): Map<string, string> {
     const name = nameMatch[1];
     const version = versionMatch[1];
     if (!valid(version)) continue;
-    const existing = map.get(name);
-    if (!existing || gt(version, existing)) {
-      map.set(name, version);
-    }
+    const versions = map.get(name) || [];
+    versions.push(version);
+    map.set(name, versions);
   }
   return map;
+}
+
+// Cargo treats bare version strings as caret ranges (e.g. "1.0" = "^1.0").
+const startsWithDigitRe = /^\d/;
+export function findLockedVersion(allVersions: Map<string, string[]>, name: string, range: string): string | undefined {
+  const versions = allVersions.get(name);
+  if (!versions) return undefined;
+  const npmRange = startsWithDigitRe.test(range) ? `^${range}` : range;
+  let best: string | undefined;
+  for (const version of versions) {
+    if (satisfies(version, npmRange) && (!best || gt(version, best))) {
+      best = version;
+    }
+  }
+  return best;
 }
 
 const sectionAlts = cargoTypes.map(t => esc(t)).join("|");
@@ -66,7 +78,7 @@ const sectionAlts = cargoTypes.map(t => esc(t)).join("|");
 export function updateCargoToml(pkgStr: string, deps: Deps): string {
   let newPkgStr = pkgStr;
   for (const [key, dep] of Object.entries(deps)) {
-    const [_depType, name] = key.split(fieldSep);
+    const [, name] = key.split(fieldSep);
     const oldValue = dep.oldOrig || dep.old;
     const newValue = dep.new;
     const nameEsc = esc(name);
