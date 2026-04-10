@@ -358,7 +358,8 @@ export function parseGoWork(content: string): {use: string[], replace: Record<st
     if (trimmed === ")") { inUse = false; inReplace = false; continue; }
 
     if (inUse) {
-      if (trimmed && !trimmed.startsWith("//")) use.push(trimmed);
+      const useEntry = /^(\S+)/.exec(trimmed);
+      if (useEntry && !trimmed.startsWith("//")) use.push(useEntry[1]);
       continue;
     }
 

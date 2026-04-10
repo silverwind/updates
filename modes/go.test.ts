@@ -331,6 +331,19 @@ test("parseGoWork skips local path replace", () => {
   expect(result.replace).toEqual({});
 });
 
+test("parseGoWork use with inline comment", () => {
+  const content = [
+    "go 1.24",
+    "",
+    "use (",
+    "\t./app // main application",
+    "\t./lib",
+    ")",
+  ].join("\n");
+  const result = parseGoWork(content);
+  expect(result.use).toEqual(["./app", "./lib"]);
+});
+
 test("parseGoWork with toolchain ignored", () => {
   const content = [
     "go 1.24",
