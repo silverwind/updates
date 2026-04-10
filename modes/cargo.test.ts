@@ -1,4 +1,4 @@
-import {updateCargoToml, fetchCratesIoInfo, parseCargoLock, findLockedVersion} from "./cargo.ts";
+import {updateCargoToml, updateCargoRange, fetchCratesIoInfo, parseCargoLock, findLockedVersion} from "./cargo.ts";
 import {type ModeContext, fetchTimeout, fieldSep} from "./shared.ts";
 
 test("simple form: name = \"version\"", () => {
@@ -230,4 +230,34 @@ test("findLockedVersion handles caret range specs", () => {
   const versions = new Map([["foo", ["0.8.5", "0.9.0"]]]);
   expect(findLockedVersion(versions, "foo", "^0.8")).toBe("0.8.5");
   expect(findLockedVersion(versions, "foo", "^0.9")).toBe("0.9.0");
+});
+
+test("updateCargoRange bare 2-part preserves part count", () => {
+  expect(updateCargoRange("1.0", "1.1.0")).toBe("1.1");
+  expect(updateCargoRange("1.0", "2.0.0")).toBe("2.0");
+});
+
+test("updateCargoRange bare 3-part preserves part count", () => {
+  expect(updateCargoRange("1.0.0", "1.0.1")).toBe("1.0.1");
+  expect(updateCargoRange("1.0.0", "1.1.0")).toBe("1.1.0");
+  expect(updateCargoRange("1.0.0", "2.0.0")).toBe("2.0.0");
+});
+
+test("updateCargoRange bare 1-part preserves part count", () => {
+  expect(updateCargoRange("1", "2.0.0")).toBe("2");
+});
+
+test("updateCargoRange explicit caret", () => {
+  expect(updateCargoRange("^1.0", "1.1.0")).toBe("^1.1");
+  expect(updateCargoRange("^1.0.0", "1.1.0")).toBe("^1.1.0");
+  expect(updateCargoRange("^1.0.0", "2.0.0")).toBe("^2.0.0");
+});
+
+test("updateCargoRange tilde", () => {
+  expect(updateCargoRange("~1.0.0", "1.0.5")).toBe("~1.0.5");
+  expect(updateCargoRange("~1.0", "1.0.5")).toBe("~1.0");
+});
+
+test("updateCargoRange gte", () => {
+  expect(updateCargoRange(">=1.0.0", "2.0.0")).toBe(">=2.0.0");
 });

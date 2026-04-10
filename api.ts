@@ -18,7 +18,7 @@ import {loadConfig, configMixedToRegexes, patternsToRegexSet} from "./config.ts"
 import type {Config} from "./config.ts";
 import {
   fetchNpmInfo, fetchNpmVersionInfo, fetchJsrInfo, isJsr, isLocalDep, parseJsrDependency,
-  getNpmrc, updatePackageJson, updateNpmRange, normalizeRange, checkUrlDep,
+  getNpmrc, updatePackageJson, updateVersionRange, normalizeRange, checkUrlDep,
 } from "./modes/npm.ts";
 import {fetchPypiInfo, updatePyprojectToml} from "./modes/pypi.ts";
 import {
@@ -40,7 +40,7 @@ import {
   updateDockerfile, updateComposeFile, updateWorkflowDockerImages,
   composeImageRe, workflowContainerRe, workflowDockerUsesRe,
 } from "./modes/docker.ts";
-import {fetchCratesIoInfo, updateCargoToml, parseCargoLock, findLockedVersion} from "./modes/cargo.ts";
+import {fetchCratesIoInfo, updateCargoToml, updateCargoRange, parseCargoLock, findLockedVersion} from "./modes/cargo.ts";
 
 export type {Config, Dep, Deps, DepsByMode, Output};
 
@@ -537,8 +537,10 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
         }, {allowDowngrade, matchesAny, isGoPseudoVersion});
 
         let newRange = "";
-        if (["go", "pypi", "cargo"].includes(mode) && newVersion) {
+        if (["go", "pypi"].includes(mode) && newVersion) {
           newRange = newVersion;
+        } else if (mode === "cargo" && newVersion && oldOrig) {
+          newRange = updateCargoRange(oldOrig, newVersion);
         } else if (newVersion) {
           if (oldOrig && isLocalDep(oldOrig)) {
             newRange = String(getNpmrc()["save-exact"]) === "true" ? newVersion : `^${newVersion}`;
@@ -553,7 +555,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
               newRange = `jsr:${newVersion}`;
             }
           } else {
-            newRange = updateNpmRange(oldRange, newVersion, oldOrig);
+            newRange = updateVersionRange(oldRange, newVersion, oldOrig);
           }
         }
 

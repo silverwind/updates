@@ -1,5 +1,5 @@
 import {
-  isJsr, isLocalDep, parseJsrDependency, updateNpmRange, normalizeRange,
+  isJsr, isLocalDep, parseJsrDependency, updateVersionRange, normalizeRange,
   updatePackageJson, fetchJsrInfo, getLatestCommit, getTags, checkUrlDep,
 } from "./npm.ts";
 import {type ModeContext, fetchTimeout, fieldSep} from "./shared.ts";
@@ -29,17 +29,17 @@ test("parseJsrDependency", () => {
   expect(parseJsrDependency("jsr:1.0.5", "noscope")).toEqual({scope: null, name: null, version: ""});
 });
 
-test("updateNpmRange", () => {
-  expect(updateNpmRange("^1.0.0", "2.0.0", undefined)).toBe("^2.0.0");
-  expect(updateNpmRange("~1.0.0", "1.1.0", undefined)).toBe("~1.1.0");
-  expect(updateNpmRange(">=1.0.0", "2.0.0", undefined)).toBe(">=2.0.0");
-  expect(updateNpmRange("^5.0.0", "6.0.0", "^5")).toBe("^6");
-  expect(updateNpmRange("~5.0.0", "6.0.0", "~5")).toBe("~6");
-  expect(updateNpmRange(">=5.0.0", "6.0.0", ">= 5")).toBe(">= 6");
-  expect(updateNpmRange(">=5.0.0", "6.0.0", ">=5")).toBe(">=6");
-  expect(updateNpmRange("^5.9.0", "6.1.0", "^5.9")).toBe("^6.1");
-  expect(updateNpmRange("^1.2.3", "1.3.0", undefined)).toBe("^1.3.0");
-  expect(updateNpmRange("^1.0.0-alpha.1", "1.0.0-beta.2", undefined)).toBe("^1.0.0-beta.2");
+test("updateVersionRange", () => {
+  expect(updateVersionRange("^1.0.0", "2.0.0", undefined)).toBe("^2.0.0");
+  expect(updateVersionRange("~1.0.0", "1.1.0", undefined)).toBe("~1.1.0");
+  expect(updateVersionRange(">=1.0.0", "2.0.0", undefined)).toBe(">=2.0.0");
+  expect(updateVersionRange("^5.0.0", "6.0.0", "^5")).toBe("^6");
+  expect(updateVersionRange("~5.0.0", "6.0.0", "~5")).toBe("~6");
+  expect(updateVersionRange(">=5.0.0", "6.0.0", ">= 5")).toBe(">= 6");
+  expect(updateVersionRange(">=5.0.0", "6.0.0", ">=5")).toBe(">=6");
+  expect(updateVersionRange("^5.9.0", "6.1.0", "^5.9")).toBe("^6.1");
+  expect(updateVersionRange("^1.2.3", "1.3.0", undefined)).toBe("^1.3.0");
+  expect(updateVersionRange("^1.0.0-alpha.1", "1.0.0-beta.2", undefined)).toBe("^1.0.0-beta.2");
 });
 
 test("normalizeRange", () => {

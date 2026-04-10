@@ -1,6 +1,7 @@
 import {type Deps, type ModeContext, type PackageInfo, fieldSep, getFetchOpts, normalizeUrl, throwFetchError} from "./shared.ts";
 import {cargoTypes, esc} from "../utils/utils.ts";
 import {gt, valid, satisfies} from "../utils/semver.ts";
+import {updateVersionRange, normalizeRange} from "./npm.ts";
 
 type CratesIoVersion = {num: string; created_at: string; yanked: boolean};
 type CratesIoVersionsResponse = {versions: Array<CratesIoVersion>};
@@ -59,7 +60,15 @@ export function parseCargoLock(lockStr: string): Map<string, string[]> {
 }
 
 // Cargo treats bare version strings as caret ranges (e.g. "1.0" = "^1.0").
-const startsWithDigitRe = /^\d/;
+export const startsWithDigitRe = /^\d/;
+
+// Update a Cargo version range, handling bare versions as implicit caret ranges
+export function updateCargoRange(oldOrig: string, newVersion: string): string {
+  if (startsWithDigitRe.test(oldOrig)) {
+    return updateVersionRange(normalizeRange(`^${oldOrig}`), newVersion, `^${oldOrig}`).replace(/^\^/, "");
+  }
+  return updateVersionRange(normalizeRange(oldOrig), newVersion, oldOrig);
+}
 export function findLockedVersion(allVersions: Map<string, string[]>, name: string, range: string): string | undefined {
   const versions = allVersions.get(name);
   if (!versions) return undefined;

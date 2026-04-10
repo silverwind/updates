@@ -1191,14 +1191,14 @@ test("cargo", async ({expect = globalExpect}: any = {}) => {
         "dependencies": {
           "tokio": {
             "info": "https://crates.io/crates/tokio",
-            "new": "1.35.0",
+            "new": "1.35",
             "old": "1.0",
           },
         },
         "dev-dependencies": {
           "rand": {
             "info": "https://crates.io/crates/rand",
-            "new": "0.9.0",
+            "new": "0.9",
             "old": "0.8",
           },
         },

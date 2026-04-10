@@ -298,7 +298,7 @@ export function updatePackageJson(pkgStr: string, deps: Deps): string {
   return newPkgStr;
 }
 
-export function updateNpmRange(oldRange: string, newVersion: string, oldOrig: string | undefined): string {
+export function updateVersionRange(oldRange: string, newVersion: string, oldOrig: string | undefined): string {
   let newRange = oldRange.replace(npmVersionRePre, newVersion);
 
   // if old version is a range like ^5 or ~5, retain number of version parts in new range
