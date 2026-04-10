@@ -1430,29 +1430,24 @@ test("go workspace update", async ({expect = globalExpect}: any = {}) => {
 });
 
 test("pin", async ({expect = globalExpect}: any = {}) => {
-  const {stdout, stderr} = await execFileAsync(process.execPath, [
-    script,
-    "-j",
-    "-c",
-    "--forgeapi", githubUrl,
-    "--pypiapi", pypiUrl,
-    "--registry", npmUrl,
-    "-f", testFile,
-    "--pin", "prismjs=^1.0.0",
-    "--pin", "react=^18.0.0",
-  ]);
-  expect(stderr).toEqual("");
-  const {results} = JSON.parse(stdout);
+  const result = await updates({
+    files: [testFile],
+    forgeapi: githubUrl,
+    pypiapi: pypiUrl,
+    registry: npmUrl,
+    color: false,
+    noCache: true,
+    pin: {"prismjs": "^1.0.0", "react": "^18.0.0"},
+  });
+  const {npm} = result.results;
 
   // prismjs should be updated but only within the ^1.0.0 range
-  expect(results.npm.dependencies.prismjs).toBeDefined();
-  const prismjsNew = results.npm.dependencies.prismjs.new;
-  expect(satisfies(prismjsNew, "^1.0.0")).toBe(true);
+  expect(npm.dependencies.prismjs).toBeDefined();
+  expect(satisfies(npm.dependencies.prismjs.new, "^1.0.0")).toBe(true);
 
   // react should not be updated beyond ^18.0.0 range
-  expect(results.npm.dependencies.react).toBeDefined();
-  const reactNew = results.npm.dependencies.react.new;
-  expect(satisfies(reactNew, "^18.0.0")).toBe(true);
+  expect(npm.dependencies.react).toBeDefined();
+  expect(satisfies(npm.dependencies.react.new, "^18.0.0")).toBe(true);
 });
 
 function actionsArgs(...extra: Array<string>) {
