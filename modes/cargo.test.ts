@@ -1,4 +1,4 @@
-import {updateCargoToml, fetchCratesIoInfo} from "./cargo.ts";
+import {updateCargoToml, fetchCratesIoInfo, parseCargoLock, findLockedVersion} from "./cargo.ts";
 import {type ModeContext, fetchTimeout, fieldSep} from "./shared.ts";
 
 test("simple form: name = \"version\"", () => {
@@ -150,4 +150,84 @@ test("extended table with build-dependencies", () => {
     [`build-dependencies${fieldSep}cc`]: {old: "1.0.0", new: "1.1.0"} as any,
   };
   expect(updateCargoToml(input, deps)).toBe(`[build-dependencies.cc]\nversion = "1.1.0"\n`);
+});
+
+// parseCargoLock
+test("parseCargoLock returns name→versions map", () => {
+  const lock = `
+[[package]]
+name = "serde"
+version = "1.0.200"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
+name = "rand"
+version = "0.8.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+`;
+  const map = parseCargoLock(lock);
+  expect(map.get("serde")).toEqual(["1.0.200"]);
+  expect(map.get("rand")).toEqual(["0.8.5"]);
+  expect(map.size).toBe(2);
+});
+
+test("parseCargoLock collects all versions when package appears multiple times", () => {
+  const lock = `
+[[package]]
+name = "serde"
+version = "1.0.100"
+
+[[package]]
+name = "serde"
+version = "1.0.200"
+`;
+  expect(parseCargoLock(lock).get("serde")).toEqual(["1.0.100", "1.0.200"]);
+});
+
+test("parseCargoLock ignores entries without valid semver", () => {
+  const lock = `
+[[package]]
+name = "my-crate"
+version = "0.1.0"
+
+[[package]]
+name = "bad"
+version = "not-a-version"
+`;
+  const map = parseCargoLock(lock);
+  expect(map.get("my-crate")).toEqual(["0.1.0"]);
+  expect(map.has("bad")).toBe(false);
+});
+
+test("parseCargoLock returns empty map for empty input", () => {
+  expect(parseCargoLock("").size).toBe(0);
+});
+
+// findLockedVersion
+test("findLockedVersion matches version satisfying cargo range", () => {
+  const versions = new Map([["serde", ["1.0.200"]], ["rand", ["0.8.5"]]]);
+  expect(findLockedVersion(versions, "serde", "1.0")).toBe("1.0.200");
+  expect(findLockedVersion(versions, "rand", "0.8")).toBe("0.8.5");
+});
+
+test("findLockedVersion picks correct version when multiple exist", () => {
+  const versions = new Map([["foo", ["0.8.5", "0.9.0"]]]);
+  expect(findLockedVersion(versions, "foo", "0.8")).toBe("0.8.5");
+  expect(findLockedVersion(versions, "foo", "0.9")).toBe("0.9.0");
+});
+
+test("findLockedVersion picks highest matching version", () => {
+  const versions = new Map([["foo", ["1.0.100", "1.0.200"]]]);
+  expect(findLockedVersion(versions, "foo", "1.0")).toBe("1.0.200");
+});
+
+test("findLockedVersion returns undefined for unknown package", () => {
+  const versions = new Map([["serde", ["1.0.200"]]]);
+  expect(findLockedVersion(versions, "unknown", "1.0")).toBeUndefined();
+});
+
+test("findLockedVersion handles caret range specs", () => {
+  const versions = new Map([["foo", ["0.8.5", "0.9.0"]]]);
+  expect(findLockedVersion(versions, "foo", "^0.8")).toBe("0.8.5");
+  expect(findLockedVersion(versions, "foo", "^0.9")).toBe("0.9.0");
 });

@@ -1189,16 +1189,6 @@ test("cargo", async ({expect = globalExpect}: any = {}) => {
     {
       "cargo": {
         "dependencies": {
-          "serde": {
-            "info": "https://crates.io/crates/serde",
-            "new": "1.0.200",
-            "old": "1.0",
-          },
-          "serde_json": {
-            "info": "https://crates.io/crates/serde_json",
-            "new": "1.0.120",
-            "old": "1.0",
-          },
           "tokio": {
             "info": "https://crates.io/crates/tokio",
             "new": "1.35.0",

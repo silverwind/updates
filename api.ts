@@ -40,7 +40,7 @@ import {
   updateDockerfile, updateComposeFile, updateWorkflowDockerImages,
   composeImageRe, workflowContainerRe, workflowDockerUsesRe,
 } from "./modes/docker.ts";
-import {fetchCratesIoInfo, updateCargoToml} from "./modes/cargo.ts";
+import {fetchCratesIoInfo, updateCargoToml, parseCargoLock, findLockedVersion} from "./modes/cargo.ts";
 
 export type {Config, Dep, Deps, DepsByMode, Output};
 
@@ -426,6 +426,12 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
       throw new Error(`Error parsing ${file}: ${(err as Error).message}`);
     }
 
+    let lockedVersions = new Map<string, string[]>();
+    if (mode === "cargo") {
+      const lockPath = findUpSync("Cargo.lock", dirname(file));
+      if (lockPath) lockedVersions = parseCargoLock(readFileOrThrow(lockPath));
+    }
+
     for (const depType of dependencyTypes) {
       let obj: Record<string, string> | Array<string> | string;
       if (mode === "npm" || mode === "go") {
@@ -451,13 +457,15 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
             if (mode === "cargo" && typeof value === "object" && value !== null && "version" in value && !("git" in value) && !("path" in value) && canInclude(name, mode, modeInclude, modeExclude, depType)) {
               const versionStr = String((value as Record<string, string>).version);
               if (validRange(versionStr)) {
-                deps[mode][`${depType}${fieldSep}${name}`] = {old: normalizeRange(versionStr), oldOrig: versionStr} as Dep;
+                const lockedVersion = findLockedVersion(lockedVersions, name, versionStr);
+                deps[mode][`${depType}${fieldSep}${name}`] = {old: lockedVersion ?? normalizeRange(versionStr), oldOrig: versionStr} as Dep;
               }
             } else if (mode === "npm" && isJsr(value) && canInclude(name, mode, modeInclude, modeExclude, depType)) {
               const parsed = parseJsrDependency(value, name);
               deps[mode][`${depType}${fieldSep}${name}`] = {old: parsed.version, oldOrig: value} as Dep;
             } else if (mode !== "go" && validRange(value) && canInclude(name, mode, modeInclude, modeExclude, depType)) {
-              deps[mode][`${depType}${fieldSep}${name}`] = {old: normalizeRange(value), oldOrig: value} as Dep;
+              const lockedVersion = mode === "cargo" ? findLockedVersion(lockedVersions, name, value) : undefined;
+              deps[mode][`${depType}${fieldSep}${name}`] = {old: lockedVersion ?? normalizeRange(value), oldOrig: value} as Dep;
             } else if (mode === "npm" && isLocalDep(value) && canInclude(name, mode, modeInclude, modeExclude, depType)) {
               deps[mode][`${depType}${fieldSep}${name}`] = {old: "0.0.0", oldOrig: value} as Dep;
             } else if (mode === "npm" && !isJsr(value) && canInclude(name, mode, modeInclude, modeExclude, depType)) {
