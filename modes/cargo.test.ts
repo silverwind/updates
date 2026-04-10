@@ -1,4 +1,4 @@
-import {updateCargoToml, fetchCratesIoInfo} from "./cargo.ts";
+import {updateCargoToml, fetchCratesIoInfo, isCargoImplicitCaret} from "./cargo.ts";
 import {type ModeContext, fetchTimeout, fieldSep} from "./shared.ts";
 
 test("simple form: name = \"version\"", () => {
@@ -150,4 +150,22 @@ test("extended table with build-dependencies", () => {
     [`build-dependencies${fieldSep}cc`]: {old: "1.0.0", new: "1.1.0"} as any,
   };
   expect(updateCargoToml(input, deps)).toBe(`[build-dependencies.cc]\nversion = "1.1.0"\n`);
+});
+
+// isCargoImplicitCaret
+test("isCargoImplicitCaret: bare versions return true", () => {
+  expect(isCargoImplicitCaret("1.0")).toBe(true);
+  expect(isCargoImplicitCaret("0.8")).toBe(true);
+  expect(isCargoImplicitCaret("1.0.0")).toBe(true);
+  expect(isCargoImplicitCaret("1")).toBe(true);
+  expect(isCargoImplicitCaret("0.0.3")).toBe(true);
+});
+
+test("isCargoImplicitCaret: explicit qualifiers return false", () => {
+  expect(isCargoImplicitCaret("^1.0")).toBe(false);
+  expect(isCargoImplicitCaret("~1.0")).toBe(false);
+  expect(isCargoImplicitCaret(">=1.0.0")).toBe(false);
+  expect(isCargoImplicitCaret("=1.0.0")).toBe(false);
+  expect(isCargoImplicitCaret(">1.0.0")).toBe(false);
+  expect(isCargoImplicitCaret("<2.0.0")).toBe(false);
 });

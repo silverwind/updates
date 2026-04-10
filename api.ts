@@ -3,7 +3,7 @@ import {styleText} from "node:util";
 import {join, dirname, basename, resolve} from "node:path";
 import {lstatSync, readFileSync, readdirSync, truncateSync, writeFileSync, accessSync, type Stats} from "node:fs";
 import {parseToml} from "./utils/toml.ts";
-import {valid, validRange} from "./utils/semver.ts";
+import {valid, validRange, satisfies} from "./utils/semver.ts";
 import {timerel} from "timerel";
 import {npmTypes, uvTypes, goTypes, cargoTypes, parseUvDependencies, nonPackageEngines, parseDuration, matchesAny, getProperty, canIncludeByDate, timestamp, pMap} from "./utils/utils.ts";
 import {enableDnsCache} from "./utils/dns.ts";
@@ -40,7 +40,7 @@ import {
   updateDockerfile, updateComposeFile, updateWorkflowDockerImages,
   composeImageRe, workflowContainerRe, workflowDockerUsesRe,
 } from "./modes/docker.ts";
-import {fetchCratesIoInfo, updateCargoToml} from "./modes/cargo.ts";
+import {fetchCratesIoInfo, updateCargoToml, isCargoImplicitCaret} from "./modes/cargo.ts";
 
 export type {Config, Dep, Deps, DepsByMode, Output};
 
@@ -547,6 +547,13 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
           } else {
             newRange = updateNpmRange(oldRange, newVersion, oldOrig);
           }
+        }
+
+        // For cargo: bare version specs (e.g. "1.0", "0.8") are implicit caret requirements.
+        // "1.0" means "^1.0 = >=1.0.0 <2.0.0", so 1.0.333 is already within range — no update needed.
+        if (mode === "cargo" && newVersion && oldOrig && isCargoImplicitCaret(oldOrig) && satisfies(newVersion, `^${oldOrig}`)) {
+          delete deps[mode][key];
+          return;
         }
 
         if (!newVersion || newVersion === oldRange || oldOrig && (oldOrig === newRange)) {

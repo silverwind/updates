@@ -41,6 +41,12 @@ export async function fetchCratesIoInfo(name: string, type: string, ctx: ModeCon
   return [data, type, null, name];
 }
 
+// In Cargo, a bare version spec (starting with a digit) has an implicit caret requirement.
+// e.g. "1.0" means "^1.0 = >=1.0.0 <2.0.0", "0.8" means "^0.8 = >=0.8.0 <0.9.0"
+export function isCargoImplicitCaret(versionStr: string): boolean {
+  return /^\d/.test(versionStr.trim());
+}
+
 const sectionAlts = cargoTypes.map(t => esc(t)).join("|");
 
 export function updateCargoToml(pkgStr: string, deps: Deps): string {
