@@ -30,6 +30,8 @@ const goUpdateV2MainFile = fileURLToPath(new URL("fixtures/go-update-v2/main.go"
 const goReplaceFile = fileURLToPath(new URL("fixtures/go-replace/go.mod", import.meta.url));
 const goPreFile = fileURLToPath(new URL("fixtures/go-prerelease/go.mod", import.meta.url));
 const goPseudoFile = fileURLToPath(new URL("fixtures/go-pseudo/go.mod", import.meta.url));
+const goWorkspaceDir = fileURLToPath(new URL("fixtures/go-workspace", import.meta.url));
+const goWorkspaceFile = fileURLToPath(new URL("fixtures/go-workspace/go.work", import.meta.url));
 const invalidConfigFile = fileURLToPath(new URL("fixtures/invalid-config/package.json", import.meta.url));
 const actionsDir = fileURLToPath(new URL("fixtures/actions/.github/workflows", import.meta.url));
 const dockerfileFixture = fileURLToPath(new URL("fixtures/docker/Dockerfile", import.meta.url));
@@ -1378,6 +1380,53 @@ test("go replace update", async ({expect = globalExpect}: any = {}) => {
   expect(updatedContent).toContain("gitea.com/gitea/act v0.261.7");
   expect(updatedContent).not.toContain("gitea.com/gitea/act v0.261.4");
   expect(updatedContent).toContain("replace");
+});
+
+test("go workspace", async ({expect = globalExpect}: any = {}) => {
+  const result = await updates({
+    files: [goWorkspaceFile],
+    goproxy: goProxyUrl,
+    color: false,
+    noCache: true,
+  });
+  const {go} = result.results;
+  expect(go).toBeDefined();
+
+  // Should find deps from both workspace members
+  const appDeps = go["deps|./app"];
+  const libDeps = go["deps|./lib"];
+  expect(appDeps).toBeDefined();
+  expect(libDeps).toBeDefined();
+  expect(appDeps["github.com/google/uuid"]).toBeDefined();
+  expect(libDeps["github.com/google/uuid"]).toBeDefined();
+  expect(appDeps["github.com/google/uuid"].old).toBe("1.5.0");
+  expect(libDeps["github.com/google/uuid"].old).toBe("1.5.0");
+});
+
+test("go workspace update", async ({expect = globalExpect}: any = {}) => {
+  const testGoWorkDir = join(testDir, "test-go-workspace");
+  mkdirSync(join(testGoWorkDir, "app"), {recursive: true});
+  mkdirSync(join(testGoWorkDir, "lib"), {recursive: true});
+
+  writeFileSync(join(testGoWorkDir, "go.work"), readFileSync(join(goWorkspaceDir, "go.work"), "utf8"));
+  writeFileSync(join(testGoWorkDir, "app", "go.mod"), readFileSync(join(goWorkspaceDir, "app", "go.mod"), "utf8"));
+  writeFileSync(join(testGoWorkDir, "app", "main.go"), readFileSync(join(goWorkspaceDir, "app", "main.go"), "utf8"));
+  writeFileSync(join(testGoWorkDir, "lib", "go.mod"), readFileSync(join(goWorkspaceDir, "lib", "go.mod"), "utf8"));
+
+  await execFileAsync(execPath, [
+    script,
+    "-u",
+    "-f", join(testGoWorkDir, "go.work"),
+    "-c",
+    "--goproxy", goProxyUrl,
+  ], {cwd: testGoWorkDir});
+
+  const appMod = await readFile(join(testGoWorkDir, "app", "go.mod"), "utf8");
+  const libMod = await readFile(join(testGoWorkDir, "lib", "go.mod"), "utf8");
+  expect(appMod).toContain("github.com/google/uuid v1.6.0");
+  expect(appMod).not.toContain("uuid v1.5.0");
+  expect(libMod).toContain("github.com/google/uuid v1.6.0");
+  expect(libMod).not.toContain("uuid v1.5.0");
 });
 
 test("pin", async ({expect = globalExpect}: any = {}) => {

@@ -9,7 +9,7 @@
 
 - `package.json` - npm dependencies
 - `pyproject.toml` - uv dependencies
-- `go.mod` - go dependencies
+- `go.mod`, `go.work` - go dependencies
 - `Cargo.toml` - rust dependencies
 - `.{github,gitea,forgejo}/workflows` - actions and docker images
 - `Dockerfile*`, `docker-*.{yml,yaml}` - docker images
