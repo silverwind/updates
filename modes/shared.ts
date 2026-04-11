@@ -307,19 +307,26 @@ if (env.UPDATES_FORGE_TOKENS) {
   }
 }
 
-function getGithubTokens(): string[] {
+function getEnvTokens(names: string[]): string[] {
   const tokens: string[] = [];
-  for (const name of ["UPDATES_GITHUB_API_TOKEN", "GITHUB_API_TOKEN", "GH_TOKEN", "GITHUB_TOKEN", "HOMEBREW_GITHUB_API_TOKEN"]) {
+  for (const name of names) {
     if (env[name]) tokens.push(env[name]);
   }
-  try {
-    const stdout = execFileSync("gh", ["auth", "token"], {encoding: "utf8", timeout: 5000}).trim();
-    if (stdout) tokens.push(stdout);
-  } catch {}
   return Array.from(new Set(tokens));
 }
 
-const githubTokens = getGithubTokens();
+let githubTokens: string[] | undefined;
+function getGithubTokens(): string[] {
+  if (!githubTokens) {
+    githubTokens = getEnvTokens(["UPDATES_GITHUB_API_TOKEN", "GITHUB_API_TOKEN", "GH_TOKEN", "GITHUB_TOKEN", "HOMEBREW_GITHUB_API_TOKEN"]);
+    try {
+      const stdout = execFileSync("gh", ["auth", "token"], {encoding: "utf8", timeout: 5000}).trim();
+      if (stdout && !githubTokens.includes(stdout)) githubTokens.push(stdout);
+    } catch {}
+  }
+  return githubTokens;
+}
+
 const workingTokenCache = new Map<string, string>();
 
 export function getForgeTokens(url: string): string[] {
@@ -327,18 +334,19 @@ export function getForgeTokens(url: string): string[] {
     const hostToken = forgeTokensByHost.get(new URL(url).hostname);
     if (hostToken) return [hostToken];
   } catch {}
-  return githubTokens;
+  return getGithubTokens();
 }
 
 export async function fetchForge(url: string, ctx: ModeContext): Promise<Response> {
   const baseOpts: RequestInit = {signal: AbortSignal.timeout(ctx.fetchTimeout), headers: {"accept-encoding": "gzip, deflate, br"}};
-  const tokens = getForgeTokens(url);
-  if (!tokens.length) return ctx.doFetch(url, baseOpts);
 
   let hostname: string;
   try { hostname = new URL(url).hostname; } catch { hostname = ""; }
 
-  const cached = workingTokenCache.get(hostname);
+  const tokens = hostname ? getForgeTokens(url) : getGithubTokens();
+  if (!tokens.length) return ctx.doFetch(url, baseOpts);
+
+  const cached = hostname ? workingTokenCache.get(hostname) : undefined;
   if (cached) {
     return ctx.doFetch(url, {...baseOpts, headers: {...baseOpts.headers, Authorization: `Bearer ${cached}`}});
   }
@@ -346,7 +354,7 @@ export async function fetchForge(url: string, ctx: ModeContext): Promise<Respons
   for (const token of tokens) {
     const response = await ctx.doFetch(url, {...baseOpts, headers: {...baseOpts.headers, Authorization: `Bearer ${token}`}});
     if (response.status !== 401 && response.status !== 403) {
-      workingTokenCache.set(hostname, token);
+      if (hostname) workingTokenCache.set(hostname, token);
       return response;
     }
   }
