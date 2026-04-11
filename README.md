@@ -10,7 +10,7 @@
 - `package.json`, `pnpm-workspace.yaml` - npm dependencies
 - `pyproject.toml` - uv dependencies
 - `go.mod`, `go.work` - go dependencies
-- `Cargo.toml` - rust dependencies (including workspaces)
+- `Cargo.toml` - rust dependencies, including workspaces
 - `.{github,gitea,forgejo}/workflows` - actions and docker images
 - `Dockerfile*`, `docker-*.{yml,yaml}` - docker images
 
