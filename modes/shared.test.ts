@@ -16,7 +16,7 @@ import {
   findVersion,
   getInfoUrl,
   packageVersion,
-  getForgeToken,
+  getForgeTokens,
   fetchActionTags,
   fetchTimeout,
   type ModeContext,
@@ -635,35 +635,14 @@ test("resolvePackageJsonUrl shorthand u/r", () => {
   expect(resolvePackageJsonUrl("u/r")).toBe("https://github.com/u/r");
 });
 
-// getForgeToken — single test block to avoid env var races under concurrent execution
-test("getForgeToken", () => {
-  const origKeys = ["UPDATES_FORGE_TOKENS", "UPDATES_GITHUB_API_TOKEN", "GITHUB_API_TOKEN", "GH_TOKEN", "GITHUB_TOKEN", "HOMEBREW_GITHUB_API_TOKEN"] as const;
-  const origValues = origKeys.map(k => process.env[k]);
-  try {
-    // returns GH_TOKEN when set
-    for (const k of origKeys) delete process.env[k];
-    process.env.GH_TOKEN = "test-gh-token";
-    expect(getForgeToken("https://api.github.com/repos")).toBe("test-gh-token");
+// getForgeTokens — github tokens are cached at module load, so env var changes won't affect them
+test("getForgeTokens", () => {
+  // returns array for github URLs
+  const tokens = getForgeTokens("https://api.github.com/repos");
+  expect(Array.isArray(tokens)).toBe(true);
 
-    // falls back to GITHUB_TOKEN
-    for (const k of origKeys) delete process.env[k];
-    process.env.GITHUB_TOKEN = "fallback-token";
-    expect(getForgeToken("https://api.github.com/repos")).toBe("fallback-token");
-
-    // returns undefined when no tokens set
-    for (const k of origKeys) delete process.env[k];
-    expect(getForgeToken("https://api.github.com/repos")).toBeUndefined();
-
-    // invalid URL falls through to env vars
-    for (const k of origKeys) delete process.env[k];
-    process.env.GH_TOKEN = "fallback";
-    expect(getForgeToken("not-a-url")).toBe("fallback");
-  } finally {
-    for (const [idx, k] of origKeys.entries()) {
-      if (origValues[idx] === undefined) delete process.env[k];
-      else process.env[k] = origValues[idx];
-    }
-  }
+  // invalid URL falls through to github tokens
+  expect(getForgeTokens("not-a-url")).toEqual(tokens);
 });
 
 // fetchActionTags

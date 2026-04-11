@@ -1,4 +1,5 @@
 import {env} from "node:process";
+import {execFileSync} from "node:child_process";
 import {parse, coerce, diff, gt, gte, lt, neq, satisfies, valid} from "../utils/semver.ts";
 import pkg from "../package.json" with {type: "json"};
 
@@ -306,22 +307,50 @@ if (env.UPDATES_FORGE_TOKENS) {
   }
 }
 
-export function getForgeToken(url: string): string | undefined {
+function getGithubTokens(): string[] {
+  const tokens: string[] = [];
+  for (const name of ["UPDATES_GITHUB_API_TOKEN", "GITHUB_API_TOKEN", "GH_TOKEN", "GITHUB_TOKEN", "HOMEBREW_GITHUB_API_TOKEN"]) {
+    if (env[name]) tokens.push(env[name]);
+  }
   try {
-    const hostToken = forgeTokensByHost.get(new URL(url).hostname);
-    if (hostToken) return hostToken;
+    const stdout = execFileSync("gh", ["auth", "token"], {encoding: "utf8", timeout: 5000}).trim();
+    if (stdout) tokens.push(stdout);
   } catch {}
-  return env.UPDATES_GITHUB_API_TOKEN || env.GITHUB_API_TOKEN ||
-    env.GH_TOKEN || env.GITHUB_TOKEN || env.HOMEBREW_GITHUB_API_TOKEN;
+  return Array.from(new Set(tokens));
 }
 
-export function fetchForge(url: string, ctx: ModeContext): Promise<Response> {
-  const opts: RequestInit = {signal: AbortSignal.timeout(ctx.fetchTimeout), headers: {"accept-encoding": "gzip, deflate, br"}};
-  const token = getForgeToken(url);
-  if (token) {
-    opts.headers = {...opts.headers, Authorization: `Bearer ${token}`};
+const githubTokens = getGithubTokens();
+const workingTokenCache = new Map<string, string>();
+
+export function getForgeTokens(url: string): string[] {
+  try {
+    const hostToken = forgeTokensByHost.get(new URL(url).hostname);
+    if (hostToken) return [hostToken];
+  } catch {}
+  return githubTokens;
+}
+
+export async function fetchForge(url: string, ctx: ModeContext): Promise<Response> {
+  const baseOpts: RequestInit = {signal: AbortSignal.timeout(ctx.fetchTimeout), headers: {"accept-encoding": "gzip, deflate, br"}};
+  const tokens = getForgeTokens(url);
+  if (!tokens.length) return ctx.doFetch(url, baseOpts);
+
+  let hostname: string;
+  try { hostname = new URL(url).hostname; } catch { hostname = ""; }
+
+  const cached = workingTokenCache.get(hostname);
+  if (cached) {
+    return ctx.doFetch(url, {...baseOpts, headers: {...baseOpts.headers, Authorization: `Bearer ${cached}`}});
   }
-  return ctx.doFetch(url, opts);
+
+  for (const token of tokens) {
+    const response = await ctx.doFetch(url, {...baseOpts, headers: {...baseOpts.headers, Authorization: `Bearer ${token}`}});
+    if (response.status !== 401 && response.status !== 403) {
+      workingTokenCache.set(hostname, token);
+      return response;
+    }
+  }
+  return ctx.doFetch(url, baseOpts);
 }
 
 export function selectTag(tags: Array<string>, oldRef: string, useGreatest: boolean): string | null {
