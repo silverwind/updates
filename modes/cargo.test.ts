@@ -109,7 +109,7 @@ test("fetchCratesIoInfo filters yanked versions", async () => {
     fetchTimeout,
     doFetch: () => Promise.resolve({ok: true, json: () => Promise.resolve(responseData)}),
   } as unknown as ModeContext;
-  const [data] = await fetchCratesIoInfo("serde", "dependencies", ctx);
+  const [data] = await fetchCratesIoInfo("serde-yanked", "dependencies", ctx);
   expect(Object.keys(data.versions)).toEqual(["1.0.0"]);
   expect(data["dist-tags"].latest).toBe("1.0.0");
 });
@@ -129,7 +129,7 @@ test("fetchCratesIoInfo invalid JSON throws", async () => {
     fetchTimeout,
     doFetch: () => Promise.resolve({ok: true, json: () => Promise.reject(new Error("parse error"))}),
   } as unknown as ModeContext;
-  await expect(fetchCratesIoInfo("serde", "dependencies", ctx)).rejects.toThrow("Invalid JSON");
+  await expect(fetchCratesIoInfo("serde-bad-json", "dependencies", ctx)).rejects.toThrow("Invalid JSON");
 });
 
 test("fetchCratesIoInfo empty versions", async () => {
@@ -138,7 +138,7 @@ test("fetchCratesIoInfo empty versions", async () => {
     fetchTimeout,
     doFetch: () => Promise.resolve({ok: true, json: () => Promise.resolve({versions: []})}),
   } as unknown as ModeContext;
-  const [data] = await fetchCratesIoInfo("serde", "dependencies", ctx);
+  const [data] = await fetchCratesIoInfo("serde-empty", "dependencies", ctx);
   expect(data.versions).toEqual({});
   expect(data.time).toEqual({});
   expect(data["dist-tags"].latest).toBe("");

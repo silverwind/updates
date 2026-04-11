@@ -41,6 +41,10 @@ const dockerfileDevFixture = fileURLToPath(new URL("fixtures/docker/Dockerfile.d
 const dockerStackFixture = fileURLToPath(new URL("fixtures/docker/docker-stack.yml", import.meta.url));
 const dockerDir = fileURLToPath(new URL("fixtures/docker", import.meta.url));
 const cargoFile = fileURLToPath(new URL("fixtures/cargo/Cargo.toml", import.meta.url));
+const cargoWorkspaceDir = fileURLToPath(new URL("fixtures/cargo-workspace", import.meta.url));
+const cargoWorkspaceFile = fileURLToPath(new URL("fixtures/cargo-workspace/Cargo.toml", import.meta.url));
+const pnpmWorkspaceDir = fileURLToPath(new URL("fixtures/pnpm-workspace", import.meta.url));
+const pnpmWorkspaceFile = fileURLToPath(new URL("fixtures/pnpm-workspace/pnpm-workspace.yaml", import.meta.url));
 
 const testPkg = JSON.parse(readFileSync(testFile, "utf8"));
 const testDir = mkdtempSync(join(tmpdir(), "updates-"));
@@ -1427,6 +1431,115 @@ test("go workspace update", async ({expect = globalExpect}: any = {}) => {
   expect(appMod).not.toContain("uuid v1.5.0");
   expect(libMod).toContain("github.com/google/uuid v1.6.0");
   expect(libMod).not.toContain("uuid v1.5.0");
+});
+
+test("cargo workspace", async ({expect = globalExpect}: any = {}) => {
+  const result = await updates({
+    files: [cargoWorkspaceFile],
+    cargoapi: cargoUrl,
+    color: false,
+    noCache: true,
+  });
+  const {cargo} = result.results;
+  expect(cargo).toBeDefined();
+
+  // workspace.dependencies from root (no prefix)
+  expect(cargo["workspace.dependencies"]).toBeDefined();
+  expect(cargo["workspace.dependencies"]["serde_json"]).toBeDefined();
+  expect(cargo["workspace.dependencies"]["serde_json"].old).toBe("1.0.100");
+  expect(cargo["workspace.dependencies"]["serde_json"].new).toBe("1.0.120");
+
+  // Member deps with prefixes
+  const crateADeps = cargo["dependencies|./crate-a"];
+  const crateBDeps = cargo["dependencies|./crate-b"];
+  const crateBDevDeps = cargo["dev-dependencies|./crate-b"];
+  expect(crateADeps).toBeDefined();
+  expect(crateBDeps).toBeDefined();
+  expect(crateBDevDeps).toBeDefined();
+  expect(crateADeps["serde"].old).toBe("1.0.100");
+  expect(crateBDeps["tokio"].old).toBe("1.34.0");
+  expect(crateBDevDeps["rand"].old).toBe("0.8.5");
+  expect(crateADeps["serde"].new).toBe("1.0.200");
+  expect(crateBDeps["tokio"].new).toBe("1.35.0");
+  expect(crateBDevDeps["rand"].new).toBe("0.9.0");
+});
+
+test("cargo workspace update", async ({expect = globalExpect}: any = {}) => {
+  const testCargoWorkDir = join(testDir, "test-cargo-workspace");
+  mkdirSync(join(testCargoWorkDir, "crate-a"), {recursive: true});
+  mkdirSync(join(testCargoWorkDir, "crate-b"), {recursive: true});
+
+  writeFileSync(join(testCargoWorkDir, "Cargo.toml"), readFileSync(join(cargoWorkspaceDir, "Cargo.toml"), "utf8"));
+  writeFileSync(join(testCargoWorkDir, "Cargo.lock"), readFileSync(join(cargoWorkspaceDir, "Cargo.lock"), "utf8"));
+  writeFileSync(join(testCargoWorkDir, "crate-a", "Cargo.toml"), readFileSync(join(cargoWorkspaceDir, "crate-a", "Cargo.toml"), "utf8"));
+  writeFileSync(join(testCargoWorkDir, "crate-b", "Cargo.toml"), readFileSync(join(cargoWorkspaceDir, "crate-b", "Cargo.toml"), "utf8"));
+
+  await execFileAsync(execPath, [
+    script,
+    "-u",
+    "-f", join(testCargoWorkDir, "Cargo.toml"),
+    "-c",
+    "--cargoapi", cargoUrl,
+  ], {cwd: testCargoWorkDir});
+
+  const rootToml = await readFile(join(testCargoWorkDir, "Cargo.toml"), "utf8");
+  const crateAToml = await readFile(join(testCargoWorkDir, "crate-a", "Cargo.toml"), "utf8");
+  const crateBToml = await readFile(join(testCargoWorkDir, "crate-b", "Cargo.toml"), "utf8");
+  expect(rootToml).toContain('serde_json = "1.0.120"');
+  expect(crateAToml).toContain('serde = "1.0.200"');
+  expect(crateBToml).toContain('version = "1.35.0"');
+  expect(crateBToml).toContain('rand = "0.9.0"');
+});
+
+test("pnpm workspace", async ({expect = globalExpect}: any = {}) => {
+  const result = await updates({
+    files: [pnpmWorkspaceFile],
+    registry: npmUrl,
+    forgeapi: githubUrl,
+    color: false,
+    noCache: true,
+  });
+  const {npm} = result.results;
+  expect(npm).toBeDefined();
+
+  // Root deps (no prefix)
+  expect(npm["devDependencies"]).toBeDefined();
+  expect(npm["devDependencies"]["typescript"]).toBeDefined();
+
+  // Member deps with prefixes
+  const appADeps = npm["dependencies|./packages/app-a"];
+  const libBDeps = npm["dependencies|./packages/lib-b"];
+  expect(appADeps).toBeDefined();
+  expect(libBDeps).toBeDefined();
+  expect(appADeps["prismjs"]).toBeDefined();
+  expect(libBDeps["react"]).toBeDefined();
+});
+
+test("pnpm workspace update", async ({expect = globalExpect}: any = {}) => {
+  const testPnpmWorkDir = join(testDir, "test-pnpm-workspace");
+  mkdirSync(join(testPnpmWorkDir, "packages", "app-a"), {recursive: true});
+  mkdirSync(join(testPnpmWorkDir, "packages", "lib-b"), {recursive: true});
+
+  writeFileSync(join(testPnpmWorkDir, "pnpm-workspace.yaml"), readFileSync(join(pnpmWorkspaceDir, "pnpm-workspace.yaml"), "utf8"));
+  writeFileSync(join(testPnpmWorkDir, "package.json"), readFileSync(join(pnpmWorkspaceDir, "package.json"), "utf8"));
+  writeFileSync(join(testPnpmWorkDir, "packages", "app-a", "package.json"), readFileSync(join(pnpmWorkspaceDir, "packages", "app-a", "package.json"), "utf8"));
+  writeFileSync(join(testPnpmWorkDir, "packages", "lib-b", "package.json"), readFileSync(join(pnpmWorkspaceDir, "packages", "lib-b", "package.json"), "utf8"));
+
+  await execFileAsync(execPath, [
+    script,
+    "-u",
+    "-f", join(testPnpmWorkDir, "pnpm-workspace.yaml"),
+    "-c",
+    "--registry", npmUrl,
+    "--forgeapi", githubUrl,
+  ], {cwd: testPnpmWorkDir});
+
+  const rootPkg = await readFile(join(testPnpmWorkDir, "package.json"), "utf8");
+  const appAPkg = await readFile(join(testPnpmWorkDir, "packages", "app-a", "package.json"), "utf8");
+  const libBPkg = await readFile(join(testPnpmWorkDir, "packages", "lib-b", "package.json"), "utf8");
+  expect(rootPkg).not.toContain('"^4"');
+  expect(appAPkg).not.toContain('"1.0.0"');
+  expect(libBPkg).not.toContain('"18.0"');
 });
 
 test("pin", async ({expect = globalExpect}: any = {}) => {

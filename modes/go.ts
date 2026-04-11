@@ -54,9 +54,6 @@ function parseReplaceDirective(trimmed: string, inBlock: boolean): ReplaceMatch 
   return {origModule, targetModule, targetVersion};
 }
 
-export function baseGoType(type: string): string {
-  return type.split("|")[0];
-}
 
 function shouldSkipMajorProbe(name: string, type: string, currentVersion: string): boolean {
   return type === "indirect" || name.startsWith("golang.org/x/") || isGoPseudoVersion(currentVersion);

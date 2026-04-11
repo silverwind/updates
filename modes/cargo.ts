@@ -6,41 +6,40 @@ import {updateVersionRange, normalizeRange} from "./npm.ts";
 type CratesIoVersion = {num: string; created_at: string; yanked: boolean};
 type CratesIoVersionsResponse = {versions: Array<CratesIoVersion>};
 
+const cratesIoCache = new Map<string, Promise<Record<string, any>>>();
+
 export async function fetchCratesIoInfo(name: string, type: string, ctx: ModeContext): Promise<PackageInfo> {
   const base = normalizeUrl(ctx.cratesIoUrl);
   const url = `${base}/api/v1/crates/${encodeURIComponent(name)}/versions?per_page=100`;
 
-  const res = await ctx.doFetch(url, {
-    signal: AbortSignal.timeout(ctx.fetchTimeout),
-    ...getFetchOpts(),
-  });
-  if (!res?.ok) throwFetchError(res, url, name, ctx.cratesIoUrl);
-
-  let body: CratesIoVersionsResponse;
-  try {
-    body = await res.json();
-  } catch {
-    throw new Error(`Invalid JSON from ${url}`);
+  let dataPromise = ctx.noCache ? undefined : cratesIoCache.get(url);
+  if (!dataPromise) {
+    dataPromise = ctx.doFetch(url, {
+      signal: AbortSignal.timeout(ctx.fetchTimeout),
+      ...getFetchOpts(),
+    }).then(async res => {
+      if (!res?.ok) throwFetchError(res, url, name, ctx.cratesIoUrl);
+      let body: CratesIoVersionsResponse;
+      try {
+        body = await res.json();
+      } catch {
+        throw new Error(`Invalid JSON from ${url}`);
+      }
+      const versions = (body.versions || []).filter((v: CratesIoVersion) => !v.yanked);
+      const versionsObj: Record<string, Record<string, never>> = {};
+      const time: Record<string, string> = {};
+      for (const v of versions) {
+        if (v.num) {
+          versionsObj[v.num] = {};
+          time[v.num] = v.created_at || "";
+        }
+      }
+      const latest = versions[0]?.num ?? "";
+      return {name, versions: versionsObj, time, "dist-tags": {latest}};
+    }).catch(err => { cratesIoCache.delete(url); throw err; });
+    cratesIoCache.set(url, dataPromise);
   }
-
-  const versions = (body.versions || []).filter((v: CratesIoVersion) => !v.yanked);
-  const versionsObj: Record<string, Record<string, never>> = {};
-  const time: Record<string, string> = {};
-  for (const v of versions) {
-    if (v.num) {
-      versionsObj[v.num] = {};
-      time[v.num] = v.created_at || "";
-    }
-  }
-
-  const latest = versions[0]?.num ?? "";
-  const data = {
-    name,
-    versions: versionsObj,
-    time,
-    "dist-tags": {latest},
-  };
-  return [data, type, null, name];
+  return [await dataPromise, type, null, name];
 }
 
 export function parseCargoLock(lockStr: string): Map<string, string[]> {
