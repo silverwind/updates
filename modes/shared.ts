@@ -320,7 +320,7 @@ function getGithubTokens(): string[] {
   if (!githubTokens) {
     githubTokens = getEnvTokens(["UPDATES_GITHUB_API_TOKEN", "GITHUB_API_TOKEN", "GH_TOKEN", "GITHUB_TOKEN", "HOMEBREW_GITHUB_API_TOKEN"]);
     try {
-      const stdout = execFileSync("gh", ["auth", "token"], {encoding: "utf8", timeout: 5000}).trim();
+      const stdout = execFileSync("gh", ["auth", "token"], {encoding: "utf8", timeout: 5000, stdio: ["ignore", "pipe", "pipe"]}).trim();
       if (stdout && !githubTokens.includes(stdout)) githubTokens.push(stdout);
     } catch {}
   }
