@@ -315,15 +315,16 @@ function getEnvTokens(names: string[]): string[] {
   return Array.from(new Set(tokens));
 }
 
-let githubTokens: string[] | undefined;
+// Resolve eagerly at module load: doing this inside a concurrent `fetchForge`
+// flow blocks the event loop (execFileSync is sync) long enough on Windows
+// that parallel fetches can hit their AbortSignal timeout.
+const githubTokens: string[] = getEnvTokens(["UPDATES_GITHUB_API_TOKEN", "GITHUB_API_TOKEN", "GH_TOKEN", "GITHUB_TOKEN", "HOMEBREW_GITHUB_API_TOKEN"]);
+try {
+  const stdout = execFileSync("gh", ["auth", "token"], {encoding: "utf8", timeout: 5000, stdio: ["ignore", "pipe", "pipe"]}).trim();
+  if (stdout && !githubTokens.includes(stdout)) githubTokens.push(stdout);
+} catch {}
+
 function getGithubTokens(): string[] {
-  if (!githubTokens) {
-    githubTokens = getEnvTokens(["UPDATES_GITHUB_API_TOKEN", "GITHUB_API_TOKEN", "GH_TOKEN", "GITHUB_TOKEN", "HOMEBREW_GITHUB_API_TOKEN"]);
-    try {
-      const stdout = execFileSync("gh", ["auth", "token"], {encoding: "utf8", timeout: 5000, stdio: ["ignore", "pipe", "pipe"]}).trim();
-      if (stdout && !githubTokens.includes(stdout)) githubTokens.push(stdout);
-    } catch {}
-  }
   return githubTokens;
 }
 
