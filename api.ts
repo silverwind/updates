@@ -2,6 +2,7 @@ import {cwd, platform, stderr} from "node:process";
 import {styleText} from "node:util";
 import {join, dirname, basename, resolve} from "node:path";
 import {lstatSync, readFileSync, readdirSync, truncateSync, writeFileSync, accessSync, type Stats} from "node:fs";
+import {readFile} from "node:fs/promises";
 import {parseToml} from "./utils/toml.ts";
 import {valid, validRange} from "./utils/semver.ts";
 import {timerel} from "timerel";
@@ -56,19 +57,31 @@ const modeByFileName: Record<string, string> = {
 
 const defaultModes = new Set(["npm", "pypi", "go", "cargo", "actions", "docker"]);
 
-function findUpSync(filename: string, dir: string): string | null {
-  const path = join(dir, filename);
-  try { accessSync(path); return path; } catch {}
-  const parent = dirname(dir);
-  return parent === dir ? null : findUpSync(filename, parent);
+function findUpSync(filenames: string[], dir: string): Map<string, string> {
+  const found = new Map<string, string>();
+  const remaining = new Set(filenames);
+  let cur = dir;
+  while (remaining.size) {
+    for (const filename of remaining) {
+      const path = join(cur, filename);
+      try { accessSync(path); found.set(filename, path); remaining.delete(filename); } catch {}
+    }
+    const parent = dirname(cur);
+    if (parent === cur) break;
+    cur = parent;
+  }
+  return found;
 }
 
-function readFileOrThrow(file: string): string {
-  try {
-    return readFileSync(file, "utf8");
-  } catch (err) {
-    throw new Error(`Unable to open ${file}: ${(err as Error).message}`);
-  }
+async function prefetchFiles(files: Iterable<string>, concurrency: number): Promise<Map<string, string>> {
+  const entries = await pMap(files, async (file): Promise<[string, string]> => {
+    try {
+      return [file, await readFile(file, "utf8")];
+    } catch (err) {
+      throw new Error(`Unable to open ${file}: ${(err as Error).message}`);
+    }
+  }, {concurrency});
+  return new Map(entries);
 }
 
 function setDepAge(dep: Dep, date: string): void {
@@ -157,13 +170,14 @@ function resolveFiles(filesArg: Set<string> | false): Set<string> {
       }
     }
   } else {
-    for (const filename of Object.keys(modeByFileName)) {
-      const file = findUpSync(filename, cwd());
-      if (file) resolvedFiles.add(resolve(file));
-    }
-    for (const filename of dockerExactFileNames) {
-      const file = findUpSync(filename, cwd());
-      if (file) resolvedFiles.add(resolve(file));
+    const workflowsDir = join(".github", "workflows");
+    const candidates = [...Object.keys(modeByFileName), ...dockerExactFileNames, workflowsDir];
+    for (const [filename, path] of findUpSync(candidates, cwd())) {
+      if (filename === workflowsDir) {
+        for (const wf of resolveWorkflowFiles(path)) resolvedFiles.add(wf);
+      } else {
+        resolvedFiles.add(resolve(path));
+      }
     }
     try {
       for (const entry of readdirSync(cwd())) {
@@ -173,10 +187,6 @@ function resolveFiles(filesArg: Set<string> | false): Set<string> {
         }
       }
     } catch {}
-    const workflowDir = findUpSync(join(".github", "workflows"), cwd());
-    if (workflowDir) {
-      for (const wf of resolveWorkflowFiles(workflowDir)) resolvedFiles.add(wf);
-    }
   }
 
   // go.work supersedes go.mod in the same directory
@@ -329,6 +339,14 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
   let numDependencies = 0;
 
   const files = resolveFiles(config.files?.length ? new Set(config.files) : false);
+  const fileApplies = (file: string): boolean => {
+    if (isWorkflowFile(file)) return enabledModes.has("actions") || enabledModes.has("docker");
+    const filename = basename(file);
+    if (isDockerFileName(filename)) return enabledModes.has("docker");
+    const mode = modeByFileName[filename];
+    return Boolean(mode) && enabledModes.has(mode);
+  };
+  const fileContents = await prefetchFiles(Array.from(files).filter(fileApplies), concurrency);
 
   const wfData: Record<string, {absPath: string, content: string}> = {};
   const dockerFileData: Record<string, {absPath: string, content: string, fileType: string}> = {};
@@ -389,7 +407,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
       const dockerEnabled = enabledModes.has("docker");
       if (!actionsEnabled && !dockerEnabled) continue;
 
-      const content = readFileOrThrow(file);
+      const content = fileContents.get(file)!;
       const relPath = toRelPath(file);
       wfData[relPath] = {absPath: file, content};
 
@@ -416,7 +434,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
 
     if (isDockerFileName(filename)) {
       if (!enabledModes.has("docker")) continue;
-      const content = readFileOrThrow(file);
+      const content = fileContents.get(file)!;
       const relPath = toRelPath(file);
       const fileType = isDockerfile(filename) ? "dockerfile" : "compose";
       dockerFileData[relPath] = {absPath: file, content, fileType};
@@ -430,20 +448,29 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
     if (filename === "go.work") {
       if (!deps[mode]) deps[mode] = {};
       const workspaceDir = dirname(resolve(file));
-      const workContent = readFileOrThrow(file);
+      const workContent = fileContents.get(file)!;
       goWorkData = {file, content: workContent};
       const goWork = parseGoWork(workContent);
 
-      const {modeConfig, modeInclude, modeExclude, pin} = await resolveModeFilters(workspaceDir);
+      const [filters, useReads] = await Promise.all([
+        resolveModeFilters(workspaceDir),
+        pMap(goWork.use, async (usePath) => {
+          const modPath = resolve(join(workspaceDir, usePath, "go.mod"));
+          try {
+            return {usePath, modPath, content: await readFile(modPath, "utf8")};
+          } catch {
+            return null;
+          }
+        }, {concurrency}),
+      ]);
+      const {modeConfig, modeInclude, modeExclude, pin} = filters;
       const dependencyTypes = resolveDepTypes(mode, modeConfig);
       filePerMode[mode] = file;
       modeConfigs[mode] = {modeConfig, projectDir: workspaceDir, pin};
 
-      for (const usePath of goWork.use) {
-        const modPath = resolve(join(workspaceDir, usePath, "go.mod"));
-        let modContent: string;
-        try { modContent = readFileSync(modPath, "utf8"); } catch { continue; }
-
+      for (const entry of useReads) {
+        if (!entry) continue;
+        const {usePath, modPath, content: modContent} = entry;
         const parsed = parseGoMod(modContent);
         const modProjectDir = dirname(modPath);
         goModFiles.push({absPath: modPath, content: modContent, projectDir: modProjectDir, usePath});
@@ -474,18 +501,24 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
 
     if (filename === "Cargo.toml") {
       if (!deps[mode]) deps[mode] = {};
-      const cargoContent = readFileOrThrow(file);
+      const cargoContent = fileContents.get(file)!;
       const cargoParsed = parseToml(cargoContent);
       const workspaceDir = dirname(resolve(file));
       filePerMode[mode] = file;
 
-      const {modeConfig, modeInclude, modeExclude, pin} = await resolveModeFilters(workspaceDir);
+      const lockPath = findUpSync(["Cargo.lock"], workspaceDir).get("Cargo.lock");
+      const wsMembers = (cargoParsed.workspace as Record<string, any>)?.members;
+      const isWorkspace = Array.isArray(wsMembers) && wsMembers.length;
+
+      const [filters, lockContent, members] = await Promise.all([
+        resolveModeFilters(workspaceDir),
+        lockPath ? readFile(lockPath, "utf8") : Promise.resolve(null),
+        isWorkspace ? resolveWorkspaceMembers(wsMembers, workspaceDir, "Cargo.toml", concurrency) : Promise.resolve([] as WorkspaceMember[]),
+      ]);
+      const {modeConfig, modeInclude, modeExclude, pin} = filters;
       const dependencyTypes = resolveDepTypes(mode, modeConfig);
       modeConfigs[mode] = {modeConfig, projectDir: workspaceDir, pin};
-
-      let lockedVersions = new Map<string, string[]>();
-      const lockPath = findUpSync("Cargo.lock", workspaceDir);
-      if (lockPath) lockedVersions = parseCargoLock(readFileOrThrow(lockPath));
+      const lockedVersions = lockContent ? parseCargoLock(lockContent) : new Map<string, string[]>();
 
       const collectCargoDeps = (parsed: Record<string, any>, typePrefix: string) => {
         for (const depType of dependencyTypes) {
@@ -507,12 +540,11 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
         }
       };
 
-      const wsMembers = (cargoParsed.workspace as Record<string, any>)?.members;
-      if (Array.isArray(wsMembers) && wsMembers.length) {
+      if (isWorkspace) {
         cargoWorkspaceActive = true;
         collectCargoDeps(cargoParsed, "");
         cargoMemberFiles.push({absPath: resolve(file), content: cargoContent, memberPath: "."});
-        for (const member of resolveWorkspaceMembers(wsMembers, workspaceDir, "Cargo.toml")) {
+        for (const member of members) {
           cargoMemberFiles.push(member);
           try {
             collectCargoDeps(parseToml(member.content), `|${member.memberPath}`);
@@ -532,11 +564,17 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
     if (filename === "pnpm-workspace.yaml") {
       if (!deps[mode]) deps[mode] = {};
       const workspaceDir = dirname(resolve(file));
-      const wsContent = readFileOrThrow(file);
+      const wsContent = fileContents.get(file)!;
       pnpmWorkspaceActive = true;
       const packagePatterns = parsePnpmWorkspace(wsContent);
+      const rootPkgPath = join(workspaceDir, "package.json");
 
-      const {modeConfig, modeInclude, modeExclude, pin} = await resolveModeFilters(workspaceDir);
+      const [filters, rootContent, members] = await Promise.all([
+        resolveModeFilters(workspaceDir),
+        readFile(rootPkgPath, "utf8").catch(() => null),
+        resolveWorkspaceMembers(packagePatterns, workspaceDir, "package.json", concurrency),
+      ]);
+      const {modeConfig, modeInclude, modeExclude, pin} = filters;
       const dependencyTypes = resolveDepTypes(mode, modeConfig);
       filePerMode[mode] = file;
       modeConfigs[mode] = {modeConfig, projectDir: workspaceDir, pin};
@@ -566,11 +604,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
         }
       };
 
-      // Collect root package.json deps (no prefix)
-      const rootPkgPath = join(workspaceDir, "package.json");
-      let rootContent: string | undefined;
-      try { rootContent = readFileSync(rootPkgPath, "utf8"); } catch {}
-      if (rootContent !== undefined) {
+      if (rootContent !== null) {
         let rootPkg: Record<string, any>;
         try {
           rootPkg = JSON.parse(rootContent);
@@ -581,8 +615,6 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
         collectNpmDeps(rootPkg, "");
       }
 
-      // Collect member deps with prefix
-      const members = resolveWorkspaceMembers(packagePatterns, workspaceDir, "package.json");
       for (const member of members) {
         let memberPkg: Record<string, any>;
         try {
@@ -607,7 +639,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
     const dependencyTypes = resolveDepTypes(mode, modeConfig);
 
     let pkg: Record<string, any> = {};
-    pkgStrs[mode] = readFileOrThrow(file);
+    pkgStrs[mode] = fileContents.get(file)!;
 
     try {
       if (mode === "npm") {
@@ -775,12 +807,12 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
         if (date) setDepAge(deps[mode][key], date);
       }, {concurrency});
 
-      for (const [key, {name, promise}] of npmFollowUps) {
+      await Promise.all(Array.from(npmFollowUps, async ([key, {name, promise}]) => {
         const followUp = await promise;
-        if (!deps[mode][key]) continue;
+        if (!deps[mode][key]) return;
         deps[mode][key].info = getInfoUrl({repository: followUp.repository, homepage: followUp.homepage}, null, name);
         if (followUp.date) setDepAge(deps[mode][key], followUp.date);
-      }
+      }));
 
       if (Object.keys(maybeUrlDeps).length) {
         const results = (await pMap(Object.entries(maybeUrlDeps), ([key, dep]) => {

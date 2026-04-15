@@ -1,5 +1,5 @@
 import {createHash} from "node:crypto";
-import {readFileSync, writeFileSync, mkdirSync} from "node:fs";
+import {readFile, writeFile, mkdir} from "node:fs/promises";
 import {join} from "node:path";
 import {env, platform} from "node:process";
 import {homedir} from "node:os";
@@ -11,16 +11,15 @@ const cacheDir = join(
   "updates",
 );
 
-let dirCreated = false;
+let dirCreated: Promise<string | undefined> | null = null;
 
 function cacheKey(url: string): string {
   return createHash("sha256").update(url).digest("hex").substring(0, 16);
 }
 
-export function getCache(url: string): {etag: string, body: string} | null {
+export async function getCache(url: string): Promise<{etag: string, body: string} | null> {
   try {
-    const key = cacheKey(url);
-    const content = readFileSync(join(cacheDir, `${key}.cache`), "utf8");
+    const content = await readFile(join(cacheDir, `${cacheKey(url)}.cache`), "utf8");
     const idx = content.indexOf("\n");
     if (idx === -1) return null;
     const etag = content.substring(0, idx);
@@ -31,10 +30,9 @@ export function getCache(url: string): {etag: string, body: string} | null {
   }
 }
 
-export function setCache(url: string, etag: string, body: string): void {
+export async function setCache(url: string, etag: string, body: string): Promise<void> {
   try {
-    if (!dirCreated) { mkdirSync(cacheDir, {recursive: true}); dirCreated = true; }
-    const key = cacheKey(url);
-    writeFileSync(join(cacheDir, `${key}.cache`), `${etag}\n${body}`);
+    await (dirCreated ??= mkdir(cacheDir, {recursive: true}));
+    await writeFile(join(cacheDir, `${cacheKey(url)}.cache`), `${etag}\n${body}`);
   } catch {}
 }

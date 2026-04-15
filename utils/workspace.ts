@@ -1,6 +1,8 @@
 import {join, relative, resolve} from "node:path";
-import {globSync, readFileSync} from "node:fs";
+import {globSync} from "node:fs";
+import {readFile} from "node:fs/promises";
 import {type Deps, fieldSep} from "../modes/shared.ts";
+import {pMap} from "./utils.ts";
 
 export type WorkspaceMember = {
   absPath: string,
@@ -27,9 +29,9 @@ export function filterDepsForMember(allDeps: Deps, memberPath: string): Deps {
 
 const globChars = /[*?{[]/;
 
-export function resolveWorkspaceMembers(patterns: string[], workspaceDir: string, manifestFilename: string): WorkspaceMember[] {
-  const members: WorkspaceMember[] = [];
+export async function resolveWorkspaceMembers(patterns: string[], workspaceDir: string, manifestFilename: string, concurrency = 32): Promise<WorkspaceMember[]> {
   const seen = new Set<string>();
+  const candidates: Array<{absPath: string, memberPath: string}> = [];
   for (const pattern of patterns) {
     const dirs = globChars.test(pattern) ?
       globSync(pattern, {cwd: workspaceDir}).map(dir => resolve(join(workspaceDir, dir))) :
@@ -38,14 +40,18 @@ export function resolveWorkspaceMembers(patterns: string[], workspaceDir: string
       const absPath = join(dir, manifestFilename);
       if (seen.has(absPath)) continue;
       seen.add(absPath);
-      let content: string;
-      try { content = readFileSync(absPath, "utf8"); } catch { continue; }
       const rel = relative(workspaceDir, dir);
-      const memberPath = `./${rel.replace(/\\/g, "/")}`;
-      members.push({absPath, content, memberPath});
+      candidates.push({absPath, memberPath: `./${rel.replace(/\\/g, "/")}`});
     }
   }
-  return members;
+  const reads = await pMap(candidates, async ({absPath, memberPath}) => {
+    try {
+      return {absPath, content: await readFile(absPath, "utf8"), memberPath};
+    } catch {
+      return null;
+    }
+  }, {concurrency});
+  return reads.filter((m): m is WorkspaceMember => m !== null);
 }
 
 export function parsePnpmWorkspace(content: string): string[] {

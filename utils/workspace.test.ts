@@ -38,36 +38,36 @@ test("filterDepsForMember named member", ({expect = globalExpect}: any = {}) => 
   expect(result[`dev-dependencies${fieldSep}rand`]).toBeDefined();
 });
 
-test("resolveWorkspaceMembers literal paths", ({expect = globalExpect}: any = {}) => {
+test("resolveWorkspaceMembers literal paths", async ({expect = globalExpect}: any = {}) => {
   const dir = mkdtempSync(join(tmpdir(), "ws-test-"));
   mkdirSync(join(dir, "crate-a"), {recursive: true});
   mkdirSync(join(dir, "crate-b"), {recursive: true});
   writeFileSync(join(dir, "crate-a", "Cargo.toml"), "[package]\nname = \"a\"");
   writeFileSync(join(dir, "crate-b", "Cargo.toml"), "[package]\nname = \"b\"");
 
-  const members = resolveWorkspaceMembers(["crate-a", "crate-b"], dir, "Cargo.toml");
+  const members = await resolveWorkspaceMembers(["crate-a", "crate-b"], dir, "Cargo.toml");
   expect(members).toHaveLength(2);
   expect(members[0].memberPath).toBe("./crate-a");
   expect(members[1].memberPath).toBe("./crate-b");
   expect(members[0].content).toContain("name = \"a\"");
 });
 
-test("resolveWorkspaceMembers glob patterns", ({expect = globalExpect}: any = {}) => {
+test("resolveWorkspaceMembers glob patterns", async ({expect = globalExpect}: any = {}) => {
   const dir = mkdtempSync(join(tmpdir(), "ws-test-"));
   mkdirSync(join(dir, "packages", "foo"), {recursive: true});
   mkdirSync(join(dir, "packages", "bar"), {recursive: true});
   writeFileSync(join(dir, "packages", "foo", "package.json"), "{\"name\": \"foo\"}");
   writeFileSync(join(dir, "packages", "bar", "package.json"), "{\"name\": \"bar\"}");
 
-  const members = resolveWorkspaceMembers(["packages/*"], dir, "package.json");
+  const members = await resolveWorkspaceMembers(["packages/*"], dir, "package.json");
   expect(members).toHaveLength(2);
   const paths = members.map(m => m.memberPath).sort();
   expect(paths).toEqual(["./packages/bar", "./packages/foo"]);
 });
 
-test("resolveWorkspaceMembers skips missing", ({expect = globalExpect}: any = {}) => {
+test("resolveWorkspaceMembers skips missing", async ({expect = globalExpect}: any = {}) => {
   const dir = mkdtempSync(join(tmpdir(), "ws-test-"));
-  const members = resolveWorkspaceMembers(["nonexistent"], dir, "Cargo.toml");
+  const members = await resolveWorkspaceMembers(["nonexistent"], dir, "Cargo.toml");
   expect(members).toHaveLength(0);
 });
 

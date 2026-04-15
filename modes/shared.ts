@@ -418,16 +418,24 @@ export function parseTags(data: Array<any>): Array<TagEntry> {
 }
 
 export async function fetchActionTags(apiUrl: string, owner: string, repo: string, ctx: ModeContext): Promise<Array<TagEntry>> {
+  const tagsUrl = (page: number) => `${apiUrl}/repos/${owner}/${repo}/tags?per_page=100&page=${page}`;
   try {
-    const res = await fetchForge(`${apiUrl}/repos/${owner}/${repo}/tags?per_page=100`, ctx);
+    // Speculate page 2 in parallel — saves a round-trip when there are 2+ pages.
+    const [res, page2Res] = await Promise.all([
+      fetchForge(`${apiUrl}/repos/${owner}/${repo}/tags?per_page=100`, ctx),
+      fetchForge(tagsUrl(2), ctx).catch(() => null),
+    ]);
     if (!res?.ok) return [];
     const results = parseTags(await res.json());
     const link = res.headers.get("link") || "";
     const last = /<([^>]+)>;\s*rel="last"/.exec(link);
-    if (last) {
-      const lastPage = Number(new URL(last[1]).searchParams.get("page"));
+    if (!last) return results;
+
+    const lastPage = Number(new URL(last[1]).searchParams.get("page"));
+    if (lastPage >= 2 && page2Res?.ok) results.push(...parseTags(await page2Res.json()));
+    if (lastPage > 2) {
       const pages = await Promise.all(
-        Array.from({length: lastPage - 1}, (_, i) => fetchForge(`${apiUrl}/repos/${owner}/${repo}/tags?per_page=100&page=${i + 2}`, ctx)),
+        Array.from({length: lastPage - 2}, (_, idx) => fetchForge(tagsUrl(idx + 3), ctx)),
       );
       for (const pageRes of pages) {
         if (pageRes?.ok) results.push(...parseTags(await pageRes.json()));

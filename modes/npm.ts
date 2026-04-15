@@ -147,12 +147,12 @@ export async function fetchNpmInfo(name: string, type: string, config: Config, a
   let dataPromise = npmDataCache.get(url);
   if (!dataPromise) {
     const opts = getFetchOpts(auth?.type, auth?.token);
-    opts.headers = {...opts.headers as Record<string, string>, "accept": "application/vnd.npm.install-v1+json"};
-    const cached = ctx.noCache ? null : getCache(url);
-    if (cached) {
-      opts.headers["if-none-match"] = cached.etag;
-    }
-    dataPromise = ctx.doFetch(url, {signal: AbortSignal.timeout(ctx.fetchTimeout), ...opts}).then(async res => {
+    const headers: Record<string, string> = {...opts.headers as Record<string, string>, "accept": "application/vnd.npm.install-v1+json"};
+    opts.headers = headers;
+    dataPromise = (async () => {
+      const cached = ctx.noCache ? null : await getCache(url);
+      if (cached) headers["if-none-match"] = cached.etag;
+      const res = await ctx.doFetch(url, {signal: AbortSignal.timeout(ctx.fetchTimeout), ...opts});
       if (res?.status === 304 && cached) return JSON.parse(cached.body);
       if (res?.ok) {
         const text = await res.text();
@@ -161,7 +161,7 @@ export async function fetchNpmInfo(name: string, type: string, config: Config, a
         return JSON.parse(text);
       }
       throwFetchError(res, url, name, registry);
-    }).catch(err => { npmDataCache.delete(url); throw err; });
+    })().catch(err => { npmDataCache.delete(url); throw err; });
     npmDataCache.set(url, dataPromise);
   }
   return [await dataPromise, type, registry, name];

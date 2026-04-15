@@ -79,33 +79,19 @@ export async function probeMajorVersions(
   if (!firstProbe) return null;
   let highest = firstProbe;
 
-  // Exponential search to find upper bound
-  let lo = currentMajor + 1;
-  let step = 1;
-  let hi: number | null = null;
-
-  while (hi === null) {
-    const next = lo + step;
-    if (next > currentMajor + 100) {
-      hi = currentMajor + 101;
-      break;
-    }
-    const result = await probeFn(next);
-    if (result) {
-      highest = result;
-      lo = next;
-      step *= 2;
-    } else {
-      hi = next;
-    }
-  }
-
-  // Probe all remaining points between lo and hi in parallel
-  if (hi - lo > 1) {
-    const results = await Promise.all(Array.from({length: hi - lo - 1}, (_, idx) => probeFn(lo + 1 + idx)));
-    for (let gapIdx = results.length - 1; gapIdx >= 0; gapIdx--) {
-      if (results[gapIdx]) { highest = results[gapIdx]!; break; }
-    }
+  // Stop at first gap — Go majors are conventionally contiguous.
+  const cap = currentMajor + 101;
+  let from = currentMajor + 2;
+  let batchSize = 7;
+  while (from <= cap) {
+    const to = Math.min(from + batchSize - 1, cap);
+    const results = await Promise.all(Array.from({length: to - from + 1}, (_, idx) => probeFn(from + idx)));
+    const gapIdx = results.indexOf(null);
+    const hits = gapIdx === -1 ? results : results.slice(0, gapIdx);
+    if (hits.length) highest = hits.at(-1)!;
+    if (gapIdx !== -1) break;
+    from = to + 1;
+    batchSize *= 2;
   }
 
   return highest;

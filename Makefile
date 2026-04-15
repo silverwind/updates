@@ -30,6 +30,10 @@ test-update: node_modules build
 test-coverage: node_modules build
 	pnpm exec vitest --coverage
 
+.PHONY: bench
+bench: node_modules build
+	node bench/bench.ts
+
 .PHONY: build
 build: node_modules $(DIST_FILES)
 
