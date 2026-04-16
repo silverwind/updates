@@ -8,3 +8,5 @@
 /__snapshots__
 .DS_Store
 
+.pnpm-store
+.pnpm-debug.log*
