@@ -84,6 +84,36 @@ test("inline array with brackets inside strings", () => {
     .toEqual({deps: ["apispec[marshmallow]==6.10.0", "foo"]});
 });
 
+test("hash inside string is not a comment", () => {
+  expect(parseToml(`name = "url#fragment"`)).toEqual({name: "url#fragment"});
+});
+
+test("trailing comment after value", () => {
+  expect(parseToml(`name = "x" # trailing`)).toEqual({name: "x"});
+});
+
+test("array of tables", () => {
+  const input = `[[tool.pytest]]\nx = 1\n[[tool.pytest]]\nx = 2`;
+  expect(parseToml(input)).toEqual({tool: {pytest: [{x: 1}, {x: 2}]}});
+});
+
+test("array of tables does not leak into prior table", () => {
+  const input = `[package]\nname = "pkg"\n[[bin]]\nname = "bin"\n[dependencies]\nserde = "1"`;
+  expect(parseToml(input)).toEqual({
+    package: {name: "pkg"},
+    bin: [{name: "bin"}],
+    dependencies: {serde: "1"},
+  });
+});
+
+test("nested arrays", () => {
+  expect(parseToml(`a = [[1,2],[3,4]]`)).toEqual({a: [[1, 2], [3, 4]]});
+});
+
+test("array of inline tables", () => {
+  expect(parseToml(`a = [{x=1},{x=2}]`)).toEqual({a: [{x: 1}, {x: 2}]});
+});
+
 test("inline table", () => {
   expect(parseToml(`point = {x = 1, y = 2}`)).toEqual({point: {x: 1, y: 2}});
 });

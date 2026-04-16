@@ -12,11 +12,33 @@ export function parseToml(input: string): TomlObject {
 
   for (let i = 0; i < lines.length; i++) {
     const raw = lines[i];
-    const line = raw.replace(/#.*$/, "").trim();
+    const line = stripComment(raw).trim();
     if (!line) continue;
 
+    // Array of tables: [[name]]
+    const arrayTableMatch = /^\[\[([^\]]+)\]\]$/.exec(line);
+    if (arrayTableMatch) {
+      let target: TomlObject = root;
+      const keys = splitDottedKey(arrayTableMatch[1]);
+      for (let k = 0; k < keys.length - 1; k++) {
+        const existing = target[keys[k]];
+        if (Array.isArray(existing)) {
+          target = existing[existing.length - 1] as TomlObject;
+        } else {
+          if (!existing || typeof existing !== "object") target[keys[k]] = {};
+          target = target[keys[k]] as TomlObject;
+        }
+      }
+      const lastKey = keys[keys.length - 1];
+      if (!Array.isArray(target[lastKey])) target[lastKey] = [];
+      const newTable: TomlObject = {};
+      (target[lastKey] as Array<TomlValue>).push(newTable);
+      current = newTable;
+      continue;
+    }
+
     // Table header
-    const tableMatch = /^\[([^\]]+)\]$/.exec(line);
+    const tableMatch = /^\[([^[\]]+)\]$/.exec(line);
     if (tableMatch) {
       current = root;
       for (const key of splitDottedKey(tableMatch[1])) {
@@ -48,7 +70,7 @@ export function parseToml(input: string): TomlObject {
       const items: Array<TomlValue> = [];
       parseArrayItems(rawVal.slice(1), items);
       for (let j = i + 1; j < lines.length; j++) {
-        const aLine = lines[j].replace(/#.*$/, "").trim();
+        const aLine = stripComment(lines[j]).trim();
         if (!aLine) continue;
         const closeIdx = indexOfUnquoted(aLine, "]");
         if (closeIdx >= 0) {
@@ -70,14 +92,10 @@ export function parseToml(input: string): TomlObject {
 function parseArrayItems(segment: string, items: Array<TomlValue>): void {
   const trimmed = segment.trim();
   if (!trimmed) return;
-  // Extract string items from comma-separated segment
-  const re = /"""([\s\S]*?)"""|'''([\s\S]*?)'''|"((?:[^"\\]|\\.)*)"|'([^']*)'|([^,\s\]]+)/g;
-  let m;
-  while ((m = re.exec(trimmed))) {
-    const val = m[1] ?? m[2] ?? (m[3] !== undefined ? unescapeString(m[3]) : undefined) ?? m[4] ?? m[5];
-    if (val !== undefined && val !== "") {
-      items.push(inferScalar(val));
-    }
+  for (const part of splitTopLevel(trimmed)) {
+    const clean = part.trim();
+    if (!clean) continue;
+    items.push(parseValue(clean));
   }
 }
 
@@ -172,6 +190,11 @@ function splitDottedKey(key: string): Array<string> {
   }
   if (current.trim()) keys.push(current.trim());
   return keys;
+}
+
+function stripComment(line: string): string {
+  const idx = indexOfUnquoted(line, "#");
+  return idx < 0 ? line : line.slice(0, idx);
 }
 
 function indexOfUnquoted(s: string, target: string): number {
