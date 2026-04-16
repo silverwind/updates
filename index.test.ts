@@ -412,6 +412,18 @@ test("jsr", async ({expect = globalExpect}: any = {}) => {
   expect(results.npm.devDependencies["@std/path"].new).toBe("1.0.8");
 });
 
+test("bin -v", async ({expect = globalExpect}: any = {}) => {
+  const pkg = JSON.parse(readFileSync(fileURLToPath(new URL("package.json", import.meta.url)), "utf8"));
+  const viaRuntime = await execFileAsync(execPath, [script, "-v"]);
+  expect(viaRuntime.stderr).toEqual("");
+  expect(viaRuntime.stdout.trim()).toEqual(pkg.version);
+  if (platform !== "win32") {
+    const viaShebang = await execFileAsync(script, ["-v"]);
+    expect(viaShebang.stderr).toEqual("");
+    expect(viaShebang.stdout.trim()).toEqual(pkg.version);
+  }
+});
+
 if (!versions.bun) {
   test("global", async ({expect = globalExpect}: any = {}) => {
     const prefix = mkdtempSync(join(tmpdir(), "updates-global-"));

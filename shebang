@@ -1,0 +1,5 @@
+#!/bin/sh
+':' /*
+command -v bun >/dev/null 2>&1 && exec bun "$0" "$@"
+exec node "$0" "$@"
+*/

@@ -37,8 +37,9 @@ bench: node_modules build
 .PHONY: build
 build: node_modules $(DIST_FILES)
 
-$(DIST_FILES): $(SOURCE_FILES) pnpm-lock.yaml tsdown.config.ts
+$(DIST_FILES): $(SOURCE_FILES) pnpm-lock.yaml tsdown.config.ts shebang
 	pnpm exec tsdown
+	{ cat shebang; tail -n +2 dist/index.js; } > dist/index.js.tmp && mv dist/index.js.tmp dist/index.js
 	chmod +x $(DIST_FILES)
 
 .PHONY: update
