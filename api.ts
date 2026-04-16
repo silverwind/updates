@@ -57,6 +57,8 @@ const modeByFileName: Record<string, string> = {
 
 const defaultModes = new Set(["npm", "pypi", "go", "cargo", "actions", "docker"]);
 
+const apiUrl = (val: unknown, dflt: string | (() => string)) => typeof val === "string" ? normalizeUrl(val) : (typeof dflt === "function" ? dflt() : dflt);
+
 function findUpSync(filenames: string[], dir: string): Map<string, string> {
   const found = new Map<string, string>();
   const remaining = new Set(filenames);
@@ -236,9 +238,8 @@ function buildOutput(deps: DepsByMode): Output {
   for (const mode of Object.keys(deps)) {
     for (const [key, value] of Object.entries(deps[mode])) {
       const [type, name] = key.split(fieldSep);
-      if (!output.results[mode]) output.results[mode] = {};
-      if (!output.results[mode][type]) output.results[mode][type] = {};
-      output.results[mode][type][name] = value;
+      const r = output.results[mode] ??= {};
+      (r[type] ??= {})[name] = value;
     }
   }
   return output;
@@ -272,12 +273,12 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
   const maxSockets = 25;
   const concurrency = config.sockets ?? maxSockets;
   const userTimeout = config.timeout ?? 0;
-  const forgeApiUrl = typeof opts.forgeapi === "string" ? normalizeUrl(opts.forgeapi) : "https://api.github.com";
-  const pypiApiUrl = typeof opts.pypiapi === "string" ? normalizeUrl(opts.pypiapi) : "https://pypi.org";
-  const jsrApiUrl = typeof opts.jsrapi === "string" ? normalizeUrl(opts.jsrapi) : "https://jsr.io";
-  const goProxyUrl = typeof opts.goproxy === "string" ? normalizeUrl(opts.goproxy) : resolveGoProxy();
-  const cratesIoUrl = typeof opts.cargoapi === "string" ? normalizeUrl(opts.cargoapi) : "https://crates.io";
-  const dockerApiUrl = typeof opts.dockerapi === "string" ? normalizeUrl(opts.dockerapi) : "https://hub.docker.com";
+  const forgeApiUrl = apiUrl(opts.forgeapi, "https://api.github.com");
+  const pypiApiUrl = apiUrl(opts.pypiapi, "https://pypi.org");
+  const jsrApiUrl = apiUrl(opts.jsrapi, "https://jsr.io");
+  const goProxyUrl = apiUrl(opts.goproxy, resolveGoProxy);
+  const cratesIoUrl = apiUrl(opts.cargoapi, "https://crates.io");
+  const dockerApiUrl = apiUrl(opts.dockerapi, "https://hub.docker.com");
   const goNoProxy = parseGoNoProxy();
 
   const useVerboseColor = config.color === true || (config.noColor !== true && stderr.isTTY);
@@ -338,6 +339,10 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
   const now = Date.now();
   let numDependencies = 0;
 
+  const addDep = (mode: string, depType: string, typePrefix: string, name: string, old: string, oldOrig: string) => {
+    deps[mode][`${depType}${typePrefix}${fieldSep}${name}`] = {old, oldOrig} as Dep;
+  };
+
   const files = resolveFiles(config.files?.length ? new Set(config.files) : false);
   const fileApplies = (file: string): boolean => {
     if (isWorkflowFile(file)) return enabledModes.has("actions") || enabledModes.has("docker");
@@ -387,7 +392,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
   }
 
   function collectDockerRefs(content: string, relPath: string, regexes: Array<RegExp>): void {
-    if (!deps.docker) deps.docker = {};
+    deps.docker ??= {};
     for (const regex of regexes) {
       for (const {ref} of extractDockerRefs(content, regex)) {
         if (!canInclude(ref.fullImage, "docker", include, exclude, "docker")) continue;
@@ -412,7 +417,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
       wfData[relPath] = {absPath: file, content};
 
       if (actionsEnabled) {
-        if (!deps.actions) deps.actions = {};
+        deps.actions ??= {};
         const actions = Array.from(content.matchAll(actionsUsesRe), m => parseActionRef(m[1])).filter(a => a !== null);
         for (const action of actions) {
           if (!canInclude(action.name, "actions", include, exclude, "actions")) continue;
@@ -446,7 +451,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
     if (!enabledModes.has(mode)) continue;
 
     if (filename === "go.work") {
-      if (!deps[mode]) deps[mode] = {};
+      deps[mode] ??= {};
       const workspaceDir = dirname(resolve(file));
       const workContent = fileContents.get(file)!;
       goWorkData = {file, content: workContent};
@@ -480,7 +485,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
           const obj = parsed[depType as keyof typeof parsed] || {};
           for (const [name, value] of Object.entries(obj)) {
             if (canInclude(name, mode, modeInclude, modeExclude, depType)) {
-              deps[mode][`${depType}${typePrefix}${fieldSep}${name}`] = {old: shortenGoVersion(value), oldOrig: stripv(value)} as Dep;
+              addDep(mode, depType, typePrefix, name, shortenGoVersion(value), stripv(value));
             }
           }
         }
@@ -488,7 +493,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
 
       for (const [name, value] of Object.entries(goWork.replace)) {
         if (canInclude(name, mode, modeInclude, modeExclude, "replace")) {
-          deps[mode][`replace${fieldSep}${name}`] = {old: shortenGoVersion(value), oldOrig: stripv(value)} as Dep;
+          addDep(mode, "replace", "", name, shortenGoVersion(value), stripv(value));
         }
       }
 
@@ -500,7 +505,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
     if (filename === "package.json" && pnpmWorkspaceActive) continue;
 
     if (filename === "Cargo.toml") {
-      if (!deps[mode]) deps[mode] = {};
+      deps[mode] ??= {};
       const cargoContent = fileContents.get(file)!;
       const cargoParsed = parseToml(cargoContent);
       const workspaceDir = dirname(resolve(file));
@@ -529,12 +534,10 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
             if (typeof value === "object" && value !== null && "version" in value && !("git" in value) && !("path" in value)) {
               const versionStr = String((value as Record<string, string>).version);
               if (validRange(versionStr)) {
-                const lockedVersion = findLockedVersion(lockedVersions, name, versionStr);
-                deps[mode][`${depType}${typePrefix}${fieldSep}${name}`] = {old: lockedVersion ?? normalizeRange(versionStr), oldOrig: versionStr} as Dep;
+                addDep(mode, depType, typePrefix, name, findLockedVersion(lockedVersions, name, versionStr) ?? normalizeRange(versionStr), versionStr);
               }
             } else if (typeof value === "string" && validRange(value)) {
-              const lockedVersion = findLockedVersion(lockedVersions, name, value);
-              deps[mode][`${depType}${typePrefix}${fieldSep}${name}`] = {old: lockedVersion ?? normalizeRange(value), oldOrig: value} as Dep;
+              addDep(mode, depType, typePrefix, name, findLockedVersion(lockedVersions, name, value) ?? normalizeRange(value), value);
             }
           }
         }
@@ -562,7 +565,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
     }
 
     if (filename === "pnpm-workspace.yaml") {
-      if (!deps[mode]) deps[mode] = {};
+      deps[mode] ??= {};
       const workspaceDir = dirname(resolve(file));
       const wsContent = fileContents.get(file)!;
       pnpmWorkspaceActive = true;
@@ -585,18 +588,18 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
           if (typeof obj === "string") {
             const [name, value] = obj.split("@");
             if (canInclude(name, mode, modeInclude, modeExclude, depType)) {
-              deps[mode][`${depType}${typePrefix}${fieldSep}${name}`] = {old: normalizeRange(value), oldOrig: value} as Dep;
+              addDep(mode, depType, typePrefix, name, normalizeRange(value), value);
             }
           } else if (typeof obj === "object" && !Array.isArray(obj)) {
             for (const [name, value] of Object.entries(obj)) {
-              if (isJsr(value) && canInclude(name, mode, modeInclude, modeExclude, depType)) {
-                const parsed = parseJsrDependency(value, name);
-                deps[mode][`${depType}${typePrefix}${fieldSep}${name}`] = {old: parsed.version, oldOrig: value} as Dep;
-              } else if (validRange(value) && canInclude(name, mode, modeInclude, modeExclude, depType)) {
-                deps[mode][`${depType}${typePrefix}${fieldSep}${name}`] = {old: normalizeRange(value), oldOrig: value} as Dep;
-              } else if (isLocalDep(value) && canInclude(name, mode, modeInclude, modeExclude, depType)) {
-                deps[mode][`${depType}${typePrefix}${fieldSep}${name}`] = {old: "0.0.0", oldOrig: value} as Dep;
-              } else if (!isJsr(value) && canInclude(name, mode, modeInclude, modeExclude, depType)) {
+              if (!canInclude(name, mode, modeInclude, modeExclude, depType)) continue;
+              if (isJsr(value)) {
+                addDep(mode, depType, typePrefix, name, parseJsrDependency(value, name).version, value);
+              } else if (validRange(value)) {
+                addDep(mode, depType, typePrefix, name, normalizeRange(value), value);
+              } else if (isLocalDep(value)) {
+                addDep(mode, depType, typePrefix, name, "0.0.0", value);
+              } else {
                 maybeUrlDeps[`${depType}${typePrefix}${fieldSep}${name}`] = {old: value} as Dep;
               }
             }
@@ -631,7 +634,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
     }
 
     filePerMode[mode] = file;
-    if (!deps[mode]) deps[mode] = {};
+    deps[mode] ??= {};
 
     const projectDir = dirname(resolve(file));
     const {modeConfig, modeInclude, modeExclude, pin} = await resolveModeFilters(projectDir);
@@ -668,28 +671,28 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
       if (Array.isArray(obj) && mode === "pypi") {
         for (const {name, version} of parseUvDependencies(obj)) {
           if (canInclude(name, mode, modeInclude, modeExclude, depType)) {
-            deps[mode][`${depType}${fieldSep}${name}`] = {old: normalizeRange(version), oldOrig: version} as Dep;
+            addDep(mode, depType, "", name, normalizeRange(version), version);
           }
         }
       } else {
         if (typeof obj === "string") {
           const [name, value] = obj.split("@");
           if (canInclude(name, mode, modeInclude, modeExclude, depType)) {
-            deps[mode][`${depType}${fieldSep}${name}`] = {old: normalizeRange(value), oldOrig: value} as Dep;
+            addDep(mode, depType, "", name, normalizeRange(value), value);
           }
         } else {
           for (const [name, value] of Object.entries(obj)) {
-            if (mode === "npm" && isJsr(value) && canInclude(name, mode, modeInclude, modeExclude, depType)) {
-              const parsed = parseJsrDependency(value, name);
-              deps[mode][`${depType}${fieldSep}${name}`] = {old: parsed.version, oldOrig: value} as Dep;
-            } else if (mode !== "go" && validRange(value) && canInclude(name, mode, modeInclude, modeExclude, depType)) {
-              deps[mode][`${depType}${fieldSep}${name}`] = {old: normalizeRange(value), oldOrig: value} as Dep;
-            } else if (mode === "npm" && isLocalDep(value) && canInclude(name, mode, modeInclude, modeExclude, depType)) {
-              deps[mode][`${depType}${fieldSep}${name}`] = {old: "0.0.0", oldOrig: value} as Dep;
-            } else if (mode === "npm" && !isJsr(value) && canInclude(name, mode, modeInclude, modeExclude, depType)) {
+            if (!canInclude(name, mode, modeInclude, modeExclude, depType)) continue;
+            if (mode === "npm" && isJsr(value)) {
+              addDep(mode, depType, "", name, parseJsrDependency(value, name).version, value);
+            } else if (mode !== "go" && validRange(value)) {
+              addDep(mode, depType, "", name, normalizeRange(value), value);
+            } else if (mode === "npm" && isLocalDep(value)) {
+              addDep(mode, depType, "", name, "0.0.0", value);
+            } else if (mode === "npm") {
               maybeUrlDeps[`${depType}${fieldSep}${name}`] = {old: value} as Dep;
-            } else if (mode === "go" && canInclude(name, mode, modeInclude, modeExclude, depType)) {
-              deps[mode][`${depType}${fieldSep}${name}`] = {old: shortenGoVersion(value), oldOrig: stripv(value)} as Dep;
+            } else if (mode === "go") {
+              addDep(mode, depType, "", name, shortenGoVersion(value), stripv(value));
             }
           }
         }
@@ -719,25 +722,27 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
 
       await pMap(Object.keys(deps[mode]), async (key) => {
         const [type, name] = key.split(fieldSep);
+        const baseT = baseType(type);
+        const dep = deps[mode][key];
         let info: PackageInfo | null = null;
         if (mode === "npm") {
-          const {oldOrig} = deps[mode][key];
+          const {oldOrig} = dep;
           if (oldOrig && isJsr(oldOrig)) {
-            info = await fetchJsrInfo(name, baseType(type), ctx);
+            info = await fetchJsrInfo(name, baseT, ctx);
           } else if (oldOrig && isLocalDep(oldOrig)) {
             try {
-              info = await fetchNpmInfo(name, baseType(type), modeConfig, argsForNpm, ctx);
+              info = await fetchNpmInfo(name, baseT, modeConfig, argsForNpm, ctx);
             } catch {
               delete deps[mode][key];
               return;
             }
           } else {
-            info = await fetchNpmInfo(name, baseType(type), modeConfig, argsForNpm, ctx);
+            info = await fetchNpmInfo(name, baseT, modeConfig, argsForNpm, ctx);
           }
         } else if (mode === "go") {
-          info = await fetchGoProxyInfo(name, baseType(type), deps[mode][key].oldOrig || deps[mode][key].old, projectDir, ctx, goNoProxy);
+          info = await fetchGoProxyInfo(name, baseT, dep.oldOrig || dep.old, projectDir, ctx, goNoProxy);
         } else if (mode === "cargo") {
-          info = await fetchCratesIoInfo(name, baseType(type), ctx);
+          info = await fetchCratesIoInfo(name, baseT, ctx);
         } else {
           info = await fetchPypiInfo(name, type, ctx);
         }
@@ -747,8 +752,8 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
         if (data?.error) throw new Error(data.error);
 
         const {useGreatest, usePre, useRel, semvers} = getVersionOpts(data.name);
-        const oldRange = deps[mode][key].old;
-        const oldOrig = deps[mode][key].oldOrig;
+        const oldRange = dep.old;
+        const oldOrig = dep.oldOrig;
         const pinnedRange = pin[name];
         const newVersion = findNewVersion(data, {
           usePre, useRel, useGreatest, semvers, range: oldRange, mode, pinnedRange,
@@ -763,15 +768,9 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
           if (oldOrig && isLocalDep(oldOrig)) {
             newRange = String(getNpmrc()["save-exact"]) === "true" ? newVersion : `^${newVersion}`;
           } else if (oldOrig && isJsr(oldOrig)) {
-            if (oldOrig.startsWith("npm:@jsr/")) {
-              const match = /^(npm:@jsr\/[^@]+@)(.+)$/.exec(oldOrig);
-              if (match) newRange = `${match[1]}${newVersion}`;
-            } else if (oldOrig.startsWith("jsr:@")) {
-              const match = /^(jsr:@[^@]+@)(.+)$/.exec(oldOrig);
-              if (match) newRange = `${match[1]}${newVersion}`;
-            } else if (oldOrig.startsWith("jsr:")) {
-              newRange = `jsr:${newVersion}`;
-            }
+            const match = /^(npm:@jsr\/[^@]+@|jsr:@[^@]+@)(.+)$/.exec(oldOrig);
+            if (match) newRange = `${match[1]}${newVersion}`;
+            else if (oldOrig.startsWith("jsr:")) newRange = `jsr:${newVersion}`;
           } else {
             newRange = updateVersionRange(oldRange, newVersion, oldOrig);
           }
@@ -791,27 +790,28 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
           date = data.time[newVersion];
         }
 
-        deps[mode][key].new = newRange;
-        if (oldOrig && isJsr(oldOrig)) deps[mode][key].newPrint = newVersion;
+        dep.new = newRange;
+        if (oldOrig && isJsr(oldOrig)) dep.newPrint = newVersion;
 
         if (mode === "npm") {
           npmFollowUps.set(key, {name, promise: fetchNpmVersionInfo(data.name, newVersion, modeConfig, argsForNpm, ctx)});
         } else if (mode === "pypi") {
-          deps[mode][key].info = getInfoUrl(data as {repository: PackageRepository, homepage: string, info: Record<string, any>}, registry, data.info.name);
+          dep.info = getInfoUrl(data as {repository: PackageRepository, homepage: string, info: Record<string, any>}, registry, data.info.name);
         } else if (mode === "go") {
-          deps[mode][key].info = getGoInfoUrl(data.newPath || name);
+          dep.info = getGoInfoUrl(data.newPath || name);
         } else if (mode === "cargo") {
-          deps[mode][key].info = `https://crates.io/crates/${name}`;
+          dep.info = `https://crates.io/crates/${name}`;
         }
 
-        if (date) setDepAge(deps[mode][key], date);
+        if (date) setDepAge(dep, date);
       }, {concurrency});
 
       await Promise.all(Array.from(npmFollowUps, async ([key, {name, promise}]) => {
         const followUp = await promise;
-        if (!deps[mode][key]) return;
-        deps[mode][key].info = getInfoUrl({repository: followUp.repository, homepage: followUp.homepage}, null, name);
-        if (followUp.date) setDepAge(deps[mode][key], followUp.date);
+        const dep = deps[mode][key];
+        if (!dep) return;
+        dep.info = getInfoUrl({repository: followUp.repository, homepage: followUp.homepage}, null, name);
+        if (followUp.date) setDepAge(dep, followUp.date);
       }));
 
       if (Object.keys(maybeUrlDeps).length) {
@@ -835,7 +835,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
       }
 
       const cooldown = config.cooldown ?? modeConfig.cooldown;
-      if (cooldown) applyCooldown(deps[mode], String(cooldown), now);
+      if (cooldown) applyCooldown(deps[mode], cooldown, now);
     })());
   }
 
@@ -845,16 +845,15 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
       const depsByRepo = new Map<string, {apiUrl: string, owner: string, repo: string, infos: Array<ActionDepInfo>}>();
       for (const info of actionDepInfos) {
         const repoKey = `${info.apiUrl}/${info.owner}/${info.repo}`;
-        if (!depsByRepo.has(repoKey)) {
-          depsByRepo.set(repoKey, {apiUrl: info.apiUrl, owner: info.owner, repo: info.repo, infos: []});
-        }
-        depsByRepo.get(repoKey)!.infos.push(info);
+        let entry = depsByRepo.get(repoKey);
+        if (!entry) depsByRepo.set(repoKey, entry = {apiUrl: info.apiUrl, owner: info.owner, repo: info.repo, infos: []});
+        entry.infos.push(info);
       }
 
       await pMap(depsByRepo.values(), async ({apiUrl, owner, repo, infos}) => {
         const tags = await fetchActionTags(apiUrl, owner, repo, ctx);
         const tagNames = tags.map(t => t.name);
-        const versions = tagNames.map(t => stripv(t)).filter(v => valid(v));
+        const versions = tagNames.map(stripv).filter(v => valid(v));
 
         const commitShaToTag = new Map<string, string>();
         for (const tag of tags) {
@@ -871,58 +870,58 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
 
         const dateFetches: Array<{key: string, commitSha: string}> = [];
 
-        for (const info of infos) {
-          const dep = deps.actions[info.key];
-          const infoUrl = `https://${info.host || "github.com"}/${owner}/${repo}`;
+        for (const {key, host, ref, name: actionName, isHash} of infos) {
+          const dep = deps.actions[key];
+          const infoUrl = `https://${host || "github.com"}/${owner}/${repo}`;
 
-          if (info.isHash) {
-            const {usePre, useRel} = getVersionOpts(info.name);
+          if (isHash) {
+            const {usePre, useRel} = getVersionOpts(actionName);
             const newVersion = findVersion({}, versions, {
               range: "0.0.0", semvers: new Set(["patch", "minor", "major"]), usePre, useRel,
-              useGreatest: true, pinnedRange: configPin[info.name],
+              useGreatest: true, pinnedRange: configPin[actionName],
             });
-            if (!newVersion) { delete deps.actions[info.key]; continue; }
+            if (!newVersion) { delete deps.actions[key]; continue; }
 
             const newTag = tagNames.find(t => stripv(t) === newVersion);
-            if (!newTag) { delete deps.actions[info.key]; continue; }
+            if (!newTag) { delete deps.actions[key]; continue; }
 
             const newEntry = tags.find(t => t.name === newTag);
             const newCommitSha = newEntry?.commitSha;
-            if (!newCommitSha || newCommitSha === info.ref || newCommitSha.startsWith(info.ref) || info.ref.startsWith(newCommitSha)) {
-              delete deps.actions[info.key]; continue;
+            if (!newCommitSha || newCommitSha === ref || newCommitSha.startsWith(ref) || ref.startsWith(newCommitSha)) {
+              delete deps.actions[key]; continue;
             }
 
-            const oldTagName = commitShaToTag.get(info.ref) || Array.from(commitShaToTag.entries()).find(([sha]) => sha.startsWith(info.ref))?.[1];
-            dep.old = info.ref;
-            dep.new = newCommitSha.substring(0, info.ref.length);
-            dep.oldPrint = oldTagName || info.ref.substring(0, 7);
+            const oldTagName = commitShaToTag.get(ref) || Array.from(commitShaToTag.entries()).find(([sha]) => sha.startsWith(ref))?.[1];
+            dep.old = ref;
+            dep.new = newCommitSha.substring(0, ref.length);
+            dep.oldPrint = oldTagName || ref.substring(0, 7);
             dep.newPrint = newTag;
             dep.info = infoUrl;
 
-            dateFetches.push({key: info.key, commitSha: newCommitSha});
+            dateFetches.push({key, commitSha: newCommitSha});
           } else {
-            const coerced = coerceToVersion(stripv(info.ref));
-            if (!coerced) { delete deps.actions[info.key]; continue; }
+            const coerced = coerceToVersion(stripv(ref));
+            if (!coerced) { delete deps.actions[key]; continue; }
 
-            const {useGreatest, usePre, useRel, semvers} = getVersionOpts(info.name);
+            const {useGreatest, usePre, useRel, semvers} = getVersionOpts(actionName);
             const newVersion = findVersion({}, versions, {
               range: coerced, semvers, usePre, useRel,
-              useGreatest: useGreatest || true, pinnedRange: configPin[info.name],
+              useGreatest: useGreatest || true, pinnedRange: configPin[actionName],
             });
-            if (!newVersion || newVersion === coerced) { delete deps.actions[info.key]; continue; }
+            if (!newVersion || newVersion === coerced) { delete deps.actions[key]; continue; }
 
             const newTag = tagNames.find(t => stripv(t) === newVersion);
-            if (!newTag) { delete deps.actions[info.key]; continue; }
+            if (!newTag) { delete deps.actions[key]; continue; }
 
-            const formatted = formatActionVersion(newTag, info.ref);
-            if (formatted === info.ref) { delete deps.actions[info.key]; continue; }
+            const formatted = formatActionVersion(newTag, ref);
+            if (formatted === ref) { delete deps.actions[key]; continue; }
 
             dep.new = tagNames.includes(formatted) ? formatted : newTag;
             dep.info = infoUrl;
 
             const newEntry = tags.find(t => t.name === newTag);
             if (newEntry?.commitSha) {
-              dateFetches.push({key: info.key, commitSha: newEntry.commitSha});
+              dateFetches.push({key, commitSha: newEntry.commitSha});
             }
           }
         }
@@ -934,7 +933,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
         }
       }, {concurrency});
 
-      if (config.cooldown) applyCooldown(deps.actions, String(config.cooldown), now);
+      if (config.cooldown) applyCooldown(deps.actions, config.cooldown, now);
       if (!Object.keys(deps.actions).length) delete deps.actions;
     })());
   }
@@ -944,8 +943,9 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
     fetchTasks.push((async () => {
       const depsByImage = new Map<string, Array<DockerDepInfo>>();
       for (const info of dockerDepInfos) {
-        if (!depsByImage.has(info.fullImage)) depsByImage.set(info.fullImage, []);
-        depsByImage.get(info.fullImage)!.push(info);
+        let list = depsByImage.get(info.fullImage);
+        if (!list) depsByImage.set(info.fullImage, list = []);
+        list.push(info);
       }
 
       await pMap(depsByImage.entries(), async ([fullImage, infos]) => {
@@ -971,7 +971,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
         }
       }, {concurrency});
 
-      if (config.cooldown) applyCooldown(deps.docker, String(config.cooldown), now);
+      if (config.cooldown) applyCooldown(deps.docker, config.cooldown, now);
       if (!Object.keys(deps.docker).length) delete deps.docker;
     })());
   }
@@ -984,13 +984,21 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
 
   // Handle --update: write files
   if (config.update) {
+    const updateMembers = (m: string, members: WorkspaceMember[], updateFn: (content: string, deps: Deps) => string) => {
+      for (const member of members) {
+        const localDeps = filterDepsForMember(deps[m], member.memberPath);
+        if (!Object.keys(localDeps).length) continue;
+        write(member.absPath, updateFn(member.content, localDeps));
+      }
+    };
     // Pre-build update data before buildOutput modifies dep values
     const actionsUpdatesByRelPath = new Map<string, Array<{name: string, oldRef: string, newRef: string}>>();
     if (deps.actions) {
       for (const [key, dep] of Object.entries(deps.actions)) {
         const [relPath, name] = key.split(fieldSep);
-        if (!actionsUpdatesByRelPath.has(relPath)) actionsUpdatesByRelPath.set(relPath, []);
-        actionsUpdatesByRelPath.get(relPath)!.push({name, oldRef: dep.old, newRef: dep.new});
+        let list = actionsUpdatesByRelPath.get(relPath);
+        if (!list) actionsUpdatesByRelPath.set(relPath, list = []);
+        list.push({name, oldRef: dep.old, newRef: dep.new});
       }
     }
 
@@ -998,8 +1006,9 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
     if (deps.docker) {
       for (const [key, dep] of Object.entries(deps.docker)) {
         const [relPath] = key.split(fieldSep);
-        if (!dockerUpdatesByRelPath.has(relPath)) dockerUpdatesByRelPath.set(relPath, {});
-        dockerUpdatesByRelPath.get(relPath)![key] = dep;
+        let map = dockerUpdatesByRelPath.get(relPath);
+        if (!map) dockerUpdatesByRelPath.set(relPath, map = {});
+        map[key] = dep;
       }
     }
 
@@ -1053,19 +1062,11 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
         write(filePerMode[mode], updatedContent);
         rewriteGoImports(dirname(resolve(filePerMode[mode])), majorVersionRewrites, write);
       } else if (mode === "cargo" && cargoWorkspaceActive) {
-        for (const member of cargoMemberFiles) {
-          const localDeps = filterDepsForMember(deps[mode], member.memberPath);
-          if (!Object.keys(localDeps).length) continue;
-          write(member.absPath, updateCargoToml(member.content, localDeps));
-        }
+        updateMembers(mode, cargoMemberFiles, updateCargoToml);
       } else if (mode === "cargo") {
         write(filePerMode[mode], updateCargoToml(fileContent, deps[mode]));
       } else if (mode === "npm" && pnpmWorkspaceActive) {
-        for (const member of pnpmMemberFiles) {
-          const localDeps = filterDepsForMember(deps[mode], member.memberPath);
-          if (!Object.keys(localDeps).length) continue;
-          write(member.absPath, updatePackageJson(member.content, localDeps));
-        }
+        updateMembers(mode, pnpmMemberFiles, updatePackageJson);
       } else {
         const fn = (mode === "npm") ? updatePackageJson : updatePyprojectToml;
         write(filePerMode[mode], fn(fileContent, deps[mode]));

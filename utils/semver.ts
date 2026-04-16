@@ -383,10 +383,5 @@ export function satisfies(version: string, range: string): boolean {
 
 export function validRange(range: string): string | null {
   if (typeof range !== "string") return null;
-  try {
-    const parsed = parseRange(range);
-    return parsed ? range : null;
-  } catch {
-    return null;
-  }
+  return parseRange(range) ? range : null;
 }

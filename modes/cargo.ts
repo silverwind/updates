@@ -81,7 +81,7 @@ export function findLockedVersion(allVersions: Map<string, string[]>, name: stri
   return best;
 }
 
-const sectionAlts = cargoTypes.map(t => esc(t)).join("|");
+const sectionAlts = cargoTypes.map(esc).join("|");
 
 export function updateCargoToml(pkgStr: string, deps: Deps): string {
   let newPkgStr = pkgStr;

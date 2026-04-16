@@ -140,11 +140,7 @@ export function isAllowedVersionTransition(oldVersion: string, newVersion: strin
 }
 
 export function coerceToVersion(rangeOrVersion: string): string {
-  try {
-    return coerce(rangeOrVersion)?.version ?? "";
-  } catch {
-    return "";
-  }
+  return coerce(rangeOrVersion)?.version ?? "";
 }
 
 export function findVersion(data: any, versions: Array<string>, {range, semvers, usePre, useRel, useGreatest, pinnedRange}: FindVersionOpts): string | null {
@@ -198,9 +194,9 @@ export function findNewVersion(data: any, {mode, range, useGreatest, useRel, use
 
   let versions: Array<string> = [];
   if (mode === "pypi") {
-    versions = Object.keys(data.releases).filter((version: string) => valid(version));
+    versions = Object.keys(data.releases).filter(v => valid(v));
   } else if (mode === "npm" || mode === "cargo") {
-    versions = Object.keys(data.versions).filter((version: string) => valid(version));
+    versions = Object.keys(data.versions).filter(v => valid(v));
   } else if (mode === "go") {
     const oldVersion = coerceToVersion(range);
     if (!oldVersion) return null;
@@ -307,18 +303,13 @@ if (env.UPDATES_FORGE_TOKENS) {
   }
 }
 
-function getEnvTokens(names: string[]): string[] {
-  const tokens: string[] = [];
-  for (const name of names) {
-    if (env[name]) tokens.push(env[name]);
-  }
-  return Array.from(new Set(tokens));
-}
-
 // Resolve eagerly at module load: doing this inside a concurrent `fetchForge`
 // flow blocks the event loop (execFileSync is sync) long enough on Windows
 // that parallel fetches can hit their AbortSignal timeout.
-const githubTokens: string[] = getEnvTokens(["UPDATES_GITHUB_API_TOKEN", "GITHUB_API_TOKEN", "GH_TOKEN", "GITHUB_TOKEN", "HOMEBREW_GITHUB_API_TOKEN"]);
+const githubTokens: string[] = Array.from(new Set(
+  ["UPDATES_GITHUB_API_TOKEN", "GITHUB_API_TOKEN", "GH_TOKEN", "GITHUB_TOKEN", "HOMEBREW_GITHUB_API_TOKEN"]
+    .map(name => env[name]).filter(Boolean as unknown as (v: string | undefined) => v is string),
+));
 try {
   const stdout = execFileSync("gh", ["auth", "token"], {encoding: "utf8", timeout: 5000, stdio: ["ignore", "pipe", "pipe"]}).trim();
   if (stdout && !githubTokens.includes(stdout)) githubTokens.push(stdout);
@@ -340,6 +331,7 @@ export function getForgeTokens(url: string): string[] {
 
 export async function fetchForge(url: string, ctx: ModeContext): Promise<Response> {
   const baseOpts: RequestInit = {signal: AbortSignal.timeout(ctx.fetchTimeout), headers: {"accept-encoding": "gzip, deflate, br"}};
+  const withAuth = (token: string): RequestInit => ({...baseOpts, headers: {...baseOpts.headers, Authorization: `Bearer ${token}`}});
 
   let hostname: string;
   try { hostname = new URL(url).hostname; } catch { hostname = ""; }
@@ -348,12 +340,10 @@ export async function fetchForge(url: string, ctx: ModeContext): Promise<Respons
   if (!tokens.length) return ctx.doFetch(url, baseOpts);
 
   const cached = hostname ? workingTokenCache.get(hostname) : undefined;
-  if (cached) {
-    return ctx.doFetch(url, {...baseOpts, headers: {...baseOpts.headers, Authorization: `Bearer ${cached}`}});
-  }
+  if (cached) return ctx.doFetch(url, withAuth(cached));
 
   for (const token of tokens) {
-    const response = await ctx.doFetch(url, {...baseOpts, headers: {...baseOpts.headers, Authorization: `Bearer ${token}`}});
+    const response = await ctx.doFetch(url, withAuth(token));
     if (response.status !== 401 && response.status !== 403) {
       if (hostname) workingTokenCache.set(hostname, token);
       return response;

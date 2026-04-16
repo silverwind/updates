@@ -174,12 +174,9 @@ async function main(): Promise<void> {
   for (const p of positionals) filesList.push(p);
   if (filesList.length) config.files = filesList;
 
-  if (typeof args.forgeapi === "string") config.forgeapi = args.forgeapi;
-  if (typeof args.pypiapi === "string") config.pypiapi = args.pypiapi;
-  if (typeof args.jsrapi === "string") config.jsrapi = args.jsrapi;
-  if (typeof args.goproxy === "string") config.goproxy = args.goproxy;
-  if (typeof args.cargoapi === "string") config.cargoapi = args.cargoapi;
-  if (typeof args.dockerapi === "string") config.dockerapi = args.dockerapi;
+  for (const key of ["forgeapi", "pypiapi", "jsrapi", "goproxy", "cargoapi", "dockerapi"] as const) {
+    if (typeof args[key] === "string") (config as any)[key] = args[key];
+  }
 
   const output = await updates(config);
 

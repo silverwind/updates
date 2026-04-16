@@ -101,20 +101,21 @@ function getAuthAndRegistry(name: string, registry: string): AuthAndRegistry {
   const cached = authCache.get(cacheKey);
   if (cached) return cached;
 
+  const fallback = (): AuthAndRegistry => ({auth: getRegistryAuthToken(registry, npmrc!), registry});
   let result: AuthAndRegistry;
   if (!name.startsWith("@")) {
-    result = {auth: getRegistryAuthToken(registry, npmrc), registry};
+    result = fallback();
   } else {
     const url = normalizeUrl(registryUrl(scope, npmrc));
     if (url !== registry) {
       try {
         const newAuth = getRegistryAuthToken(url, npmrc);
-        result = newAuth?.token ? {auth: newAuth, registry: url} : {auth: getRegistryAuthToken(registry, npmrc), registry};
+        result = newAuth?.token ? {auth: newAuth, registry: url} : fallback();
       } catch {
-        result = {auth: getRegistryAuthToken(registry, npmrc), registry};
+        result = fallback();
       }
     } else {
-      result = {auth: getRegistryAuthToken(registry, npmrc), registry};
+      result = fallback();
     }
   }
 

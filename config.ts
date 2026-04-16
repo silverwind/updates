@@ -60,40 +60,44 @@ export type Config = {
 
 export type Arg = string | boolean | Array<string | boolean> | undefined;
 
+const sm = (short: string) => ({short, type: "string" as const, multiple: true});
+const s = (short?: string) => short ? {short, type: "string" as const} : {type: "string" as const};
+const b = (short: string) => ({short, type: "boolean" as const});
+
 export const options: ParseArgsOptionsConfig = {
-  "allow-downgrade": {short: "d", type: "string", multiple: true},
-  "error-on-outdated": {short: "E", type: "boolean"},
-  "error-on-unchanged": {short: "U", type: "boolean"},
-  "exclude": {short: "e", type: "string", multiple: true},
-  "file": {short: "f", type: "string", multiple: true},
-  "forgeapi": {type: "string"}, // undocumented, only for tests
-  "goproxy": {type: "string"}, // undocumented, only for tests
-  "cargoapi": {type: "string"}, // undocumented, only for tests
-  "dockerapi": {type: "string"}, // undocumented, only for tests
-  "greatest": {short: "g", type: "string", multiple: true},
-  "help": {short: "h", type: "boolean"},
-  "include": {short: "i", type: "string", multiple: true},
-  "indirect": {short: "I", type: "boolean"},
-  "json": {short: "j", type: "boolean"},
-  "jsrapi": {type: "string"}, // undocumented, only for tests
-  "cooldown": {short: "C", type: "string"},
-  "minor": {short: "m", type: "string", multiple: true},
-  "modes": {short: "M", type: "string", multiple: true},
-  "color": {short: "c", type: "boolean"},
-  "no-cache": {short: "x", type: "boolean"},
-  "no-color": {short: "n", type: "boolean"},
-  "patch": {short: "P", type: "string", multiple: true},
-  "pin": {short: "l", type: "string", multiple: true},
-  "prerelease": {short: "p", type: "string", multiple: true},
-  "pypiapi": {type: "string"}, // undocumented, only for tests
-  "registry": {short: "r", type: "string"},
-  "release": {short: "R", type: "string", multiple: true},
-  "sockets": {short: "s", type: "string"},
-  "timeout": {short: "T", type: "string"},
-  "types": {short: "t", type: "string", multiple: true},
-  "update": {short: "u", type: "boolean"},
-  "verbose": {short: "V", type: "boolean"},
-  "version": {short: "v", type: "boolean"},
+  "allow-downgrade": sm("d"),
+  "error-on-outdated": b("E"),
+  "error-on-unchanged": b("U"),
+  "exclude": sm("e"),
+  "file": sm("f"),
+  "forgeapi": s(),
+  "goproxy": s(),
+  "cargoapi": s(),
+  "dockerapi": s(),
+  "greatest": sm("g"),
+  "help": b("h"),
+  "include": sm("i"),
+  "indirect": b("I"),
+  "json": b("j"),
+  "jsrapi": s(),
+  "cooldown": s("C"),
+  "minor": sm("m"),
+  "modes": sm("M"),
+  "color": b("c"),
+  "no-cache": b("x"),
+  "no-color": b("n"),
+  "patch": sm("P"),
+  "pin": sm("l"),
+  "prerelease": sm("p"),
+  "pypiapi": s(),
+  "registry": s("r"),
+  "release": sm("R"),
+  "sockets": s("s"),
+  "timeout": s("T"),
+  "types": sm("t"),
+  "update": b("u"),
+  "verbose": b("V"),
+  "version": b("v"),
 };
 
 function globToRegex(glob: string, insensitive: boolean): RegExp {
