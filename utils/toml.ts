@@ -44,14 +44,15 @@ export function parseToml(input: string): TomlObject {
     const finalKey = keys[keys.length - 1];
 
     // Multi-line array
-    if (rawVal.startsWith("[") && !rawVal.includes("]")) {
+    if (rawVal.startsWith("[") && indexOfUnquoted(rawVal, "]") < 0) {
       const items: Array<TomlValue> = [];
       parseArrayItems(rawVal.slice(1), items);
       for (let j = i + 1; j < lines.length; j++) {
         const aLine = lines[j].replace(/#.*$/, "").trim();
         if (!aLine) continue;
-        if (aLine.includes("]")) {
-          parseArrayItems(aLine.replace(/\].*$/, ""), items);
+        const closeIdx = indexOfUnquoted(aLine, "]");
+        if (closeIdx >= 0) {
+          parseArrayItems(aLine.slice(0, closeIdx), items);
           i = j;
           break;
         }
@@ -83,7 +84,8 @@ function parseArrayItems(segment: string, items: Array<TomlValue>): void {
 function parseValue(raw: string): TomlValue {
   if (raw.startsWith("[")) {
     const items: Array<TomlValue> = [];
-    parseArrayItems(raw.slice(1, raw.lastIndexOf("]")), items);
+    const closeIdx = lastIndexOfUnquoted(raw, "]");
+    parseArrayItems(raw.slice(1, closeIdx < 0 ? raw.length : closeIdx), items);
     return items;
   }
   if (raw.startsWith("{")) {
@@ -170,6 +172,39 @@ function splitDottedKey(key: string): Array<string> {
   }
   if (current.trim()) keys.push(current.trim());
   return keys;
+}
+
+function indexOfUnquoted(s: string, target: string): number {
+  let inStr: string | null = null;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (inStr) {
+      if (ch === "\\" && inStr === '"') { i++; continue; }
+      if (ch === inStr) inStr = null;
+    } else if (ch === '"' || ch === "'") {
+      inStr = ch;
+    } else if (ch === target) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+function lastIndexOfUnquoted(s: string, target: string): number {
+  let last = -1;
+  let inStr: string | null = null;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (inStr) {
+      if (ch === "\\" && inStr === '"') { i++; continue; }
+      if (ch === inStr) inStr = null;
+    } else if (ch === '"' || ch === "'") {
+      inStr = ch;
+    } else if (ch === target) {
+      last = i;
+    }
+  }
+  return last;
 }
 
 function findEquals(line: string): number {

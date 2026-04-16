@@ -74,6 +74,16 @@ test("multi-line array", () => {
   expect(parseToml(input)).toEqual({deps: ["foo", "bar"]});
 });
 
+test("multi-line array with brackets inside strings", () => {
+  const input = `deps = [\n  "apispec[marshmallow]==6.10.0",\n  "foo",\n]`;
+  expect(parseToml(input)).toEqual({deps: ["apispec[marshmallow]==6.10.0", "foo"]});
+});
+
+test("inline array with brackets inside strings", () => {
+  expect(parseToml(`deps = ["apispec[marshmallow]==6.10.0", "foo"]`))
+    .toEqual({deps: ["apispec[marshmallow]==6.10.0", "foo"]});
+});
+
 test("inline table", () => {
   expect(parseToml(`point = {x = 1, y = 2}`)).toEqual({point: {x: 1, y: 2}});
 });

@@ -49,7 +49,7 @@ test("parseUvDependencies", () => {
         "version": "2.2.2",
       },
       {
-        "name": "transformers[torch]",
+        "name": "transformers",
         "version": "4.39.3",
       },
       {

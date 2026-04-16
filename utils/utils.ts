@@ -23,7 +23,8 @@ export function highlightDiff(a: string, b: string, colorFn: (str: string) => st
 export function parseUvDependencies(specs: Array<string>) {
   const ret: Array<{name: string, version: string}> = [];
   for (const spec of specs) {
-    const [name, version] = spec.replaceAll(/\s+/g, "").split(/[<>=~]+/);
+    const [rawName, version] = spec.replaceAll(/\s+/g, "").split(/[<>=~]+/);
+    const name = rawName?.replace(/\[.*?\]$/, "");
     if (name && /^[0-9.a-z]+$/.test(version)) {
       ret.push({name, version});
     }
