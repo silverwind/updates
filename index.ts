@@ -248,5 +248,5 @@ function formatOutput(output: Output): string {
 try {
   await main();
 } catch (err) {
-  await end(err);
+  await end(err as Error);
 }
