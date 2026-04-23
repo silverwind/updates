@@ -7,7 +7,6 @@ import {
   normalizeUrl, getFetchOpts, fieldSep, fetchForge, selectTag,
   coerceToVersion, hashRe, fetchActionTags, throwFetchError,
 } from "./shared.ts";
-import {esc} from "../utils/utils.ts";
 
 export type Npmrc = {
   registry: string,
@@ -283,19 +282,21 @@ export async function fetchJsrInfo(packageName: string, type: string, ctx: ModeC
 }
 
 export function updatePackageJson(pkgStr: string, deps: Deps): string {
-  let newPkgStr = pkgStr;
-  for (const [key, {old, oldOrig}] of Object.entries(deps)) {
+  const lookup = new Map<string, string>();
+  for (const [key, {old, oldOrig, new: newVal}] of Object.entries(deps)) {
     const [depType, name] = key.split(fieldSep);
     const oldValue = oldOrig || old;
     if (depType === "packageManager") {
-      const re = new RegExp(`"${esc(depType)}": *"${name}@${esc(oldValue)}"`, "g");
-      newPkgStr = newPkgStr.replace(re, `"${depType}": "${name}@${deps[key].new}"`);
+      lookup.set(`${depType}\0${name}@${oldValue}`, `"${depType}": "${name}@${newVal}"`);
     } else {
-      const re = new RegExp(`"${esc(name)}": *"${esc(oldValue)}"`, "g");
-      newPkgStr = newPkgStr.replace(re, `"${name}": "${deps[key].new}"`);
+      lookup.set(`${name}\0${oldValue}`, `"${name}": "${newVal}"`);
     }
   }
-  return newPkgStr;
+  if (!lookup.size) return pkgStr;
+
+  return pkgStr.replace(/"((?:[^"\\]|\\.)*)": *"((?:[^"\\]|\\.)*)"/g, (match, key, value) => {
+    return lookup.get(`${key}\0${value}`) ?? match;
+  });
 }
 
 export function updateVersionRange(oldRange: string, newVersion: string, oldOrig: string | undefined): string {

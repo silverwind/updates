@@ -28,7 +28,7 @@ import {
   getGoInfoUrl, shortenGoVersion,
 } from "./modes/go.ts";
 import {
-  type ActionRef,
+  type ActionRef, type TagEntry,
   actionsUsesRe, parseActionRef, getForgeApiBaseUrl,
   fetchActionTags, fetchActionTagDate, formatActionVersion,
   updateWorkflowFile, isWorkflowFile, resolveWorkflowFiles,
@@ -154,10 +154,9 @@ function resolveFiles(filesArg: Set<string> | false): Set<string> {
           if (stat?.isFile()) resolvedFiles.add(resolve(f));
         }
         try {
-          for (const entry of readdirSync(file)) {
-            if (isDockerFileName(entry)) {
-              const f = join(file, entry);
-              try { if (lstatSync(f).isFile()) resolvedFiles.add(resolve(f)); } catch {}
+          for (const entry of readdirSync(file, {withFileTypes: true})) {
+            if (entry.isFile() && isDockerFileName(entry.name)) {
+              resolvedFiles.add(resolve(join(file, entry.name)));
             }
           }
         } catch {}
@@ -182,10 +181,9 @@ function resolveFiles(filesArg: Set<string> | false): Set<string> {
       }
     }
     try {
-      for (const entry of readdirSync(cwd())) {
-        if (isDockerFileName(entry) && !dockerExactFileNames.includes(entry)) {
-          const f = join(cwd(), entry);
-          try { if (lstatSync(f).isFile()) resolvedFiles.add(resolve(f)); } catch {}
+      for (const entry of readdirSync(cwd(), {withFileTypes: true})) {
+        if (entry.isFile() && isDockerFileName(entry.name) && !dockerExactFileNames.includes(entry.name)) {
+          resolvedFiles.add(resolve(join(cwd(), entry.name)));
         }
       }
     } catch {}
@@ -852,11 +850,17 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
 
       await pMap(depsByRepo.values(), async ({apiUrl, owner, repo, infos}) => {
         const tags = await fetchActionTags(apiUrl, owner, repo, ctx);
-        const tagNames = tags.map(t => t.name);
-        const versions = tagNames.map(stripv).filter(v => valid(v));
-
+        const versions: string[] = [];
+        const tagByStripped = new Map<string, string>();
+        const entryByName = new Map<string, TagEntry>();
         const commitShaToTag = new Map<string, string>();
         for (const tag of tags) {
+          entryByName.set(tag.name, tag);
+          const bare = stripv(tag.name);
+          if (valid(bare)) {
+            versions.push(bare);
+            if (!tagByStripped.has(bare)) tagByStripped.set(bare, tag.name);
+          }
           if (tag.commitSha) commitShaToTag.set(tag.commitSha, tag.name);
         }
 
@@ -882,16 +886,20 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
             });
             if (!newVersion) { delete deps.actions[key]; continue; }
 
-            const newTag = tagNames.find(t => stripv(t) === newVersion);
+            const newTag = tagByStripped.get(newVersion);
             if (!newTag) { delete deps.actions[key]; continue; }
 
-            const newEntry = tags.find(t => t.name === newTag);
-            const newCommitSha = newEntry?.commitSha;
+            const newCommitSha = entryByName.get(newTag)?.commitSha;
             if (!newCommitSha || newCommitSha === ref || newCommitSha.startsWith(ref) || ref.startsWith(newCommitSha)) {
               delete deps.actions[key]; continue;
             }
 
-            const oldTagName = commitShaToTag.get(ref) || Array.from(commitShaToTag.entries()).find(([sha]) => sha.startsWith(ref))?.[1];
+            let oldTagName = commitShaToTag.get(ref);
+            if (!oldTagName) {
+              for (const [sha, name] of commitShaToTag) {
+                if (sha.startsWith(ref)) { oldTagName = name; break; }
+              }
+            }
             dep.old = ref;
             dep.new = newCommitSha.substring(0, ref.length);
             dep.oldPrint = oldTagName || ref.substring(0, 7);
@@ -910,18 +918,18 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
             });
             if (!newVersion || newVersion === coerced) { delete deps.actions[key]; continue; }
 
-            const newTag = tagNames.find(t => stripv(t) === newVersion);
+            const newTag = tagByStripped.get(newVersion);
             if (!newTag) { delete deps.actions[key]; continue; }
 
             const formatted = formatActionVersion(newTag, ref);
             if (formatted === ref) { delete deps.actions[key]; continue; }
 
-            dep.new = tagNames.includes(formatted) ? formatted : newTag;
+            dep.new = entryByName.has(formatted) ? formatted : newTag;
             dep.info = infoUrl;
 
-            const newEntry = tags.find(t => t.name === newTag);
-            if (newEntry?.commitSha) {
-              dateFetches.push({key, commitSha: newEntry.commitSha});
+            const newCommitSha = entryByName.get(newTag)?.commitSha;
+            if (newCommitSha) {
+              dateFetches.push({key, commitSha: newCommitSha});
             }
           }
         }
