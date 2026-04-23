@@ -1,0 +1,36 @@
+name: ci
+on: [push]
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions-org/action0@v1.0.0
+      - uses: actions-org/action1@v2.0.0
+      - uses: actions-org/action2@v3.0.0
+      - uses: actions-org/action3@v4.0.0
+      - uses: actions-org/action4@v5.0.0
+      - uses: actions-org/action5@v6.0.0
+      - uses: actions-org/action6@v7.0.0
+      - uses: actions-org/action7@v8.0.0
+      - uses: actions-org/action8@v9.0.0
+      - uses: actions-org/action9@v1.0.0
+      - uses: actions-org/action10@v2.0.0
+      - uses: actions-org/action11@v3.0.0
+      - uses: actions-org/action12@v4.0.0
+      - uses: actions-org/action13@v5.0.0
+      - uses: actions-org/action14@v6.0.0
+      - uses: actions-org/action15@v7.0.0
+      - uses: actions-org/action16@v8.0.0
+      - uses: actions-org/action17@v9.0.0
+      - uses: actions-org/action18@v1.0.0
+      - uses: actions-org/action19@v2.0.0
+      - uses: actions-org/action20@v3.0.0
+      - uses: actions-org/action21@v4.0.0
+      - uses: actions-org/action22@v5.0.0
+      - uses: actions-org/action23@v6.0.0
+      - uses: actions-org/action24@v7.0.0
+      - uses: actions-org/action25@v8.0.0
+      - uses: actions-org/action26@v9.0.0
+      - uses: actions-org/action27@v1.0.0
+      - uses: actions-org/action28@v2.0.0
+      - uses: actions-org/action29@v3.0.0

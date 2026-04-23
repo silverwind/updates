@@ -1,7 +1,7 @@
 import {execFile} from "node:child_process";
 import {promisify} from "node:util";
 import {fileURLToPath} from "node:url";
-import {mkdtempSync, rmSync, mkdirSync} from "node:fs";
+import {mkdtempSync, rmSync, mkdirSync, cpSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
 import {execPath, argv, stdout, stderr, env, exit} from "node:process";
@@ -17,11 +17,13 @@ type Scenario = {
   fixture: string,
   modes: string,
   extraArgs?: string[],
+  writes?: boolean,
 };
 
 const scenarios: Scenario[] = [
   {name: "npm-small", fixture: "npm-test", modes: "npm"},
   {name: "npm-1500", fixture: "npm-1500", modes: "npm"},
+  {name: "npm-1500-update", fixture: "npm-1500", modes: "npm", extraArgs: ["-u"], writes: true},
   {name: "pnpm-workspace", fixture: "pnpm-workspace", modes: "npm"},
   {name: "pypi", fixture: "uv", modes: "pypi"},
   {name: "go", fixture: "go", modes: "go"},
@@ -29,6 +31,7 @@ const scenarios: Scenario[] = [
   {name: "cargo", fixture: "cargo", modes: "cargo"},
   {name: "cargo-workspace", fixture: "cargo-workspace", modes: "cargo"},
   {name: "actions", fixture: "actions", modes: "actions"},
+  {name: "actions-many", fixture: "actions-many", modes: "actions"},
   {name: "docker", fixture: "docker", modes: "docker"},
 ];
 
@@ -45,9 +48,16 @@ function percentile(nums: number[], p: number): number {
 }
 
 async function runOnce(scenario: Scenario, url: string, cacheDir: string): Promise<number> {
+  let fixtureDir = join(fixturesRoot, scenario.fixture);
+  let tmpFixture: string | null = null;
+  if (scenario.writes) {
+    tmpFixture = mkdtempSync(join(tmpdir(), "updates-bench-fixture-"));
+    cpSync(fixtureDir, tmpFixture, {recursive: true});
+    fixtureDir = tmpFixture;
+  }
   const args = [
     script, "-j", "-n", "-M", scenario.modes,
-    "-f", join(fixturesRoot, scenario.fixture),
+    "-f", fixtureDir,
     "--forgeapi", url,
     "--pypiapi", url,
     "--jsrapi", url,
@@ -58,11 +68,15 @@ async function runOnce(scenario: Scenario, url: string, cacheDir: string): Promi
     ...(scenario.extraArgs ?? []),
   ];
   const start = performance.now();
-  await execFileAsync(execPath, args, {
-    env: {...env, XDG_CACHE_HOME: cacheDir, LOCALAPPDATA: cacheDir, GH_TOKEN: "", GITHUB_TOKEN: "", UPDATES_GITHUB_API_TOKEN: ""},
-    maxBuffer: 32 * 1024 * 1024,
-  });
-  return performance.now() - start;
+  try {
+    await execFileAsync(execPath, args, {
+      env: {...env, XDG_CACHE_HOME: cacheDir, LOCALAPPDATA: cacheDir, GH_TOKEN: "", GITHUB_TOKEN: "", UPDATES_GITHUB_API_TOKEN: ""},
+      maxBuffer: 32 * 1024 * 1024,
+    });
+    return performance.now() - start;
+  } finally {
+    if (tmpFixture) rmSync(tmpFixture, {recursive: true, force: true});
+  }
 }
 
 type Result = {scenario: string, mode: "cold" | "warm", median: number, p95: number, runs: number[]};
