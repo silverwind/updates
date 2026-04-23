@@ -42,8 +42,7 @@ let npmrc: Npmrc | null = null;
 const authCache = new Map<string, AuthAndRegistry>();
 
 export function getNpmrc(): Npmrc {
-  if (npmrc) return npmrc;
-  return rc("npm", {registry: defaultRegistry}) as Npmrc;
+  return npmrc ??= rc("npm", {registry: defaultRegistry}) as Npmrc;
 }
 
 function replaceEnvVar(token: string): string {

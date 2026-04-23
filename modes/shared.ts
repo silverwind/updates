@@ -1,5 +1,6 @@
 import {env} from "node:process";
-import {execFileSync} from "node:child_process";
+import {execFile as execFileCb} from "node:child_process";
+import {promisify} from "node:util";
 import {parse, coerce, diff, gt, gte, lt, neq, satisfies, valid} from "../utils/semver.ts";
 import pkg from "../package.json" with {type: "json"};
 
@@ -303,25 +304,33 @@ if (env.UPDATES_FORGE_TOKENS) {
   }
 }
 
-// Resolve eagerly at module load: doing this inside a concurrent `fetchForge`
-// flow blocks the event loop (execFileSync is sync) long enough on Windows
-// that parallel fetches can hit their AbortSignal timeout.
-const githubTokens: string[] = Array.from(new Set(
+const envGithubTokens: string[] = Array.from(new Set(
   ["UPDATES_GITHUB_API_TOKEN", "GITHUB_API_TOKEN", "GH_TOKEN", "GITHUB_TOKEN", "HOMEBREW_GITHUB_API_TOKEN"]
     .map(name => env[name]).filter(Boolean as unknown as (v: string | undefined) => v is string),
 ));
-try {
-  const stdout = execFileSync("gh", ["auth", "token"], {encoding: "utf8", timeout: 5000, stdio: ["ignore", "pipe", "pipe"]}).trim();
-  if (stdout && !githubTokens.includes(stdout)) githubTokens.push(stdout);
-} catch {}
 
-function getGithubTokens(): string[] {
-  return githubTokens;
+// Resolve lazily, async, and memoized: a sync execFileSync in a concurrent
+// `fetchForge` flow blocks the event loop long enough on Windows that parallel
+// fetches can hit their AbortSignal timeout. Skip entirely if an env token is
+// already set.
+const execFile = promisify(execFileCb);
+let githubTokensPromise: Promise<string[]> | undefined;
+function getGithubTokens(): Promise<string[]> {
+  if (envGithubTokens.length) return Promise.resolve(envGithubTokens);
+  return githubTokensPromise ??= (async () => {
+    try {
+      const {stdout} = await execFile("gh", ["auth", "token"], {encoding: "utf8", timeout: 5000});
+      const token = stdout.trim();
+      return token ? [token] : envGithubTokens;
+    } catch {
+      return envGithubTokens;
+    }
+  })();
 }
 
 const workingTokenCache = new Map<string, string>();
 
-export function getForgeTokens(url: string): string[] {
+export async function getForgeTokens(url: string): Promise<string[]> {
   try {
     const hostToken = forgeTokensByHost.get(new URL(url).hostname);
     if (hostToken) return [hostToken];
@@ -330,26 +339,29 @@ export function getForgeTokens(url: string): string[] {
 }
 
 export async function fetchForge(url: string, ctx: ModeContext): Promise<Response> {
-  const baseOpts: RequestInit = {signal: AbortSignal.timeout(ctx.fetchTimeout), headers: {"accept-encoding": "gzip, deflate, br"}};
-  const withAuth = (token: string): RequestInit => ({...baseOpts, headers: {...baseOpts.headers, Authorization: `Bearer ${token}`}});
-
   let hostname: string;
   try { hostname = new URL(url).hostname; } catch { hostname = ""; }
 
-  const tokens = hostname ? getForgeTokens(url) : getGithubTokens();
-  if (!tokens.length) return ctx.doFetch(url, baseOpts);
+  // Resolve tokens before starting the AbortSignal timer so the lazy
+  // `gh auth token` probe does not consume the fetch's timeout budget.
+  const tokens = await (hostname ? getForgeTokens(url) : getGithubTokens());
+
+  const signal = AbortSignal.timeout(ctx.fetchTimeout);
+  const optsFor = (token?: string): RequestInit => ({...getFetchOpts("Bearer", token), signal});
+
+  if (!tokens.length) return ctx.doFetch(url, optsFor());
 
   const cached = hostname ? workingTokenCache.get(hostname) : undefined;
-  if (cached) return ctx.doFetch(url, withAuth(cached));
+  if (cached) return ctx.doFetch(url, optsFor(cached));
 
   for (const token of tokens) {
-    const response = await ctx.doFetch(url, withAuth(token));
+    const response = await ctx.doFetch(url, optsFor(token));
     if (response.status !== 401 && response.status !== 403) {
       if (hostname) workingTokenCache.set(hostname, token);
       return response;
     }
   }
-  return ctx.doFetch(url, baseOpts);
+  return ctx.doFetch(url, optsFor());
 }
 
 export function selectTag(tags: Array<string>, oldRef: string, useGreatest: boolean): string | null {

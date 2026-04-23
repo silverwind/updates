@@ -635,14 +635,13 @@ test("resolvePackageJsonUrl shorthand u/r", () => {
   expect(resolvePackageJsonUrl("u/r")).toBe("https://github.com/u/r");
 });
 
-// getForgeTokens — github tokens are cached at module load, so env var changes won't affect them
-test("getForgeTokens", () => {
+test("getForgeTokens", async () => {
   // returns array for github URLs
-  const tokens = getForgeTokens("https://api.github.com/repos");
+  const tokens = await getForgeTokens("https://api.github.com/repos");
   expect(Array.isArray(tokens)).toBe(true);
 
   // invalid URL falls through to github tokens
-  expect(getForgeTokens("not-a-url")).toEqual(tokens);
+  expect(await getForgeTokens("not-a-url")).toEqual(tokens);
 });
 
 // fetchActionTags
