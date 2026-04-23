@@ -228,7 +228,7 @@ export async function fetchGoProxyInfo(name: string, type: string, currentVersio
   const currentMajor = extractGoMajor(name);
   const probeGoMajor = async (major: number): Promise<ProbeResult | null> => {
     const path = buildGoModulePath(name, major);
-    return ctx.doFetch(`${ctx.goProxyUrl}/${encodeGoModulePath(path)}/@latest`, {signal: AbortSignal.timeout(ctx.goProbeTimeout)})
+    return ctx.doFetch(`${ctx.goProxyUrl}/${encodeGoModulePath(path)}/@latest`, {signal: AbortSignal.timeout(ctx.goProbeTimeout), headers: {"accept-encoding": "gzip, deflate, br"}})
       .then(async (r) => r.ok ? {...await r.json() as {Version: string, Time: string}, path} : null)
       .catch(() => null);
   };
@@ -236,7 +236,7 @@ export async function fetchGoProxyInfo(name: string, type: string, currentVersio
   // Fetch @latest and probe for next major version in parallel
   const skip = shouldSkipMajorProbe(name, type, currentVersion);
   const [res, earlyProbe] = await Promise.all([
-    ctx.doFetch(`${ctx.goProxyUrl}/${encoded}/@latest`, {signal: AbortSignal.timeout(ctx.fetchTimeout)}),
+    ctx.doFetch(`${ctx.goProxyUrl}/${encoded}/@latest`, {signal: AbortSignal.timeout(ctx.fetchTimeout), headers: {"accept-encoding": "gzip, deflate, br"}}),
     skip ? null : probeGoMajor(currentMajor + 1),
   ]);
   if (!res.ok) return noUpdateInfo(name, currentVersion, type);

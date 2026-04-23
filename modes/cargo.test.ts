@@ -127,7 +127,8 @@ test("fetchCratesIoInfo invalid JSON throws", async () => {
   const ctx = {
     cratesIoUrl: "https://crates.io",
     fetchTimeout,
-    doFetch: () => Promise.resolve({ok: true, json: () => Promise.reject(new Error("parse error"))}),
+    noCache: true,
+    doFetch: () => Promise.resolve({ok: true, text: () => Promise.resolve("{not json"), headers: new Headers()}),
   } as unknown as ModeContext;
   await expect(fetchCratesIoInfo("serde-bad-json", "dependencies", ctx)).rejects.toThrow("Invalid JSON");
 });

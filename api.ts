@@ -12,7 +12,7 @@ import {
   type Dep, type Deps, type DepsByMode, type Output, type ModeContext,
   type PackageRepository, type PackageInfo,
   fieldSep, normalizeUrl, fetchTimeout, goProbeTimeout,
-  doFetch, findVersion, findNewVersion, coerceToVersion, getInfoUrl,
+  doFetch, findVersion, findNewVersion, coerceToVersion, getInfoUrl, getGithubTokens,
   stripv, hashRe as npmHashRe,
 } from "./modes/shared.ts";
 import {loadConfig, configMixedToRegexes, patternsToRegexSet} from "./config.ts";
@@ -310,6 +310,9 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
   const minor = configMixedToRegexes(config.minor);
   const allowDowngrade = configMixedToRegexes(config.allowDowngrade);
   const enabledModes = config.modes?.length ? new Set(config.modes) : defaultModes;
+
+  // Kick off `gh auth token` early so the first forge request isn't blocked on a subprocess.
+  if (enabledModes.has("actions")) getGithubTokens();
 
   function getSemvers(name: string): Set<string> {
     if (patch === true || matchesAny(name, patch)) return new Set<string>(["patch"]);

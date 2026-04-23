@@ -2,6 +2,7 @@ import {env} from "node:process";
 import {execFile as execFileCb} from "node:child_process";
 import {promisify} from "node:util";
 import {parse, coerce, diff, gt, gte, lt, neq, satisfies, valid} from "../utils/semver.ts";
+import {getCache, setCache} from "../utils/fetchCache.ts";
 import pkg from "../package.json" with {type: "json"};
 
 export type {Config} from "../config.ts";
@@ -98,6 +99,49 @@ export async function doFetch(url: string, opts?: RequestInit): Promise<Response
   } catch (err: any) {
     throw new Error(`Failed to fetch ${url}${err?.message ? `: ${err.message}` : ""}`);
   }
+}
+
+// Read a Response body as text, falling back to JSON re-stringification for
+// lightweight mocks in tests.
+async function readBody(res: Response): Promise<string> {
+  if (typeof res.text === "function") return res.text();
+  return JSON.stringify(await res.json());
+}
+
+// Fetch with ETag revalidation against the persistent disk cache. The fetch
+// timeout signal is created inside, after the cache read, so slow disks do
+// not eat the network budget. Returns {body} on success, or {res} on error.
+export async function fetchWithEtag(
+  url: string, ctx: ModeContext, opts: RequestInit = {},
+): Promise<{body: string, res?: Response} | {res: Response | undefined}> {
+  const cached = ctx.noCache ? null : await getCache(url);
+  const baseHeaders = opts.headers as Record<string, string> | undefined;
+  const headers = cached ? {...baseHeaders, "if-none-match": cached.etag} : baseHeaders;
+  const res = await ctx.doFetch(url, {...opts, headers, signal: AbortSignal.timeout(ctx.fetchTimeout)});
+  if (!res) return {res: undefined};
+  if (res.status === 304 && cached) return {body: cached.body, res};
+  if (!res.ok) return {res};
+  const body = await readBody(res);
+  const etag = res.headers?.get?.("etag");
+  if (etag && !ctx.noCache) await setCache(url, etag, body);
+  return {body, res};
+}
+
+// Persistent cache for immutable URLs (e.g. per-version metadata, commit
+// dates). No revalidation — once cached, reused forever.
+export async function fetchImmutable(
+  url: string, ctx: ModeContext, opts: RequestInit = {},
+): Promise<{body: string, res?: Response} | {res: Response | undefined}> {
+  if (!ctx.noCache) {
+    const cached = await getCache(url);
+    if (cached) return {body: cached.body};
+  }
+  const res = await ctx.doFetch(url, {...opts, signal: AbortSignal.timeout(ctx.fetchTimeout)});
+  if (!res) return {res: undefined};
+  if (!res.ok) return {res};
+  const body = await readBody(res);
+  if (!ctx.noCache) await setCache(url, "immutable", body);
+  return {body, res};
 }
 
 export function isVersionPrerelease(version: string): boolean {
@@ -315,7 +359,7 @@ const envGithubTokens: string[] = Array.from(new Set(
 // already set.
 const execFile = promisify(execFileCb);
 let githubTokensPromise: Promise<string[]> | undefined;
-function getGithubTokens(): Promise<string[]> {
+export function getGithubTokens(): Promise<string[]> {
   if (envGithubTokens.length) return Promise.resolve(envGithubTokens);
   return githubTokensPromise ??= (async () => {
     try {
@@ -338,7 +382,7 @@ export async function getForgeTokens(url: string): Promise<string[]> {
   return getGithubTokens();
 }
 
-export async function fetchForge(url: string, ctx: ModeContext): Promise<Response> {
+export async function fetchForge(url: string, ctx: ModeContext, extraHeaders?: Record<string, string>): Promise<Response> {
   let hostname: string;
   try { hostname = new URL(url).hostname; } catch { hostname = ""; }
 
@@ -347,7 +391,12 @@ export async function fetchForge(url: string, ctx: ModeContext): Promise<Respons
   const tokens = await (hostname ? getForgeTokens(url) : getGithubTokens());
 
   const signal = AbortSignal.timeout(ctx.fetchTimeout);
-  const optsFor = (token?: string): RequestInit => ({...getFetchOpts("Bearer", token), signal});
+  const optsFor = (token?: string): RequestInit => {
+    const opts = getFetchOpts("Bearer", token);
+    if (extraHeaders) opts.headers = {...opts.headers as Record<string, string>, ...extraHeaders};
+    opts.signal = signal;
+    return opts;
+  };
 
   if (!tokens.length) return ctx.doFetch(url, optsFor());
 
@@ -419,30 +468,38 @@ export function parseTags(data: Array<any>): Array<TagEntry> {
   return data.map((tag: any) => ({name: tag.name, commitSha: tag.commit?.sha || ""}));
 }
 
+// GitHub strips the Link header on 304 responses, so cache it alongside the body.
+async function fetchTagsPage(url: string, ctx: ModeContext): Promise<{tags: Array<TagEntry>, link: string} | null> {
+  const cached = ctx.noCache ? null : await getCache(url);
+  const res = await fetchForge(url, ctx, cached ? {"if-none-match": cached.etag} : undefined);
+  if (res?.status === 304 && cached) {
+    try {
+      const parsed = JSON.parse(cached.body);
+      return {tags: parsed.tags || [], link: parsed.link || ""};
+    } catch { return null; }
+  }
+  if (!res?.ok) return null;
+  const tags = parseTags(await res.json());
+  const link = res.headers.get("link") || "";
+  const etag = res.headers.get("etag");
+  if (etag && !ctx.noCache) await setCache(url, etag, JSON.stringify({link, tags}));
+  return {tags, link};
+}
+
 export async function fetchActionTags(apiUrl: string, owner: string, repo: string, ctx: ModeContext): Promise<Array<TagEntry>> {
   const tagsUrl = (page: number) => `${apiUrl}/repos/${owner}/${repo}/tags?per_page=100&page=${page}`;
   try {
-    // Speculate page 2 in parallel — saves a round-trip when there are 2+ pages.
-    const [res, page2Res] = await Promise.all([
-      fetchForge(`${apiUrl}/repos/${owner}/${repo}/tags?per_page=100`, ctx),
-      fetchForge(tagsUrl(2), ctx).catch(() => null),
-    ]);
-    if (!res?.ok) return [];
-    const results = parseTags(await res.json());
-    const link = res.headers.get("link") || "";
-    const last = /<([^>]+)>;\s*rel="last"/.exec(link);
+    const page1 = await fetchTagsPage(tagsUrl(1), ctx);
+    if (!page1) return [];
+    const results = Array.from(page1.tags);
+    const last = /<([^>]+)>;\s*rel="last"/.exec(page1.link);
     if (!last) return results;
-
     const lastPage = Number(new URL(last[1]).searchParams.get("page"));
-    if (lastPage >= 2 && page2Res?.ok) results.push(...parseTags(await page2Res.json()));
-    if (lastPage > 2) {
-      const pages = await Promise.all(
-        Array.from({length: lastPage - 2}, (_, idx) => fetchForge(tagsUrl(idx + 3), ctx)),
-      );
-      for (const pageRes of pages) {
-        if (pageRes?.ok) results.push(...parseTags(await pageRes.json()));
-      }
-    }
+    if (lastPage < 2) return results;
+    const pages = await Promise.all(
+      Array.from({length: lastPage - 1}, (_, idx) => fetchTagsPage(tagsUrl(idx + 2), ctx)),
+    );
+    for (const p of pages) if (p) results.push(...p.tags);
     return results;
   } catch {
     return [];

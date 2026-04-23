@@ -2,6 +2,7 @@ import {resolve, join} from "node:path";
 import {readdirSync} from "node:fs";
 import {parse} from "../utils/semver.ts";
 import {type CheckResult, type ModeContext, type TagEntry, stripv, hashRe, fetchForge, fetchActionTags, formatVersionPrecision} from "./shared.ts";
+import {getCache, setCache} from "../utils/fetchCache.ts";
 import {esc} from "../utils/utils.ts";
 
 export {hashRe, type CheckResult, type TagEntry, fetchActionTags};
@@ -39,11 +40,19 @@ export function getForgeApiBaseUrl(host: string | null, forgeApiUrl: string): st
 }
 
 export async function fetchActionTagDate(apiUrl: string, owner: string, repo: string, commitSha: string, ctx: ModeContext): Promise<string> {
+  // Commit data is immutable — cache the resolved date forever keyed by URL.
+  const url = `${apiUrl}/repos/${owner}/${repo}/git/commits/${commitSha}`;
+  if (!ctx.noCache) {
+    const cached = await getCache(url);
+    if (cached) return cached.body;
+  }
   try {
-    const res = await fetchForge(`${apiUrl}/repos/${owner}/${repo}/git/commits/${commitSha}`, ctx);
+    const res = await fetchForge(url, ctx);
     if (!res?.ok) return "";
     const data = await res.json();
-    return data?.committer?.date || data?.author?.date || "";
+    const date = data?.committer?.date || data?.author?.date || "";
+    if (date && !ctx.noCache) await setCache(url, "immutable", date);
+    return date;
   } catch {
     return "";
   }

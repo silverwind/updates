@@ -4,7 +4,7 @@ import rc from "../utils/rc.ts";
 import {getCache, setCache} from "../utils/fetchCache.ts";
 import {
   type Config, type CheckResult, type Dep, type Deps, type ModeContext, type PackageInfo, type PackageRepository,
-  normalizeUrl, getFetchOpts, fieldSep, fetchForge, selectTag,
+  normalizeUrl, getFetchOpts, fieldSep, fetchForge, selectTag, fetchWithEtag, fetchImmutable,
   coerceToVersion, hashRe, fetchActionTags, throwFetchError,
 } from "./shared.ts";
 
@@ -156,7 +156,7 @@ export async function fetchNpmInfo(name: string, type: string, config: Config, a
       if (res?.ok) {
         const text = await res.text();
         const etag = res.headers.get("etag");
-        if (etag && !ctx.noCache) setCache(url, etag, text);
+        if (etag && !ctx.noCache) await setCache(url, etag, text);
         return JSON.parse(text);
       }
       throwFetchError(res, url, name, registry);
@@ -177,10 +177,11 @@ export async function fetchNpmVersionInfo(name: string, version: string, config:
 
   const promise = (async (): Promise<NpmVersionInfo> => {
     try {
-      const opts = getFetchOpts(auth?.type, auth?.token);
-      const res = await ctx.doFetch(url, {signal: AbortSignal.timeout(ctx.fetchTimeout), ...opts});
-      if (!res?.ok) return {};
-      const data = await res.json();
+      const fetchOpts = getFetchOpts(auth?.type, auth?.token);
+      // Per-version npm metadata is immutable — cache forever.
+      const result = await fetchImmutable(url, ctx, fetchOpts);
+      if (!("body" in result)) return {};
+      const data = JSON.parse(result.body);
       let date = "";
       const tmp: string | undefined = data?._npmOperationalInternal?.tmp;
       if (tmp) {
@@ -192,7 +193,7 @@ export async function fetchNpmVersionInfo(name: string, version: string, config:
         const fullUrl = npmPackageUrl(registry, name);
         let fullPromise = npmFullDataCache.get(fullUrl);
         if (!fullPromise) {
-          fullPromise = ctx.doFetch(fullUrl, {signal: AbortSignal.timeout(ctx.fetchTimeout), ...opts}).then(res => {
+          fullPromise = ctx.doFetch(fullUrl, {...fetchOpts, signal: AbortSignal.timeout(ctx.fetchTimeout)}).then(res => {
             if (res?.ok) return res.json();
             return null;
           }).catch(() => { npmFullDataCache.delete(fullUrl); return null; });
@@ -255,9 +256,11 @@ export async function fetchJsrInfo(packageName: string, type: string, ctx: ModeC
   const [, scope, name] = match;
   const url = `${ctx.jsrApiUrl}/@${scope}/${name}/meta.json`;
 
-  const res = await ctx.doFetch(url, {signal: AbortSignal.timeout(ctx.fetchTimeout), headers: {"accept-encoding": "gzip, deflate, br"}});
-  if (res?.ok) {
-    const data = await res.json();
+  const result = await fetchWithEtag(url, ctx, {
+    headers: {"accept-encoding": "gzip, deflate, br"},
+  });
+  if ("body" in result) {
+    const data = JSON.parse(result.body);
     // Transform JSR format to match npm-like format for compatibility
     const versions: Record<string, any> = {};
     const time: Record<string, string> = {};
@@ -278,7 +281,7 @@ export async function fetchJsrInfo(packageName: string, type: string, ctx: ModeC
     };
     return [transformedData, type, ctx.jsrApiUrl, packageName];
   }
-  throwFetchError(res, url, packageName, "JSR");
+  throwFetchError(result.res, url, packageName, "JSR");
 }
 
 export function updatePackageJson(pkgStr: string, deps: Deps): string {
@@ -339,10 +342,20 @@ type CommitInfo = {
 };
 
 export async function getLatestCommit(user: string, repo: string, ctx: ModeContext): Promise<CommitInfo> {
+  const url = `${ctx.forgeApiUrl}/repos/${user}/${repo}/commits`;
   try {
-    const res = await fetchForge(`${ctx.forgeApiUrl}/repos/${user}/${repo}/commits`, ctx);
+    const cached = ctx.noCache ? null : await getCache(url);
+    const res = await fetchForge(url, ctx, cached ? {"if-none-match": cached.etag} : undefined);
+    if (res?.status === 304 && cached) {
+      const data = JSON.parse(cached.body);
+      const {sha: hash, commit} = data[0];
+      return {hash, commit};
+    }
     if (!res?.ok) return {hash: "", commit: {}};
-    const data = await res.json();
+    const body = await res.text();
+    const etag = res.headers.get("etag");
+    if (etag && !ctx.noCache) await setCache(url, etag, body);
+    const data = JSON.parse(body);
     const {sha: hash, commit} = data[0];
     return {hash, commit};
   } catch {

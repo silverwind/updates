@@ -1,4 +1,4 @@
-import {type Deps, type ModeContext, type PackageInfo, fieldSep, getFetchOpts, normalizeUrl, throwFetchError} from "./shared.ts";
+import {type Deps, type ModeContext, type PackageInfo, fieldSep, fetchWithEtag, getFetchOpts, normalizeUrl, throwFetchError} from "./shared.ts";
 import {cargoTypes, esc} from "../utils/utils.ts";
 import {gt, valid, satisfies} from "../utils/semver.ts";
 import {updateVersionRange, normalizeRange} from "./npm.ts";
@@ -14,14 +14,11 @@ export async function fetchCratesIoInfo(name: string, type: string, ctx: ModeCon
 
   let dataPromise = ctx.noCache ? undefined : cratesIoCache.get(url);
   if (!dataPromise) {
-    dataPromise = ctx.doFetch(url, {
-      signal: AbortSignal.timeout(ctx.fetchTimeout),
-      ...getFetchOpts(),
-    }).then(async res => {
-      if (!res?.ok) throwFetchError(res, url, name, ctx.cratesIoUrl);
+    dataPromise = fetchWithEtag(url, ctx, getFetchOpts()).then(result => {
+      if (!("body" in result)) throwFetchError(result.res, url, name, ctx.cratesIoUrl);
       let body: CratesIoVersionsResponse;
       try {
-        body = await res.json();
+        body = JSON.parse(result.body);
       } catch {
         throw new Error(`Invalid JSON from ${url}`);
       }

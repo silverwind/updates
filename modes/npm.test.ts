@@ -106,7 +106,8 @@ test("getLatestCommit happy path", async () => {
   const ctx = {
     forgeApiUrl: "https://api.github.com",
     fetchTimeout,
-    doFetch: () => Promise.resolve({ok: true, json: () => Promise.resolve(commitData)}),
+    noCache: true,
+    doFetch: () => Promise.resolve({ok: true, text: () => Promise.resolve(JSON.stringify(commitData)), headers: new Headers()}),
   } as unknown as ModeContext;
   const result = await getLatestCommit("user", "repo", ctx);
   expect(result.hash).toBe("abc1234567890");
@@ -166,7 +167,8 @@ test("checkUrlDep hash-based with update", async () => {
   const ctx = {
     forgeApiUrl: "https://api.github.com",
     fetchTimeout,
-    doFetch: () => Promise.resolve({ok: true, json: () => Promise.resolve([{sha: "def5678901234", commit: {committer: {date: "2025-03-01"}}}])}),
+    noCache: true,
+    doFetch: () => Promise.resolve({ok: true, text: () => Promise.resolve(JSON.stringify([{sha: "def5678901234", commit: {committer: {date: "2025-03-01"}}}])), headers: new Headers()}),
   } as unknown as ModeContext;
   const dep = {old: "https://github.com/user/repo/abc1234", new: ""};
   const result = await checkUrlDep("key", dep, false, ctx);
@@ -179,7 +181,8 @@ test("checkUrlDep hash-based no change returns null", async () => {
   const ctx = {
     forgeApiUrl: "https://api.github.com",
     fetchTimeout,
-    doFetch: () => Promise.resolve({ok: true, json: () => Promise.resolve([{sha: "abc1234567890", commit: {}}])}),
+    noCache: true,
+    doFetch: () => Promise.resolve({ok: true, text: () => Promise.resolve(JSON.stringify([{sha: "abc1234567890", commit: {}}])), headers: new Headers()}),
   } as unknown as ModeContext;
   const dep = {old: "https://github.com/user/repo/abc1234", new: ""};
   expect(await checkUrlDep("key", dep as any, false, ctx)).toBeNull();

@@ -18,6 +18,8 @@ import {
   packageVersion,
   getForgeTokens,
   fetchActionTags,
+  fetchWithEtag,
+  fetchImmutable,
   fetchTimeout,
   type ModeContext,
 } from "./shared.ts";
@@ -682,3 +684,135 @@ test("fetchActionTags fetch throws returns empty", async () => {
   } as unknown as ModeContext;
   expect(await fetchActionTags("https://api.github.com", "actions", "checkout", ctx)).toEqual([]);
 });
+
+// Tests use timestamped URLs so each invocation hashes to a unique cache file;
+// real-cache side effects are isolated.
+test("fetchWithEtag returns body on 200 and sends If-None-Match on second call", async () => {
+  let lastHeaders: Record<string, string> | undefined;
+  let callCount = 0;
+  const ctx = {
+    fetchTimeout,
+    doFetch: (_url: string, opts: RequestInit) => {
+      callCount++;
+      lastHeaders = opts.headers as Record<string, string>;
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        text: () => Promise.resolve(`{"ver":${callCount}}`),
+        headers: new Headers([["etag", `W/"${callCount}"`]]),
+      });
+    },
+  } as unknown as ModeContext;
+  const url = `https://example.test/etag-${Date.now()}`;
+
+  const r1 = await fetchWithEtag(url, ctx);
+  expect("body" in r1 && r1.body).toBe(`{"ver":1}`);
+  expect(lastHeaders?.["if-none-match"]).toBeUndefined();
+
+  const r2 = await fetchWithEtag(url, ctx);
+  expect("body" in r2).toBe(true);
+  expect(lastHeaders?.["if-none-match"]).toBe(`W/"1"`);
+});
+
+test("fetchWithEtag returns cached body on 304", async () => {
+  const url = `https://example.test/304-${Date.now()}`;
+  let seenIfNoneMatch: string | undefined;
+  const ctx = {
+    fetchTimeout,
+    doFetch: (_url: string, opts: RequestInit) => {
+      seenIfNoneMatch = (opts.headers as Record<string, string> | undefined)?.["if-none-match"];
+      if (seenIfNoneMatch) {
+        return Promise.resolve({ok: false, status: 304, headers: new Headers()});
+      }
+      return Promise.resolve({
+        ok: true, status: 200,
+        text: () => Promise.resolve(`{"cached":true}`),
+        headers: new Headers([["etag", `"v1"`]]),
+      });
+    },
+  } as unknown as ModeContext;
+
+  await fetchWithEtag(url, ctx);
+  const r = await fetchWithEtag(url, ctx);
+  expect(seenIfNoneMatch).toBe(`"v1"`);
+  expect("body" in r && r.body).toBe(`{"cached":true}`);
+});
+
+test("fetchWithEtag returns {res} on non-ok", async () => {
+  const ctx = {
+    fetchTimeout,
+    noCache: true,
+    doFetch: () => Promise.resolve({ok: false, status: 404, statusText: "Not Found", headers: new Headers()}),
+  } as unknown as ModeContext;
+  const r = await fetchWithEtag("https://example.test/404", ctx);
+  expect("body" in r).toBe(false);
+  expect(r.res?.status).toBe(404);
+});
+
+test("fetchWithEtag bypasses disk cache when noCache is set", async () => {
+  const url = `https://example.test/nocache-${Date.now()}`;
+  let seenIfNoneMatch: string | undefined;
+  let calls = 0;
+  const ctx = {
+    fetchTimeout,
+    noCache: true,
+    doFetch: (_url: string, opts: RequestInit) => {
+      calls++;
+      seenIfNoneMatch = (opts.headers as Record<string, string> | undefined)?.["if-none-match"];
+      return Promise.resolve({
+        ok: true, status: 200,
+        text: () => Promise.resolve(`{"n":${calls}}`),
+        headers: new Headers([["etag", `"x"`]]),
+      });
+    },
+  } as unknown as ModeContext;
+
+  await fetchWithEtag(url, ctx);
+  await fetchWithEtag(url, ctx);
+  expect(seenIfNoneMatch).toBeUndefined();
+  expect(calls).toBe(2);
+});
+
+test("fetchImmutable serves cached body without fetching on second call", async () => {
+  const url = `https://example.test/immutable-${Date.now()}`;
+  let calls = 0;
+  const ctx = {
+    fetchTimeout,
+    doFetch: () => {
+      calls++;
+      return Promise.resolve({
+        ok: true, status: 200,
+        text: () => Promise.resolve(`{"version":"1.0.0"}`),
+        headers: new Headers(),
+      });
+    },
+  } as unknown as ModeContext;
+
+  const r1 = await fetchImmutable(url, ctx);
+  const r2 = await fetchImmutable(url, ctx);
+  expect("body" in r1 && r1.body).toBe(`{"version":"1.0.0"}`);
+  expect("body" in r2 && r2.body).toBe(`{"version":"1.0.0"}`);
+  expect(calls).toBe(1);
+});
+
+test("fetchImmutable refetches every call when noCache is set", async () => {
+  const url = `https://example.test/immutable-nocache-${Date.now()}`;
+  let calls = 0;
+  const ctx = {
+    fetchTimeout,
+    noCache: true,
+    doFetch: () => {
+      calls++;
+      return Promise.resolve({
+        ok: true, status: 200,
+        text: () => Promise.resolve(`{"n":${calls}}`),
+        headers: new Headers(),
+      });
+    },
+  } as unknown as ModeContext;
+
+  await fetchImmutable(url, ctx);
+  await fetchImmutable(url, ctx);
+  expect(calls).toBe(2);
+});
+

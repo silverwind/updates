@@ -1,5 +1,5 @@
 import {coerce, diff, gte} from "../utils/semver.ts";
-import {type Deps, type ModeContext, type PackageInfo, fieldSep, stripv, formatVersionPrecision} from "./shared.ts";
+import {type Deps, type ModeContext, type PackageInfo, fieldSep, fetchWithEtag, stripv, formatVersionPrecision} from "./shared.ts";
 import {esc} from "../utils/utils.ts";
 
 export type DockerImageRef = {
@@ -83,34 +83,31 @@ export async function fetchDockerHubTags(namespace: string, repo: string, ctx: M
   const tags: Record<string, string> = {};
   const baseUrl = `${ctx.dockerApiUrl}/v2/repositories/${namespace}/${repo}/tags`;
   const pageUrl = (page: number) => `${baseUrl}?page_size=100&ordering=last_updated&page=${page}`;
+  const pageOpts = {headers: {"accept-encoding": "gzip, deflate, br"}};
 
-  const collectResults = (data: any) => {
-    for (const result of data.results || []) {
-      tags[result.name] = result.tag_last_pushed || result.last_updated || "";
-    }
+  const fetchPage = async (page: number): Promise<any | null> => {
+    try {
+      const result = await fetchWithEtag(pageUrl(page), ctx, pageOpts);
+      if (!("body" in result)) return null;
+      return JSON.parse(result.body);
+    } catch { return null; }
   };
 
-  // Fetch page 1 and speculatively page 2 in parallel to reduce sequential round-trips
-  const [firstPage, specPage2] = await Promise.all([
-    ctx.doFetch(pageUrl(1), {signal: AbortSignal.timeout(ctx.fetchTimeout)}).then(res => res?.ok ? res.json() : null).catch(() => null),
-    ctx.doFetch(pageUrl(2), {signal: AbortSignal.timeout(ctx.fetchTimeout)}).then(res => res?.ok ? res.json() : null).catch(() => null),
-  ]);
+  const firstPage = await fetchPage(1);
   if (!firstPage) return tags;
-
-  collectResults(firstPage);
+  for (const result of firstPage.results || []) {
+    tags[result.name] = result.tag_last_pushed || result.last_updated || "";
+  }
   const totalPages = Math.min(Math.ceil((firstPage.count || 0) / 100), maxPages);
+  if (totalPages < 2) return tags;
 
-  if (totalPages >= 2 && specPage2) collectResults(specPage2);
-  if (totalPages > 2) {
-    const remaining = await Promise.all(
-      Array.from({length: totalPages - 2}, (_, idx) =>
-        ctx.doFetch(pageUrl(idx + 3), {signal: AbortSignal.timeout(ctx.fetchTimeout)})
-          .then(res => res?.ok ? res.json() : null)
-          .catch(() => null),
-      ),
-    );
-    for (const page of remaining) {
-      if (page) collectResults(page);
+  const rest = await Promise.all(
+    Array.from({length: totalPages - 1}, (_, idx) => fetchPage(idx + 2)),
+  );
+  for (const page of rest) {
+    if (!page) continue;
+    for (const result of page.results || []) {
+      tags[result.name] = result.tag_last_pushed || result.last_updated || "";
     }
   }
   return tags;

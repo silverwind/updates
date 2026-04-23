@@ -118,6 +118,7 @@ test("updateWorkflowFile multiple replacements", () => {
 test("fetchActionTagDate returns committer date", async () => {
   const ctx = {
     fetchTimeout,
+    noCache: true,
     doFetch: () => Promise.resolve({ok: true, json: () => Promise.resolve({committer: {date: "2025-01-01T00:00:00Z"}, author: {date: "2024-12-01T00:00:00Z"}})}),
   } as unknown as ModeContext;
   expect(await fetchActionTagDate("https://api.github.com", "actions", "checkout", "abc123", ctx)).toBe("2025-01-01T00:00:00Z");
@@ -126,6 +127,7 @@ test("fetchActionTagDate returns committer date", async () => {
 test("fetchActionTagDate falls back to author date", async () => {
   const ctx = {
     fetchTimeout,
+    noCache: true,
     doFetch: () => Promise.resolve({ok: true, json: () => Promise.resolve({author: {date: "2024-12-01T00:00:00Z"}})}),
   } as unknown as ModeContext;
   expect(await fetchActionTagDate("https://api.github.com", "actions", "checkout", "abc123", ctx)).toBe("2024-12-01T00:00:00Z");
@@ -134,6 +136,7 @@ test("fetchActionTagDate falls back to author date", async () => {
 test("fetchActionTagDate returns empty on failure", async () => {
   const ctx = {
     fetchTimeout,
+    noCache: true,
     doFetch: () => Promise.resolve({ok: false}),
   } as unknown as ModeContext;
   expect(await fetchActionTagDate("https://api.github.com", "actions", "checkout", "abc123", ctx)).toBe("");
@@ -142,6 +145,7 @@ test("fetchActionTagDate returns empty on failure", async () => {
 test("fetchActionTagDate returns empty on throw", async () => {
   const ctx = {
     fetchTimeout,
+    noCache: true,
     doFetch: () => Promise.reject(new Error("network error")),
   } as unknown as ModeContext;
   expect(await fetchActionTagDate("https://api.github.com", "actions", "checkout", "abc123", ctx)).toBe("");
