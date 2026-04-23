@@ -1,7 +1,7 @@
 import {cwd, platform, stderr} from "node:process";
 import {styleText} from "node:util";
 import {join, dirname, basename, resolve} from "node:path";
-import {lstatSync, readFileSync, readdirSync, truncateSync, writeFileSync, accessSync, type Stats} from "node:fs";
+import {lstatSync, readdirSync, truncateSync, writeFileSync, accessSync, type Stats} from "node:fs";
 import {readFile} from "node:fs/promises";
 import {parseToml} from "./utils/toml.ts";
 import {valid, validRange} from "./utils/semver.ts";
@@ -317,13 +317,20 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
     return new Set<string>(["patch", "minor", "major"]);
   }
 
+  const versionOptsCache = new Map<string, {useGreatest: boolean, usePre: boolean, useRel: boolean, semvers: Set<string>}>();
+
   function getVersionOpts(name: string) {
-    return {
-      useGreatest: typeof greatest === "boolean" ? greatest : matchesAny(name, greatest),
-      usePre: typeof prerelease === "boolean" ? prerelease : matchesAny(name, prerelease),
-      useRel: typeof release === "boolean" ? release : matchesAny(name, release),
-      semvers: getSemvers(name),
-    };
+    let entry = versionOptsCache.get(name);
+    if (!entry) {
+      entry = {
+        useGreatest: typeof greatest === "boolean" ? greatest : matchesAny(name, greatest),
+        usePre: typeof prerelease === "boolean" ? prerelease : matchesAny(name, prerelease),
+        useRel: typeof release === "boolean" ? release : matchesAny(name, release),
+        semvers: getSemvers(name),
+      };
+      versionOptsCache.set(name, entry);
+    }
+    return entry;
   }
 
   const include = patternsToRegexSet(config.include ?? []);
@@ -1029,7 +1036,9 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
         for (const [relPath, actionDeps] of actionsUpdatesByRelPath) {
           const {absPath, content} = wfData[relPath] || {};
           if (!absPath) continue;
-          write(absPath, updateWorkflowFile(content, actionDeps));
+          const updated = updateWorkflowFile(content, actionDeps);
+          write(absPath, updated);
+          if (dockerFileData[relPath]) dockerFileData[relPath].content = updated;
         }
         continue;
       }
@@ -1038,9 +1047,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
         for (const [relPath, dockerDeps] of dockerUpdatesByRelPath) {
           const fileInfo = dockerFileData[relPath];
           if (!fileInfo) continue;
-          const {absPath, fileType} = fileInfo;
-          let content: string;
-          try { content = readFileSync(absPath, "utf8"); } catch { continue; }
+          const {absPath, content, fileType} = fileInfo;
           const updateFn = fileType === "dockerfile" ? updateDockerfile :
             fileType === "compose" ? updateComposeFile : updateWorkflowDockerImages;
           write(absPath, updateFn(content, dockerDeps));
