@@ -794,7 +794,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
         if (mode === "npm") {
           npmFollowUps.set(key, {name, promise: fetchNpmVersionInfo(data.name, newVersion, modeConfig, argsForNpm, ctx)});
         } else if (mode === "pypi") {
-          dep.info = getInfoUrl(data as {repository: PackageRepository, homepage: string, info: Record<string, any>}, registry, data.info.name);
+          dep.info = getInfoUrl(data, registry, data.info.name);
         } else if (mode === "go") {
           dep.info = getGoInfoUrl(data.newPath || name);
         } else if (mode === "cargo") {

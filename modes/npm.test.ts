@@ -59,12 +59,12 @@ test("updatePackageJson", () => {
   const pmKey = `packageManager${fieldSep}pnpm`;
 
   const result1 = updatePackageJson(pkg, {
-    [depsKey]: {old: "^1.0.0", new: "^2.0.0"} as any,
+    [depsKey]: {old: "^1.0.0", new: "^2.0.0"},
   });
   expect(result1).toContain(`"foo": "^2.0.0"`);
 
   const result2 = updatePackageJson(pkg, {
-    [pmKey]: {old: "8.0.0", new: "9.0.0"} as any,
+    [pmKey]: {old: "8.0.0", new: "9.0.0"},
   });
   expect(result2).toContain(`"packageManager": "pnpm@9.0.0"`);
 });
@@ -169,7 +169,7 @@ test("checkUrlDep hash-based with update", async () => {
     doFetch: () => Promise.resolve({ok: true, json: () => Promise.resolve([{sha: "def5678901234", commit: {committer: {date: "2025-03-01"}}}])}),
   } as unknown as ModeContext;
   const dep = {old: "https://github.com/user/repo/abc1234", new: ""};
-  const result = await checkUrlDep("key", dep as any, false, ctx);
+  const result = await checkUrlDep("key", dep, false, ctx);
   expect(result).not.toBeNull();
   expect(result!.newRef).toBe("def5678");
   expect(result!.newDate).toBe("2025-03-01");

@@ -32,7 +32,7 @@ export function parseToml(input: string): TomlObject {
       const lastKey = keys[keys.length - 1];
       if (!Array.isArray(target[lastKey])) target[lastKey] = [];
       const newTable: TomlObject = {};
-      (target[lastKey] as Array<TomlValue>).push(newTable);
+      (target[lastKey]).push(newTable);
       current = newTable;
       continue;
     }
