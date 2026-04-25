@@ -57,6 +57,13 @@ export type Config = {
   minor?: boolean | Array<string | RegExp>;
   /** Allow version downgrades when using latest version */
   allowDowngrade?: boolean | Array<string | RegExp>;
+  /** Opt-in to inheriting select fields from other tools' configs */
+  inherit?: {
+    renovate?: {
+      /** Inherit minimumReleaseAge as cooldown. Off by default. */
+      cooldown?: boolean;
+    };
+  };
 };
 
 export type Arg = string | boolean | Array<string | boolean> | undefined;
@@ -179,7 +186,6 @@ export async function loadConfig(rootDir: string): Promise<Config> {
   for (const ext of ["js", "ts", "mjs", "mts"]) {
     filenames.push(`updates.config.${ext}`);
   }
-  const renovateConfig = await loadRenovateConfig(rootDir);
   let config: Config = {};
 
   try {
@@ -208,5 +214,6 @@ export async function loadConfig(rootDir: string): Promise<Config> {
     }
   }
 
+  const renovateConfig = await loadRenovateConfig(rootDir, config.inherit?.renovate);
   return {...renovateConfig, ...config};
 }
