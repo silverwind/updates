@@ -17,14 +17,14 @@
   "files": [
     "dist"
   ],
-  "packageManager": "pnpm@10.33.1",
+  "packageManager": "pnpm@10.33.2",
   "engines": {
     "node": ">=22",
     "bun": "*"
   },
   "devDependencies": {
     "@types/node": "25.6.0",
-    "@typescript/native-preview": "7.0.0-dev.20260422.1",
+    "@typescript/native-preview": "7.0.0-dev.20260425.1",
     "@vitest/coverage-v8": "4.1.5",
     "eslint": "10.2.1",
     "eslint-config-silverwind": "132.0.0",
