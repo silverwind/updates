@@ -92,7 +92,7 @@ test("renovate.json5 with comments and trailing commas", async () => {
   expect(await loadRenovateConfig(dir)).toEqual({pin: {react: "^18.0.0"}});
 });
 
-test.each([".github", ".gitea", ".gitlab"])("forge dir config in %s", async (forge) => {
+test.each([".github", ".gitea", ".forgejo", ".gitlab"])("forge dir config in %s", async (forge) => {
   const dir = makeDir();
   mkdirSync(join(dir, forge));
   writeFileSync(join(dir, forge, "renovate.json"), JSON.stringify({minimumReleaseAge: "2 days"}));

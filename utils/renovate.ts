@@ -4,7 +4,7 @@ import {parseJsonish} from "./json5.ts";
 import {validRange} from "./semver.ts";
 import type {Config} from "../config.ts";
 
-const forgeDirs = [".github", ".gitea", ".gitlab"];
+const forgeDirs = [".github", ".gitea", ".forgejo", ".gitlab"];
 
 const configFileNames = [
   "renovate.json",
