@@ -282,7 +282,8 @@ export function findNewVersion(data: any, {mode, range, useGreatest, useRel, use
     if (crossVersion && !isGoPseudoVersion(data.new) && !skipPrerelease(data.new)) {
       const d = diff(oldVersion, crossVersion);
       if (d && semvers.has(d) && isAllowedVersionTransition(originalOldVersion, data.new, transitionOpts) &&
-          passesCooldown(data.Time, cooldownDays, now)) {
+          passesCooldown(data.Time, cooldownDays, now) &&
+          (!pinnedRange || satisfies(crossVersion, pinnedRange))) {
         return data.new;
       }
     }
@@ -292,7 +293,8 @@ export function findNewVersion(data: any, {mode, range, useGreatest, useRel, use
     if (sameVersion && !isGoPseudoVersion(data.sameMajorNew) && !skipPrerelease(data.sameMajorNew)) {
       const d = diff(oldVersion, sameVersion);
       if (d && semvers.has(d) && isAllowedVersionTransition(originalOldVersion, data.sameMajorNew, transitionOpts) &&
-          passesCooldown(data.sameMajorTime, cooldownDays, now)) {
+          passesCooldown(data.sameMajorTime, cooldownDays, now) &&
+          (!pinnedRange || satisfies(sameVersion, pinnedRange))) {
         data.Time = data.sameMajorTime;
         delete data.newPath;
         return data.sameMajorNew;
@@ -305,7 +307,8 @@ export function findNewVersion(data: any, {mode, range, useGreatest, useRel, use
       const v = coerceToVersion(data.olderEligible.version);
       if (v) {
         const d = diff(oldVersion, v);
-        if (d && semvers.has(d) && isAllowedVersionTransition(originalOldVersion, data.olderEligible.version, transitionOpts)) {
+        if (d && semvers.has(d) && isAllowedVersionTransition(originalOldVersion, data.olderEligible.version, transitionOpts) &&
+            (!pinnedRange || satisfies(v, pinnedRange))) {
           data.Time = data.olderEligible.time;
           delete data.newPath;
           return data.olderEligible.version;

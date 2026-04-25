@@ -695,6 +695,46 @@ test("findNewVersion go mode same-major fallback", () => {
   expect(result).toBe("1.5.0");
 });
 
+test("findNewVersion go mode honors pinnedRange on cross-major target", () => {
+  const data = {name: "github.com/foo/bar", old: "1.0.0", new: "3.0.0", Time: "2025-03-01"};
+  const result = findNewVersion(data, {
+    mode: "go", range: "1.0.0",
+    useGreatest: false, useRel: false, usePre: false,
+    semvers: new Set(["major"]), pinnedRange: "<2.0.0",
+  }, defaultOpts);
+  expect(result).toBe(null);
+});
+
+test("findNewVersion go mode honors pinnedRange on same-major fallback", () => {
+  const data = {
+    name: "github.com/foo/bar",
+    old: "1.0.0", new: "3.0.0",
+    sameMajorNew: "1.7.0", sameMajorTime: "2025-02-01",
+    Time: "2025-03-01",
+  };
+  const result = findNewVersion(data, {
+    mode: "go", range: "1.0.0",
+    useGreatest: false, useRel: false, usePre: false,
+    semvers: new Set(["patch", "minor"]), pinnedRange: "<1.5.0",
+  }, defaultOpts);
+  expect(result).toBe(null);
+});
+
+test("findNewVersion go mode allows pinnedRange-matching version", () => {
+  const data = {
+    name: "github.com/foo/bar",
+    old: "1.0.0", new: "3.0.0",
+    sameMajorNew: "1.4.0", sameMajorTime: "2025-02-01",
+    Time: "2025-03-01",
+  };
+  const result = findNewVersion(data, {
+    mode: "go", range: "1.0.0",
+    useGreatest: false, useRel: false, usePre: false,
+    semvers: new Set(["patch", "minor"]), pinnedRange: "<1.5.0",
+  }, defaultOpts);
+  expect(result).toBe("1.4.0");
+});
+
 test("resolvePackageJsonUrl shorthand foo:u/r", () => {
   expect(resolvePackageJsonUrl("g:u/r")).toBe("https://g.com/u/r");
 });
