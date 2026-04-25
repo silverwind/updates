@@ -2,9 +2,10 @@ import {test, expect, afterAll} from "vitest";
 import {mkdtempSync, rmSync, mkdirSync, writeFileSync, copyFileSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
+import {fileURLToPath} from "node:url";
 import {loadRenovateConfig} from "./renovate.ts";
 
-const fixturesDir = new URL("../fixtures/renovate/", import.meta.url).pathname;
+const fixturesDir = fileURLToPath(new URL("../fixtures/renovate/", import.meta.url));
 
 const created: Array<string> = [];
 
