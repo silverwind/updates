@@ -4,6 +4,7 @@ import {accessSync} from "node:fs";
 import type {ParseArgsOptionsConfig} from "node:util";
 import {validRange} from "./utils/semver.ts";
 import {commaSeparatedToArray, esc} from "./utils/utils.ts";
+import {loadRenovateConfig} from "./utils/renovate.ts";
 
 export type Config = {
   /** Array of dependencies to include */
@@ -178,6 +179,7 @@ export async function loadConfig(rootDir: string): Promise<Config> {
   for (const ext of ["js", "ts", "mjs", "mts"]) {
     filenames.push(`updates.config.${ext}`);
   }
+  const renovateConfig = await loadRenovateConfig(rootDir);
   let config: Config = {};
 
   try {
@@ -206,5 +208,5 @@ export async function loadConfig(rootDir: string): Promise<Config> {
     }
   }
 
-  return config;
+  return {...renovateConfig, ...config};
 }
