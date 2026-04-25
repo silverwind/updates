@@ -92,8 +92,23 @@ export default {
 - `patch` *boolean | Array\<string | RegExp>*: Consider only up to semver-patch
 - `minor` *boolean | Array\<string | RegExp>*: Consider only up to semver-minor
 - `allowDowngrade` *boolean | Array\<string | RegExp>*: Allow version downgrades
+- `inherit` *object*: Opt-in to inheriting select fields from other tools' configs (see [Renovate config](#renovate-config))
 
 CLI arguments have precedence over options in the config file. `include`, `exclude`, and `pin` options are merged.
+
+### Renovate config
+
+If a [Renovate](https://docs.renovatebot.com/) config is found, `ignoreDeps` and simple `packageRules` are inherited as `exclude`/`pin`. `minimumReleaseAge` is *not* inherited as `cooldown` by default — opt in via:
+
+```ts
+export default {
+  inherit: {
+    renovate: {cooldown: true},
+  },
+} satisfies Config;
+```
+
+Values in `updates.config` override anything inherited.
 
 ## API
 
