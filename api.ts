@@ -6,14 +6,14 @@ import {readFile} from "node:fs/promises";
 import {parseToml} from "./utils/toml.ts";
 import {valid, validRange} from "./utils/semver.ts";
 import {timerel} from "timerel";
-import {npmTypes, uvTypes, goTypes, cargoTypes, parseUvDependencies, nonPackageEngines, parseDuration, matchesAny, getProperty, canIncludeByDate, timestamp, pMap} from "./utils/utils.ts";
+import {npmTypes, uvTypes, goTypes, cargoTypes, parseUvDependencies, nonPackageEngines, parseDuration, matchesAny, getProperty, timestamp, pMap} from "./utils/utils.ts";
 import {enableDnsCache} from "./utils/dns.ts";
 import {
   type Dep, type Deps, type DepsByMode, type Output, type ModeContext,
   type PackageRepository, type PackageInfo,
   fieldSep, normalizeUrl, fetchTimeout, goProbeTimeout,
   doFetch, findVersion, findNewVersion, coerceToVersion, getInfoUrl, getGithubTokens,
-  stripv, hashRe as npmHashRe,
+  passesCooldown, stripv, hashRe as npmHashRe,
 } from "./modes/shared.ts";
 import {loadConfig, configMixedToRegexes, patternsToRegexSet} from "./config.ts";
 import type {Config} from "./config.ts";
@@ -90,15 +90,6 @@ function setDepAge(dep: Dep, date: string): void {
   if (date) {
     dep.date = date;
     dep.age = timerel(date, {noAffix: true});
-  }
-}
-
-function applyCooldown(modeDeps: Deps, cooldown: string | number, now: number): void {
-  const days = parseDuration(String(cooldown));
-  for (const [key, {date}] of Object.entries(modeDeps)) {
-    if (!canIncludeByDate(date, days, now)) {
-      delete modeDeps[key];
-    }
   }
 }
 
@@ -727,6 +718,17 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
     const {modeConfig, projectDir, pin} = modeConfigs[mode];
     fetchTasks.push((async () => {
       const npmFollowUps = new Map<string, {name: string, promise: Promise<{repository?: PackageRepository, homepage?: string, date?: string}>}>();
+      const cooldownRaw = config.cooldown ?? modeConfig.cooldown;
+      const cooldownDays = cooldownRaw ? parseDuration(String(cooldownRaw)) : 0;
+      // Safety net for deps that bypass findNewVersion (URL tarballs, JSR
+      // follow-ups). findNewVersion's per-version cooldown filter handles the
+      // common case; this catches the rest.
+      const dropIfTooNew = (modeDeps: Deps) => {
+        if (!cooldownDays) return;
+        for (const [k, {date}] of Object.entries(modeDeps)) {
+          if (date && (now - Date.parse(date)) / 86400000 < cooldownDays) delete modeDeps[k];
+        }
+      };
 
       await pMap(Object.keys(deps[mode]), async (key) => {
         const [type, name] = key.split(fieldSep);
@@ -765,6 +767,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
         const pinnedRange = pin[name];
         const newVersion = findNewVersion(data, {
           usePre, useRel, useGreatest, semvers, range: oldRange, mode, pinnedRange,
+          cooldownDays: cooldownDays || undefined, now: cooldownDays ? now : undefined,
         }, {allowDowngrade, matchesAny, isGoPseudoVersion});
 
         let newRange = "";
@@ -842,8 +845,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
         }
       }
 
-      const cooldown = config.cooldown ?? modeConfig.cooldown;
-      if (cooldown) applyCooldown(deps[mode], cooldown, now);
+      dropIfTooNew(deps[mode]);
     })());
   }
 
@@ -857,6 +859,8 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
         if (!entry) depsByRepo.set(repoKey, entry = {apiUrl: info.apiUrl, owner: info.owner, repo: info.repo, infos: []});
         entry.infos.push(info);
       }
+
+      const actionsCooldownDays = config.cooldown ? parseDuration(String(config.cooldown)) : 0;
 
       await pMap(depsByRepo.values(), async ({apiUrl, owner, repo, infos}) => {
         const tags = await fetchActionTags(apiUrl, owner, repo, ctx);
@@ -882,26 +886,42 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
           return date;
         }
 
-        const dateFetches: Array<{key: string, commitSha: string}> = [];
+        // Cooldown-aware selection: when cooldown is active, pick the highest
+        // version, fetch its commit date, and if it's too new, exclude it and
+        // retry. Bounded loop avoids pathological cases (e.g. all versions
+        // released within the cooldown window).
+        async function pickVersion(opts: Parameters<typeof findVersion>[2]): Promise<{version: string, tag: string, commitSha: string, date: string} | null> {
+          const denylist = new Set<string>();
+          for (let attempt = 0; attempt < 20; attempt++) {
+            const candidates = denylist.size ? versions.filter(v => !denylist.has(v)) : versions;
+            const picked = findVersion({}, candidates, opts);
+            if (!picked || picked === opts.range) return null;
+            const tag = tagByStripped.get(picked);
+            if (!tag) { denylist.add(picked); continue; }
+            const commitSha = entryByName.get(tag)?.commitSha || "";
+            if (!actionsCooldownDays) return {version: picked, tag, commitSha, date: ""};
+            const date = commitSha ? await getDate(commitSha) : "";
+            if (passesCooldown(date, actionsCooldownDays, now)) return {version: picked, tag, commitSha, date};
+            denylist.add(picked);
+          }
+          return null;
+        }
 
-        for (const {key, host, ref, name: actionName, isHash} of infos) {
+        await pMap(infos, async ({key, host, ref, name: actionName, isHash}) => {
           const dep = deps.actions[key];
           const infoUrl = `https://${host || "github.com"}/${owner}/${repo}`;
 
           if (isHash) {
             const {usePre, useRel} = getVersionOpts(actionName);
-            const newVersion = findVersion({}, versions, {
+            const result = await pickVersion({
               range: "0.0.0", semvers: new Set(["patch", "minor", "major"]), usePre, useRel,
               useGreatest: true, pinnedRange: configPin[actionName],
             });
-            if (!newVersion) { delete deps.actions[key]; continue; }
+            if (!result) { delete deps.actions[key]; return; }
 
-            const newTag = tagByStripped.get(newVersion);
-            if (!newTag) { delete deps.actions[key]; continue; }
-
-            const newCommitSha = entryByName.get(newTag)?.commitSha;
+            const {tag: newTag, commitSha: newCommitSha, date} = result;
             if (!newCommitSha || newCommitSha === ref || newCommitSha.startsWith(ref) || ref.startsWith(newCommitSha)) {
-              delete deps.actions[key]; continue;
+              delete deps.actions[key]; return;
             }
 
             let oldTagName = commitShaToTag.get(ref);
@@ -915,43 +935,33 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
             dep.oldPrint = oldTagName || ref.substring(0, 7);
             dep.newPrint = newTag;
             dep.info = infoUrl;
-
-            dateFetches.push({key, commitSha: newCommitSha});
+            if (date) setDepAge(dep, date);
           } else {
             const coerced = coerceToVersion(stripv(ref));
-            if (!coerced) { delete deps.actions[key]; continue; }
+            if (!coerced) { delete deps.actions[key]; return; }
 
             const {useGreatest, usePre, useRel, semvers} = getVersionOpts(actionName);
-            const newVersion = findVersion({}, versions, {
+            const result = await pickVersion({
               range: coerced, semvers, usePre, useRel,
               useGreatest: useGreatest || true, pinnedRange: configPin[actionName],
             });
-            if (!newVersion || newVersion === coerced) { delete deps.actions[key]; continue; }
+            if (!result) { delete deps.actions[key]; return; }
 
-            const newTag = tagByStripped.get(newVersion);
-            if (!newTag) { delete deps.actions[key]; continue; }
-
+            const {tag: newTag, commitSha: newCommitSha, date} = result;
             const formatted = formatActionVersion(newTag, ref);
-            if (formatted === ref) { delete deps.actions[key]; continue; }
+            if (formatted === ref) { delete deps.actions[key]; return; }
 
             dep.new = entryByName.has(formatted) ? formatted : newTag;
             dep.info = infoUrl;
-
-            const newCommitSha = entryByName.get(newTag)?.commitSha;
-            if (newCommitSha) {
-              dateFetches.push({key, commitSha: newCommitSha});
+            if (newCommitSha && date) setDepAge(dep, date);
+            else if (newCommitSha) {
+              const fetched = await getDate(newCommitSha);
+              if (fetched) setDepAge(dep, fetched);
             }
           }
-        }
-
-        const dates = await Promise.all(dateFetches.map(({commitSha}) => getDate(commitSha)));
-        for (const [idx, {key}] of dateFetches.entries()) {
-          const dep = deps.actions[key];
-          if (dep && dates[idx]) setDepAge(dep, dates[idx]);
-        }
+        }, {concurrency});
       }, {concurrency});
 
-      if (config.cooldown) applyCooldown(deps.actions, config.cooldown, now);
       if (!Object.keys(deps.actions).length) delete deps.actions;
     })());
   }
@@ -965,6 +975,8 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
         if (!list) depsByImage.set(info.fullImage, list = []);
         list.push(info);
       }
+
+      const dockerCooldownDays = config.cooldown ? parseDuration(String(config.cooldown)) : 0;
 
       await pMap(depsByImage.entries(), async ([fullImage, infos]) => {
         let data: Record<string, any>;
@@ -980,7 +992,10 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
           const dep = deps.docker[info.key];
           const oldTag = dep.oldOrig || dep.old;
           const {semvers} = getVersionOpts(info.fullImage);
-          const result = findDockerVersion(data.tags, oldTag, semvers);
+          const result = findDockerVersion(
+            data.tags, oldTag, semvers,
+            dockerCooldownDays || undefined, dockerCooldownDays ? now : undefined,
+          );
           if (!result) { delete deps.docker[info.key]; continue; }
 
           dep.new = result.newTag;
@@ -989,7 +1004,6 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
         }
       }, {concurrency});
 
-      if (config.cooldown) applyCooldown(deps.docker, config.cooldown, now);
       if (!Object.keys(deps.docker).length) delete deps.docker;
     })());
   }

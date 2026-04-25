@@ -381,6 +381,72 @@ test("findVersion skips prereleases when usePre=false", () => {
   expect(result).toBe("1.1.0");
 });
 
+test("findVersion cooldown picks older eligible version", () => {
+  const now = Date.parse("2026-04-25T00:00:00Z");
+  const data = {
+    versions: {"1.0.0": {}, "1.1.0": {}, "1.2.0": {}, "1.3.0": {}},
+    time: {
+      "1.0.0": "2026-01-01T00:00:00Z",
+      "1.1.0": "2026-04-10T00:00:00Z", // 15 days old — eligible
+      "1.2.0": "2026-04-22T00:00:00Z", // 3 days old — too new
+      "1.3.0": "2026-04-24T00:00:00Z", // 1 day old — too new
+    },
+  };
+  const result = findVersion(data, ["1.0.0", "1.1.0", "1.2.0", "1.3.0"], {
+    range: "1.0.0",
+    semvers: new Set(["major", "minor", "patch"]),
+    usePre: false,
+    useRel: false,
+    useGreatest: true,
+    cooldownDays: 5,
+    now,
+  });
+  expect(result).toBe("1.1.0");
+});
+
+test("findVersion cooldown returns no upgrade when all candidates too new", () => {
+  const now = Date.parse("2026-04-25T00:00:00Z");
+  const data = {
+    versions: {"1.1.0": {}, "1.2.0": {}},
+    time: {
+      "1.1.0": "2026-04-23T00:00:00Z",
+      "1.2.0": "2026-04-24T00:00:00Z",
+    },
+  };
+  const result = findVersion(data, ["1.1.0", "1.2.0"], {
+    range: "1.0.0",
+    semvers: new Set(["major", "minor", "patch"]),
+    usePre: false,
+    useRel: false,
+    useGreatest: true,
+    cooldownDays: 5,
+    now,
+  });
+  expect(result).toBe("1.0.0");
+});
+
+test("findNewVersion npm cooldown picks older eligible version", () => {
+  const now = Date.parse("2026-04-25T00:00:00Z");
+  const data = {
+    name: "pkg",
+    "dist-tags": {latest: "1.3.0"},
+    versions: {"1.0.0": {}, "1.1.0": {}, "1.2.0": {}, "1.3.0": {}},
+    time: {
+      "1.0.0": "2026-01-01T00:00:00Z",
+      "1.1.0": "2026-04-10T00:00:00Z",
+      "1.2.0": "2026-04-22T00:00:00Z",
+      "1.3.0": "2026-04-24T00:00:00Z",
+    },
+  };
+  const result = findNewVersion(data, {
+    mode: "npm", range: "1.0.0",
+    semvers: new Set(["major", "minor", "patch"]),
+    usePre: false, useRel: false, useGreatest: false,
+    cooldownDays: 5, now,
+  }, {allowDowngrade: false, matchesAny: () => false, isGoPseudoVersion: () => false});
+  expect(result).toBe("1.1.0");
+});
+
 test("getInfoUrl string repository URL", () => {
   const result = getInfoUrl({repository: "https://github.com/user/repo"}, null, "pkg");
   expect(result).toBe("https://github.com/user/repo");

@@ -35,6 +35,16 @@ export type Output = {
   message?: string,
 };
 
+export type CooldownOpts = {
+  cooldownDays?: number,
+  now?: number,
+  // Returns ISO date string for a given version, or undefined if unknown.
+  // When undefined is returned, the version is treated as eligible (we cannot
+  // prove it is too new) — callers must not pass this for ecosystems where
+  // missing data should mean "skip".
+  getVersionDate?: (version: string) => string | undefined,
+};
+
 export type FindVersionOpts = {
   range: string,
   semvers: Set<string>,
@@ -42,7 +52,7 @@ export type FindVersionOpts = {
   useRel: boolean,
   useGreatest: boolean,
   pinnedRange?: string,
-};
+} & CooldownOpts;
 
 export type FindNewVersionOpts = {
   mode: string,
@@ -52,7 +62,16 @@ export type FindNewVersionOpts = {
   useGreatest: boolean,
   semvers: Set<string>,
   pinnedRange?: string,
-};
+} & CooldownOpts;
+
+// Returns true if the given ISO date is at least cooldownDays old (inclusive)
+// relative to `now`. Missing date or inactive cooldown returns true.
+export function passesCooldown(date: string | undefined, cooldownDays: number | undefined, now: number | undefined): boolean {
+  if (!cooldownDays || !now || !date) return true;
+  const ms = Date.parse(date);
+  if (Number.isNaN(ms)) return true;
+  return (now - ms) / (24 * 3600 * 1000) >= cooldownDays;
+}
 
 export type PackageInfo = [Record<string, any>, string, string | null, string];
 
@@ -188,7 +207,7 @@ export function coerceToVersion(rangeOrVersion: string): string {
   return coerce(rangeOrVersion)?.version ?? "";
 }
 
-export function findVersion(data: any, versions: Array<string>, {range, semvers, usePre, useRel, useGreatest, pinnedRange}: FindVersionOpts): string | null {
+export function findVersion(data: any, versions: Array<string>, {range, semvers, usePre, useRel, useGreatest, pinnedRange, cooldownDays, now, getVersionDate}: FindVersionOpts): string | null {
   const oldVersion = coerceToVersion(range);
   if (!oldVersion) return oldVersion;
 
@@ -201,6 +220,8 @@ export function findVersion(data: any, versions: Array<string>, {range, semvers,
     if (semvers.has("major")) semvers.add("premajor");
   }
 
+  const lookupDate = getVersionDate ?? ((v: string) => data?.time?.[v]);
+
   let greatestDate = 0;
   let newVersion = oldVersion;
 
@@ -211,6 +232,8 @@ export function findVersion(data: any, versions: Array<string>, {range, semvers,
 
     // If a pinned range is specified, only consider versions that satisfy it
     if (pinnedRange && !satisfies(candidateVersion, pinnedRange)) continue;
+
+    if (!passesCooldown(lookupDate(version), cooldownDays, now)) continue;
 
     const d = diff(newVersion, candidateVersion);
     if (!d || !semvers.has(d)) continue;
@@ -233,15 +256,18 @@ export function findVersion(data: any, versions: Array<string>, {range, semvers,
   return newVersion || null;
 }
 
-export function findNewVersion(data: any, {mode, range, useGreatest, useRel, usePre, semvers, pinnedRange}: FindNewVersionOpts, {allowDowngrade, matchesAny, isGoPseudoVersion}: {allowDowngrade: Set<RegExp> | boolean, matchesAny: (str: string, set: Set<RegExp> | boolean) => boolean, isGoPseudoVersion: (version: string) => boolean}): string | null {
+export function findNewVersion(data: any, {mode, range, useGreatest, useRel, usePre, semvers, pinnedRange, cooldownDays, now}: FindNewVersionOpts, {allowDowngrade, matchesAny, isGoPseudoVersion}: {allowDowngrade: Set<RegExp> | boolean, matchesAny: (str: string, set: Set<RegExp> | boolean) => boolean, isGoPseudoVersion: (version: string) => boolean}): string | null {
   if (range === "*") return null; // ignore wildcard
   if (range.includes("||")) return null; // ignore or-chains
 
   let versions: Array<string> = [];
+  let getVersionDate: ((v: string) => string | undefined) | undefined;
   if (mode === "pypi") {
     versions = Object.keys(data.releases).filter(v => valid(v));
+    getVersionDate = (v: string) => data.releases?.[v]?.[0]?.upload_time_iso_8601;
   } else if (mode === "npm" || mode === "cargo") {
     versions = Object.keys(data.versions).filter(v => valid(v));
+    getVersionDate = (v: string) => data.time?.[v];
   } else if (mode === "go") {
     const oldVersion = coerceToVersion(range);
     if (!oldVersion) return null;
@@ -255,7 +281,8 @@ export function findNewVersion(data: any, {mode, range, useGreatest, useRel, use
     const crossVersion = coerceToVersion(data.new);
     if (crossVersion && !isGoPseudoVersion(data.new) && !skipPrerelease(data.new)) {
       const d = diff(oldVersion, crossVersion);
-      if (d && semvers.has(d) && isAllowedVersionTransition(originalOldVersion, data.new, transitionOpts)) {
+      if (d && semvers.has(d) && isAllowedVersionTransition(originalOldVersion, data.new, transitionOpts) &&
+          passesCooldown(data.Time, cooldownDays, now)) {
         return data.new;
       }
     }
@@ -264,16 +291,31 @@ export function findNewVersion(data: any, {mode, range, useGreatest, useRel, use
     const sameVersion = coerceToVersion(data.sameMajorNew);
     if (sameVersion && !isGoPseudoVersion(data.sameMajorNew) && !skipPrerelease(data.sameMajorNew)) {
       const d = diff(oldVersion, sameVersion);
-      if (d && semvers.has(d) && isAllowedVersionTransition(originalOldVersion, data.sameMajorNew, transitionOpts)) {
+      if (d && semvers.has(d) && isAllowedVersionTransition(originalOldVersion, data.sameMajorNew, transitionOpts) &&
+          passesCooldown(data.sameMajorTime, cooldownDays, now)) {
         data.Time = data.sameMajorTime;
         delete data.newPath;
         return data.sameMajorNew;
       }
     }
 
+    // If cooldown gated the resolved versions, fall back to a proxy walk to
+    // find an older eligible version. Otherwise no upgrade is available.
+    if (cooldownDays && now && data.olderEligible && !skipPrerelease(data.olderEligible.version)) {
+      const v = coerceToVersion(data.olderEligible.version);
+      if (v) {
+        const d = diff(oldVersion, v);
+        if (d && semvers.has(d) && isAllowedVersionTransition(originalOldVersion, data.olderEligible.version, transitionOpts)) {
+          data.Time = data.olderEligible.time;
+          delete data.newPath;
+          return data.olderEligible.version;
+        }
+      }
+    }
+
     return null;
   }
-  const version = findVersion(data, versions, {range, semvers, usePre, useRel, useGreatest, pinnedRange});
+  const version = findVersion(data, versions, {range, semvers, usePre, useRel, useGreatest, pinnedRange, cooldownDays, now, getVersionDate});
   if (!version) return null;
 
   if (useGreatest) {
@@ -331,6 +373,17 @@ export function findNewVersion(data: any, {mode, range, useGreatest, useRel, use
     // If a pinned range is specified and latestTag doesn't satisfy it, return version
     if (pinnedRange && !satisfies(latestTag, pinnedRange)) {
       return version;
+    }
+
+    // latestTag may be too new under cooldown — fall back to the
+    // already-filtered `version` selected by findVersion.
+    if (cooldownDays && now) {
+      const latestDate = mode === "pypi" ?
+        data.releases?.[originalLatestTag || latestTag]?.[0]?.upload_time_iso_8601 :
+        data.time?.[originalLatestTag || latestTag] ?? data.time?.[latestTag];
+      if (!passesCooldown(latestDate, cooldownDays, now)) {
+        return version;
+      }
     }
 
     // in all other cases, return latest dist-tag
