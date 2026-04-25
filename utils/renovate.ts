@@ -85,6 +85,17 @@ async function readFirstExisting(rootDir: string): Promise<{path: string, text: 
   return undefined;
 }
 
+/** Renovate uses /pattern/ or /pattern/flags for regex matchers. */
+function toMatcher(name: string): string | RegExp {
+  const m = /^\/(.+)\/([a-z]*)$/.exec(name);
+  if (!m) return name;
+  try {
+    return new RegExp(m[1], m[2]);
+  } catch {
+    return name;
+  }
+}
+
 function normalize(raw: RenovateConfig): Partial<Config> {
   const out: Partial<Config> = {};
 
@@ -93,7 +104,7 @@ function normalize(raw: RenovateConfig): Partial<Config> {
     if (days !== undefined && days > 0) out.cooldown = days;
   }
 
-  const exclude: Array<string> = [];
+  const exclude: Array<string | RegExp> = [];
   const pin: Record<string, string> = {};
 
   if (Array.isArray(raw.ignoreDeps)) {
@@ -107,7 +118,7 @@ function normalize(raw: RenovateConfig): Partial<Config> {
       if (!rule || typeof rule !== "object" || !isSimpleRule(rule)) continue;
       const names = rule.matchPackageNames!.filter((n): n is string => typeof n === "string" && Boolean(n));
       if (rule.enabled === false) {
-        for (const name of names) exclude.push(name);
+        for (const name of names) exclude.push(toMatcher(name));
       }
       if (typeof rule.allowedVersions === "string" && validRange(rule.allowedVersions)) {
         for (const name of names) pin[name] = rule.allowedVersions;

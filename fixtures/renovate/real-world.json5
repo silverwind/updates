@@ -50,5 +50,10 @@
       "matchPackageNames": ["tailwindcss"],
       "allowedVersions": "^3",
     },
+    {
+      // ignore all @types/* packages via regex matcher
+      "matchPackageNames": ["/^@types\\//"],
+      "enabled": false,
+    },
   ],
 }

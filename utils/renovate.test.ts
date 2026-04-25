@@ -121,6 +121,7 @@ test("real-world config", async () => {
   copyFileSync(join(fixturesDir, "real-world.json5"), join(dir, "renovate.json5"));
   expect(await loadRenovateConfig(dir)).toEqual({
     cooldown: 5,
+    exclude: [/^@types\//],
     pin: {
       "@mcaptcha/vanilla-glue": "^0.1",
       "cropperjs": "^1",
