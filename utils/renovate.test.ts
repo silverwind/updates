@@ -23,22 +23,28 @@ test("no config returns empty", async () => {
   expect(await loadRenovateConfig(makeDir())).toEqual({});
 });
 
+test("minimumReleaseAge skipped without opt-in", async () => {
+  const dir = makeDir();
+  writeFileSync(join(dir, "renovate.json"), JSON.stringify({minimumReleaseAge: "3 days"}));
+  expect(await loadRenovateConfig(dir)).toEqual({});
+});
+
 test("minimumReleaseAge → cooldown (days)", async () => {
   const dir = makeDir();
   writeFileSync(join(dir, "renovate.json"), JSON.stringify({minimumReleaseAge: "3 days"}));
-  expect(await loadRenovateConfig(dir)).toEqual({cooldown: 3});
+  expect(await loadRenovateConfig(dir, {cooldown: true})).toEqual({cooldown: 3});
 });
 
 test("minimumReleaseAge weeks", async () => {
   const dir = makeDir();
   writeFileSync(join(dir, "renovate.json"), JSON.stringify({minimumReleaseAge: "1 week"}));
-  expect(await loadRenovateConfig(dir)).toEqual({cooldown: 7});
+  expect(await loadRenovateConfig(dir, {cooldown: true})).toEqual({cooldown: 7});
 });
 
 test("minimumReleaseAge hours", async () => {
   const dir = makeDir();
   writeFileSync(join(dir, "renovate.json"), JSON.stringify({minimumReleaseAge: "12 hours"}));
-  expect(await loadRenovateConfig(dir)).toEqual({cooldown: 0.5});
+  expect(await loadRenovateConfig(dir, {cooldown: true})).toEqual({cooldown: 0.5});
 });
 
 test("ignoreDeps → exclude", async () => {
@@ -97,7 +103,7 @@ test.each([".github", ".gitea", ".forgejo", ".gitlab"])("forge dir config in %s"
   const dir = makeDir();
   mkdirSync(join(dir, forge));
   writeFileSync(join(dir, forge, "renovate.json"), JSON.stringify({minimumReleaseAge: "2 days"}));
-  expect(await loadRenovateConfig(dir)).toEqual({cooldown: 2});
+  expect(await loadRenovateConfig(dir, {cooldown: true})).toEqual({cooldown: 2});
 });
 
 test("package.json renovate field", async () => {
@@ -106,7 +112,7 @@ test("package.json renovate field", async () => {
     name: "x",
     renovate: {minimumReleaseAge: "5 days", ignoreDeps: ["foo"]},
   }));
-  expect(await loadRenovateConfig(dir)).toEqual({cooldown: 5, exclude: ["foo"]});
+  expect(await loadRenovateConfig(dir, {cooldown: true})).toEqual({cooldown: 5, exclude: ["foo"]});
 });
 
 test("renovate.json wins over forge config", async () => {
@@ -114,13 +120,13 @@ test("renovate.json wins over forge config", async () => {
   writeFileSync(join(dir, "renovate.json"), JSON.stringify({minimumReleaseAge: "1 day"}));
   mkdirSync(join(dir, ".github"));
   writeFileSync(join(dir, ".github", "renovate.json"), JSON.stringify({minimumReleaseAge: "9 days"}));
-  expect(await loadRenovateConfig(dir)).toEqual({cooldown: 1});
+  expect(await loadRenovateConfig(dir, {cooldown: true})).toEqual({cooldown: 1});
 });
 
 test("real-world config", async () => {
   const dir = makeDir();
   copyFileSync(join(fixturesDir, "real-world.json5"), join(dir, "renovate.json5"));
-  expect(await loadRenovateConfig(dir)).toEqual({
+  expect(await loadRenovateConfig(dir, {cooldown: true})).toEqual({
     cooldown: 5,
     exclude: [/^@types\//],
     pin: {

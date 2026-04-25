@@ -96,10 +96,15 @@ function toMatcher(name: string): string | RegExp {
   }
 }
 
-function normalize(raw: RenovateConfig): Partial<Config> {
+export type RenovateImportOptions = {
+  /** Import minimumReleaseAge as cooldown. Off by default. */
+  cooldown?: boolean;
+};
+
+function normalize(raw: RenovateConfig, opts: RenovateImportOptions): Partial<Config> {
   const out: Partial<Config> = {};
 
-  if (typeof raw.minimumReleaseAge === "string") {
+  if (opts.cooldown && typeof raw.minimumReleaseAge === "string") {
     const days = parseRenovateDuration(raw.minimumReleaseAge);
     if (days !== undefined && days > 0) out.cooldown = days;
   }
@@ -132,7 +137,7 @@ function normalize(raw: RenovateConfig): Partial<Config> {
   return out;
 }
 
-export async function loadRenovateConfig(rootDir: string): Promise<Partial<Config>> {
+export async function loadRenovateConfig(rootDir: string, opts: RenovateImportOptions = {}): Promise<Partial<Config>> {
   const found = await readFirstExisting(rootDir);
   if (!found) return {};
   let raw: unknown;
@@ -142,5 +147,5 @@ export async function loadRenovateConfig(rootDir: string): Promise<Partial<Confi
     throw new Error(`Unable to parse renovate config ${found.path}: ${err.message}`);
   }
   if (!raw || typeof raw !== "object") return {};
-  return normalize(raw as RenovateConfig);
+  return normalize(raw as RenovateConfig, opts);
 }
