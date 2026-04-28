@@ -1,12 +1,20 @@
 import {env} from "node:process";
 import {join, dirname} from "node:path";
 import {readFileSync, globSync} from "node:fs";
-import {execFile as execFileCb} from "node:child_process";
-import {promisify} from "node:util";
 import {type Deps, type ModeContext, type PackageInfo, fieldSep, stripv, getSubDir, normalizeUrl} from "./shared.ts";
 import {esc} from "../utils/utils.ts";
 
-const execFile = promisify(execFileCb);
+let execFilePromise: ReturnType<typeof loadExecFile> | undefined;
+async function loadExecFile() {
+  const [{execFile}, {promisify}] = await Promise.all([
+    import("node:child_process"),
+    import("node:util"),
+  ]);
+  return promisify(execFile);
+}
+function getExecFile() {
+  return execFilePromise ??= loadExecFile();
+}
 
 export function resolveGoProxy(): string {
   const proxyEnv = env.GOPROXY || "https://proxy.golang.org,direct";
@@ -195,11 +203,8 @@ export async function fetchGoVcsInfo(name: string, type: string, currentVersion:
 
   const goListQuery = async (modulePath: string, timeout: number): Promise<ProbeResult | null> => {
     try {
-      const {stdout} = await execFile("go", ["list", "-m", "-json", `${modulePath}@latest`], {
-        timeout,
-        cwd: goCwd,
-        env,
-      });
+      const execFile = await getExecFile();
+      const {stdout} = await execFile("go", ["list", "-m", "-json", `${modulePath}@latest`], {timeout, cwd: goCwd, env});
       const data = JSON.parse(stdout) as {Version: string, Time?: string};
       return {Version: data.Version, Time: data.Time || "", path: modulePath};
     } catch {

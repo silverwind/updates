@@ -23,12 +23,8 @@ for (const [index, token] of result.tokens.entries()) {
     const key = getOptionKey(token.value.substring(1));
     const next = result.tokens[index + 1];
     values[token.name] = [true];
-    if (!values[key]) values[key] = [];
-    if (next?.kind === "positional" && next.value) {
-      (values[key] as Array<string | boolean>).push(next.value);
-    } else {
-      (values[key] as Array<string | boolean>).push(true);
-    }
+    const list = (values[key] ??= []) as Array<string | boolean>;
+    list.push(next?.kind === "positional" && next.value ? next.value : true);
   }
 }
 
@@ -129,12 +125,10 @@ async function main(): Promise<void> {
 
   const fileConfig = await loadConfig(cwd());
   const useColor = args["no-color"] === true ? false : args.color === true ? true : fileConfig.noColor === true ? false : fileConfig.color === true ? true : stdout.isTTY;
-  const [, redFn, greenFn] = (["magenta", "red", "green"] as const).map(color => {
-    if (!useColor) return String;
-    return (text: string | number) => styleText(color, String(text));
-  });
-  red = redFn;
-  green = greenFn;
+  if (useColor) {
+    red = (text: string | number) => styleText("red", String(text));
+    green = (text: string | number) => styleText("green", String(text));
+  }
 
   const config: UpdatesOptions = {...fileConfig};
   if (args.json) config.json = true;
@@ -163,15 +157,15 @@ async function main(): Promise<void> {
   const cliModes = parseMixedArg(args.modes);
   if (cliModes instanceof Set) config.modes = Array.from(cliModes);
 
-  for (const [argKey, configKey] of [["greatest", "greatest"], ["prerelease", "prerelease"], ["release", "release"], ["patch", "patch"], ["minor", "minor"], ["allow-downgrade", "allowDowngrade"]] as const) {
-    const val = argToConfigMixed(args[argKey]);
-    if (val !== undefined) (config as any)[configKey] = val;
+  for (const key of ["greatest", "prerelease", "release", "patch", "minor"] as const) {
+    const val = argToConfigMixed(args[key]);
+    if (val !== undefined) config[key] = val;
   }
+  const allowDowngrade = argToConfigMixed(args["allow-downgrade"]);
+  if (allowDowngrade !== undefined) config.allowDowngrade = allowDowngrade;
 
   const fileSet = parseMixedArg(args.file);
-  const filesList: Array<string> = [];
-  if (fileSet instanceof Set) filesList.push(...fileSet);
-  for (const p of positionals) filesList.push(p);
+  const filesList = [...(fileSet instanceof Set ? fileSet : []), ...positionals];
   if (filesList.length) config.files = filesList;
 
   for (const key of ["forgeapi", "pypiapi", "jsrapi", "goproxy", "cargoapi", "dockerapi"] as const) {

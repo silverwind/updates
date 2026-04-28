@@ -7,7 +7,6 @@ import {parseToml} from "./utils/toml.ts";
 import {valid, validRange} from "./utils/semver.ts";
 import {timerel} from "timerel";
 import {npmTypes, uvTypes, goTypes, cargoTypes, parseUvDependencies, nonPackageEngines, parseDuration, matchesAny, getProperty, timestamp, pMap} from "./utils/utils.ts";
-import {enableDnsCache} from "./utils/dns.ts";
 import {
   type Dep, type Deps, type DepsByMode, type Output, type ModeContext,
   type PackageRepository, type PackageInfo,
@@ -204,8 +203,9 @@ function write(file: string, content: string): void {
 }
 
 function buildOutput(deps: DepsByMode): Output {
+  const output: Output = {results: {}};
   for (const mode of Object.keys(deps)) {
-    for (const props of Object.values(deps[mode])) {
+    for (const [key, props] of Object.entries(deps[mode])) {
       if (typeof props.oldPrint === "string") props.old = props.oldPrint;
       if (typeof props.newPrint === "string") props.new = props.newPrint;
       if (typeof props.oldOrig === "string" && !isJsr(props.oldOrig)) {
@@ -220,15 +220,10 @@ function buildOutput(deps: DepsByMode): Output {
       delete props.newPrint;
       delete props.oldOrig;
       delete props.date;
-    }
-  }
 
-  const output: Output = {results: {}};
-  for (const mode of Object.keys(deps)) {
-    for (const [key, value] of Object.entries(deps[mode])) {
       const [type, name] = key.split(fieldSep);
       const r = output.results[mode] ??= {};
-      (r[type] ??= {})[name] = value;
+      (r[type] ??= {})[name] = props;
     }
   }
   return output;
@@ -253,6 +248,7 @@ let dnsCacheEnabled = false;
 
 export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
   if (!dnsCacheEnabled) {
+    const {enableDnsCache} = await import("./utils/dns.ts");
     enableDnsCache();
     dnsCacheEnabled = true;
   }
@@ -384,9 +380,9 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
     if (config.types?.length) return config.types;
     if (modeConfig?.types?.length) return modeConfig.types;
     if (mode === "npm") return npmTypes;
-    if (mode === "pypi") return Array.from(uvTypes);
-    if (mode === "go") return config.indirect ? Array.from(goTypes) : goTypes.filter(t => t !== "indirect");
-    if (mode === "cargo") return Array.from(cargoTypes);
+    if (mode === "pypi") return uvTypes;
+    if (mode === "go") return config.indirect ? goTypes : goTypes.filter(t => t !== "indirect");
+    if (mode === "cargo") return cargoTypes;
     return [];
   }
 

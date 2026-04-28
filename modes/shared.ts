@@ -1,6 +1,4 @@
 import {env} from "node:process";
-import {execFile as execFileCb} from "node:child_process";
-import {promisify} from "node:util";
 import {parse, coerce, diff, gt, gte, lt, neq, satisfies, valid} from "../utils/semver.ts";
 import {getCache, setCache} from "../utils/fetchCache.ts";
 import pkg from "../package.json" with {type: "json"};
@@ -413,13 +411,16 @@ const envGithubTokens: string[] = Array.from(new Set(
 // `fetchForge` flow blocks the event loop long enough on Windows that parallel
 // fetches can hit their AbortSignal timeout. Skip entirely if an env token is
 // already set.
-const execFile = promisify(execFileCb);
 let githubTokensPromise: Promise<string[]> | undefined;
 export function getGithubTokens(): Promise<string[]> {
   if (envGithubTokens.length) return Promise.resolve(envGithubTokens);
   return githubTokensPromise ??= (async () => {
     try {
-      const {stdout} = await execFile("gh", ["auth", "token"], {encoding: "utf8", timeout: 5000});
+      const [{execFile: execFileCb}, {promisify}] = await Promise.all([
+        import("node:child_process"),
+        import("node:util"),
+      ]);
+      const {stdout} = await promisify(execFileCb)("gh", ["auth", "token"], {encoding: "utf8", timeout: 5000});
       const token = stdout.trim();
       return token ? [token] : envGithubTokens;
     } catch {
