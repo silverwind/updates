@@ -1,5 +1,6 @@
 import {nodeLib} from "tsdown-config-silverwind";
 import {defineConfig} from "tsdown";
+import {basename} from "node:path";
 
 export default defineConfig([
   nodeLib({
@@ -10,11 +11,10 @@ export default defineConfig([
     outputOptions: {
       codeSplitting: true,
       chunkFileNames: "[name].js",
+      // Entry plus lazily-imported chunks (dns/renovate) stay out of the
+      // hot-path shared chunk so startup doesn't pay their cost.
       manualChunks: (id: string) => {
-        if (id.includes("/index.ts")) return undefined;
-        // Dynamically imported from api.ts / config.ts — keep out of the
-        // hot-path shared chunk so startup doesn't pay their cost.
-        if (id.includes("/utils/dns.ts") || id.includes("/utils/renovate.ts")) return undefined;
+        if (["index.ts", "dns.ts", "renovate.ts"].includes(basename(id))) return undefined;
         return "shared";
       },
     },
