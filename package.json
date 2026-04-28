@@ -5,6 +5,22 @@
   "author": "silverwind",
   "repository": "silverwind/updates",
   "license": "BSD-2-Clause",
+  "keywords": [
+    "cli",
+    "dependencies",
+    "update",
+    "upgrade",
+    "outdated",
+    "versions",
+    "ncu",
+    "npm",
+    "uv",
+    "cargo",
+    "golang",
+    "rust",
+    "python",
+    "github-actions"
+  ],
   "bin": "dist/index.js",
   "exports": {
     ".": {
