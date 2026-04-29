@@ -711,7 +711,9 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
   const argsForNpm = {registry: config.registry};
 
   for (const mode of Object.keys(modeConfigs)) {
-    if (!deps[mode] || !Object.keys(deps[mode]).length && !Object.keys(maybeUrlDeps).length) continue;
+    const hasDeps = Boolean(deps[mode]) && Object.keys(deps[mode]).length > 0;
+    const hasUrlDeps = mode === "npm" && Object.keys(maybeUrlDeps).length > 0;
+    if (!hasDeps && !hasUrlDeps) continue;
     const {modeConfig, projectDir, pin} = modeConfigs[mode];
     fetchTasks.push((async () => {
       const npmFollowUps = new Map<string, {name: string, promise: Promise<{repository?: PackageRepository, homepage?: string, date?: string}>}>();
@@ -751,7 +753,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
         } else if (mode === "cargo") {
           info = await fetchCratesIoInfo(name, baseT, ctx);
         } else {
-          info = await fetchPypiInfo(name, type, ctx);
+          info = await fetchPypiInfo(name, baseT, ctx);
         }
         if (!info) return;
 
@@ -822,7 +824,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
         if (followUp.date) setDepAge(dep, followUp.date);
       }));
 
-      if (Object.keys(maybeUrlDeps).length) {
+      if (mode === "npm" && Object.keys(maybeUrlDeps).length) {
         const results = (await pMap(Object.entries(maybeUrlDeps), ([key, dep]) => {
           const name = key.split(fieldSep)[1];
           return checkUrlDep(key, dep, getVersionOpts(name).useGreatest, ctx);
