@@ -84,12 +84,6 @@ export function commaSeparatedToArray(str: string): Array<string> {
   return str.split(",").filter(Boolean);
 }
 
-export function canIncludeByDate(date: string | undefined, cooldownDays: number, now: number) {
-  if (!date || !cooldownDays) return true;
-  const diffDays = (now - Date.parse(date)) / (24 * 3600 * 1000);
-  return diffDays >= cooldownDays;
-}
-
 export function timestamp(): string {
   const date = new Date();
   return [

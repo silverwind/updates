@@ -1,4 +1,4 @@
-import {highlightDiff, parseUvDependencies, parseDuration, matchesAny, getProperty, commaSeparatedToArray, canIncludeByDate, timestamp, textTable, pMap} from "./utils.ts";
+import {highlightDiff, parseUvDependencies, parseDuration, matchesAny, getProperty, commaSeparatedToArray, timestamp, textTable, pMap} from "./utils.ts";
 
 const c = (s: string) => `[${s}]`;
 
@@ -95,15 +95,6 @@ test("commaSeparatedToArray", () => {
   expect(commaSeparatedToArray("a")).toEqual(["a"]);
   expect(commaSeparatedToArray("")).toEqual([]);
   expect(commaSeparatedToArray("a,,b")).toEqual(["a", "b"]);
-});
-
-test("canIncludeByDate", () => {
-  const now = Date.now();
-  expect(canIncludeByDate(undefined, 7, now)).toBe(true);
-  expect(canIncludeByDate("2020-01-01", 0, now)).toBe(true);
-  expect(canIncludeByDate("2020-01-01", 7, now)).toBe(true);
-  expect(canIncludeByDate(new Date(now - 3600 * 1000).toISOString(), 7, now)).toBe(false);
-  expect(canIncludeByDate(new Date(now - 8 * 86400 * 1000).toISOString(), 7, now)).toBe(true);
 });
 
 test("timestamp", () => {

@@ -332,6 +332,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
   const pkgStrs: Record<string, string> = {};
   const filePerMode: Record<string, string> = {};
   const now = Date.now();
+  const cooldownDays = config.cooldown ? parseDuration(String(config.cooldown)) : 0;
   let numDependencies = 0;
 
   const addDep = (mode: string, depType: string, typePrefix: string, name: string, old: string, oldOrig: string) => {
@@ -722,7 +723,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
       const dropIfTooNew = (modeDeps: Deps) => {
         if (!cooldownDays) return;
         for (const [k, {date}] of Object.entries(modeDeps)) {
-          if (date && (now - Date.parse(date)) / 86400000 < cooldownDays) delete modeDeps[k];
+          if (date && !passesCooldown(date, cooldownDays, now)) delete modeDeps[k];
         }
       };
 
@@ -856,8 +857,6 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
         entry.infos.push(info);
       }
 
-      const actionsCooldownDays = config.cooldown ? parseDuration(String(config.cooldown)) : 0;
-
       await pMap(depsByRepo.values(), async ({apiUrl, owner, repo, infos}) => {
         const tags = await fetchActionTags(apiUrl, owner, repo, ctx);
         const versions: string[] = [];
@@ -895,9 +894,9 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
             const tag = tagByStripped.get(picked);
             if (!tag) { denylist.add(picked); continue; }
             const commitSha = entryByName.get(tag)?.commitSha || "";
-            if (!actionsCooldownDays) return {version: picked, tag, commitSha, date: ""};
+            if (!cooldownDays) return {version: picked, tag, commitSha, date: ""};
             const date = commitSha ? await getDate(commitSha) : "";
-            if (passesCooldown(date, actionsCooldownDays, now)) return {version: picked, tag, commitSha, date};
+            if (passesCooldown(date, cooldownDays, now)) return {version: picked, tag, commitSha, date};
             denylist.add(picked);
           }
           return null;
@@ -936,10 +935,10 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
             const coerced = coerceToVersion(stripv(ref));
             if (!coerced) { delete deps.actions[key]; return; }
 
-            const {useGreatest, usePre, useRel, semvers} = getVersionOpts(actionName);
+            const {usePre, useRel, semvers} = getVersionOpts(actionName);
             const result = await pickVersion({
               range: coerced, semvers, usePre, useRel,
-              useGreatest: useGreatest || true, pinnedRange: configPin[actionName],
+              useGreatest: true, pinnedRange: configPin[actionName],
             });
             if (!result) { delete deps.actions[key]; return; }
 
@@ -972,8 +971,6 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
         list.push(info);
       }
 
-      const dockerCooldownDays = config.cooldown ? parseDuration(String(config.cooldown)) : 0;
-
       await pMap(depsByImage.entries(), async ([fullImage, infos]) => {
         let data: Record<string, any>;
         try {
@@ -990,7 +987,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
           const {semvers} = getVersionOpts(info.fullImage);
           const result = findDockerVersion(
             data.tags, oldTag, semvers,
-            dockerCooldownDays || undefined, dockerCooldownDays ? now : undefined,
+            cooldownDays || undefined, cooldownDays ? now : undefined,
           );
           if (!result) { delete deps.docker[info.key]; continue; }
 

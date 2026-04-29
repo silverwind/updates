@@ -571,7 +571,6 @@ export type CheckResult = {
   oldRef: string,
   newRef: string,
   newDate?: string,
-  newTag?: string,
 };
 
 export function throwFetchError(res: Response | undefined, url: string, name: string, source: string): never {
