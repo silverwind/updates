@@ -1,13 +1,16 @@
 #!/usr/bin/env node
-import {cwd, stdout, stderr, exit, platform, versions} from "node:process";
+import {argv, cwd, stdout, stderr, exit, platform, versions} from "node:process";
 import {stripVTControlCharacters, styleText, parseArgs} from "node:util";
 import {updates} from "./api.ts";
 import {options, parseMixedArg, getOptionKey, parseArgList, parsePinArg, loadConfig} from "./config.ts";
 import {packageVersion, fetchTimeout} from "./modes/shared.ts";
 import {highlightDiff, textTable} from "./utils/utils.ts";
 import {shortenGoModule} from "./modes/go.ts";
+import {prewarmOrigins} from "./utils/prewarm.ts";
 import type {Arg} from "./config.ts";
 import type {Output, UpdatesOptions} from "./api.ts";
+
+for (const url of prewarmOrigins(cwd(), argv.slice(2))) fetch(url, {method: "HEAD"}).catch(() => {});
 
 const result = parseArgs({
   strict: false,
