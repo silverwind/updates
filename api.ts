@@ -119,7 +119,7 @@ function canInclude(name: string, mode: string, include: Set<RegExp>, exclude: S
   for (const re of include) {
     if (re.test(name) || re.test(baseName)) return true;
   }
-  return include.size ? false : true;
+  return !include.size;
 }
 
 function resolveFiles(filesArg: Set<string> | false): Set<string> {
