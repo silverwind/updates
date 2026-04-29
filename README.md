@@ -65,13 +65,8 @@ The module can be configured with `updates.config.{ts,js,mjs,mts}` in your repo 
 import type {Config} from "updates";
 
 export default {
-  exclude: [
-    "semver",
-    "@vitejs/*",
-    /^react(-dom)?$/,
-  ],
   pin: {
-    "typescript": "^5.0.0",
+    "typescript": "^6",
   },
 } satisfies Config;
 ```
