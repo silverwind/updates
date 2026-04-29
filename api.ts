@@ -825,8 +825,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
       if (Object.keys(maybeUrlDeps).length) {
         const results = (await pMap(Object.entries(maybeUrlDeps), ([key, dep]) => {
           const name = key.split(fieldSep)[1];
-          const useGreatest = typeof greatest === "boolean" ? greatest : matchesAny(name, greatest);
-          return checkUrlDep(key, dep, useGreatest, ctx);
+          return checkUrlDep(key, dep, getVersionOpts(name).useGreatest, ctx);
         }, {concurrency})).filter(r => r !== null);
 
         for (const res of results) {

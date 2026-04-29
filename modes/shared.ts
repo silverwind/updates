@@ -381,7 +381,7 @@ export function findNewVersion(data: any, {mode, range, useGreatest, useRel, use
     if (cooldownDays && now) {
       const latestDate = mode === "pypi" ?
         data.releases?.[originalLatestTag || latestTag]?.[0]?.upload_time_iso_8601 :
-        data.time?.[originalLatestTag || latestTag] ?? data.time?.[latestTag];
+        data.time?.[latestTag];
       if (!passesCooldown(latestDate, cooldownDays, now)) {
         return version;
       }

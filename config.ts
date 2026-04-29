@@ -152,20 +152,11 @@ export function parseArgList(arg: Arg): Array<string> {
 
 export function parsePinArg(arg: Arg): Record<string, string> {
   const result: Record<string, string> = {};
-  if (Array.isArray(arg)) {
-    for (const val of arg) {
-      if (typeof val === "string") {
-        const [pkg, range] = val.split("=", 2);
-        if (pkg && range && validRange(range)) {
-          result[pkg] = range;
-        }
-      }
-    }
-  } else if (typeof arg === "string") {
-    const [pkg, range] = arg.split("=", 2);
-    if (pkg && range && validRange(range)) {
-      result[pkg] = range;
-    }
+  const items = Array.isArray(arg) ? arg : [arg];
+  for (const val of items) {
+    if (typeof val !== "string") continue;
+    const [pkg, range] = val.split("=", 2);
+    if (pkg && range && validRange(range)) result[pkg] = range;
   }
   return result;
 }
