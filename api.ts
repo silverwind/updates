@@ -706,7 +706,6 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
     return {results: {}, message: "No dependencies found, nothing to do."};
   }
 
-  // Fetch and process all modes in parallel
   const fetchTasks: Array<Promise<void>> = [];
   const argsForNpm = {registry: config.registry};
 
@@ -847,7 +846,6 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
     })());
   }
 
-  // Actions fetch task
   if (actionDepInfos.length) {
     fetchTasks.push((async () => {
       const depsByRepo = new Map<string, {apiUrl: string, owner: string, repo: string, infos: Array<ActionDepInfo>}>();
@@ -962,7 +960,6 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
     })());
   }
 
-  // Docker fetch task
   if (dockerDepInfos.length) {
     fetchTasks.push((async () => {
       const depsByImage = new Map<string, Array<DockerDepInfo>>();
@@ -1008,7 +1005,6 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
     return {results: {}, message: "All dependencies are up to date."};
   }
 
-  // Handle --update: write files
   if (config.update) {
     const updateMembers = (m: string, members: WorkspaceMember[], updateFn: (content: string, deps: Deps) => string) => {
       for (const member of members) {

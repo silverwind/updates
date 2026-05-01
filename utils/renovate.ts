@@ -68,16 +68,12 @@ function isSimpleRule(rule: RenovatePackageRule): boolean {
 }
 
 async function readFirstExisting(rootDir: string): Promise<{path: string, text: string} | undefined> {
-  const reads = await Promise.all(configFileNames.map(async name => {
+  for (const name of configFileNames) {
     const path = join(rootDir, ...name.split("/"));
     try {
       return {path, text: await readFile(path, "utf8")};
-    } catch {
-      return undefined;
-    }
-  }));
-  const found = reads.find(Boolean);
-  if (found) return found;
+    } catch {}
+  }
   try {
     const text = await readFile(join(rootDir, "package.json"), "utf8");
     const pkg = JSON.parse(text);

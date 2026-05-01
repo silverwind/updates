@@ -13,7 +13,7 @@ export async function fetchPypiInfo(name: string, type: string, ctx: ModeContext
 export function updatePyprojectToml(pkgStr: string, deps: Deps): string {
   let newPkgStr = pkgStr;
   for (const [key, {old, oldOrig}] of Object.entries(deps)) {
-    const [_depType, name] = key.split(fieldSep);
+    const name = key.split(fieldSep)[1];
     const oldValue = oldOrig || old;
     newPkgStr = newPkgStr.replace(
       new RegExp(`("${esc(name)} *[<>=~]+ *)${esc(oldValue)}(")`, "g"),

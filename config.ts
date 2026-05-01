@@ -1,6 +1,6 @@
 import {join} from "node:path";
 import {pathToFileURL} from "node:url";
-import {accessSync} from "node:fs";
+import {access} from "node:fs/promises";
 import type {ParseArgsOptionsConfig} from "node:util";
 import {validRange} from "./utils/semver.ts";
 import {commaSeparatedToArray, esc} from "./utils/utils.ts";
@@ -184,7 +184,7 @@ export async function loadConfig(rootDir: string): Promise<Config> {
       const fileUrl = pathToFileURL(fullPath);
 
       try {
-        accessSync(fullPath);
+        await access(fullPath);
       } catch {
         throw new Error(`File not found: ${filename}`);
       }

@@ -369,7 +369,7 @@ export function getGoInfoUrl(name: string): string {
   const url = new URL(str);
   const pathParts = url.pathname.split("/"); // ["", "user", "repo"]
   if (pathParts.length > 3) {
-    const [_empty, user, repo, ...other] = pathParts;
+    const [, user, repo, ...other] = pathParts;
     url.pathname = `/${user}/${repo}/${getSubDir(str)}/${other.join("/")}`;
     return url.toString();
   } else {

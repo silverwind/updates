@@ -34,7 +34,6 @@ function parseImageParts(imagePart: string): {registry: string | null, namespace
 }
 
 export function parseDockerImageRef(ref: string): DockerImageRef | null {
-  // Strip docker:// prefix if present
   ref = ref.replace(/^docker:\/\//, "");
 
   if (ref.includes("@")) return null; // digest-pinned, skip
@@ -169,7 +168,7 @@ export function findDockerVersion(
 function replaceImageRefs(content: string, deps: Deps, patterns: Array<(name: string, tag: string) => RegExp>): string {
   let newContent = content;
   for (const [key, dep] of Object.entries(deps)) {
-    const [_type, name] = key.split(fieldSep);
+    const name = key.split(fieldSep)[1];
     const oldTag = dep.oldOrig || dep.old;
     for (const makeRegex of patterns) {
       newContent = newContent.replace(makeRegex(esc(name), esc(oldTag)), `$1${name}:${dep.new}`);
@@ -212,7 +211,6 @@ export function isDockerfile(filename: string): boolean {
   return /^Dockerfile(\..+)?$/.test(filename);
 }
 
-// Check if a filename matches any Docker file pattern
 export function isDockerFileName(filename: string): boolean {
   return isDockerfile(filename) || isComposeFile(filename);
 }

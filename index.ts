@@ -48,6 +48,14 @@ function argToConfigMixed(arg: Arg): boolean | Array<string | RegExp> | undefine
 let red: (text: string | number) => string = String;
 let green: (text: string | number) => string = String;
 
+function resolveColor(fileConfig: UpdatesOptions): boolean {
+  if (args["no-color"] === true) return false;
+  if (args.color === true) return true;
+  if (fileConfig.noColor === true) return false;
+  if (fileConfig.color === true) return true;
+  return Boolean(stdout.isTTY);
+}
+
 async function end(err?: Error | void, exitCode?: number): Promise<void> {
   if (err) {
     const error = err.message ?? String(err);
@@ -127,7 +135,7 @@ async function main(): Promise<void> {
   }
 
   const fileConfig = await loadConfig(cwd());
-  const useColor = args["no-color"] === true ? false : args.color === true ? true : fileConfig.noColor === true ? false : fileConfig.color === true ? true : stdout.isTTY;
+  const useColor = resolveColor(fileConfig);
   if (useColor) {
     red = (text: string | number) => styleText("red", String(text));
     green = (text: string | number) => styleText("green", String(text));
@@ -172,7 +180,7 @@ async function main(): Promise<void> {
   if (filesList.length) config.files = filesList;
 
   for (const key of ["forgeapi", "pypiapi", "jsrapi", "goproxy", "cargoapi", "dockerapi"] as const) {
-    if (typeof args[key] === "string") (config as any)[key] = args[key];
+    if (typeof args[key] === "string") config[key] = args[key];
   }
 
   const output = await updates(config);

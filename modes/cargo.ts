@@ -58,7 +58,6 @@ export function parseCargoLock(lockStr: string): Map<string, string[]> {
 // Cargo treats bare version strings as caret ranges (e.g. "1.0" = "^1.0").
 export const startsWithDigitRe = /^\d/;
 
-// Update a Cargo version range, handling bare versions as implicit caret ranges
 export function updateCargoRange(oldOrig: string, newVersion: string): string {
   if (startsWithDigitRe.test(oldOrig)) {
     return updateVersionRange(normalizeRange(`^${oldOrig}`), newVersion, `^${oldOrig}`).replace(/^\^/, "");

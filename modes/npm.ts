@@ -370,7 +370,7 @@ export async function getTags(user: string, repo: string, ctx: ModeContext): Pro
 
 export async function checkUrlDep(key: string, dep: Dep, useGreatest: boolean, ctx: ModeContext): Promise<CheckResult | null> {
   const stripped = dep.old.replace(stripRe, "");
-  const [_, user, repo, oldRef] = partsRe.exec(stripped) || [];
+  const [, user, repo, oldRef] = partsRe.exec(stripped) || [];
   if (!user || !repo || !oldRef) return null;
 
   if (hashRe.test(oldRef)) {
