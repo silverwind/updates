@@ -40,9 +40,9 @@
   },
   "devDependencies": {
     "@types/node": "25.6.0",
-    "@typescript/native-preview": "7.0.0-dev.20260428.1",
+    "@typescript/native-preview": "7.0.0-dev.20260504.1",
     "@vitest/coverage-v8": "4.1.5",
-    "eslint": "10.2.1",
+    "eslint": "10.3.0",
     "eslint-config-silverwind": "132.0.0",
     "jest-extended": "7.0.0",
     "timerel": "5.8.7",
@@ -51,7 +51,7 @@
     "typescript": "6.0.3",
     "typescript-config-silverwind": "18.0.0",
     "updates-config-silverwind": "2.1.1",
-    "versions": "15.0.2",
+    "versions": "15.0.3",
     "vitest": "4.1.5",
     "vitest-config-silverwind": "11.3.1"
   }
