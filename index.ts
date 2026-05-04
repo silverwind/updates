@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import {argv, cwd, stdout, stderr, exit, platform, versions} from "node:process";
 import {stripVTControlCharacters, styleText, parseArgs} from "node:util";
+import {dirname, isAbsolute, resolve} from "node:path";
+import {statSync} from "node:fs";
 import {updates} from "./api.ts";
 import {options, parseMixedArg, getOptionKey, parseArgList, parsePinArg, loadConfig} from "./config.ts";
 import {packageVersion, fetchTimeout} from "./modes/shared.ts";
@@ -47,6 +49,14 @@ function argToConfigMixed(arg: Arg): boolean | Array<string | RegExp> | undefine
 
 let red: (text: string | number) => string = String;
 let green: (text: string | number) => string = String;
+
+function deriveStartDir(first: string | undefined): string {
+  if (!first) return cwd();
+  const abs = isAbsolute(first) ? first : resolve(cwd(), first);
+  let isDir = false;
+  try { isDir = statSync(abs).isDirectory(); } catch {}
+  return isDir ? abs : dirname(abs);
+}
 
 function resolveColor(fileConfig: UpdatesOptions): boolean {
   if (args["no-color"] === true) return false;
@@ -134,7 +144,11 @@ async function main(): Promise<void> {
     await end();
   }
 
-  const fileConfig = await loadConfig(cwd());
+  const fileSet = parseMixedArg(args.file);
+  const filesList = [...(fileSet instanceof Set ? fileSet : []), ...positionals];
+  const startDir = deriveStartDir(filesList[0]);
+
+  const fileConfig = await loadConfig(startDir);
   const useColor = resolveColor(fileConfig);
   if (useColor) {
     red = (text: string | number) => styleText("red", String(text));
@@ -142,6 +156,7 @@ async function main(): Promise<void> {
   }
 
   const config: UpdatesOptions = {...fileConfig};
+  config.pin = undefined;
   if (args.json) config.json = true;
   if (args.verbose) config.verbose = true;
   if (args["no-cache"]) config.noCache = true;
@@ -175,8 +190,6 @@ async function main(): Promise<void> {
   const allowDowngrade = argToConfigMixed(args["allow-downgrade"]);
   if (allowDowngrade !== undefined) config.allowDowngrade = allowDowngrade;
 
-  const fileSet = parseMixedArg(args.file);
-  const filesList = [...(fileSet instanceof Set ? fileSet : []), ...positionals];
   if (filesList.length) config.files = filesList;
 
   for (const key of ["forgeapi", "pypiapi", "jsrapi", "goproxy", "cargoapi", "dockerapi"] as const) {

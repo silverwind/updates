@@ -2,6 +2,7 @@ import {join} from "node:path";
 import {readFile} from "node:fs/promises";
 import {parseJsonish} from "./json5.ts";
 import {validRange} from "./semver.ts";
+import {walkUp, memoizeAsync} from "./utils.ts";
 import type {Config} from "../config.ts";
 
 const forgeDirs = [".github", ".gitea", ".forgejo", ".gitlab"];
@@ -136,15 +137,23 @@ function normalize(raw: RenovateConfig, opts: RenovateImportOptions): Partial<Co
   return out;
 }
 
-export async function loadRenovateConfig(rootDir: string, opts: RenovateImportOptions = {}): Promise<Partial<Config>> {
-  const found = await readFirstExisting(rootDir);
-  if (!found) return {};
+type RenovateRaw = {parsed: RenovateConfig, path: string};
+
+const findRenovateUp = memoizeAsync((startDir: string) => walkUp(startDir, async (dir): Promise<RenovateRaw | null> => {
+  const found = await readFirstExisting(dir);
+  if (!found) return null;
   let raw: unknown;
   try {
     raw = parseJsonish(found.text);
   } catch (err: any) {
     throw new Error(`Unable to parse renovate config ${found.path}: ${err.message}`);
   }
-  if (!raw || typeof raw !== "object") return {};
-  return normalize(raw as RenovateConfig, opts);
+  if (!raw || typeof raw !== "object") return null;
+  return {parsed: raw as RenovateConfig, path: found.path};
+}));
+
+export async function loadRenovateConfig(rootDir: string, opts: RenovateImportOptions = {}): Promise<Partial<Config>> {
+  const found = await findRenovateUp(rootDir);
+  if (!found) return {};
+  return normalize(found.parsed, opts);
 }

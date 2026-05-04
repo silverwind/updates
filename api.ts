@@ -325,7 +325,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
 
   const include = patternsToRegexSet(config.include ?? []);
   const exclude = patternsToRegexSet(config.exclude ?? []);
-  const configPin: Record<string, string> = config.pin ?? {};
+  const globalPin: Record<string, string> = config.pin ?? {};
 
   const deps: DepsByMode = {};
   const maybeUrlDeps: Deps = {};
@@ -362,18 +362,18 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
   const pnpmMemberFiles: WorkspaceMember[] = [];
   let pnpmWorkspaceActive = false;
 
-  type ActionDepInfo = ActionRef & {key: string, apiUrl: string};
+  type ActionDepInfo = ActionRef & {key: string, apiUrl: string, filePin: Record<string, string>};
   const actionDepInfos: Array<ActionDepInfo> = [];
-  type DockerDepInfo = {key: string, fullImage: string, ref: DockerImageRef};
+  type DockerDepInfo = {key: string, fullImage: string, ref: DockerImageRef, filePin: Record<string, string>};
   const dockerDepInfos: Array<DockerDepInfo> = [];
   type ModeCtx = {modeConfig: Config, projectDir: string, pin: Record<string, string>};
   const modeConfigs: Record<string, ModeCtx> = {};
 
   async function resolveModeFilters(projectDir: string) {
-    const modeConfig = projectDir === cwd() ? config : await loadConfig(projectDir);
-    const modeInclude = modeConfig !== config && modeConfig?.include ? patternsToRegexSet([...(config.include ?? []), ...modeConfig.include]) : include;
-    const modeExclude = modeConfig !== config && modeConfig?.exclude ? patternsToRegexSet([...(config.exclude ?? []), ...modeConfig.exclude]) : exclude;
-    const pin: Record<string, string> = {...modeConfig?.pin, ...configPin};
+    const modeConfig = await loadConfig(projectDir);
+    const modeInclude = modeConfig.include?.length ? patternsToRegexSet([...(config.include ?? []), ...modeConfig.include]) : include;
+    const modeExclude = modeConfig.exclude?.length ? patternsToRegexSet([...(config.exclude ?? []), ...modeConfig.exclude]) : exclude;
+    const pin: Record<string, string> = {...modeConfig.pin, ...globalPin};
     return {modeConfig, modeInclude, modeExclude, pin};
   }
 
@@ -387,19 +387,28 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
     return [];
   }
 
-  function collectDockerRefs(content: string, relPath: string, regexes: Array<RegExp>): void {
+  type FileFilters = {include: Set<RegExp>, exclude: Set<RegExp>, pin: Record<string, string>};
+
+  function collectDockerRefs(content: string, relPath: string, regexes: Array<RegExp>, filters: FileFilters): void {
     deps.docker ??= {};
     for (const regex of regexes) {
       for (const {ref} of extractDockerRefs(content, regex)) {
-        if (!canInclude(ref.fullImage, "docker", include, exclude, "docker")) continue;
+        if (!canInclude(ref.fullImage, "docker", filters.include, filters.exclude, "docker")) continue;
         const key = `${relPath}${fieldSep}${ref.fullImage}`;
         if (deps.docker[key]) continue;
         const parsed = parseDockerTag(ref.tag);
         if (!parsed) continue;
         deps.docker[key] = {old: parsed.version, oldOrig: ref.tag} as Dep;
-        dockerDepInfos.push({key, fullImage: ref.fullImage, ref});
+        dockerDepInfos.push({key, fullImage: ref.fullImage, ref, filePin: filters.pin});
       }
     }
+  }
+
+  async function resolveFileConfig(fileDir: string): Promise<FileFilters> {
+    const cfg = await loadConfig(fileDir);
+    const inc = cfg.include?.length ? patternsToRegexSet([...(config.include ?? []), ...cfg.include]) : include;
+    const exc = cfg.exclude?.length ? patternsToRegexSet([...(config.exclude ?? []), ...cfg.exclude]) : exclude;
+    return {include: inc, exclude: exc, pin: cfg.pin ?? {}};
   }
 
   for (const file of files) {
@@ -410,23 +419,24 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
 
       const content = fileContents.get(file)!;
       const relPath = toRelPath(file);
+      const filters = await resolveFileConfig(dirname(file));
       wfData[relPath] = {absPath: file, content};
 
       if (actionsEnabled) {
         deps.actions ??= {};
         const actions = Array.from(content.matchAll(actionsUsesRe), m => parseActionRef(m[1])).filter(a => a !== null);
         for (const action of actions) {
-          if (!canInclude(action.name, "actions", include, exclude, "actions")) continue;
+          if (!canInclude(action.name, "actions", filters.include, filters.exclude, "actions")) continue;
           const key = `${relPath}${fieldSep}${action.name}`;
           if (deps.actions[key]) continue;
           deps.actions[key] = {old: action.ref} as Dep;
-          actionDepInfos.push({...action, key, apiUrl: getForgeApiBaseUrl(action.host, forgeApiUrl)});
+          actionDepInfos.push({...action, key, apiUrl: getForgeApiBaseUrl(action.host, forgeApiUrl), filePin: filters.pin});
         }
       }
 
       if (dockerEnabled) {
         dockerFileData[relPath] = {absPath: file, content, fileType: "workflow"};
-        collectDockerRefs(content, relPath, [composeImageRe, workflowContainerRe, workflowDockerUsesRe]);
+        collectDockerRefs(content, relPath, [composeImageRe, workflowContainerRe, workflowDockerUsesRe], filters);
       }
       continue;
     }
@@ -438,8 +448,9 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
       const content = fileContents.get(file)!;
       const relPath = toRelPath(file);
       const fileType = isDockerfile(filename) ? "dockerfile" : "compose";
+      const filters = await resolveFileConfig(dirname(file));
       dockerFileData[relPath] = {absPath: file, content, fileType};
-      collectDockerRefs(content, relPath, [getExtractionRegex(filename)]);
+      collectDockerRefs(content, relPath, [getExtractionRegex(filename)], filters);
       continue;
     }
 
@@ -901,15 +912,16 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
           return null;
         }
 
-        await pMap(infos, async ({key, host, ref, name: actionName, isHash}) => {
+        await pMap(infos, async ({key, host, ref, name: actionName, isHash, filePin}) => {
           const dep = deps.actions[key];
           const infoUrl = `https://${host || "github.com"}/${owner}/${repo}`;
+          const actionPin = globalPin[actionName] ?? filePin[actionName];
 
           if (isHash) {
             const {usePre, useRel} = getVersionOpts(actionName);
             const result = await pickVersion({
               range: "0.0.0", semvers: new Set(["patch", "minor", "major"]), usePre, useRel,
-              useGreatest: true, pinnedRange: configPin[actionName],
+              useGreatest: true, pinnedRange: actionPin,
             });
             if (!result) { delete deps.actions[key]; return; }
 
@@ -937,7 +949,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
             const {usePre, useRel, semvers} = getVersionOpts(actionName);
             const result = await pickVersion({
               range: coerced, semvers, usePre, useRel,
-              useGreatest: true, pinnedRange: configPin[actionName],
+              useGreatest: true, pinnedRange: actionPin,
             });
             if (!result) { delete deps.actions[key]; return; }
 
@@ -983,7 +995,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
           const dep = deps.docker[info.key];
           const oldTag = dep.oldOrig || dep.old;
           const {semvers} = getVersionOpts(info.fullImage);
-          const pinnedRange = configPin[info.fullImage];
+          const pinnedRange = globalPin[info.fullImage] ?? info.filePin[info.fullImage];
           const result = findDockerVersion(
             data.tags, oldTag, semvers,
             cooldownDays || undefined, cooldownDays ? now : undefined,

@@ -3,7 +3,7 @@ import {pathToFileURL} from "node:url";
 import {access} from "node:fs/promises";
 import type {ParseArgsOptionsConfig} from "node:util";
 import {validRange} from "./utils/semver.ts";
-import {commaSeparatedToArray, esc} from "./utils/utils.ts";
+import {commaSeparatedToArray, esc, walkUp, memoizeAsync} from "./utils/utils.ts";
 
 export type Config = {
   /** Array of dependencies to include */
@@ -171,40 +171,40 @@ export function configMixedToRegexes(val: boolean | Array<string | RegExp> | und
   return ret;
 }
 
-export async function loadConfig(rootDir: string): Promise<Config> {
-  const filenames: Array<string> = [];
-  for (const ext of ["js", "ts", "mjs", "mts"]) {
-    filenames.push(`updates.config.${ext}`);
-  }
-  let config: Config = {};
+type FoundConfig = {configDir: string, filename: string, default: Config};
 
-  try {
-    ({default: config} = await Promise.any(filenames.map(async (filename) => {
-      const fullPath = join(rootDir, ...filename.split("/"));
-      const fileUrl = pathToFileURL(fullPath);
-
-      try {
-        await access(fullPath);
-      } catch {
-        throw new Error(`File not found: ${filename}`);
-      }
-
-      try {
-        return await import(fileUrl.href);
-      } catch (err: any) {
-        throw new Error(`Unable to parse config file ${filename}: ${err.message}`);
-      }
-    })));
-  } catch (err) {
-    if (err instanceof AggregateError) {
-      const parseErrors = err.errors.filter((e: Error) => e.message.startsWith("Unable to parse"));
-      if (parseErrors.length > 0) {
-        throw parseErrors[0];
-      }
+// Try to load any updates.config.* in dir. Returns the first that imports
+// successfully. If none imports but at least one parsed-and-failed, throws
+// the first parse error so a broken sibling next to a valid one does not
+// block the valid one.
+async function tryLoadInDir(dir: string): Promise<FoundConfig | null> {
+  const exts = ["js", "ts", "mjs", "mts"];
+  const results = await Promise.all(exts.map(async (ext): Promise<FoundConfig | Error | null> => {
+    const filename = `updates.config.${ext}`;
+    const fullPath = join(dir, filename);
+    try {
+      await access(fullPath);
+    } catch {
+      return null;
     }
-  }
+    try {
+      const mod = await import(pathToFileURL(fullPath).href);
+      return {configDir: dir, filename, default: mod.default ?? {}};
+    } catch (err: any) {
+      return new Error(`Unable to parse config file ${filename}: ${err?.message ?? err}`);
+    }
+  }));
+  for (const r of results) if (r && !(r instanceof Error)) return r;
+  for (const r of results) if (r instanceof Error) throw r;
+  return null;
+}
 
+const findConfigUp = memoizeAsync((startDir: string) => walkUp(startDir, tryLoadInDir));
+
+export async function loadConfig(startDir: string): Promise<Config> {
+  const found = await findConfigUp(startDir);
+  const raw: Config = found?.default ?? {};
   const {loadRenovateConfig} = await import("./utils/renovate.ts");
-  const renovateConfig = await loadRenovateConfig(rootDir, config.inherit?.renovate);
-  return {...renovateConfig, ...config};
+  const renovateConfig = await loadRenovateConfig(found?.configDir ?? startDir, raw.inherit?.renovate);
+  return {...renovateConfig, ...raw};
 }

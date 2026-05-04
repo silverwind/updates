@@ -1,3 +1,5 @@
+import {dirname} from "node:path";
+
 export function highlightDiff(a: string, b: string, colorFn: (str: string) => string): string {
   if (a === b) return a;
   let i = 0;
@@ -155,3 +157,26 @@ export async function pMap<T, R>(iterable: Iterable<T>, mapper: (item: T) => Pro
 }
 
 export const esc = (str: string) => str.replace(/[|\\{}()[\]^$+*?.-]/g, "\\$&");
+
+export async function walkUp<T>(startDir: string, probe: (dir: string) => Promise<T | null>): Promise<T | null> {
+  let dir = startDir;
+  while (true) {
+    const found = await probe(dir);
+    if (found) return found;
+    const parent = dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
+
+export function memoizeAsync<K, V>(fn: (k: K) => Promise<V>): (k: K) => Promise<V> {
+  const cache = new Map<K, Promise<V>>();
+  return (k) => {
+    let p = cache.get(k);
+    if (!p) {
+      p = fn(k);
+      cache.set(k, p);
+    }
+    return p;
+  };
+}
