@@ -983,9 +983,11 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
           const dep = deps.docker[info.key];
           const oldTag = dep.oldOrig || dep.old;
           const {semvers} = getVersionOpts(info.fullImage);
+          const pinnedRange = configPin[info.fullImage];
           const result = findDockerVersion(
             data.tags, oldTag, semvers,
             cooldownDays || undefined, cooldownDays ? now : undefined,
+            pinnedRange,
           );
           if (!result) { delete deps.docker[info.key]; continue; }
 

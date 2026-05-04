@@ -218,6 +218,26 @@ test("findDockerVersion handles partial version tags", () => {
   expect(result).toEqual({newTag: "20", date: "2024-06-15"});
 });
 
+test("findDockerVersion respects pinnedRange and blocks out-of-range upgrade", () => {
+  const tagMap: Record<string, string> = {
+    "8.0": "2024-01-01",
+    "8.0.41": "2024-06-01",
+    "9.7": "2024-12-01",
+  };
+  const result = findDockerVersion(tagMap, "8.0", new Set(["patch", "minor", "major"]), undefined, undefined, "8.0");
+  expect(result).toBeNull();
+});
+
+test("findDockerVersion respects pinnedRange and allows in-range upgrade", () => {
+  const tagMap: Record<string, string> = {
+    "8.0.0": "2024-01-01",
+    "8.0.41": "2024-06-01",
+    "9.7": "2024-12-01",
+  };
+  const result = findDockerVersion(tagMap, "8.0.0", new Set(["patch", "minor", "major"]), undefined, undefined, "8.0");
+  expect(result).toEqual({newTag: "8.0.41", date: "2024-06-01"});
+});
+
 // updateDockerfile
 test("updateDockerfile replaces FROM image tag", () => {
   const content = "FROM node:18\nRUN echo hello\n";
