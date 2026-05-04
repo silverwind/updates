@@ -1,4 +1,4 @@
-import {join} from "node:path";
+import {join, dirname} from "node:path";
 import {pathToFileURL} from "node:url";
 import {access} from "node:fs/promises";
 import type {ParseArgsOptionsConfig} from "node:util";
@@ -171,40 +171,73 @@ export function configMixedToRegexes(val: boolean | Array<string | RegExp> | und
   return ret;
 }
 
-export async function loadConfig(rootDir: string): Promise<Config> {
-  const filenames: Array<string> = [];
-  for (const ext of ["js", "ts", "mjs", "mts"]) {
-    filenames.push(`updates.config.${ext}`);
-  }
-  let config: Config = {};
+type FoundConfig = {configDir: string, filename: string, default: Config};
+const findCache = new Map<string, Promise<FoundConfig | null>>();
+const configCache = new Map<string, Promise<Config>>();
 
-  try {
-    ({default: config} = await Promise.any(filenames.map(async (filename) => {
-      const fullPath = join(rootDir, ...filename.split("/"));
-      const fileUrl = pathToFileURL(fullPath);
+type LoadOutcome =
+  | {ok: true, value: FoundConfig} |
+  {ok: false, kind: "missing"} |
+  {ok: false, kind: "parse", filename: string, message: string};
 
-      try {
-        await access(fullPath);
-      } catch {
-        throw new Error(`File not found: ${filename}`);
-      }
-
-      try {
-        return await import(fileUrl.href);
-      } catch (err: any) {
-        throw new Error(`Unable to parse config file ${filename}: ${err.message}`);
-      }
-    })));
-  } catch (err) {
-    if (err instanceof AggregateError) {
-      const parseErrors = err.errors.filter((e: Error) => e.message.startsWith("Unable to parse"));
-      if (parseErrors.length > 0) {
-        throw parseErrors[0];
-      }
+// Try to load any updates.config.* in dir. Returns the first that imports
+// successfully. If none imports but at least one parsed-and-failed, throws
+// the first parse error (a broken sibling next to a valid one does not block
+// the valid one).
+async function tryLoadInDir(dir: string): Promise<FoundConfig | null> {
+  const exts = ["js", "ts", "mjs", "mts"];
+  const outcomes = await Promise.all(exts.map(async (ext): Promise<LoadOutcome> => {
+    const filename = `updates.config.${ext}`;
+    const fullPath = join(dir, filename);
+    try {
+      await access(fullPath);
+    } catch {
+      return {ok: false, kind: "missing"};
+    }
+    try {
+      const mod = await import(pathToFileURL(fullPath).href);
+      return {ok: true, value: {configDir: dir, filename, default: mod.default ?? {}}};
+    } catch (err: any) {
+      return {ok: false, kind: "parse", filename, message: err?.message ?? String(err)};
+    }
+  }));
+  for (const o of outcomes) if (o.ok) return o.value;
+  for (const o of outcomes) {
+    if (!o.ok && o.kind === "parse") {
+      throw new Error(`Unable to parse config file ${o.filename}: ${o.message}`);
     }
   }
+  return null;
+}
 
-  const {loadRenovateConfig} = await import("./utils/renovate.ts");
-  const renovateConfig = await loadRenovateConfig(rootDir, config.inherit?.renovate);
-  return {...renovateConfig, ...config};
+async function findConfigUp(startDir: string): Promise<FoundConfig | null> {
+  let cached = findCache.get(startDir);
+  if (cached) return cached;
+  cached = (async () => {
+    let dir = startDir;
+    while (true) {
+      const found = await tryLoadInDir(dir);
+      if (found) return found;
+      const parent = dirname(dir);
+      if (parent === dir) return null;
+      dir = parent;
+    }
+  })();
+  findCache.set(startDir, cached);
+  return cached;
+}
+
+export async function loadConfig(startDir: string): Promise<Config> {
+  const found = await findConfigUp(startDir);
+  const cacheKey = found ? `dir:${found.configDir}` : `none:${startDir}`;
+  let cached = configCache.get(cacheKey);
+  if (cached) return cached;
+  cached = (async () => {
+    const raw: Config = found?.default ?? {};
+    const {loadRenovateConfig} = await import("./utils/renovate.ts");
+    const renovateConfig = await loadRenovateConfig(found?.configDir ?? startDir, raw.inherit?.renovate);
+    return {...renovateConfig, ...raw};
+  })();
+  configCache.set(cacheKey, cached);
+  return cached;
 }

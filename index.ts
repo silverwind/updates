@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import {argv, cwd, stdout, stderr, exit, platform, versions} from "node:process";
 import {stripVTControlCharacters, styleText, parseArgs} from "node:util";
+import {dirname, isAbsolute, resolve} from "node:path";
+import {statSync} from "node:fs";
 import {updates} from "./api.ts";
 import {options, parseMixedArg, getOptionKey, parseArgList, parsePinArg, loadConfig} from "./config.ts";
 import {packageVersion, fetchTimeout} from "./modes/shared.ts";
@@ -134,7 +136,21 @@ async function main(): Promise<void> {
     await end();
   }
 
-  const fileConfig = await loadConfig(cwd());
+  const fileSet = parseMixedArg(args.file);
+  const filesList = [...(fileSet instanceof Set ? fileSet : []), ...positionals];
+
+  let startDir = cwd();
+  if (filesList.length) {
+    const first = filesList[0];
+    const abs = isAbsolute(first) ? first : resolve(cwd(), first);
+    try {
+      startDir = statSync(abs).isDirectory() ? abs : dirname(abs);
+    } catch {
+      startDir = dirname(abs);
+    }
+  }
+
+  const fileConfig = await loadConfig(startDir);
   const useColor = resolveColor(fileConfig);
   if (useColor) {
     red = (text: string | number) => styleText("red", String(text));
@@ -142,6 +158,9 @@ async function main(): Promise<void> {
   }
 
   const config: UpdatesOptions = {...fileConfig};
+  // pin is resolved per-file in api.ts (walking up from each dep's file dir).
+  // Only CLI/API-set pin acts as a global override.
+  config.pin = undefined;
   if (args.json) config.json = true;
   if (args.verbose) config.verbose = true;
   if (args["no-cache"]) config.noCache = true;
@@ -175,8 +194,6 @@ async function main(): Promise<void> {
   const allowDowngrade = argToConfigMixed(args["allow-downgrade"]);
   if (allowDowngrade !== undefined) config.allowDowngrade = allowDowngrade;
 
-  const fileSet = parseMixedArg(args.file);
-  const filesList = [...(fileSet instanceof Set ? fileSet : []), ...positionals];
   if (filesList.length) config.files = filesList;
 
   for (const key of ["forgeapi", "pypiapi", "jsrapi", "goproxy", "cargoapi", "dockerapi"] as const) {

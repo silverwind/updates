@@ -1,4 +1,4 @@
-import {join} from "node:path";
+import {join, dirname} from "node:path";
 import {readFile} from "node:fs/promises";
 import {parseJsonish} from "./json5.ts";
 import {validRange} from "./semver.ts";
@@ -136,15 +136,37 @@ function normalize(raw: RenovateConfig, opts: RenovateImportOptions): Partial<Co
   return out;
 }
 
+type RenovateRaw = {parsed: RenovateConfig, path: string};
+const renovateCache = new Map<string, Promise<RenovateRaw | null>>();
+
+async function findRenovateUp(startDir: string): Promise<RenovateRaw | null> {
+  let cached = renovateCache.get(startDir);
+  if (cached) return cached;
+  cached = (async () => {
+    let dir = startDir;
+    while (true) {
+      const found = await readFirstExisting(dir);
+      if (found) {
+        let raw: unknown;
+        try {
+          raw = parseJsonish(found.text);
+        } catch (err: any) {
+          throw new Error(`Unable to parse renovate config ${found.path}: ${err.message}`);
+        }
+        if (!raw || typeof raw !== "object") return null;
+        return {parsed: raw as RenovateConfig, path: found.path};
+      }
+      const parent = dirname(dir);
+      if (parent === dir) return null;
+      dir = parent;
+    }
+  })();
+  renovateCache.set(startDir, cached);
+  return cached;
+}
+
 export async function loadRenovateConfig(rootDir: string, opts: RenovateImportOptions = {}): Promise<Partial<Config>> {
-  const found = await readFirstExisting(rootDir);
+  const found = await findRenovateUp(rootDir);
   if (!found) return {};
-  let raw: unknown;
-  try {
-    raw = parseJsonish(found.text);
-  } catch (err: any) {
-    throw new Error(`Unable to parse renovate config ${found.path}: ${err.message}`);
-  }
-  if (!raw || typeof raw !== "object") return {};
-  return normalize(raw as RenovateConfig, opts);
+  return normalize(found.parsed, opts);
 }
