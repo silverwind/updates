@@ -1,7 +1,8 @@
-import {join, dirname} from "node:path";
+import {join} from "node:path";
 import {readFile} from "node:fs/promises";
 import {parseJsonish} from "./json5.ts";
 import {validRange} from "./semver.ts";
+import {walkUp, memoizeAsync} from "./utils.ts";
 import type {Config} from "../config.ts";
 
 const forgeDirs = [".github", ".gitea", ".forgejo", ".gitlab"];
@@ -137,33 +138,19 @@ function normalize(raw: RenovateConfig, opts: RenovateImportOptions): Partial<Co
 }
 
 type RenovateRaw = {parsed: RenovateConfig, path: string};
-const renovateCache = new Map<string, Promise<RenovateRaw | null>>();
 
-async function findRenovateUp(startDir: string): Promise<RenovateRaw | null> {
-  let cached = renovateCache.get(startDir);
-  if (cached) return cached;
-  cached = (async () => {
-    let dir = startDir;
-    while (true) {
-      const found = await readFirstExisting(dir);
-      if (found) {
-        let raw: unknown;
-        try {
-          raw = parseJsonish(found.text);
-        } catch (err: any) {
-          throw new Error(`Unable to parse renovate config ${found.path}: ${err.message}`);
-        }
-        if (!raw || typeof raw !== "object") return null;
-        return {parsed: raw as RenovateConfig, path: found.path};
-      }
-      const parent = dirname(dir);
-      if (parent === dir) return null;
-      dir = parent;
-    }
-  })();
-  renovateCache.set(startDir, cached);
-  return cached;
-}
+const findRenovateUp = memoizeAsync((startDir: string) => walkUp(startDir, async (dir): Promise<RenovateRaw | null> => {
+  const found = await readFirstExisting(dir);
+  if (!found) return null;
+  let raw: unknown;
+  try {
+    raw = parseJsonish(found.text);
+  } catch (err: any) {
+    throw new Error(`Unable to parse renovate config ${found.path}: ${err.message}`);
+  }
+  if (!raw || typeof raw !== "object") return null;
+  return {parsed: raw as RenovateConfig, path: found.path};
+}));
 
 export async function loadRenovateConfig(rootDir: string, opts: RenovateImportOptions = {}): Promise<Partial<Config>> {
   const found = await findRenovateUp(rootDir);

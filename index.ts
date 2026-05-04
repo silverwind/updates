@@ -50,6 +50,14 @@ function argToConfigMixed(arg: Arg): boolean | Array<string | RegExp> | undefine
 let red: (text: string | number) => string = String;
 let green: (text: string | number) => string = String;
 
+function deriveStartDir(first: string | undefined): string {
+  if (!first) return cwd();
+  const abs = isAbsolute(first) ? first : resolve(cwd(), first);
+  let isDir = false;
+  try { isDir = statSync(abs).isDirectory(); } catch {}
+  return isDir ? abs : dirname(abs);
+}
+
 function resolveColor(fileConfig: UpdatesOptions): boolean {
   if (args["no-color"] === true) return false;
   if (args.color === true) return true;
@@ -138,17 +146,7 @@ async function main(): Promise<void> {
 
   const fileSet = parseMixedArg(args.file);
   const filesList = [...(fileSet instanceof Set ? fileSet : []), ...positionals];
-
-  let startDir = cwd();
-  if (filesList.length) {
-    const first = filesList[0];
-    const abs = isAbsolute(first) ? first : resolve(cwd(), first);
-    try {
-      startDir = statSync(abs).isDirectory() ? abs : dirname(abs);
-    } catch {
-      startDir = dirname(abs);
-    }
-  }
+  const startDir = deriveStartDir(filesList[0]);
 
   const fileConfig = await loadConfig(startDir);
   const useColor = resolveColor(fileConfig);
@@ -158,8 +156,6 @@ async function main(): Promise<void> {
   }
 
   const config: UpdatesOptions = {...fileConfig};
-  // pin is resolved per-file in api.ts (walking up from each dep's file dir).
-  // Only CLI/API-set pin acts as a global override.
   config.pin = undefined;
   if (args.json) config.json = true;
   if (args.verbose) config.verbose = true;
