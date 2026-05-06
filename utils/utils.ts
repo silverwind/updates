@@ -72,9 +72,8 @@ export const cargoTypes = [
 ];
 
 export function matchesAny(str: string, set: Set<RegExp> | boolean): boolean {
-  for (const re of (set instanceof Set ? set : [])) {
-    if (re.test(str)) return true;
-  }
+  if (!(set instanceof Set)) return false;
+  for (const re of set) if (re.test(str)) return true;
   return false;
 }
 
@@ -87,22 +86,14 @@ export function commaSeparatedToArray(str: string): Array<string> {
 }
 
 export function timestamp(): string {
-  const date = new Date();
-  return [
-    date.getFullYear(),
-    "-",
-    String(date.getMonth() + 1).padStart(2, "0"),
-    "-",
-    String(date.getDate()).padStart(2, "0"),
-    " ",
-    String(date.getHours()).padStart(2, "0"),
-    ":",
-    String(date.getMinutes()).padStart(2, "0"),
-    ":",
-    String(date.getSeconds()).padStart(2, "0"),
-    ".",
-    String(date.getMilliseconds()).padStart(3, "0"),
-  ].join("");
+  const d = new Date();
+  const mo = String(d.getMonth() + 1).padStart(2, "0");
+  const da = String(d.getDate()).padStart(2, "0");
+  const h = String(d.getHours()).padStart(2, "0");
+  const mi = String(d.getMinutes()).padStart(2, "0");
+  const s = String(d.getSeconds()).padStart(2, "0");
+  const ms = String(d.getMilliseconds()).padStart(3, "0");
+  return `${d.getFullYear()}-${mo}-${da} ${h}:${mi}:${s}.${ms}`;
 }
 
 export function textTable(rows: Array<Array<string>>, ansiLen: (str: string) => number, hsep = " "): string {

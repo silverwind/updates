@@ -211,11 +211,8 @@ async function main(): Promise<void> {
 
     if (config.update) {
       for (const mode of Object.keys(output.results)) {
-        for (const type of Object.keys(output.results[mode])) {
-          if (Object.keys(output.results[mode][type]).length) {
-            console.info(green(`✨ ${mode} updated`));
-            break;
-          }
+        if (Object.values(output.results[mode]).some(deps => Object.keys(deps).length)) {
+          console.info(green(`✨ ${mode} updated`));
         }
       }
     }

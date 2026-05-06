@@ -48,9 +48,9 @@ export function parseCargoLock(lockStr: string): Map<string, string[]> {
     const name = nameMatch[1];
     const version = versionMatch[1];
     if (!valid(version)) continue;
-    const versions = map.get(name) || [];
+    let versions = map.get(name);
+    if (!versions) map.set(name, versions = []);
     versions.push(version);
-    map.set(name, versions);
   }
   return map;
 }

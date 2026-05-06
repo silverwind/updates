@@ -238,7 +238,8 @@ export function findVersion(data: any, versions: Array<string>, {range, semvers,
 
     // some registries like github don't have data.time available, fall back to greatest on them
     if (useGreatest || !("time" in data)) {
-      if (gte(coerceToVersion(candidateVersion), newVersion) ||
+      const candidateMain = `${parsed.major}.${parsed.minor}.${parsed.patch}`;
+      if (gte(candidateMain, newVersion) ||
           (pinnedRange && !satisfies(newVersion, pinnedRange))) {
         newVersion = candidateVersion;
       }
