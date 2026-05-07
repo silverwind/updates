@@ -14,6 +14,8 @@ jobs:
         exclude: # https://github.com/nodejs/node/issues/56645
           - js: [node, 24]
             os: windows-latest
+          - js: [node, 26]
+            os: windows-latest
     runs-on: ${{matrix.os}}
     steps:
       - uses: actions/checkout@v6
