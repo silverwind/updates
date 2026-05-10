@@ -80,6 +80,10 @@ async function end(err?: Error | void, exitCode?: number): Promise<void> {
 
   prewarmAbort.abort();
   await Promise.all(prewarms);
+  // Drain undici's keep-alive pool to avoid a libuv async/close race during
+  // shutdown on Windows + Node 24 (nodejs/node#56645).
+  const dispatcher = (globalThis as any)[Symbol.for("undici.globalDispatcher.1")];
+  if (dispatcher?.close) await dispatcher.close();
   process.exitCode = exitCode ?? (err ? 1 : 0);
 }
 
