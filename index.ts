@@ -12,7 +12,9 @@ import {prewarmOrigins} from "./utils/prewarm.ts";
 import type {Arg} from "./config.ts";
 import type {Output, UpdatesOptions} from "./api.ts";
 
-for (const url of prewarmOrigins(cwd(), argv.slice(2))) fetch(url, {method: "HEAD"}).catch(() => {});
+const prewarmAbort = new AbortController();
+const prewarms = prewarmOrigins(cwd(), argv.slice(2))
+  .map(url => fetch(url, {method: "HEAD", signal: prewarmAbort.signal}).catch(() => {}));
 
 const result = parseArgs({
   strict: false,
@@ -66,7 +68,7 @@ function resolveColor(fileConfig: UpdatesOptions): boolean {
   return Boolean(stdout.isTTY);
 }
 
-function end(err?: Error | void, exitCode?: number): void {
+async function end(err?: Error | void, exitCode?: number): Promise<void> {
   if (err) {
     const error = err.message ?? String(err);
     if (args.json) {
@@ -76,6 +78,8 @@ function end(err?: Error | void, exitCode?: number): void {
     }
   }
 
+  prewarmAbort.abort();
+  await Promise.all(prewarms);
   process.exitCode = exitCode ?? (err ? 1 : 0);
 }
 
@@ -128,13 +132,13 @@ async function main(): Promise<void> {
     $ updates -f Dockerfile
     $ updates -f docker-compose.yml
 `);
-    end();
+    await end();
     return;
   }
 
   if (args.version) {
     console.info(packageVersion);
-    end();
+    await end();
     return;
   }
 
@@ -213,11 +217,11 @@ async function main(): Promise<void> {
   }
 
   if (config.errorOnOutdated) {
-    end(undefined, hasResults ? 2 : 0);
+    await end(undefined, hasResults ? 2 : 0);
   } else if (config.errorOnUnchanged) {
-    end(undefined, hasResults ? 0 : 2);
+    await end(undefined, hasResults ? 0 : 2);
   } else {
-    end();
+    await end();
   }
 }
 
@@ -257,5 +261,5 @@ function formatOutput(output: Output): string {
 try {
   await main();
 } catch (err) {
-  end(err as Error);
+  await end(err as Error);
 }
