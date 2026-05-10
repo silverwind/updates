@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import {argv, cwd, stdout, stderr, exit, platform, versions} from "node:process";
+import {argv, cwd, stdout} from "node:process";
 import {stripVTControlCharacters, styleText, parseArgs} from "node:util";
 import {dirname, isAbsolute, resolve} from "node:path";
 import {statSync} from "node:fs";
@@ -66,7 +66,7 @@ function resolveColor(fileConfig: UpdatesOptions): boolean {
   return Boolean(stdout.isTTY);
 }
 
-async function end(err?: Error | void, exitCode?: number): Promise<void> {
+function end(err?: Error | void, exitCode?: number): void {
   if (err) {
     const error = err.message ?? String(err);
     if (args.json) {
@@ -76,18 +76,10 @@ async function end(err?: Error | void, exitCode?: number): Promise<void> {
     }
   }
 
-  if (platform === "win32" && Number(versions?.node?.split(".")[0]) >= 23) {
-    await new Promise(resolve => setTimeout(resolve, 50));
-  }
-
-  exit(exitCode ?? (err ? 1 : 0));
+  process.exitCode = exitCode ?? (err ? 1 : 0);
 }
 
 async function main(): Promise<void> {
-  for (const stream of [stdout, stderr]) {
-    (stream as any)?._handle?.setBlocking?.(true);
-  }
-
   const maxSockets = 25;
 
   if (args.help) {
@@ -136,12 +128,14 @@ async function main(): Promise<void> {
     $ updates -f Dockerfile
     $ updates -f docker-compose.yml
 `);
-    await end();
+    end();
+    return;
   }
 
   if (args.version) {
     console.info(packageVersion);
-    await end();
+    end();
+    return;
   }
 
   const fileSet = parseMixedArg(args.file);
@@ -219,11 +213,11 @@ async function main(): Promise<void> {
   }
 
   if (config.errorOnOutdated) {
-    await end(undefined, hasResults ? 2 : 0);
+    end(undefined, hasResults ? 2 : 0);
   } else if (config.errorOnUnchanged) {
-    await end(undefined, hasResults ? 0 : 2);
+    end(undefined, hasResults ? 0 : 2);
   } else {
-    await end();
+    end();
   }
 }
 
@@ -263,5 +257,5 @@ function formatOutput(output: Output): string {
 try {
   await main();
 } catch (err) {
-  await end(err as Error);
+  end(err as Error);
 }
