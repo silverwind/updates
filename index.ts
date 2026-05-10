@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import {argv, cwd, stdout} from "node:process";
+import {argv, cwd, stdout, stderr, exit, platform, versions} from "node:process";
 import {stripVTControlCharacters, styleText, parseArgs} from "node:util";
 import {dirname, isAbsolute, resolve} from "node:path";
 import {statSync} from "node:fs";
@@ -12,9 +12,7 @@ import {prewarmOrigins} from "./utils/prewarm.ts";
 import type {Arg} from "./config.ts";
 import type {Output, UpdatesOptions} from "./api.ts";
 
-const prewarmAbort = new AbortController();
-const prewarms = prewarmOrigins(cwd(), argv.slice(2))
-  .map(url => fetch(url, {method: "HEAD", signal: prewarmAbort.signal}).catch(() => {}));
+for (const url of prewarmOrigins(cwd(), argv.slice(2))) fetch(url, {method: "HEAD"}).catch(() => {});
 
 const result = parseArgs({
   strict: false,
@@ -78,16 +76,19 @@ async function end(err?: Error | void, exitCode?: number): Promise<void> {
     }
   }
 
-  prewarmAbort.abort();
-  await Promise.all(prewarms);
-  // Drain undici's keep-alive pool to avoid a libuv async/close race during
-  // shutdown on Windows + Node 24 (nodejs/node#56645).
-  const dispatcher = (globalThis as any)[Symbol.for("undici.globalDispatcher.1")];
-  if (dispatcher?.close) await dispatcher.close();
-  process.exitCode = exitCode ?? (err ? 1 : 0);
+  // https://github.com/nodejs/node/issues/56645
+  if (platform === "win32" && Number(versions?.node?.split(".")[0]) >= 23) {
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+
+  exit(exitCode ?? (err ? 1 : 0));
 }
 
 async function main(): Promise<void> {
+  for (const stream of [stdout, stderr]) {
+    (stream as any)?._handle?.setBlocking?.(true);
+  }
+
   const maxSockets = 25;
 
   if (args.help) {
@@ -137,13 +138,11 @@ async function main(): Promise<void> {
     $ updates -f docker-compose.yml
 `);
     await end();
-    return;
   }
 
   if (args.version) {
     console.info(packageVersion);
     await end();
-    return;
   }
 
   const fileSet = parseMixedArg(args.file);
