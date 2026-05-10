@@ -78,7 +78,7 @@ async function end(err?: Error | void, exitCode?: number): Promise<void> {
 
   // https://github.com/nodejs/node/issues/56645
   if (platform === "win32" && Number(versions?.node?.split(".")[0]) >= 23) {
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise(resolve => setTimeout(resolve, 200));
   }
 
   exit(exitCode ?? (err ? 1 : 0));
