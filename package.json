@@ -1,6 +1,6 @@
 {
   "name": "updates",
-  "version": "17.16.9",
+  "version": "17.16.10",
   "description": "CLI dependency update tool for npm, uv, cargo, go and actions",
   "author": "silverwind",
   "repository": "silverwind/updates",
