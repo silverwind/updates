@@ -35,5 +35,5 @@ jobs:
         if: ${{matrix.js[0] == 'bun'}}
       - run: make deps lint test
         if: ${{matrix.js[0] == 'node'}}
-      - run: bun install && bunx tsdown && bun test --timeout 180000
+      - run: bun install && bunx --bun tsdown && bun test --timeout 180000
         if: ${{matrix.js[0] == 'bun'}}
