@@ -1746,7 +1746,9 @@ test("actions composite action discovery", async ({expect = globalExpect}: any =
     script, "-j", "-c", "--forgeapi", githubUrl, "-M", "actions", "-f", compositeDir,
   ]);
   expect(stderr).toEqual("");
-  const results = JSON.parse(stdout).results.actions;
+  const raw = JSON.parse(stdout).results.actions;
+  const results: Record<string, any> = {};
+  for (const [k, v] of Object.entries(raw)) results[k.replace(/\\/g, "/")] = v;
   const wfKey = Object.keys(results).find(k => k.endsWith("workflows/ci.yml"));
   const compKey = Object.keys(results).find(k => k.endsWith("my-action/action.yml"));
   const nestedKey = Object.keys(results).find(k => k.endsWith("nested/sub/action.yaml"));

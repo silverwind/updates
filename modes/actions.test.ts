@@ -194,7 +194,7 @@ test("resolveWorkflowFiles returns empty for dir without yaml", () => {
 test("resolveWorkflowFiles finds composite actions", () => {
   const dir = resolve("fixtures/actions-composite/.github");
   const result = resolveWorkflowFiles(dir);
-  const names = result.map(f => f.replace(`${dir}/`, ""));
+  const names = result.map(f => f.slice(dir.length + 1).replace(/\\/g, "/"));
   expect(names.sort()).toEqual([
     "actions/my-action/action.yml",
     "actions/nested/sub/action.yaml",
