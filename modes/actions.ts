@@ -74,14 +74,22 @@ export function updateWorkflowFile(content: string, actionDeps: Array<{name: str
 
 export function isWorkflowFile(file: string): boolean {
   const normalized = file.replace(/\\/g, "/");
-  return /\.github\/workflows\/[^/]+\.(ya?ml)$/.test(normalized);
+  return /\.github\/(?:workflows\/[^/]+|(?:[^/]+\/)*action)\.ya?ml$/.test(normalized);
 }
 
-export function resolveWorkflowFiles(dir: string): Array<string> {
+export function resolveWorkflowFiles(githubDir: string): Array<string> {
+  const found = new Set<string>();
   try {
-    return readdirSync(dir).filter(f => /\.(ya?ml)$/.test(f)).map(f => resolve(join(dir, f)));
-  } catch {
-    return [];
-  }
+    for (const f of readdirSync(join(githubDir, "workflows"))) {
+      if (/\.ya?ml$/.test(f)) found.add(resolve(join(githubDir, "workflows", f)));
+    }
+  } catch {}
+  try {
+    for (const entry of readdirSync(githubDir, {recursive: true, withFileTypes: true})) {
+      if (!entry.isFile() || !/^action\.ya?ml$/.test(entry.name)) continue;
+      found.add(resolve(join(entry.parentPath, entry.name)));
+    }
+  } catch {}
+  return Array.from(found);
 }
 

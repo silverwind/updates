@@ -98,6 +98,30 @@ test("isWorkflowFile windows backslashes", () => {
   expect(isWorkflowFile(".github\\workflows\\ci.yml")).toBe(true);
 });
 
+test("isWorkflowFile composite action", () => {
+  expect(isWorkflowFile(".github/actions/my-action/action.yml")).toBe(true);
+});
+
+test("isWorkflowFile composite action yaml", () => {
+  expect(isWorkflowFile(".github/actions/my-action/action.yaml")).toBe(true);
+});
+
+test("isWorkflowFile composite action nested", () => {
+  expect(isWorkflowFile(".github/actions/group/sub/action.yml")).toBe(true);
+});
+
+test("isWorkflowFile composite action at root of .github", () => {
+  expect(isWorkflowFile(".github/action.yml")).toBe(true);
+});
+
+test("isWorkflowFile rejects non-action yml in .github subdir", () => {
+  expect(isWorkflowFile(".github/actions/my-action/other.yml")).toBe(false);
+});
+
+test("isWorkflowFile rejects action.yml outside .github", () => {
+  expect(isWorkflowFile("actions/my-action/action.yml")).toBe(false);
+});
+
 // updateWorkflowFile
 test("updateWorkflowFile single replacement", () => {
   const content = "    uses: actions/checkout@v3\n";
@@ -153,7 +177,7 @@ test("fetchActionTagDate returns empty on throw", async () => {
 
 // resolveWorkflowFiles
 test("resolveWorkflowFiles finds yaml files", () => {
-  const dir = resolve("fixtures/docker-actions/.github/workflows");
+  const dir = resolve("fixtures/docker-actions/.github");
   const result = resolveWorkflowFiles(dir);
   expect(result.length).toBe(1);
   expect(result[0]).toContain("ci.yaml");
@@ -165,6 +189,17 @@ test("resolveWorkflowFiles returns empty for non-existent dir", () => {
 
 test("resolveWorkflowFiles returns empty for dir without yaml", () => {
   expect(resolveWorkflowFiles(resolve("fixtures/cargo"))).toEqual([]);
+});
+
+test("resolveWorkflowFiles finds composite actions", () => {
+  const dir = resolve("fixtures/actions-composite/.github");
+  const result = resolveWorkflowFiles(dir);
+  const names = result.map(f => f.replace(`${dir}/`, ""));
+  expect(names.sort()).toEqual([
+    "actions/my-action/action.yml",
+    "actions/nested/sub/action.yaml",
+    "workflows/ci.yml",
+  ]);
 });
 
 test("updateWorkflowFile quoted uses", () => {

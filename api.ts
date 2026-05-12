@@ -151,20 +151,20 @@ function resolveFiles(filesArg: Set<string> | false): Set<string> {
           }
         } catch {}
         const normalized = resolve(file).replace(/\\/g, "/");
-        let wfDir: string | undefined;
-        if (normalized.endsWith(".github/workflows")) wfDir = normalized;
-        else if (normalized.endsWith(".github")) wfDir = join(normalized, "workflows");
-        else wfDir = join(normalized, ".github", "workflows");
-        for (const wf of resolveWorkflowFiles(wfDir)) resolvedFiles.add(wf);
+        let githubDir: string;
+        if (normalized.endsWith(".github/workflows")) githubDir = dirname(normalized);
+        else if (normalized.endsWith(".github")) githubDir = normalized;
+        else githubDir = join(normalized, ".github");
+        for (const wf of resolveWorkflowFiles(githubDir)) resolvedFiles.add(wf);
       } else {
         throw new Error(`${file} is neither a file nor directory`);
       }
     }
   } else {
-    const workflowsDir = join(".github", "workflows");
-    const candidates = [...Object.keys(modeByFileName), ...dockerExactFileNames, workflowsDir];
+    const githubDirName = ".github";
+    const candidates = [...Object.keys(modeByFileName), ...dockerExactFileNames, githubDirName];
     for (const [filename, path] of findUpSync(candidates, cwd())) {
-      if (filename === workflowsDir) {
+      if (filename === githubDirName) {
         for (const wf of resolveWorkflowFiles(path)) resolvedFiles.add(wf);
       } else {
         resolvedFiles.add(resolve(path));

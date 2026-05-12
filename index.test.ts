@@ -1740,6 +1740,41 @@ test("actions hash-pinned update", async ({expect = globalExpect}: any = {}) => 
   expect(updatedContent).not.toContain("cccc000000000000000000000000000000000006");
 });
 
+test("actions composite action discovery", async ({expect = globalExpect}: any = {}) => {
+  const compositeDir = fileURLToPath(new URL("fixtures/actions-composite/.github", import.meta.url));
+  const {stdout, stderr} = await execFileAsync(process.execPath, [
+    script, "-j", "-c", "--forgeapi", githubUrl, "-M", "actions", "-f", compositeDir,
+  ]);
+  expect(stderr).toEqual("");
+  const results = JSON.parse(stdout).results.actions;
+  const wfKey = Object.keys(results).find(k => k.endsWith("workflows/ci.yml"));
+  const compKey = Object.keys(results).find(k => k.endsWith("my-action/action.yml"));
+  const nestedKey = Object.keys(results).find(k => k.endsWith("nested/sub/action.yaml"));
+  expect(wfKey).toBeDefined();
+  expect(compKey).toBeDefined();
+  expect(nestedKey).toBeDefined();
+  expect(results[wfKey!]["actions/checkout"].new).toBe("10");
+  expect(results[compKey!]["actions/setup-node"].new).toBe("10.0.0");
+  expect(results[nestedKey!]["actions/checkout"].new).toBe("10");
+});
+
+test("actions composite action update", async ({expect = globalExpect}: any = {}) => {
+  const root = join(testDir, "composite-update");
+  const ghDir = join(root, ".github");
+  mkdirSync(join(ghDir, "workflows"), {recursive: true});
+  mkdirSync(join(ghDir, "actions", "my-action"), {recursive: true});
+  await writeFile(join(ghDir, "workflows", "ci.yml"), "name: ci\non: push\njobs:\n  ci:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v2\n");
+  await writeFile(join(ghDir, "actions", "my-action", "action.yml"), "name: my-action\nruns:\n  using: composite\n  steps:\n    - uses: actions/setup-node@v1.0\n      shell: bash\n");
+
+  const {stderr} = await execFileAsync(process.execPath, [
+    script, "-u", "-c", "--forgeapi", githubUrl, "-M", "actions", "-f", ghDir,
+  ]);
+  expect(stderr).toEqual("");
+
+  expect(await readFile(join(ghDir, "workflows", "ci.yml"), "utf8")).toContain("actions/checkout@v10");
+  expect(await readFile(join(ghDir, "actions", "my-action", "action.yml"), "utf8")).toContain("actions/setup-node@v10.0.0");
+});
+
 // -- Docker tests --
 
 function dockerArgs(...extra: Array<string>) {

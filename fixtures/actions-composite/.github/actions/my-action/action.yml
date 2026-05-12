@@ -1,0 +1,6 @@
+name: my-action
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v1.0
+      shell: bash
