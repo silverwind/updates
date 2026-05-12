@@ -122,6 +122,22 @@ test("isWorkflowFile rejects action.yml outside .github", () => {
   expect(isWorkflowFile("actions/my-action/action.yml")).toBe(false);
 });
 
+test("isWorkflowFile gitea workflow", () => {
+  expect(isWorkflowFile(".gitea/workflows/ci.yml")).toBe(true);
+});
+
+test("isWorkflowFile gitea composite action", () => {
+  expect(isWorkflowFile(".gitea/actions/my-action/action.yml")).toBe(true);
+});
+
+test("isWorkflowFile forgejo workflow", () => {
+  expect(isWorkflowFile(".forgejo/workflows/ci.yml")).toBe(true);
+});
+
+test("isWorkflowFile forgejo composite action", () => {
+  expect(isWorkflowFile(".forgejo/actions/my-action/action.yml")).toBe(true);
+});
+
 // updateWorkflowFile
 test("updateWorkflowFile single replacement", () => {
   const content = "    uses: actions/checkout@v3\n";

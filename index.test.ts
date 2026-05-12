@@ -12,6 +12,7 @@ import type {Server} from "node:http";
 import {satisfies} from "./utils/semver.ts";
 import {npmTypes} from "./utils/utils.ts";
 import {updates} from "./api.ts";
+import {forgeDirs} from "./modes/actions.ts";
 import type {UpdatesOptions} from "./api.ts";
 
 const execFileAsync = promisify(execFile);
@@ -1760,21 +1761,21 @@ test("actions composite action discovery", async ({expect = globalExpect}: any =
   expect(results[nestedKey!]["actions/checkout"].new).toBe("10");
 });
 
-test("actions composite action update", async ({expect = globalExpect}: any = {}) => {
-  const root = join(testDir, "composite-update");
-  const ghDir = join(root, ".github");
-  mkdirSync(join(ghDir, "workflows"), {recursive: true});
-  mkdirSync(join(ghDir, "actions", "my-action"), {recursive: true});
-  await writeFile(join(ghDir, "workflows", "ci.yml"), "name: ci\non: push\njobs:\n  ci:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v2\n");
-  await writeFile(join(ghDir, "actions", "my-action", "action.yml"), "name: my-action\nruns:\n  using: composite\n  steps:\n    - uses: actions/setup-node@v1.0\n      shell: bash\n");
+test.each(forgeDirs)("actions composite action update %s", async (forgeDirName, {expect = globalExpect}: any = {}) => {
+  const root = join(testDir, `composite-update-${forgeDirName.slice(1)}`);
+  const forgeDir = join(root, forgeDirName);
+  mkdirSync(join(forgeDir, "workflows"), {recursive: true});
+  mkdirSync(join(forgeDir, "actions", "my-action"), {recursive: true});
+  await writeFile(join(forgeDir, "workflows", "ci.yml"), "name: ci\non: push\njobs:\n  ci:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v2\n");
+  await writeFile(join(forgeDir, "actions", "my-action", "action.yml"), "name: my-action\nruns:\n  using: composite\n  steps:\n    - uses: actions/setup-node@v1.0\n      shell: bash\n");
 
   const {stderr} = await execFileAsync(process.execPath, [
-    script, "-u", "-c", "--forgeapi", githubUrl, "-M", "actions", "-f", ghDir,
+    script, "-u", "-c", "--forgeapi", githubUrl, "-M", "actions", "-f", forgeDir,
   ]);
   expect(stderr).toEqual("");
 
-  expect(await readFile(join(ghDir, "workflows", "ci.yml"), "utf8")).toContain("actions/checkout@v10");
-  expect(await readFile(join(ghDir, "actions", "my-action", "action.yml"), "utf8")).toContain("actions/setup-node@v10.0.0");
+  expect(await readFile(join(forgeDir, "workflows", "ci.yml"), "utf8")).toContain("actions/checkout@v10");
+  expect(await readFile(join(forgeDir, "actions", "my-action", "action.yml"), "utf8")).toContain("actions/setup-node@v10.0.0");
 });
 
 // -- Docker tests --

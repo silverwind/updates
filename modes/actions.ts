@@ -72,20 +72,21 @@ export function updateWorkflowFile(content: string, actionDeps: Array<{name: str
   return newContent;
 }
 
+export const forgeDirs = [".github", ".gitea", ".forgejo"] as const;
+
 export function isWorkflowFile(file: string): boolean {
-  const normalized = file.replace(/\\/g, "/");
-  return /\.github\/(?:workflows\/[^/]+|(?:[^/]+\/)*action)\.ya?ml$/.test(normalized);
+  return new RegExp(`(?:${forgeDirs.map(esc).join("|")})\\/(?:workflows\\/[^/]+|(?:[^/]+\\/)*action)\\.ya?ml$`).test(file.replace(/\\/g, "/"));
 }
 
-export function resolveWorkflowFiles(githubDir: string): Array<string> {
+export function resolveWorkflowFiles(forgeDir: string): Array<string> {
   const found = new Set<string>();
   try {
-    for (const f of readdirSync(join(githubDir, "workflows"))) {
-      if (/\.ya?ml$/.test(f)) found.add(resolve(join(githubDir, "workflows", f)));
+    for (const f of readdirSync(join(forgeDir, "workflows"))) {
+      if (/\.ya?ml$/.test(f)) found.add(resolve(join(forgeDir, "workflows", f)));
     }
   } catch {}
   try {
-    for (const entry of readdirSync(githubDir, {recursive: true, withFileTypes: true})) {
+    for (const entry of readdirSync(forgeDir, {recursive: true, withFileTypes: true})) {
       if (!entry.isFile() || !/^action\.ya?ml$/.test(entry.name)) continue;
       found.add(resolve(join(entry.parentPath, entry.name)));
     }

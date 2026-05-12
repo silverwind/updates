@@ -30,7 +30,7 @@ import {
   type ActionRef, type TagEntry,
   actionsUsesRe, parseActionRef, getForgeApiBaseUrl,
   fetchActionTags, fetchActionTagDate, formatActionVersion,
-  updateWorkflowFile, isWorkflowFile, resolveWorkflowFiles,
+  updateWorkflowFile, isWorkflowFile, resolveWorkflowFiles, forgeDirs,
 } from "./modes/actions.ts";
 import {
   type DockerImageRef,
@@ -151,20 +151,24 @@ function resolveFiles(filesArg: Set<string> | false): Set<string> {
           }
         } catch {}
         const normalized = resolve(file).replace(/\\/g, "/");
-        let githubDir: string;
-        if (normalized.endsWith(".github/workflows")) githubDir = dirname(normalized);
-        else if (normalized.endsWith(".github")) githubDir = normalized;
-        else githubDir = join(normalized, ".github");
-        for (const wf of resolveWorkflowFiles(githubDir)) resolvedFiles.add(wf);
+        const endsInWorkflowsDir = forgeDirs.some(forgeDir => normalized.endsWith(`${forgeDir}/workflows`));
+        const endsInForgeDir = !endsInWorkflowsDir && forgeDirs.some(forgeDir => normalized.endsWith(forgeDir));
+        let forgeDirCandidates: Array<string>;
+        if (endsInWorkflowsDir) forgeDirCandidates = [dirname(normalized)];
+        else if (endsInForgeDir) forgeDirCandidates = [normalized];
+        else forgeDirCandidates = forgeDirs.map(forgeDir => join(normalized, forgeDir));
+        for (const forgeDir of forgeDirCandidates) {
+          for (const workflow of resolveWorkflowFiles(forgeDir)) resolvedFiles.add(workflow);
+        }
       } else {
         throw new Error(`${file} is neither a file nor directory`);
       }
     }
   } else {
-    const githubDirName = ".github";
-    const candidates = [...Object.keys(modeByFileName), ...dockerExactFileNames, githubDirName];
+    const forgeDirSet = new Set<string>(forgeDirs);
+    const candidates = [...Object.keys(modeByFileName), ...dockerExactFileNames, ...forgeDirs];
     for (const [filename, path] of findUpSync(candidates, cwd())) {
-      if (filename === githubDirName) {
+      if (forgeDirSet.has(filename)) {
         for (const wf of resolveWorkflowFiles(path)) resolvedFiles.add(wf);
       } else {
         resolvedFiles.add(resolve(path));
