@@ -104,10 +104,6 @@ function logVerbose(message: string): void {
   console.error(`${timestamp()} ${message}`);
 }
 
-function toRelPath(absPath: string): string {
-  return absPath.replace(`${cwd()}/`, "").replace(`${cwd()}\\`, "");
-}
-
 function canInclude(name: string, mode: string, include: Set<RegExp>, exclude: Set<RegExp>, depType: string): boolean {
   if (depType === "engines" && nonPackageEngines.includes(name)) return false;
   if (mode === "pypi" && name === "python") return false;
@@ -337,6 +333,8 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
   const filePerMode: Record<string, string> = {};
   const now = Date.now();
   const cooldownDays = config.cooldown ? parseDuration(String(config.cooldown)) : 0;
+  const cwdStr = cwd();
+  const toRelPath = (absPath: string) => absPath.replace(`${cwdStr}/`, "").replace(`${cwdStr}\\`, "");
   let numDependencies = 0;
 
   const addDep = (mode: string, depType: string, typePrefix: string, name: string, old: string, oldOrig: string) => {

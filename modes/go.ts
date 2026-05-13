@@ -312,23 +312,18 @@ export function updateGoMod(pkgStr: string, deps: Deps): [string, Record<string,
 }
 
 export function rewriteGoImports(projectDir: string, majorVersionRewrites: Record<string, string>, write: (file: string, content: string) => void): void {
-  if (!Object.keys(majorVersionRewrites).length) return;
+  const entries = Object.entries(majorVersionRewrites);
+  if (!entries.length) return;
+  const lookup = new Map(entries);
+  // Sort longest-first so prefix paths don't shadow longer ones in the alternation
+  const sortedPaths = entries.map(([oldPath]) => oldPath).sort((a, b) => b.length - a.length);
+  const combinedRe = new RegExp(`"(${sortedPaths.map(esc).join("|")})(/|")`, "g");
   const goFiles = globSync("**/*.go", {cwd: projectDir});
   for (const relPath of goFiles) {
     const filePath = join(projectDir, relPath);
-    let content = readFileSync(filePath, "utf8");
-    let changed = false;
-    for (const [oldPath, newPath] of Object.entries(majorVersionRewrites)) {
-      const re = new RegExp(`"${esc(oldPath)}(/|")`, "g");
-      const replaced = content.replace(re, `"${newPath}$1`);
-      if (replaced !== content) {
-        content = replaced;
-        changed = true;
-      }
-    }
-    if (changed) {
-      write(filePath, content);
-    }
+    const content = readFileSync(filePath, "utf8");
+    const replaced = content.replace(combinedRe, (_, oldPath, sep) => `"${lookup.get(oldPath)}${sep}`);
+    if (replaced !== content) write(filePath, replaced);
   }
 }
 

@@ -97,7 +97,7 @@ export const fieldSep = "\0";
 export const fetchTimeout = 5000;
 export const goProbeTimeout = 2500;
 
-export const stripv = (str: string): string => str.replace(/^v/, "");
+export const stripv = (str: string): string => str[0] === "v" ? str.substring(1) : str;
 export const normalizeUrl = (url: string) => url.endsWith("/") ? url.slice(0, -1) : url;
 
 export function getFetchOpts(authType?: string, authToken?: string): RequestInit {
@@ -549,16 +549,16 @@ export async function fetchActionTags(apiUrl: string, owner: string, repo: strin
   try {
     const page1 = await fetchTagsPage(tagsUrl(1), ctx);
     if (!page1) return [];
-    const results = Array.from(page1.tags);
+    const tags = page1.tags;
     const last = /<([^>]+)>;\s*rel="last"/.exec(page1.link);
-    if (!last) return results;
+    if (!last) return tags;
     const lastPage = Number(new URL(last[1]).searchParams.get("page"));
-    if (lastPage < 2) return results;
+    if (lastPage < 2) return tags;
     const pages = await Promise.all(
       Array.from({length: lastPage - 1}, (_, idx) => fetchTagsPage(tagsUrl(idx + 2), ctx)),
     );
-    for (const p of pages) if (p) results.push(...p.tags);
-    return results;
+    for (const p of pages) if (p) tags.push(...p.tags);
+    return tags;
   } catch {
     return [];
   }

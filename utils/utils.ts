@@ -13,7 +13,11 @@ export function highlightDiff(a: string, b: string, colorFn: (str: string) => st
     } else {
       // No separator found, preserve non-digit prefix (v, ^, >=, ~)
       let d = 0;
-      while (d < i && !/\d/.test(a[d])) d++;
+      while (d < i) {
+        const code = a.charCodeAt(d);
+        if (code >= 48 && code <= 57) break;
+        d++;
+      }
       i = d;
     }
   }
@@ -97,23 +101,31 @@ export function timestamp(): string {
 }
 
 export function textTable(rows: Array<Array<string>>, ansiLen: (str: string) => number, hsep = " "): string {
-  let ret = "";
   const colSizes = new Array(rows[0].length).fill(0);
-  for (const row of rows) {
-    for (const [colIndex, col] of row.entries()) {
-      const len = ansiLen(col);
-      if (len > colSizes[colIndex]) {
-        colSizes[colIndex] = len;
+  const lens = new Array<Array<number>>(rows.length);
+  for (let r = 0; r < rows.length; r++) {
+    const row = rows[r];
+    const rowLens = new Array(row.length);
+    for (let c = 0; c < row.length; c++) {
+      const len = ansiLen(row[c]);
+      rowLens[c] = len;
+      if (len > colSizes[c]) colSizes[c] = len;
+    }
+    lens[r] = rowLens;
+  }
+  let ret = "";
+  for (let r = 0; r < rows.length; r++) {
+    const row = rows[r];
+    const lastCol = row.length - 1;
+    for (let c = 0; c <= lastCol; c++) {
+      if (c > 0) ret += hsep;
+      ret += row[c];
+      if (c !== lastCol) {
+        const pad = colSizes[c] - lens[r][c];
+        if (pad > 0) ret += " ".repeat(pad);
       }
     }
-  }
-  for (const [rowIndex, row] of rows.entries()) {
-    for (const [colIndex, col] of row.entries()) {
-      if (colIndex > 0) ret += hsep;
-      const space = " ".repeat(colSizes[colIndex] - ansiLen(col));
-      ret += col + (colIndex === row.length - 1 ? "" : space);
-    }
-    if (rowIndex < rows.length - 1) ret += "\n";
+    if (r < rows.length - 1) ret += "\n";
   }
   return ret;
 }
