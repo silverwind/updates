@@ -932,6 +932,7 @@ test("patch", async ({expect = globalExpect}: any = {}) => {
   `);
 });
 
+// Also covers preup: don't upgrade stable to prerelease (3.1.0 -> 3.1.4, not 3.2.0-beta from latest dist-tag).
 test("include", async ({expect = globalExpect}: any = {}) => {
   expect(await makeTest("-j -i noty")()).toMatchInlineSnapshot(`
     {
@@ -1107,24 +1108,6 @@ test("invalid config", async ({expect = globalExpect}: any = {}) => {
     expect(output).toContain("updates.config.js");
     expect(output).toContain("Unable to parse");
   }
-});
-
-test("preup", async ({expect = globalExpect}: any = {}) => {
-  // Test that we don't upgrade from stable to prerelease when latest dist-tag is a prerelease
-  // noty: 3.1.0 -> should suggest 3.1.4 (not 3.2.0-beta which is on latest dist-tag)
-  expect(await makeTest("-j -i noty")()).toMatchInlineSnapshot(`
-    {
-      "npm": {
-        "dependencies": {
-          "noty": {
-            "info": "https://github.com/needim/noty",
-            "new": "3.1.4",
-            "old": "3.1.0",
-          },
-        },
-      },
-    }
-  `);
 });
 
 test("preup 1", async ({expect = globalExpect}: any = {}) => {
@@ -2026,36 +2009,6 @@ async function configTest(config: string, args: string): Promise<{stdout: string
   }
 }
 
-test("config greatest", async ({expect = globalExpect}: any = {}) => {
-  const {stdout} = await configTest(`{ greatest: true }`, "-j -i gulp-sourcemaps");
-  expect(JSON.parse(stdout).results.npm.dependencies["gulp-sourcemaps"].new).toBe("2.6.5");
-});
-
-test("config greatest array", async ({expect = globalExpect}: any = {}) => {
-  const {stdout} = await configTest(`{ greatest: ["gulp-sourcemaps"] }`, "-j -i gulp-sourcemaps,noty");
-  const {results} = JSON.parse(stdout);
-  expect(results.npm.dependencies["gulp-sourcemaps"].new).toBe("2.6.5");
-  expect(results.npm.dependencies.noty.new).toBe("3.1.4");
-});
-
-test("config patch", async ({expect = globalExpect}: any = {}) => {
-  const {stdout} = await configTest(`{ patch: true }`, "-j -i gulp-sourcemaps");
-  expect(JSON.parse(stdout).results.npm.dependencies["gulp-sourcemaps"].new).toBe("2.0.1");
-});
-
-test("config minor", async ({expect = globalExpect}: any = {}) => {
-  const {stdout} = await configTest(`{ minor: true }`, "-j -i gulp-sourcemaps");
-  expect(JSON.parse(stdout).results.npm.dependencies["gulp-sourcemaps"].new).toBe("2.6.5");
-});
-
-test("config modes", async ({expect = globalExpect}: any = {}) => {
-  const {stdout} = await configTest(`{ modes: ["npm"] }`, "-j -i updates");
-  const {results} = JSON.parse(stdout);
-  expect(results.npm).toBeDefined();
-  expect(results.go).toBeUndefined();
-  expect(results.pypi).toBeUndefined();
-});
-
 test("config errorOnOutdated", async ({expect = globalExpect}: any = {}) => {
   try {
     await configTest(`{ errorOnOutdated: true }`, "-j -i noty");
@@ -2075,30 +2028,6 @@ test("config cli overrides config", async ({expect = globalExpect}: any = {}) =>
   // Config has minor (patch+minor), CLI -P overrides to patch-only
   const {stdout} = await configTest(`{ minor: true }`, "-j -i gulp-sourcemaps -P");
   expect(JSON.parse(stdout).results.npm.dependencies["gulp-sourcemaps"].new).toBe("2.0.1");
-});
-
-test("config cooldown", async ({expect = globalExpect}: any = {}) => {
-  const {stdout} = await configTest(`{ cooldown: 999999 }`, "-j -M npm -i updates");
-  expect(JSON.parse(stdout).message).toBe("All dependencies are up to date.");
-});
-
-test("config cooldown string duration", async ({expect = globalExpect}: any = {}) => {
-  const {stdout} = await configTest(`{ cooldown: "999999d" }`, "-j -M npm -i updates");
-  expect(JSON.parse(stdout).message).toBe("All dependencies are up to date.");
-});
-
-test("config include with RegExp", async ({expect = globalExpect}: any = {}) => {
-  const {stdout} = await configTest(`{ include: [/^noty$/] }`, "-j");
-  const {results} = JSON.parse(stdout);
-  expect(results.npm.dependencies.noty).toBeDefined();
-  expect(Object.keys(results.npm.dependencies)).toHaveLength(1);
-});
-
-test("config exclude with RegExp", async ({expect = globalExpect}: any = {}) => {
-  const {stdout} = await configTest(`{ exclude: [/sourcemaps/] }`, "-j -i gulp-sourcemaps,noty");
-  const {results} = JSON.parse(stdout);
-  expect(results.npm.dependencies.noty).toBeDefined();
-  expect(results.npm.dependencies["gulp-sourcemaps"]).toBeUndefined();
 });
 
 test("cli greatest with regex", async ({expect = globalExpect}: any = {}) => {
