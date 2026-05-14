@@ -42,6 +42,8 @@ test("parseUvDependencies", () => {
     "types-requests==2.32.0.20240622",
     "types-paramiko==3.4.0.20240423",
     "ty>=0.0.1a15",
+    "requests",
+    "anyio[trio]",
   ])).toMatchInlineSnapshot(`
     [
       {

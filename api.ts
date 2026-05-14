@@ -24,7 +24,7 @@ import {fetchPypiInfo, updatePyprojectToml} from "./modes/pypi.ts";
 import {
   resolveGoProxy, parseGoNoProxy, isGoPseudoVersion,
   parseGoMod, parseGoWork, fetchGoProxyInfo, updateGoMod, rewriteGoImports,
-  getGoInfoUrl, shortenGoVersion,
+  getGoInfoUrl, shortenGoVersion, shortenGoModule,
 } from "./modes/go.ts";
 import {
   type ActionRef, type TagEntry,
@@ -108,7 +108,7 @@ function canInclude(name: string, mode: string, include: Set<RegExp>, exclude: S
   if (depType === "engines" && nonPackageEngines.includes(name)) return false;
   if (mode === "pypi" && name === "python") return false;
   if (!include.size && !exclude.size) return true;
-  const baseName = mode === "go" ? name.replace(/\/v\d+$/, "") : name;
+  const baseName = mode === "go" ? shortenGoModule(name) : name;
   for (const re of exclude) {
     if (re.test(name) || re.test(baseName)) return false;
   }

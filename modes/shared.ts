@@ -506,9 +506,9 @@ export function selectTag(tags: Array<string>, oldRef: string, useGreatest: bool
 
 export function resolvePackageJsonUrl(url: string): string {
   url = url.replace("git@", "").replace(/.+?\/\//, "https://").replace(/\.git$/, "");
-  if (/^[a-z]+:[a-z0-9-]\/[a-z0-9-]$/.test(url)) { // foo:user/repo
+  if (/^[a-z]+:[a-z0-9-]+\/[a-z0-9-]+$/.test(url)) { // foo:user/repo
     return url.replace(/^(.+?):/, (_, p1) => `https://${p1}.com/`);
-  } else if (/^[a-z0-9-]\/[a-z0-9-]$/.test(url)) { // user/repo
+  } else if (/^[a-z0-9-]+\/[a-z0-9-]+$/.test(url)) { // user/repo
     return `https://github.com/${url}`;
   } else {
     return url;
@@ -605,7 +605,7 @@ export function getInfoUrl({repository, homepage, info}: {repository?: PackageRe
   if (info) { // pypi
     const urls = info.project_urls;
     for (const key of ["repository", "Repository", "repo", "Repo", "source", "Source", "source code", "Source code", "Source Code", "homepage", "Homepage"]) {
-      if (urls[key]) { repository = urls[key]; break; }
+      if (urls?.[key]) { repository = urls[key]; break; }
     }
     repository ??= `https://pypi.org/project/${name}/`;
   }

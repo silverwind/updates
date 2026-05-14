@@ -29,7 +29,7 @@ function parseImageParts(imagePart: string): {registry: string | null, namespace
   } else if (parts.length === 2 && !parts[0].includes(".") && !parts[0].includes(":")) {
     return {registry: null, namespace: parts[0], repo: parts[1]};
   } else {
-    return {registry: parts[0], namespace: parts.slice(1, -1).join("/") || parts[1], repo: parts[parts.length - 1]};
+    return {registry: parts[0], namespace: parts.slice(1, -1).join("/"), repo: parts[parts.length - 1]};
   }
 }
 

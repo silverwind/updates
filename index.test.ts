@@ -1159,7 +1159,7 @@ test("go", async ({expect = globalExpect}: any = {}) => {
       "go": {
         "deps": {
           "github.com/google/go-github/v70": {
-            "info": "https://github.com/google/go-github/tree/HEAD/v82",
+            "info": "https://github.com/google/go-github",
             "new": "82.0.0",
             "old": "70.0.0",
           },
@@ -1208,7 +1208,7 @@ test("go indirect with -I flag", async ({expect = globalExpect}: any = {}) => {
       "go": {
         "deps": {
           "github.com/google/go-github/v70": {
-            "info": "https://github.com/google/go-github/tree/HEAD/v82",
+            "info": "https://github.com/google/go-github",
             "new": "82.0.0",
             "old": "70.0.0",
           },

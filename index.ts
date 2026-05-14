@@ -24,13 +24,14 @@ const result = parseArgs({
 // fix parseArgs defect parsing "-a -b" as {a: "-b"} when a is string
 const values = result.values as Record<string, Arg>;
 for (const [index, token] of result.tokens.entries()) {
-  if (token.kind === "option" && token.value?.startsWith("-")) {
-    const key = getOptionKey(token.value.substring(1));
-    const next = result.tokens[index + 1];
-    values[token.name] = [true];
-    const list = (values[key] ??= []) as Array<string | boolean>;
-    list.push(next?.kind === "positional" && next.value ? next.value : true);
-  }
+  if (token.kind !== "option" || !token.value?.startsWith("-")) continue;
+  const dashes = token.value.startsWith("--") ? 2 : 1;
+  const key = getOptionKey(token.value.substring(dashes));
+  if (!key) continue;
+  const next = result.tokens[index + 1];
+  values[token.name] = [true];
+  const list = (values[key] ??= []) as Array<string | boolean>;
+  list.push(next?.kind === "positional" && next.value ? next.value : true);
 }
 
 const args = result.values;

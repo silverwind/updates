@@ -157,6 +157,7 @@ test("parseGoMod empty tool block", () => {
 
 test("shortenGoModule", () => {
   expect(shortenGoModule("github.com/foo/bar/v2")).toBe("github.com/foo/bar");
+  expect(shortenGoModule("github.com/foo/bar/v10")).toBe("github.com/foo/bar");
   expect(shortenGoModule("github.com/foo/bar")).toBe("github.com/foo/bar");
 });
 

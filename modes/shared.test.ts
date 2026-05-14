@@ -737,10 +737,12 @@ test("findNewVersion go mode allows pinnedRange-matching version", () => {
 
 test("resolvePackageJsonUrl shorthand foo:u/r", () => {
   expect(resolvePackageJsonUrl("g:u/r")).toBe("https://g.com/u/r");
+  expect(resolvePackageJsonUrl("gitlab:user/repo")).toBe("https://gitlab.com/user/repo");
 });
 
 test("resolvePackageJsonUrl shorthand u/r", () => {
   expect(resolvePackageJsonUrl("u/r")).toBe("https://github.com/u/r");
+  expect(resolvePackageJsonUrl("user/repo")).toBe("https://github.com/user/repo");
 });
 
 test("getForgeTokens", async () => {

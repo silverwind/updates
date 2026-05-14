@@ -40,14 +40,16 @@ export function encodeGoModulePath(modulePath: string): string {
   return modulePath.replace(/[A-Z]/g, c => `!${c.toLowerCase()}`);
 }
 
+const goMajorSuffixRe = /\/v(\d+)$/;
+
 export function extractGoMajor(name: string): number {
-  const match = /\/v(\d+)$/.exec(name);
+  const match = goMajorSuffixRe.exec(name);
   return match ? Number.parseInt(match[1]) : 1;
 }
 
 export function buildGoModulePath(name: string, major: number): string {
-  if (major <= 1) return name.replace(/\/v\d+$/, "");
-  return `${name.replace(/\/v\d+$/, "")}/v${major}`;
+  const base = name.replace(goMajorSuffixRe, "");
+  return major <= 1 ? base : `${base}/v${major}`;
 }
 
 type ReplaceMatch = {origModule: string, targetModule: string, targetVersion: string};
@@ -373,7 +375,7 @@ export function getGoInfoUrl(name: string): string {
 }
 
 export function shortenGoModule(module: string): string {
-  return /\/v[0-9]$/.test(module) ? dirname(module) : module;
+  return goMajorSuffixRe.test(module) ? dirname(module) : module;
 }
 
 // turn "v0.0.0-20221128193559-754e69321358" into "v0.0.0-2022112"
