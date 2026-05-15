@@ -29,11 +29,10 @@ export function highlightDiff(a: string, b: string, colorFn: (str: string) => st
 export function parseUvDependencies(specs: Array<string>) {
   const ret: Array<{name: string, version: string}> = [];
   for (const spec of specs) {
-    const [rawName, version] = spec.replaceAll(/\s+/g, "").split(/[<>=~]+/);
-    const name = rawName?.replace(/\[.*?\]$/, "");
-    if (name && typeof version === "string" && /^[0-9.a-z]+$/.test(version)) {
-      ret.push({name, version});
-    }
+    const match = /^([^<>=~!]+)(?:==|>=?|<=?|~=)([0-9.a-z]+)$/.exec(spec.replaceAll(/\s+/g, ""));
+    if (!match) continue;
+    const name = match[1].replace(/\[.*?\]$/, "");
+    if (name) ret.push({name, version: match[2]});
   }
   return ret;
 }

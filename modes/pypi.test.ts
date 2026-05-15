@@ -28,7 +28,7 @@ test("replaces ~= operator", () => {
 test("package with extras", () => {
   const input = `dependencies = [\n  "transformers[torch] >=4.39.3",\n]\n`;
   const deps = {
-    [`dependencies${fieldSep}transformers[torch]`]: {old: "4.39.3", new: "4.40.0"} as any,
+    [`dependencies${fieldSep}transformers`]: {old: "4.39.3", new: "4.40.0"} as any,
   };
   expect(updatePyprojectToml(input, deps)).toBe(`dependencies = [\n  "transformers[torch] >=4.40.0",\n]\n`);
 });

@@ -258,6 +258,7 @@ export function findVersion(data: any, versions: Array<string>, {range, semvers,
 export function findNewVersion(data: any, {mode, range, useGreatest, useRel, usePre, semvers, pinnedRange, cooldownDays, now}: FindNewVersionOpts, {allowDowngrade, matchesAny, isGoPseudoVersion}: {allowDowngrade: Set<RegExp> | boolean, matchesAny: (str: string, set: Set<RegExp> | boolean) => boolean, isGoPseudoVersion: (version: string) => boolean}): string | null {
   if (range === "*") return null; // ignore wildcard
   if (range.includes("||")) return null; // ignore or-chains
+  if (/\d\s/.test(range)) return null; // ignore compound ranges (">=1 <2", "1 - 2")
 
   let versions: Array<string> = [];
   let getVersionDate: ((v: string) => string | undefined) | undefined;
