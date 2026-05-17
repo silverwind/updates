@@ -727,17 +727,17 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
     const hasUrlDeps = mode === "npm" && Object.keys(maybeUrlDeps).length > 0;
     if (!hasDeps && !hasUrlDeps) continue;
     const {modeConfig, projectDir, pin} = modeConfigs[mode];
+    const cooldownRaw = config.cooldown ?? modeConfig.cooldown;
+    const modeCooldownDays = cooldownRaw ? parseDuration(String(cooldownRaw)) : 0;
     fetchTasks.push((async () => {
       const npmFollowUps = new Map<string, {name: string, promise: Promise<{repository?: PackageRepository, homepage?: string, date?: string}>}>();
-      const cooldownRaw = config.cooldown ?? modeConfig.cooldown;
-      const cooldownDays = cooldownRaw ? parseDuration(String(cooldownRaw)) : 0;
       // Safety net for deps that bypass findNewVersion (URL tarballs, JSR
       // follow-ups). findNewVersion's per-version cooldown filter handles the
       // common case; this catches the rest.
       const dropIfTooNew = (modeDeps: Deps) => {
-        if (!cooldownDays) return;
+        if (!modeCooldownDays) return;
         for (const [k, {date}] of Object.entries(modeDeps)) {
-          if (date && !passesCooldown(date, cooldownDays, now)) delete modeDeps[k];
+          if (date && !passesCooldown(date, modeCooldownDays, now)) delete modeDeps[k];
         }
       };
 
@@ -778,7 +778,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
         const pinnedRange = pin[name];
         const newVersion = findNewVersion(data, {
           usePre, useRel, useGreatest, semvers, range: oldRange, mode, pinnedRange,
-          cooldownDays: cooldownDays || undefined, now: cooldownDays ? now : undefined,
+          cooldownDays: modeCooldownDays || undefined, now: modeCooldownDays ? now : undefined,
         }, {allowDowngrade, matchesAny, isGoPseudoVersion});
 
         let newRange = "";
@@ -838,8 +838,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
 
       if (mode === "npm" && Object.keys(maybeUrlDeps).length) {
         const results = (await pMap(Object.entries(maybeUrlDeps), ([key, dep]) => {
-          const name = key.split(fieldSep)[1];
-          return checkUrlDep(key, dep, getVersionOpts(name).useGreatest, ctx);
+          return checkUrlDep(key, dep, ctx);
         }, {concurrency})).filter(r => r !== null);
 
         for (const res of results) {
@@ -1029,7 +1028,9 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
         write(member.absPath, updateFn(member.content, localDeps));
       }
     };
-    // Pre-build update data before buildOutput modifies dep values
+    // Group action and docker deps by their containing workflow/dockerfile so
+    // each file is rewritten once. buildOutput() (called after this block)
+    // mutates dep shape and must run after writes.
     const actionsUpdatesByRelPath = new Map<string, Array<{name: string, oldRef: string, newRef: string}>>();
     if (deps.actions) {
       for (const [key, dep] of Object.entries(deps.actions)) {
@@ -1049,8 +1050,6 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
         map[key] = dep;
       }
     }
-
-    const output = buildOutput(deps);
 
     for (const mode of Object.keys(deps)) {
       if (!Object.keys(deps[mode]).length) continue;
@@ -1110,8 +1109,6 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
         write(filePerMode[mode], fn(fileContent, deps[mode]));
       }
     }
-
-    return output;
   }
 
   return buildOutput(deps);

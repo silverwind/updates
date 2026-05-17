@@ -170,6 +170,18 @@ export function isRangePrerelease(range: string): boolean {
   return /[0-9]+\.[0-9]+\.[0-9]+-.+/.test(range);
 }
 
+// Build the prerelease-augmented copy of a semvers set without mutating the
+// input — getVersionOpts() caches its sets per-package, so mutating in place
+// silently leaks state across packages.
+function withPrereleaseVariants(semvers: Set<string>): Set<string> {
+  const out = new Set(semvers);
+  out.add("prerelease");
+  if (semvers.has("patch")) out.add("prepatch");
+  if (semvers.has("minor")) out.add("preminor");
+  if (semvers.has("major")) out.add("premajor");
+  return out;
+}
+
 type DowngradeOpts = {
   useRel: boolean,
   allowDowngrade: Set<RegExp> | boolean,
@@ -209,14 +221,8 @@ export function findVersion(data: any, versions: Array<string>, {range, semvers,
   const oldVersion = coerceToVersion(range);
   if (!oldVersion) return oldVersion;
 
-  usePre = isRangePrerelease(range) || usePre;
-
-  if (usePre) {
-    semvers.add("prerelease");
-    if (semvers.has("patch")) semvers.add("prepatch");
-    if (semvers.has("minor")) semvers.add("preminor");
-    if (semvers.has("major")) semvers.add("premajor");
-  }
+  const effectiveUsePre = isRangePrerelease(range) || usePre;
+  const effectiveSemvers = effectiveUsePre ? withPrereleaseVariants(semvers) : semvers;
 
   const lookupDate = getVersionDate ?? ((v: string) => data?.time?.[v]);
 
@@ -225,7 +231,7 @@ export function findVersion(data: any, versions: Array<string>, {range, semvers,
 
   for (const version of versions) {
     const parsed = parse(version);
-    if (!parsed?.version || parsed.prerelease.length && (!usePre || useRel)) continue;
+    if (!parsed?.version || parsed.prerelease.length && (!effectiveUsePre || useRel)) continue;
     const candidateVersion = parsed.version;
 
     // If a pinned range is specified, only consider versions that satisfy it
@@ -234,7 +240,7 @@ export function findVersion(data: any, versions: Array<string>, {range, semvers,
     if (!passesCooldown(lookupDate(version), cooldownDays, now)) continue;
 
     const d = diff(newVersion, candidateVersion);
-    if (!d || !semvers.has(d)) continue;
+    if (!d || !effectiveSemvers.has(d)) continue;
 
     // some registries like github don't have data.time available, fall back to greatest on them
     if (useGreatest || !("time" in data)) {
@@ -472,36 +478,24 @@ export async function fetchForge(url: string, ctx: ModeContext, extraHeaders?: R
   return ctx.doFetch(url, optsFor());
 }
 
-export function selectTag(tags: Array<string>, oldRef: string, useGreatest: boolean): string | null {
+// Picks the highest valid semver tag. GitHub does not guarantee a particular
+// ordering for the /tags endpoint, so relying on array position (`tags.at(-1)`)
+// silently picks the wrong tag.
+export function selectTag(tags: Array<string>, oldRef: string): string | null {
   const oldRefBare = stripv(oldRef);
   if (!valid(oldRefBare)) return null;
 
-  if (!useGreatest) {
-    const lastTag = tags.at(-1);
-    if (!lastTag) return null;
-    const lastTagBare = stripv(lastTag);
-    if (!valid(lastTagBare)) return null;
-
-    if (neq(oldRefBare, lastTagBare)) {
-      return lastTag;
-    }
-  } else {
-    let greatestTag = oldRef;
-    let greatestTagBare = stripv(oldRef);
-
-    for (const tag of tags) {
-      const tagBare = stripv(tag);
-      if (!valid(tagBare)) continue;
-      if (!greatestTag || gt(tagBare, greatestTagBare)) {
-        greatestTag = tag;
-        greatestTagBare = tagBare;
-      }
-    }
-    if (neq(oldRefBare, greatestTagBare)) {
-      return greatestTag;
+  let bestTag = "";
+  let bestBare = oldRefBare;
+  for (const tag of tags) {
+    const tagBare = stripv(tag);
+    if (!valid(tagBare)) continue;
+    if (!bestTag || gt(tagBare, bestBare)) {
+      bestTag = tag;
+      bestBare = tagBare;
     }
   }
-
+  if (bestTag && neq(oldRefBare, bestBare)) return bestTag;
   return null;
 }
 
@@ -545,6 +539,10 @@ async function fetchTagsPage(url: string, ctx: ModeContext): Promise<{tags: Arra
   return {tags, link};
 }
 
+// Cap pagination so a repo with hundreds of tag pages doesn't fan out
+// hundreds of concurrent requests. Matches fetchDockerHubTags's cap.
+const maxTagPages = 10;
+
 export async function fetchActionTags(apiUrl: string, owner: string, repo: string, ctx: ModeContext): Promise<Array<TagEntry>> {
   const tagsUrl = (page: number) => `${apiUrl}/repos/${owner}/${repo}/tags?per_page=100&page=${page}`;
   try {
@@ -553,7 +551,7 @@ export async function fetchActionTags(apiUrl: string, owner: string, repo: strin
     const tags = page1.tags;
     const last = /<([^>]+)>;\s*rel="last"/.exec(page1.link);
     if (!last) return tags;
-    const lastPage = Number(new URL(last[1]).searchParams.get("page"));
+    const lastPage = Math.min(Number(new URL(last[1]).searchParams.get("page")), maxTagPages);
     if (lastPage < 2) return tags;
     const pages = await Promise.all(
       Array.from({length: lastPage - 1}, (_, idx) => fetchTagsPage(tagsUrl(idx + 2), ctx)),

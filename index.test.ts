@@ -31,6 +31,7 @@ const goUpdateV2MainFile = fileURLToPath(new URL("fixtures/go-update-v2/main.go"
 const goReplaceFile = fileURLToPath(new URL("fixtures/go-replace/go.mod", import.meta.url));
 const goPreFile = fileURLToPath(new URL("fixtures/go-prerelease/go.mod", import.meta.url));
 const goPseudoFile = fileURLToPath(new URL("fixtures/go-pseudo/go.mod", import.meta.url));
+const goPseudoUpdateFile = fileURLToPath(new URL("fixtures/go-pseudo-update/go.mod", import.meta.url));
 const goWorkspaceDir = fileURLToPath(new URL("fixtures/go-workspace", import.meta.url));
 const goWorkspaceFile = fileURLToPath(new URL("fixtures/go-workspace/go.work", import.meta.url));
 const invalidConfigFile = fileURLToPath(new URL("fixtures/invalid-config/package.json", import.meta.url));
@@ -229,6 +230,7 @@ beforeAll(async () => {
     {path: "/github.com/example/prerelpkg/@latest", response: JSON.stringify({Version: "v1.1.0-rc.1", Time: "2025-06-01T00:00:00Z"})},
     {path: "/gitea.com/gitea/act/@latest", response: JSON.stringify({Version: "v0.261.7", Time: "2025-06-01T00:00:00Z"})},
     {path: "/github.com/example/pseudopkg/@latest", response: JSON.stringify({Version: "v0.4.1", Time: "2023-06-01T00:00:00Z"})},
+    {path: "/github.com/example/pseudoupd/@latest", response: JSON.stringify({Version: "v1.5.0", Time: "2025-06-01T00:00:00Z"})},
   ];
   for (let v = 71; v <= 82; v++) {
     goProxyRoutes.push({
@@ -1313,6 +1315,30 @@ test("go prerelease with -p flag", async ({expect = globalExpect}: any = {}) => 
 test("go pseudo-version no downgrade", async ({expect = globalExpect}: any = {}) => {
   // A pseudo-version like v0.4.2-0.xxx should not be downgraded to a lower release like v0.4.1
   expect(await makeTest(`-j -f ${goPseudoFile}`)()).toMatchInlineSnapshot(`undefined`);
+});
+
+test("go pseudo-version update rewrites the full version", async ({expect = globalExpect}: any = {}) => {
+  // Shortened pseudo-version in dep.old would partial-match the full string in
+  // go.mod and leave the timestamp tail behind unless dep.oldOrig is preserved
+  // through the write.
+  const testGoModDir = join(testDir, "test-go-pseudo-update");
+  mkdirSync(testGoModDir, {recursive: true});
+  const modPath = join(testGoModDir, "go.mod");
+  await writeFile(modPath, readFileSync(goPseudoUpdateFile, "utf8"));
+
+  await updates({
+    files: [modPath],
+    goproxy: goProxyUrl,
+    update: true,
+    indirect: true,
+    color: false,
+    noCache: true,
+  });
+
+  const updated = await readFile(modPath, "utf8");
+  expect(updated).toContain("github.com/example/pseudoupd v1.5.0");
+  expect(updated).not.toContain("20221128193559");
+  expect(updated).not.toContain("754e69321358");
 });
 
 test("go prerelease with -p per-package", async ({expect = globalExpect}: any = {}) => {

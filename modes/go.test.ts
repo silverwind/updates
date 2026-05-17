@@ -226,6 +226,22 @@ test("updateGoMod major version rewrite", () => {
   expect(rewrites).toEqual({"github.com/foo/bar/v2": "github.com/foo/bar/v3"});
 });
 
+test("updateGoMod pseudo-version to release uses oldOrig for regex match", () => {
+  // `old` is the shortened pseudo-version; without `oldOrig` the regex
+  // partial-matches the full version in the file and corrupts the tail.
+  const content = "module example.com/mod\n\nrequire github.com/foo/bar v0.0.0-20221128193559-754e69321358 // indirect\n";
+  const deps = {
+    [`indirect${fieldSep}github.com/foo/bar`]: {
+      old: "v0.0.0-2022112",
+      oldOrig: "0.0.0-20221128193559-754e69321358",
+      new: "1.2.3",
+    },
+  };
+  const [result] = updateGoMod(content, deps);
+  expect(result).toContain("github.com/foo/bar v1.2.3 // indirect");
+  expect(result).not.toContain("20221128193559");
+});
+
 test("updateGoMod tool major version rewrite", () => {
   const content = [
     "module example.com/mod",

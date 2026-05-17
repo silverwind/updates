@@ -160,7 +160,7 @@ test("checkUrlDep unparseable URL returns null", async () => {
     doFetch: () => Promise.resolve({ok: false}),
   } as unknown as ModeContext;
   const dep = {old: "not-a-url", new: ""};
-  expect(await checkUrlDep("key", dep as any, false, ctx)).toBeNull();
+  expect(await checkUrlDep("key", dep as any, ctx)).toBeNull();
 });
 
 test("checkUrlDep hash-based with update", async () => {
@@ -171,7 +171,7 @@ test("checkUrlDep hash-based with update", async () => {
     doFetch: () => Promise.resolve({ok: true, text: () => Promise.resolve(JSON.stringify([{sha: "def5678901234", commit: {committer: {date: "2025-03-01"}}}])), headers: new Headers()}),
   } as unknown as ModeContext;
   const dep = {old: "https://github.com/user/repo/abc1234", new: ""};
-  const result = await checkUrlDep("key", dep, false, ctx);
+  const result = await checkUrlDep("key", dep, ctx);
   expect(result).not.toBeNull();
   expect(result!.newRef).toBe("def5678");
   expect(result!.newDate).toBe("2025-03-01");
@@ -185,5 +185,5 @@ test("checkUrlDep hash-based no change returns null", async () => {
     doFetch: () => Promise.resolve({ok: true, text: () => Promise.resolve(JSON.stringify([{sha: "abc1234567890", commit: {}}])), headers: new Headers()}),
   } as unknown as ModeContext;
   const dep = {old: "https://github.com/user/repo/abc1234", new: ""};
-  expect(await checkUrlDep("key", dep as any, false, ctx)).toBeNull();
+  expect(await checkUrlDep("key", dep as any, ctx)).toBeNull();
 });

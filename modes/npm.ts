@@ -368,7 +368,7 @@ export async function getTags(user: string, repo: string, ctx: ModeContext): Pro
   return entries.map(e => e.name);
 }
 
-export async function checkUrlDep(key: string, dep: Dep, useGreatest: boolean, ctx: ModeContext): Promise<CheckResult | null> {
+export async function checkUrlDep(key: string, dep: Dep, ctx: ModeContext): Promise<CheckResult | null> {
   const stripped = dep.old.replace(stripRe, "");
   const [, user, repo, oldRef] = partsRe.exec(stripped) || [];
   if (!user || !repo || !oldRef) return null;
@@ -385,7 +385,7 @@ export async function checkUrlDep(key: string, dep: Dep, useGreatest: boolean, c
     }
   } else {
     const tags = await getTags(user, repo, ctx);
-    const newTag = selectTag(tags, oldRef, useGreatest);
+    const newTag = selectTag(tags, oldRef);
     if (newTag) {
       return {key, newRange: newTag, user, repo, oldRef, newRef: newTag};
     }

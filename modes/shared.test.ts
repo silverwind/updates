@@ -231,21 +231,24 @@ test("coerceToVersion returns empty for invalid", () => {
   expect(coerceToVersion("")).toBe("");
 });
 
-test("selectTag not greatest returns last tag if different", () => {
-  expect(selectTag(["v1.0.0", "v1.1.0", "v2.0.0"], "v1.0.0", false)).toBe("v2.0.0");
+test("selectTag returns highest semver tag", () => {
+  expect(selectTag(["v1.0.0", "v1.1.0", "v2.0.0"], "v1.0.0")).toBe("v2.0.0");
+  expect(selectTag(["v1.0.0", "v3.0.0", "v2.0.0"], "v1.0.0")).toBe("v3.0.0");
 });
 
-test("selectTag greatest returns highest semver tag", () => {
-  expect(selectTag(["v1.0.0", "v3.0.0", "v2.0.0"], "v1.0.0", true)).toBe("v3.0.0");
+test("selectTag handles unsorted tags (GitHub /tags returns no guaranteed order)", () => {
+  // Reverse-chronological (newest-first) is GitHub's typical default, and the
+  // tag list mixes shorter v9 with longer v10 to defeat lexicographic ordering.
+  expect(selectTag(["v10.0.0", "v9.0.0", "v2.0.0", "v1.0.0"], "v1.0.0")).toBe("v10.0.0");
+  expect(selectTag(["v1.0.0", "v10.0.0", "v9.0.0", "v2.0.0"], "v1.0.0")).toBe("v10.0.0");
 });
 
 test("selectTag returns null when no upgrade", () => {
-  expect(selectTag(["v1.0.0"], "v1.0.0", false)).toBe(null);
-  expect(selectTag(["v1.0.0"], "v1.0.0", true)).toBe(null);
+  expect(selectTag(["v1.0.0"], "v1.0.0")).toBe(null);
 });
 
 test("selectTag returns null for invalid oldRef", () => {
-  expect(selectTag(["v1.0.0"], "not-semver", false)).toBe(null);
+  expect(selectTag(["v1.0.0"], "not-semver")).toBe(null);
 });
 
 test("resolvePackageJsonUrl git+https", () => {
