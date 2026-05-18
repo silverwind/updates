@@ -74,8 +74,10 @@ export function updateWorkflowFile(content: string, actionDeps: Array<{name: str
 
 export const forgeDirs = [".github", ".gitea", ".forgejo"] as const;
 
+const workflowFileRe = new RegExp(`(?:${forgeDirs.map(esc).join("|")})\\/(?:workflows\\/[^/]+|(?:[^/]+\\/)*action)\\.ya?ml$`);
+
 export function isWorkflowFile(file: string): boolean {
-  return new RegExp(`(?:${forgeDirs.map(esc).join("|")})\\/(?:workflows\\/[^/]+|(?:[^/]+\\/)*action)\\.ya?ml$`).test(file.replace(/\\/g, "/"));
+  return workflowFileRe.test(file.replace(/\\/g, "/"));
 }
 
 export function resolveWorkflowFiles(forgeDir: string): Array<string> {

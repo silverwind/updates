@@ -500,13 +500,13 @@ export function selectTag(tags: Array<string>, oldRef: string): string | null {
 }
 
 export function resolvePackageJsonUrl(url: string): string {
-  url = url.replace("git@", "").replace(/.+?\/\//, "https://").replace(/\.git$/, "");
-  if (/^[a-z]+:[a-z0-9-]+\/[a-z0-9-]+$/.test(url)) { // foo:user/repo
-    return url.replace(/^(.+?):/, (_, p1) => `https://${p1}.com/`);
-  } else if (/^[a-z0-9-]+\/[a-z0-9-]+$/.test(url)) { // user/repo
-    return `https://github.com/${url}`;
+  const cleaned = url.replace("git@", "").replace(/.+?\/\//, "https://").replace(/\.git$/, "");
+  if (/^[a-z]+:[a-z0-9-]+\/[a-z0-9-]+$/.test(cleaned)) { // foo:user/repo
+    return cleaned.replace(/^(.+?):/, (_, p1) => `https://${p1}.com/`);
+  } else if (/^[a-z0-9-]+\/[a-z0-9-]+$/.test(cleaned)) { // user/repo
+    return `https://github.com/${cleaned}`;
   } else {
-    return url;
+    return cleaned;
   }
 }
 

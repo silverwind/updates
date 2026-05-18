@@ -56,7 +56,7 @@ export async function resolveWorkspaceMembers(patterns: string[], workspaceDir: 
 
 export function parsePnpmWorkspace(content: string): string[] {
   const patterns: string[] = [];
-  const lines = content.split("\n");
+  const lines = content.split(/\r?\n/);
   let inPackages = false;
   for (const line of lines) {
     if (/^packages\s*:/.test(line)) {
