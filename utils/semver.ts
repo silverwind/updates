@@ -1,4 +1,4 @@
-type SemVer = {
+export type SemVer = {
   major: number;
   minor: number;
   patch: number;
@@ -37,7 +37,7 @@ function compareIdentifiers(a: string | number, b: string | number): number {
   return (a) < (b) ? -1 : (a) > (b) ? 1 : 0;
 }
 
-function compareMain(a: SemVer, b: SemVer): number {
+export function compareMain(a: SemVer, b: SemVer): number {
   return (a.major - b.major) || (a.minor - b.minor) || (a.patch - b.patch);
 }
 
@@ -89,6 +89,11 @@ export function diff(v1: string, v2: string): string | null {
   const a = parseVersion(v1);
   const b = parseVersion(v2);
   if (!a || !b) return null;
+  return diffParsed(a, b);
+}
+
+// Lets hot loops pass already-parsed inputs and skip the parseVersion cache lookup.
+export function diffParsed(a: SemVer, b: SemVer): string | null {
   if (a.version === b.version) return null;
 
   const cmp = compareVersions(a, b);

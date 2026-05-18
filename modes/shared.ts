@@ -1,5 +1,5 @@
 import {env} from "node:process";
-import {parse, coerce, diff, gt, gte, lt, neq, satisfies, valid} from "../utils/semver.ts";
+import {parse, coerce, compareMain, diff, diffParsed, gt, lt, neq, satisfies, valid} from "../utils/semver.ts";
 import {getCache, setCache} from "../utils/fetchCache.ts";
 import pkg from "../package.json" with {type: "json"};
 
@@ -172,13 +172,18 @@ export function isRangePrerelease(range: string): boolean {
 
 // Build the prerelease-augmented copy of a semvers set without mutating the
 // input — getVersionOpts() caches its sets per-package, so mutating in place
-// silently leaks state across packages.
+// silently leaks state across packages. Cached by input Set so repeated calls
+// for the same package's semvers set don't re-allocate.
+const prereleaseVariantsCache = new WeakMap<Set<string>, Set<string>>();
 function withPrereleaseVariants(semvers: Set<string>): Set<string> {
+  const cached = prereleaseVariantsCache.get(semvers);
+  if (cached) return cached;
   const out = new Set(semvers);
   out.add("prerelease");
   if (semvers.has("patch")) out.add("prepatch");
   if (semvers.has("minor")) out.add("preminor");
   if (semvers.has("major")) out.add("premajor");
+  prereleaseVariantsCache.set(semvers, out);
   return out;
 }
 
@@ -224,36 +229,46 @@ export function findVersion(data: any, versions: Array<string>, {range, semvers,
   const effectiveUsePre = isRangePrerelease(range) || usePre;
   const effectiveSemvers = effectiveUsePre ? withPrereleaseVariants(semvers) : semvers;
 
-  const lookupDate = getVersionDate ?? ((v: string) => data?.time?.[v]);
+  const time = data?.time;
+  const hasTime = Boolean(time);
+  const useGreatestPath = useGreatest || !hasTime;
+  const cooldownActive = Boolean(cooldownDays && now);
 
   let greatestDate = 0;
   let newVersion = oldVersion;
+  // coerceToVersion always returns a 3-part numeric string, so parse cannot fail.
+  let newVersionParsed = parse(oldVersion)!;
 
   for (const version of versions) {
     const parsed = parse(version);
     if (!parsed?.version || parsed.prerelease.length && (!effectiveUsePre || useRel)) continue;
     const candidateVersion = parsed.version;
 
-    // If a pinned range is specified, only consider versions that satisfy it
     if (pinnedRange && !satisfies(candidateVersion, pinnedRange)) continue;
 
-    if (!passesCooldown(lookupDate(version), cooldownDays, now)) continue;
+    // Resolve date string at most once — reused below by greatestDate path.
+    let dateStr: string | undefined;
+    if (cooldownActive) {
+      dateStr = getVersionDate ? getVersionDate(version) : (hasTime ? time[version] : undefined);
+      if (!passesCooldown(dateStr, cooldownDays, now)) continue;
+    }
 
-    const d = diff(newVersion, candidateVersion);
+    const d = diffParsed(newVersionParsed, parsed);
     if (!d || !effectiveSemvers.has(d)) continue;
 
     // some registries like github don't have data.time available, fall back to greatest on them
-    if (useGreatest || !("time" in data)) {
-      const candidateMain = `${parsed.major}.${parsed.minor}.${parsed.patch}`;
-      if (gte(candidateMain, newVersion) ||
+    if (useGreatestPath) {
+      if (compareMain(parsed, newVersionParsed) >= 0 ||
           (pinnedRange && !satisfies(newVersion, pinnedRange))) {
         newVersion = candidateVersion;
+        newVersionParsed = parsed;
       }
     } else {
-      const date = Date.parse(data.time[version]);
-      if (date >= 0 && date > greatestDate) {
+      const dateMs = Date.parse(dateStr ?? time[version]);
+      if (dateMs >= 0 && dateMs > greatestDate) {
         newVersion = candidateVersion;
-        greatestDate = date;
+        newVersionParsed = parsed;
+        greatestDate = dateMs;
       }
     }
   }
@@ -269,11 +284,13 @@ export function findNewVersion(data: any, {mode, range, useGreatest, useRel, use
   let versions: Array<string> = [];
   let getVersionDate: ((v: string) => string | undefined) | undefined;
   if (mode === "pypi") {
-    versions = Object.keys(data.releases).filter(v => valid(v));
-    getVersionDate = (v: string) => data.releases?.[v]?.[0]?.upload_time_iso_8601;
+    const releases = data.releases;
+    versions = [];
+    for (const v of Object.keys(releases)) if (valid(v)) versions.push(v);
+    getVersionDate = (v: string) => releases?.[v]?.[0]?.upload_time_iso_8601;
   } else if (mode === "npm" || mode === "cargo") {
-    versions = Object.keys(data.versions).filter(v => valid(v));
-    getVersionDate = (v: string) => data.time?.[v];
+    versions = [];
+    for (const v of Object.keys(data.versions)) if (valid(v)) versions.push(v);
   } else if (mode === "go") {
     const oldVersion = coerceToVersion(range);
     if (!oldVersion) return null;

@@ -13,8 +13,16 @@ const cacheDir = join(
 
 let dirCreated: Promise<string | undefined> | null = null;
 
+// Memoized — the same URL is hashed twice (read then write) per cold-cache
+// fetch, and many URLs are visited each run.
+const cacheKeyMemo = new Map<string, string>();
 function cacheKey(url: string): string {
-  return createHash("sha256").update(url).digest("hex").substring(0, 16);
+  let key = cacheKeyMemo.get(url);
+  if (key === undefined) {
+    key = createHash("sha256").update(url).digest("hex").substring(0, 16);
+    cacheKeyMemo.set(url, key);
+  }
+  return key;
 }
 
 export async function getCache(url: string): Promise<{etag: string, body: string} | null> {
