@@ -1,5 +1,5 @@
 import {env} from "node:process";
-import {parse, coerce, compareMain, diff, diffParsed, gt, lt, neq, satisfies, valid} from "../utils/semver.ts";
+import {parse, coerce, compareMain, diff, diffParsed, gt, lt, satisfies, valid} from "../utils/semver.ts";
 import {getCache, setCache} from "../utils/fetchCache.ts";
 import pkg from "../package.json" with {type: "json"};
 
@@ -503,7 +503,7 @@ export function selectTag(tags: Array<string>, oldRef: string): string | null {
   if (!valid(oldRefBare)) return null;
 
   let bestTag = "";
-  let bestBare = oldRefBare;
+  let bestBare = "";
   for (const tag of tags) {
     const tagBare = stripv(tag);
     if (!valid(tagBare)) continue;
@@ -512,7 +512,7 @@ export function selectTag(tags: Array<string>, oldRef: string): string | null {
       bestBare = tagBare;
     }
   }
-  if (bestTag && neq(oldRefBare, bestBare)) return bestTag;
+  if (bestTag && gt(bestBare, oldRefBare)) return bestTag;
   return null;
 }
 

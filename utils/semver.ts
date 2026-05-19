@@ -322,14 +322,13 @@ function parseRange(range: string): Array<Array<Comparator>> | null {
     group = expandTilde(group);
     group = expandXRanges(group);
 
-    // Normalize = prefix for exact versions
-    group = group.replace(/(^|[\s])v?(\d+\.\d+\.\d+(?:-[a-zA-Z0-9_-]+(?:\.[a-zA-Z0-9_-]+)*)?)\b/g, (match, prefix) => {
-      if (/[<>=]/.test(prefix)) return match;
-      return `${prefix}=${match.trim()}`;
-    });
-
-    // Merge operators with their following version (handle spaces like ">= 3.1")
+    // Merge operators with their following version (handle spaces like ">= 3.1").
+    // Must run before the normalize pass below, else ">= 1.0.0" gets an "=" inserted.
     group = group.replace(/(>=|<=|>|<|=)\s+/g, "$1");
+
+    // Normalize = prefix for exact versions
+    group = group.replace(/(^|[\s])v?(\d+\.\d+\.\d+(?:-[a-zA-Z0-9_-]+(?:\.[a-zA-Z0-9_-]+)*)?)\b/g,
+      (_, prefix, version) => `${prefix}=${version}`);
 
     const parts = group.split(/\s+/).filter(Boolean);
     const comparators: Array<Comparator> = [];

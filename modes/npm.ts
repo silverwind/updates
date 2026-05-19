@@ -331,6 +331,7 @@ export function updateVersionRange(oldRange: string, newVersion: string, oldOrig
 }
 
 export function normalizeRange(range: string): string {
+  if (/[xX*]/.test(range)) return range;
   const versionMatches = range.match(npmVersionRe);
   if (versionMatches?.length !== 1) return range;
   return range.replace(npmVersionRe, coerceToVersion(versionMatches[0]));
