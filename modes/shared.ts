@@ -427,18 +427,23 @@ if (env.UPDATES_FORGE_TOKENS) {
   }
 }
 
-const envGithubTokens: string[] = Array.from(new Set(
-  ["UPDATES_GITHUB_API_TOKEN", "GITHUB_API_TOKEN", "GH_TOKEN", "GITHUB_TOKEN", "HOMEBREW_GITHUB_API_TOKEN"]
-    .map(name => env[name]).filter(Boolean as unknown as (v: string | undefined) => v is string),
-));
+const githubTokenEnvNames = ["UPDATES_GITHUB_API_TOKEN", "GITHUB_API_TOKEN", "GH_TOKEN", "GITHUB_TOKEN", "HOMEBREW_GITHUB_API_TOKEN"];
 
-// Resolve lazily, async, and memoized: a sync execFileSync in a concurrent
-// `fetchForge` flow blocks the event loop long enough on Windows that parallel
-// fetches can hit their AbortSignal timeout. Skip entirely if an env token is
-// already set.
+function envGithubTokens(): string[] {
+  return Array.from(new Set(
+    githubTokenEnvNames.map(name => env[name]).filter(Boolean as unknown as (v: string | undefined) => v is string),
+  ));
+}
+
+// Env is read per call rather than snapshotted at import, so the token set at
+// request time always wins. Only the `gh auth token` probe is memoized: a sync
+// execFileSync in a concurrent `fetchForge` flow blocks the event loop long
+// enough on Windows that parallel fetches can hit their AbortSignal timeout. It
+// is skipped entirely when an env token is already set.
 let githubTokensPromise: Promise<string[]> | undefined;
 export function getGithubTokens(): Promise<string[]> {
-  if (envGithubTokens.length) return Promise.resolve(envGithubTokens);
+  const tokens = envGithubTokens();
+  if (tokens.length) return Promise.resolve(tokens);
   return githubTokensPromise ??= (async () => {
     try {
       const [{execFile: execFileCb}, {promisify}] = await Promise.all([
@@ -447,9 +452,9 @@ export function getGithubTokens(): Promise<string[]> {
       ]);
       const {stdout} = await promisify(execFileCb)("gh", ["auth", "token"], {encoding: "utf8", timeout: 5000});
       const token = stdout.trim();
-      return token ? [token] : envGithubTokens;
+      return token ? [token] : [];
     } catch {
-      return envGithubTokens;
+      return [];
     }
   })();
 }

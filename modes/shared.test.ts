@@ -17,7 +17,7 @@ import {
   getInfoUrl,
   packageVersion,
   getForgeTokens,
-  getGithubTokens,
+  fetchForge,
   fetchActionTags,
   fetchWithEtag,
   fetchImmutable,
@@ -750,31 +750,24 @@ test("resolvePackageJsonUrl shorthand u/r", () => {
 });
 
 test("getForgeTokens", async () => {
-  // github hosts delegate to the github token set
-  expect(await getForgeTokens("api.github.com", "https://api.github.com")).toEqual(await getGithubTokens());
-
   // empty hostname (unparseable url) -> no token
   expect(await getForgeTokens("", "https://api.github.com")).toEqual([]);
 
   // foreign forge host without a configured token -> no github fallback
+  // (github-host delegation is covered with teeth by the fetchForge test below)
   expect(await getForgeTokens("gitea.example.com", "https://api.github.com")).toEqual([]);
 });
 
-test("fetchForge never sends github credentials to a non-github forge host", async () => {
-  // Pin the github token set deterministically regardless of ambient env, then
-  // re-import so the module re-reads it at load time.
-  vi.stubEnv("UPDATES_GITHUB_API_TOKEN", "");
-  vi.stubEnv("GITHUB_API_TOKEN", "");
-  vi.stubEnv("GH_TOKEN", "ghp_regression_secret");
-  vi.stubEnv("GITHUB_TOKEN", "");
-  vi.stubEnv("HOMEBREW_GITHUB_API_TOKEN", "");
-  vi.stubEnv("UPDATES_FORGE_TOKENS", "");
-  vi.resetModules();
-  // Restore in `finally` so a failed assertion can't leak stubbed env or the
-  // reset module registry into concurrent sibling tests (isolate: false).
+test("fetchForge only sends github credentials to github hosts", async () => {
+  // Inject a github token deterministically (CI has none). `getGithubTokens`
+  // reads env per call, so plain mutation works under both vitest and bun.
+  const tokenEnv = ["UPDATES_GITHUB_API_TOKEN", "GITHUB_API_TOKEN", "GH_TOKEN", "GITHUB_TOKEN", "HOMEBREW_GITHUB_API_TOKEN"];
+  const saved = Object.fromEntries(tokenEnv.map(name => [name, process.env[name]]));
+  for (const name of tokenEnv) delete process.env[name];
+  process.env.GH_TOKEN = "ghp_regression_secret";
+  // Restore in `finally` so a failed assertion can't leak env into concurrent
+  // sibling tests (isolate: false).
   try {
-    const {fetchForge} = await import("./shared.ts");
-
     const authByHost: Record<string, string | undefined> = {};
     const ctx = {
       fetchTimeout,
@@ -791,8 +784,10 @@ test("fetchForge never sends github credentials to a non-github forge host", asy
     expect(authByHost["api.github.com"]).toBe("Bearer ghp_regression_secret");
     expect(authByHost["attacker.example"]).toBeUndefined();
   } finally {
-    vi.unstubAllEnvs();
-    vi.resetModules();
+    for (const [name, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
   }
 });
 
