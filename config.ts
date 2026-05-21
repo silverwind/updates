@@ -56,6 +56,8 @@ export type Config = {
   minor?: boolean | Array<string | RegExp>;
   /** Allow version downgrades when using latest version */
   allowDowngrade?: boolean | Array<string | RegExp>;
+  /** Per-package option overrides, matched by name; last matching override wins */
+  overrides?: Array<Override>;
   /** Opt-in to inheriting select fields from other tools' configs */
   inherit?: {
     renovate?: {
@@ -63,6 +65,28 @@ export type Config = {
       cooldown?: boolean;
     };
   };
+};
+
+/** Options applied to dependencies whose name matches an override's patterns. */
+export type Override = {
+  /** Name patterns this override applies to (glob or RegExp). Omit to match all. */
+  include?: Array<string | RegExp>;
+  /** Name patterns excluded from this override */
+  exclude?: Array<string | RegExp>;
+  /** Minimum dependency age, e.g. 7 (days), "1w", "2d", "6h"; 0 disables a global cooldown */
+  cooldown?: number | string;
+  /** Prefer greatest over latest version */
+  greatest?: boolean;
+  /** Consider prerelease versions */
+  prerelease?: boolean;
+  /** Only use release versions, may downgrade */
+  release?: boolean;
+  /** Consider only up to semver-patch */
+  patch?: boolean;
+  /** Consider only up to semver-minor */
+  minor?: boolean;
+  /** Allow version downgrades when using latest version */
+  allowDowngrade?: boolean;
 };
 
 export type Arg = string | boolean | Array<string | boolean> | undefined;

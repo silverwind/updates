@@ -2149,6 +2149,29 @@ test("api cooldown string", async ({expect = globalExpect}: any = {}) => {
   expect(output.message).toBe("All dependencies are up to date.");
 });
 
+test("api overrides target a package", async ({expect = globalExpect}: any = {}) => {
+  const output = await updates(apiOpts({include: ["gulp-sourcemaps", "noty"], overrides: [{include: ["gulp-sourcemaps"], greatest: true}]}));
+  expect(output.results.npm.dependencies["gulp-sourcemaps"].new).toBe("2.6.5");
+  expect(output.results.npm.dependencies.noty.new).toBe("3.1.4");
+});
+
+test("api overrides per-package cooldown", async ({expect = globalExpect}: any = {}) => {
+  const output = await updates(apiOpts({include: ["noty", "updates"], cooldown: "999999d", overrides: [{include: ["noty"], cooldown: 0}]}));
+  expect(output.results.npm.dependencies.noty.new).toBe("3.1.4");
+  expect(output.results.npm.dependencies.updates).toBeUndefined();
+});
+
+test("api overrides exclude within a rule", async ({expect = globalExpect}: any = {}) => {
+  const output = await updates(apiOpts({include: ["gulp-sourcemaps", "noty"], overrides: [{exclude: ["noty"], greatest: true}]}));
+  expect(output.results.npm.dependencies["gulp-sourcemaps"].new).toBe("2.6.5");
+  expect(output.results.npm.dependencies.noty.new).toBe("3.1.4");
+});
+
+test("api overrides last match wins", async ({expect = globalExpect}: any = {}) => {
+  const output = await updates(apiOpts({include: ["noty"], cooldown: "999999d", overrides: [{include: ["noty"], cooldown: "999999d"}, {include: ["noty"], cooldown: 0}]}));
+  expect(output.results.npm.dependencies.noty.new).toBe("3.1.4");
+});
+
 test("api modes filter", async ({expect = globalExpect}: any = {}) => {
   const output = await updates(apiOpts({include: ["noty"], modes: ["pypi"]}));
   expect(output.message).toBe("No dependencies found, nothing to do.");

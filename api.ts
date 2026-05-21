@@ -15,7 +15,7 @@ import {
   passesCooldown, stripv, hashRe as npmHashRe,
 } from "./modes/shared.ts";
 import {loadConfig, configMixedToRegexes, patternsToRegexSet} from "./config.ts";
-import type {Config} from "./config.ts";
+import type {Config, Override} from "./config.ts";
 import {
   fetchNpmInfo, fetchNpmVersionInfo, fetchJsrInfo, isJsr, isLocalDep, parseJsrDependency,
   getNpmrc, updatePackageJson, updateVersionRange, normalizeRange, checkUrlDep,
@@ -43,7 +43,7 @@ import {
 import {fetchCratesIoInfo, updateCargoToml, updateCargoRange, parseCargoLock, findLockedVersion} from "./modes/cargo.ts";
 import {baseType, filterDepsForMember, resolveWorkspaceMembers, parsePnpmWorkspace, type WorkspaceMember} from "./utils/workspace.ts";
 
-export type {Config, Dep, Deps, DepsByMode, Output};
+export type {Config, Override, Dep, Deps, DepsByMode, Output};
 
 const modeByFileName: Record<string, string> = {
   "pnpm-workspace.yaml": "npm",
@@ -298,26 +298,59 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
   const allowDowngrade = configMixedToRegexes(config.allowDowngrade);
   const enabledModes = config.modes?.length ? new Set(config.modes) : defaultModes;
 
+  type CompiledOverride = {
+    include?: Set<RegExp>, exclude?: Set<RegExp>,
+    greatest?: boolean, prerelease?: boolean, release?: boolean,
+    patch?: boolean, minor?: boolean, allowDowngrade?: boolean, cooldownDays?: number,
+  };
+  const compiledOverrides: Array<CompiledOverride> = (config.overrides ?? []).map(o => ({
+    include: o.include?.length ? patternsToRegexSet(o.include) : undefined,
+    exclude: o.exclude?.length ? patternsToRegexSet(o.exclude) : undefined,
+    greatest: o.greatest, prerelease: o.prerelease, release: o.release,
+    patch: o.patch, minor: o.minor, allowDowngrade: o.allowDowngrade,
+    cooldownDays: o.cooldown !== undefined ? parseDuration(String(o.cooldown)) : undefined,
+  }));
+  const overrideMatches = (o: CompiledOverride, name: string): boolean => {
+    if (o.include && !matchesAny(name, o.include)) return false;
+    if (o.exclude && matchesAny(name, o.exclude)) return false;
+    return true;
+  };
+  const overridesHaveCooldown = compiledOverrides.some(o => Boolean(o.cooldownDays));
+
   // Kick off `gh auth token` early so the first forge request isn't blocked on a subprocess.
   if (enabledModes.has("actions")) getGithubTokens();
 
-  function getSemvers(name: string): Set<string> {
-    if (patch === true || matchesAny(name, patch)) return new Set<string>(["patch"]);
-    if (minor === true || matchesAny(name, minor)) return new Set<string>(["patch", "minor"]);
-    return new Set<string>(["patch", "minor", "major"]);
-  }
+  const versionOptsCache = new Map<string, {useGreatest: boolean, usePre: boolean, useRel: boolean, semvers: Set<string>, allowDowngrade: boolean, cooldownOverride: number | undefined}>();
 
-  const versionOptsCache = new Map<string, {useGreatest: boolean, usePre: boolean, useRel: boolean, semvers: Set<string>}>();
-
+  // Resolve per-dependency options: start from the global flags, then apply
+  // every matching override in order so the last matching one wins. cooldown is
+  // returned as an override (undefined = no override) since its base differs per
+  // mode. patch wins over minor, matching the global precedence.
   function getVersionOpts(name: string) {
     let entry = versionOptsCache.get(name);
     if (!entry) {
-      entry = {
-        useGreatest: typeof greatest === "boolean" ? greatest : matchesAny(name, greatest),
-        usePre: typeof prerelease === "boolean" ? prerelease : matchesAny(name, prerelease),
-        useRel: typeof release === "boolean" ? release : matchesAny(name, release),
-        semvers: getSemvers(name),
-      };
+      let useGreatest = typeof greatest === "boolean" ? greatest : matchesAny(name, greatest);
+      let usePre = typeof prerelease === "boolean" ? prerelease : matchesAny(name, prerelease);
+      let useRel = typeof release === "boolean" ? release : matchesAny(name, release);
+      let usePatch = typeof patch === "boolean" ? patch : matchesAny(name, patch);
+      let useMinor = typeof minor === "boolean" ? minor : matchesAny(name, minor);
+      let allowDown = typeof allowDowngrade === "boolean" ? allowDowngrade : matchesAny(name, allowDowngrade);
+      let cooldownOverride: number | undefined;
+
+      for (const o of compiledOverrides) {
+        if (!overrideMatches(o, name)) continue;
+        if (o.greatest !== undefined) useGreatest = o.greatest;
+        if (o.prerelease !== undefined) usePre = o.prerelease;
+        if (o.release !== undefined) useRel = o.release;
+        if (o.patch !== undefined) usePatch = o.patch;
+        if (o.minor !== undefined) useMinor = o.minor;
+        if (o.allowDowngrade !== undefined) allowDown = o.allowDowngrade;
+        if (o.cooldownDays !== undefined) cooldownOverride = o.cooldownDays;
+      }
+
+      const semvers = new Set<string>(usePatch ? ["patch"] : useMinor ? ["patch", "minor"] : ["patch", "minor", "major"]);
+
+      entry = {useGreatest, usePre, useRel, semvers, allowDowngrade: allowDown, cooldownOverride};
       versionOptsCache.set(name, entry);
     }
     return entry;
@@ -735,9 +768,12 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
       // follow-ups). findNewVersion's per-version cooldown filter handles the
       // common case; this catches the rest.
       const dropIfTooNew = (modeDeps: Deps) => {
-        if (!modeCooldownDays) return;
+        if (!modeCooldownDays && !overridesHaveCooldown) return;
         for (const [k, {date}] of Object.entries(modeDeps)) {
-          if (date && !passesCooldown(date, modeCooldownDays, now)) delete modeDeps[k];
+          if (!date) continue;
+          const [, name] = k.split(fieldSep);
+          const cd = getVersionOpts(name).cooldownOverride ?? modeCooldownDays;
+          if (cd && !passesCooldown(date, cd, now)) delete modeDeps[k];
         }
       };
 
@@ -772,14 +808,15 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
         const [data, , registry] = info;
         if (data?.error) throw new Error(data.error);
 
-        const {useGreatest, usePre, useRel, semvers} = getVersionOpts(data.name);
+        const {useGreatest, usePre, useRel, semvers, allowDowngrade: allowDown, cooldownOverride} = getVersionOpts(data.name);
         const oldRange = dep.old;
         const oldOrig = dep.oldOrig;
         const pinnedRange = pin[name];
+        const depCooldownDays = cooldownOverride ?? modeCooldownDays;
         const newVersion = findNewVersion(data, {
           usePre, useRel, useGreatest, semvers, range: oldRange, mode, pinnedRange,
-          cooldownDays: modeCooldownDays || undefined, now: modeCooldownDays ? now : undefined,
-        }, {allowDowngrade, matchesAny, isGoPseudoVersion});
+          cooldownDays: depCooldownDays || undefined, now: depCooldownDays ? now : undefined,
+        }, {allowDowngrade: allowDown, matchesAny, isGoPseudoVersion});
 
         let newRange = "";
         if (["go", "pypi"].includes(mode) && newVersion) {
@@ -905,9 +942,9 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
             const tag = tagByStripped.get(picked);
             if (!tag) { denylist.add(picked); continue; }
             const commitSha = entryByName.get(tag)?.commitSha || "";
-            if (!cooldownDays) return {version: picked, tag, commitSha, date: ""};
+            if (!opts.cooldownDays) return {version: picked, tag, commitSha, date: ""};
             const date = commitSha ? await getDate(commitSha) : "";
-            if (passesCooldown(date, cooldownDays, now)) return {version: picked, tag, commitSha, date};
+            if (passesCooldown(date, opts.cooldownDays, opts.now)) return {version: picked, tag, commitSha, date};
             denylist.add(picked);
           }
           return null;
@@ -919,10 +956,12 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
           const actionPin = globalPin[actionName] ?? filePin[actionName];
 
           if (isHash) {
-            const {usePre, useRel} = getVersionOpts(actionName);
+            const {usePre, useRel, cooldownOverride} = getVersionOpts(actionName);
+            const actionCooldownDays = cooldownOverride ?? cooldownDays;
             const result = await pickVersion({
               range: "0.0.0", semvers: new Set(["patch", "minor", "major"]), usePre, useRel,
               useGreatest: true, pinnedRange: actionPin,
+              cooldownDays: actionCooldownDays || undefined, now: actionCooldownDays ? now : undefined,
             });
             if (!result) { delete deps.actions[key]; return; }
 
@@ -947,10 +986,12 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
             const coerced = coerceToVersion(stripv(ref));
             if (!coerced) { delete deps.actions[key]; return; }
 
-            const {usePre, useRel, semvers} = getVersionOpts(actionName);
+            const {usePre, useRel, semvers, cooldownOverride} = getVersionOpts(actionName);
+            const actionCooldownDays = cooldownOverride ?? cooldownDays;
             const result = await pickVersion({
               range: coerced, semvers, usePre, useRel,
               useGreatest: true, pinnedRange: actionPin,
+              cooldownDays: actionCooldownDays || undefined, now: actionCooldownDays ? now : undefined,
             });
             if (!result) { delete deps.actions[key]; return; }
 
@@ -995,11 +1036,12 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
         for (const info of infos) {
           const dep = deps.docker[info.key];
           const oldTag = dep.oldOrig || dep.old;
-          const {semvers} = getVersionOpts(info.fullImage);
+          const {semvers, cooldownOverride} = getVersionOpts(info.fullImage);
           const pinnedRange = globalPin[info.fullImage] ?? info.filePin[info.fullImage];
+          const dockerCooldownDays = cooldownOverride ?? cooldownDays;
           const result = findDockerVersion(
             data.tags, oldTag, semvers,
-            cooldownDays || undefined, cooldownDays ? now : undefined,
+            dockerCooldownDays || undefined, dockerCooldownDays ? now : undefined,
             pinnedRange,
           );
           if (!result) { delete deps.docker[info.key]; continue; }

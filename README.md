@@ -87,9 +87,29 @@ export default {
 - `patch` *boolean | Array\<string | RegExp>*: Consider only up to semver-patch
 - `minor` *boolean | Array\<string | RegExp>*: Consider only up to semver-minor
 - `allowDowngrade` *boolean | Array\<string | RegExp>*: Allow version downgrades
+- `overrides` *Array\<Override>*: Per-package option overrides matched by name (see [Overrides](#overrides))
 - `inherit` *object*: Opt-in to inheriting select fields from other tools' configs (see [Renovate config](#renovate-config))
 
 CLI arguments have precedence over options in the config file. `include`, `exclude`, and `pin` options are merged.
+
+### Overrides
+
+`overrides` applies options to a subset of dependencies, matched by name. Each override has `include` and/or `exclude` patterns (glob or `RegExp`, omit `include` to match all) plus any of these options: `cooldown`, `greatest`, `prerelease`, `release`, `patch`, `minor`, `allowDowngrade`. A matching override takes precedence over the corresponding top-level option, and when several overrides match the same dependency, the last one wins.
+
+```ts
+import type {Config} from "updates";
+
+export default {
+  cooldown: "7d",
+  overrides: [
+    {include: ["@myorg/*"], cooldown: 0},      // no cooldown for your own scope
+    {include: [/^@aws-sdk/], cooldown: "14d"}, // longer cooldown for a noisy publisher
+    {exclude: ["typescript"], greatest: true}, // greatest for everything but typescript
+  ],
+} satisfies Config;
+```
+
+A `cooldown` of `0` in an override disables a global cooldown for the matched dependencies. `patch` takes precedence over `minor`, so an override that sets `minor` has no effect while `patch` is enabled for that dependency. `pin` is not an override option since it is already per-package via [`pin`](#config-options).
 
 ### Renovate config
 
