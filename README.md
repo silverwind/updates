@@ -169,6 +169,6 @@ The `updates()` function accepts all [config options](#config-options).
 |`GONOPROXY`|Comma-separated list of Go module patterns to fetch directly, bypassing the proxy|
 |`GOPRIVATE`|Fallback for `GONOPROXY` when not set|
 
-Token resolution order for forge APIs: `UPDATES_FORGE_TOKENS` (matched by hostname) > `UPDATES_GITHUB_API_TOKEN` > `GITHUB_API_TOKEN` > `GH_TOKEN` > `GITHUB_TOKEN` > `HOMEBREW_GITHUB_API_TOKEN`.
+Token resolution order for forge APIs: `UPDATES_FORGE_TOKENS` (matched by hostname) > `UPDATES_GITHUB_API_TOKEN` > `GITHUB_API_TOKEN` > `GH_TOKEN` > `GITHUB_TOKEN` > `HOMEBREW_GITHUB_API_TOKEN`. The GitHub token fallback is only sent to GitHub itself; any other forge host (e.g. one referenced in a workflow `uses:`) is authenticated only with a matching `UPDATES_FORGE_TOKENS` entry, and otherwise receives no credentials.
 
 © [silverwind](https://github.com/silverwind), distributed under BSD licence

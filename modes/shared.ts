@@ -456,12 +456,20 @@ export function getGithubTokens(): Promise<string[]> {
 
 const workingTokenCache = new Map<string, string>();
 
-export async function getForgeTokens(url: string): Promise<string[]> {
-  try {
-    const hostToken = forgeTokensByHost.get(new URL(url).hostname);
-    if (hostToken) return [hostToken];
-  } catch {}
-  return getGithubTokens();
+// GitHub credentials (env tokens and `gh auth token`) are only ever sent to
+// GitHub itself or to the configured default forge endpoint. A host taken from
+// a workflow `uses:` ref must never receive them — it gets a token only when
+// one is explicitly configured for it via UPDATES_FORGE_TOKENS.
+export async function getForgeTokens(hostname: string, forgeApiUrl: string): Promise<string[]> {
+  if (!hostname) return [];
+
+  const hostToken = forgeTokensByHost.get(hostname);
+  if (hostToken) return [hostToken];
+
+  let forgeApiHost = "";
+  try { forgeApiHost = new URL(forgeApiUrl).hostname; } catch {}
+  const isGithubHost = hostname === "api.github.com" || hostname === "github.com" || hostname === forgeApiHost;
+  return isGithubHost ? getGithubTokens() : [];
 }
 
 export async function fetchForge(url: string, ctx: ModeContext, extraHeaders?: Record<string, string>): Promise<Response> {
@@ -470,7 +478,7 @@ export async function fetchForge(url: string, ctx: ModeContext, extraHeaders?: R
 
   // Resolve tokens before starting the AbortSignal timer so the lazy
   // `gh auth token` probe does not consume the fetch's timeout budget.
-  const tokens = await (hostname ? getForgeTokens(url) : getGithubTokens());
+  const tokens = await getForgeTokens(hostname, ctx.forgeApiUrl);
 
   const signal = AbortSignal.timeout(ctx.fetchTimeout);
   const optsFor = (token?: string): RequestInit => {

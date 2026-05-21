@@ -17,6 +17,7 @@ import {
   getInfoUrl,
   packageVersion,
   getForgeTokens,
+  getGithubTokens,
   fetchActionTags,
   fetchWithEtag,
   fetchImmutable,
@@ -749,12 +750,50 @@ test("resolvePackageJsonUrl shorthand u/r", () => {
 });
 
 test("getForgeTokens", async () => {
-  // returns array for github URLs
-  const tokens = await getForgeTokens("https://api.github.com/repos");
-  expect(Array.isArray(tokens)).toBe(true);
+  // github hosts delegate to the github token set
+  expect(await getForgeTokens("api.github.com", "https://api.github.com")).toEqual(await getGithubTokens());
 
-  // invalid URL falls through to github tokens
-  expect(await getForgeTokens("not-a-url")).toEqual(tokens);
+  // empty hostname (unparseable url) -> no token
+  expect(await getForgeTokens("", "https://api.github.com")).toEqual([]);
+
+  // foreign forge host without a configured token -> no github fallback
+  expect(await getForgeTokens("gitea.example.com", "https://api.github.com")).toEqual([]);
+});
+
+test("fetchForge never sends github credentials to a non-github forge host", async () => {
+  // Pin the github token set deterministically regardless of ambient env, then
+  // re-import so the module re-reads it at load time.
+  vi.stubEnv("UPDATES_GITHUB_API_TOKEN", "");
+  vi.stubEnv("GITHUB_API_TOKEN", "");
+  vi.stubEnv("GH_TOKEN", "ghp_regression_secret");
+  vi.stubEnv("GITHUB_TOKEN", "");
+  vi.stubEnv("HOMEBREW_GITHUB_API_TOKEN", "");
+  vi.stubEnv("UPDATES_FORGE_TOKENS", "");
+  vi.resetModules();
+  // Restore in `finally` so a failed assertion can't leak stubbed env or the
+  // reset module registry into concurrent sibling tests (isolate: false).
+  try {
+    const {fetchForge} = await import("./shared.ts");
+
+    const authByHost: Record<string, string | undefined> = {};
+    const ctx = {
+      fetchTimeout,
+      forgeApiUrl: "https://api.github.com",
+      doFetch: (url: string, opts: RequestInit) => {
+        authByHost[new URL(url).hostname] = (opts.headers as Record<string, string>)?.Authorization;
+        return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve([]), headers: new Headers()});
+      },
+    } as unknown as ModeContext;
+
+    await fetchForge("https://api.github.com/repos/o/r/tags", ctx);
+    await fetchForge("https://attacker.example/api/v1/repos/o/r/tags", ctx);
+
+    expect(authByHost["api.github.com"]).toBe("Bearer ghp_regression_secret");
+    expect(authByHost["attacker.example"]).toBeUndefined();
+  } finally {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  }
 });
 
 // fetchActionTags
