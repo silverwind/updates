@@ -102,9 +102,9 @@ import type {Config} from "updates";
 export default {
   cooldown: "7d",
   overrides: [
-    {include: ["@myorg/*"], cooldown: 0},          // no cooldown for your own scope
-    {include: [/^@aws-sdk/], cooldown: "14d"},      // longer cooldown for a noisy publisher
-    {exclude: ["typescript"], greatest: true},      // greatest for everything but typescript
+    {include: ["@myorg/*"], cooldown: 0},      // no cooldown for your own scope
+    {include: [/^@aws-sdk/], cooldown: "14d"}, // longer cooldown for a noisy publisher
+    {exclude: ["typescript"], greatest: true}, // greatest for everything but typescript
   ],
 } satisfies Config;
 ```
