@@ -42,7 +42,7 @@ $(DIST_FILES): $(SOURCE_FILES) pnpm-lock.yaml tsdown.config.ts
 	chmod +x $(DIST_FILES)
 
 .PHONY: update
-update: node_modules
+update: node_modules update-actions
 	./dist/index.js -cu
 	rm -rf node_modules pnpm-lock.yaml
 	pnpm install
@@ -63,3 +63,7 @@ minor: node_modules lint test
 .PHONY: major
 major: node_modules lint test
 	pnpm exec versions -R major package.json
+
+.PHONY: update-actions
+update-actions: node_modules
+	./dist/index.js -u -M actions
