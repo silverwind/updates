@@ -42,7 +42,7 @@ npx updates -u && npm i
 |`-P, --patch [<dep,...>]`|Consider only up to semver-patch|
 |`-m, --minor [<dep,...>]`|Consider only up to semver-minor|
 |`-d, --allow-downgrade [<dep,...>]`|Allow version downgrades when using latest version|
-|`-S, --sockets <num>`|Maximum number of parallel HTTP sockets opened. Default: 96|
+|`-s, --sockets <num>`|Maximum number of parallel HTTP sockets opened. Default: 96|
 |`-T, --timeout <ms>`|Network request timeout in ms (go probes use half). Default: 5000|
 |`-r, --registry <url>`|Override npm registry URL|
 |`-I, --indirect`|Include indirect Go dependencies|

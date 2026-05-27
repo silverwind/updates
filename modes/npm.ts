@@ -388,7 +388,7 @@ export async function checkUrlDep(key: string, dep: Dep, ctx: ModeContext): Prom
     const tags = await getTags(user, repo, ctx);
     const newTag = selectTag(tags, oldRef);
     if (newTag) {
-      return {key, newRange: newTag, user, repo, oldRef, newRef: newTag};
+      return {key, newRange: dep.old.replace(oldRef, newTag), user, repo, oldRef, newRef: newTag};
     }
   }
 

@@ -179,7 +179,10 @@ export function parsePinArg(arg: Arg): Record<string, string> {
   const items = Array.isArray(arg) ? arg : [arg];
   for (const val of items) {
     if (typeof val !== "string") continue;
-    const [pkg, range] = val.split("=", 2);
+    const eq = val.indexOf("=");
+    if (eq === -1) continue;
+    const pkg = val.slice(0, eq);
+    const range = val.slice(eq + 1);
     if (pkg && range && validRange(range)) result[pkg] = range;
   }
   return result;
