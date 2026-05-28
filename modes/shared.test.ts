@@ -24,11 +24,11 @@ import {
   fetchTimeout,
   type ModeContext,
 } from "./shared.ts";
-import {esc} from "../utils/utils.ts";
+import {esc, matchesAny} from "../utils/utils.ts";
 
 const defaultOpts = {
   allowDowngrade: false as any,
-  matchesAny: () => false,
+  matchesAny,
   isGoPseudoVersion: () => false,
 };
 
@@ -192,32 +192,32 @@ test("isRangePrerelease detects prerelease in range", () => {
 });
 
 test("isAllowedVersionTransition pre to higher release", () => {
-  const opts = {useRel: false, allowDowngrade: false as any, name: "pkg", matchesAny: () => false};
+  const opts = {useRel: false, allowDowngrade: false as any, name: "pkg", matchesAny};
   expect(isAllowedVersionTransition("1.0.0-alpha", "2.0.0", opts)).toBe(true);
 });
 
 test("isAllowedVersionTransition pre to lower release without --release", () => {
-  const opts = {useRel: false, allowDowngrade: false as any, name: "pkg", matchesAny: () => false};
+  const opts = {useRel: false, allowDowngrade: false as any, name: "pkg", matchesAny};
   expect(isAllowedVersionTransition("2.0.0-alpha", "1.0.0", opts)).toBe(false);
 });
 
 test("isAllowedVersionTransition pre to lower release with useRel", () => {
-  const opts = {useRel: true, allowDowngrade: false as any, name: "pkg", matchesAny: () => false};
+  const opts = {useRel: true, allowDowngrade: false as any, name: "pkg", matchesAny};
   expect(isAllowedVersionTransition("2.0.0-alpha", "1.0.0", opts)).toBe(true);
 });
 
 test("isAllowedVersionTransition release to lower release without allowDowngrade", () => {
-  const opts = {useRel: false, allowDowngrade: false as any, name: "pkg", matchesAny: () => false};
+  const opts = {useRel: false, allowDowngrade: false as any, name: "pkg", matchesAny};
   expect(isAllowedVersionTransition("2.0.0", "1.0.0", opts)).toBe(false);
 });
 
 test("isAllowedVersionTransition release to lower release with allowDowngrade", () => {
-  const opts = {useRel: false, allowDowngrade: true as any, name: "pkg", matchesAny: () => false};
+  const opts = {useRel: false, allowDowngrade: true as any, name: "pkg", matchesAny};
   expect(isAllowedVersionTransition("2.0.0", "1.0.0", opts)).toBe(true);
 });
 
 test("isAllowedVersionTransition same or higher release", () => {
-  const opts = {useRel: false, allowDowngrade: false as any, name: "pkg", matchesAny: () => false};
+  const opts = {useRel: false, allowDowngrade: false as any, name: "pkg", matchesAny};
   expect(isAllowedVersionTransition("1.0.0", "1.0.0", opts)).toBe(true);
   expect(isAllowedVersionTransition("1.0.0", "2.0.0", opts)).toBe(true);
 });
@@ -447,7 +447,7 @@ test("findNewVersion npm cooldown picks older eligible version", () => {
     semvers: new Set(["major", "minor", "patch"]),
     usePre: false, useRel: false, useGreatest: false,
     cooldownDays: 5, now,
-  }, {allowDowngrade: false, matchesAny: () => false, isGoPseudoVersion: () => false});
+  }, {allowDowngrade: false, matchesAny, isGoPseudoVersion: () => false});
   expect(result).toBe("1.1.0");
 });
 

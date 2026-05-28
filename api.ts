@@ -329,12 +329,12 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
   function getVersionOpts(name: string) {
     let entry = versionOptsCache.get(name);
     if (!entry) {
-      let useGreatest = typeof greatest === "boolean" ? greatest : matchesAny(name, greatest);
-      let usePre = typeof prerelease === "boolean" ? prerelease : matchesAny(name, prerelease);
-      let useRel = typeof release === "boolean" ? release : matchesAny(name, release);
-      let usePatch = typeof patch === "boolean" ? patch : matchesAny(name, patch);
-      let useMinor = typeof minor === "boolean" ? minor : matchesAny(name, minor);
-      let allowDown = typeof allowDowngrade === "boolean" ? allowDowngrade : matchesAny(name, allowDowngrade);
+      let useGreatest = matchesAny(name, greatest);
+      let usePre = matchesAny(name, prerelease);
+      let useRel = matchesAny(name, release);
+      let usePatch = matchesAny(name, patch);
+      let useMinor = matchesAny(name, minor);
+      let allowDown = matchesAny(name, allowDowngrade);
       let cooldownOverride: number | undefined;
 
       for (const o of compiledOverrides) {
@@ -704,11 +704,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
       } else if (mode === "pypi") {
         pkg = parseToml(pkgStrs[mode]);
       } else if (mode === "go") {
-        const parsed = parseGoMod(pkgStrs[mode]);
-        pkg.deps = parsed.deps;
-        pkg.indirect = parsed.indirect;
-        pkg.replace = parsed.replace;
-        pkg.tool = parsed.tool;
+        pkg = parseGoMod(pkgStrs[mode]);
       }
     } catch (err) {
       throw new Error(`Error parsing ${file}: ${(err as Error).message}`);

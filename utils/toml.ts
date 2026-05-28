@@ -40,29 +40,17 @@ export function parseToml(input: string): TomlObject {
     // Table header
     const tableMatch = /^\[([^[\]]+)\]$/.exec(line);
     if (tableMatch) {
-      current = root;
-      for (const key of splitDottedKey(tableMatch[1])) {
-        if (!(key in current) || typeof current[key] !== "object" || Array.isArray(current[key])) {
-          current[key] = {};
-        }
-        current = current[key];
-      }
+      current = descend(root, splitDottedKey(tableMatch[1]));
       continue;
     }
 
     // Key = value
-    const eqIdx = findEquals(line);
+    const eqIdx = indexOfUnquoted(line, "=");
     if (eqIdx < 0) continue;
     const rawKey = line.slice(0, eqIdx).trim();
     const rawVal = line.slice(eqIdx + 1).trim();
     const keys = splitDottedKey(rawKey);
-    let target = current;
-    for (let k = 0; k < keys.length - 1; k++) {
-      if (!(keys[k] in target) || typeof target[keys[k]] !== "object" || Array.isArray(target[keys[k]])) {
-        target[keys[k]] = {};
-      }
-      target = target[keys[k]] as TomlObject;
-    }
+    const target = descend(current, keys.slice(0, -1));
     const finalKey = keys[keys.length - 1];
 
     // Multi-line array
@@ -197,7 +185,7 @@ function stripComment(line: string): string {
   return idx < 0 ? line : line.slice(0, idx);
 }
 
-function indexOfUnquoted(s: string, target: string): number {
+function* unquotedIndices(s: string, target: string): Generator<number> {
   let inStr: string | null = null;
   for (let i = 0; i < s.length; i++) {
     const ch = s[i];
@@ -207,43 +195,29 @@ function indexOfUnquoted(s: string, target: string): number {
     } else if (ch === '"' || ch === "'") {
       inStr = ch;
     } else if (ch === target) {
-      return i;
+      yield i;
     }
   }
-  return -1;
+}
+
+function indexOfUnquoted(s: string, target: string): number {
+  return unquotedIndices(s, target).next().value ?? -1;
 }
 
 function lastIndexOfUnquoted(s: string, target: string): number {
   let last = -1;
-  let inStr: string | null = null;
-  for (let i = 0; i < s.length; i++) {
-    const ch = s[i];
-    if (inStr) {
-      if (ch === "\\" && inStr === '"') { i++; continue; }
-      if (ch === inStr) inStr = null;
-    } else if (ch === '"' || ch === "'") {
-      inStr = ch;
-    } else if (ch === target) {
-      last = i;
-    }
-  }
+  for (const i of unquotedIndices(s, target)) last = i;
   return last;
 }
 
-function findEquals(line: string): number {
-  let inQuote: string | null = null;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (inQuote) {
-      if (ch === "\\" && inQuote === '"') { i++; continue; }
-      if (ch === inQuote) inQuote = null;
-    } else if (ch === '"' || ch === "'") {
-      inQuote = ch;
-    } else if (ch === "=") {
-      return i;
+function descend(target: TomlObject, keys: Array<string>): TomlObject {
+  for (const key of keys) {
+    if (!(key in target) || typeof target[key] !== "object" || Array.isArray(target[key])) {
+      target[key] = {};
     }
+    target = target[key];
   }
-  return -1;
+  return target;
 }
 
 function unescapeString(s: string): string {

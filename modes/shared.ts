@@ -212,7 +212,7 @@ export function isAllowedVersionTransition(oldVersion: string, newVersion: strin
 
   // General downgrade from release to lower release: only with --allow-downgrade
   if (!newIsPre && lt(newCoerced, oldCoerced)) {
-    return allowDowngrade === true || matchesAny(name, allowDowngrade);
+    return matchesAny(name, allowDowngrade);
   }
 
   return true;
@@ -291,12 +291,10 @@ export function findNewVersion(data: any, {mode, range, useGreatest, useRel, use
   let getVersionDate: ((v: string) => string | undefined) | undefined;
   if (mode === "pypi") {
     const releases = data.releases;
-    versions = [];
-    for (const v of Object.keys(releases)) if (valid(v)) versions.push(v);
+    versions = Object.keys(releases).filter(valid);
     getVersionDate = (v: string) => releases?.[v]?.[0]?.upload_time_iso_8601;
   } else if (mode === "npm" || mode === "cargo") {
-    versions = [];
-    for (const v of Object.keys(data.versions)) if (valid(v)) versions.push(v);
+    versions = Object.keys(data.versions).filter(valid);
   } else if (mode === "go") {
     const oldVersion = coerceToVersion(range);
     if (!oldVersion) return null;

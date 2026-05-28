@@ -77,7 +77,7 @@ export function coerce(v: string): {version: string} | null {
   if (cached !== undefined) return cached;
   const m = coerceRe.exec(v);
   if (!m) { coerceCache.set(v, null); return null; }
-  const major = m[1] || "0";
+  const major = m[1];
   const minor = m[2] || "0";
   const patch = m[3] || "0";
   const result = {version: `${major}.${minor}.${patch}`};

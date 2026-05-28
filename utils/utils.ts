@@ -75,6 +75,7 @@ export const cargoTypes = [
 ];
 
 export function matchesAny(str: string, set: Set<RegExp> | boolean): boolean {
+  if (set === true) return true;
   if (!(set instanceof Set)) return false;
   for (const re of set) if (re.test(str)) return true;
   return false;

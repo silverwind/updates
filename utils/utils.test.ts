@@ -80,7 +80,7 @@ test("matchesAny", () => {
   expect(matchesAny("foobar", new Set([/^foo/]))).toBe(true);
   expect(matchesAny("foo", new Set([/bar/, /foo/]))).toBe(true);
   expect(matchesAny("foo", false)).toBe(false);
-  expect(matchesAny("foo", true)).toBe(false);
+  expect(matchesAny("foo", true)).toBe(true);
   expect(matchesAny("foo", new Set())).toBe(false);
 });
 
