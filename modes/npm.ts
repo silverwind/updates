@@ -94,7 +94,7 @@ function registryUrl(scope: string, npmrcConfig: Npmrc): string {
 function getAuthAndRegistry(name: string, registry: string): AuthAndRegistry {
   if (!npmrc) npmrc = getNpmrc();
 
-  const scope = name.startsWith("@") ? (/@[a-z0-9][\w.-]+/.exec(name) || [""])[0] : "";
+  const scope = name.startsWith("@") ? name.split("/")[0] : "";
   const cacheKey = `${scope}:${registry}`;
   const cached = authCache.get(cacheKey);
   if (cached) return cached;
@@ -303,31 +303,22 @@ export function updatePackageJson(pkgStr: string, deps: Deps): string {
 }
 
 export function updateVersionRange(oldRange: string, newVersion: string, oldOrig: string | undefined): string {
-  let newRange = oldRange.replace(npmVersionRePre, newVersion);
+  const newRange = oldRange.replace(npmVersionRePre, newVersion);
+  if (!oldOrig || oldOrig === oldRange) return newRange;
 
-  // if old version is a range like ^5 or ~5, retain number of version parts in new range
-  if (oldOrig && oldOrig !== oldRange && /^[\^~]/.test(newRange)) {
-    const oldParts = oldOrig.substring(1).split(".");
-    const newParts = newRange.substring(1).split(".");
-    if (oldParts.length !== newParts.length) {
-      newRange = `${newRange[0]}${newParts.slice(0, oldParts.length).join(".")}`;
-    }
-  }
+  // Partial ^/~/>= ranges: retain oldOrig's part count and any space after >=.
+  const oldMatch = /^([\^~]|>=\s*)([\d.]+)$/.exec(oldOrig);
+  if (!oldMatch) return newRange;
+  const [, prefix, oldDigits] = oldMatch;
 
-  // if old version is a range like >=5 or >= 5, retain number of version parts in new range
-  if (oldOrig && oldOrig !== oldRange && newRange.startsWith(">=")) {
-    const hasSpace = /^>=\s/.test(oldOrig);
-    const prefix = hasSpace ? ">= " : ">=";
-    const oldVersion = oldOrig.replace(/^>=\s*/, "");
-    const newVersion = newRange.replace(/^>=\s*/, "");
-    const oldParts = oldVersion.split(".");
-    const newParts = newVersion.split(".");
-    if (oldParts.length !== newParts.length) {
-      newRange = `${prefix}${newParts.slice(0, oldParts.length).join(".")}`;
-    }
-  }
+  // A prerelease can't be represented in fewer than 3 numeric parts, so leave the full version in place.
+  const newCore = newVersion.split(/[-+]/)[0];
+  if (newCore !== newVersion) return newRange;
 
-  return newRange;
+  const oldParts = oldDigits.split(".").length;
+  const newParts = newCore.split(".");
+  if (newParts.length === oldParts) return newRange;
+  return `${prefix}${newParts.slice(0, oldParts).join(".")}`;
 }
 
 export function normalizeRange(range: string): string {

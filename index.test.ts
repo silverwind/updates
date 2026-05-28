@@ -750,12 +750,12 @@ test("prerelease", async ({expect = globalExpect}: any = {}) => {
           },
           "noty": {
             "info": "https://github.com/needim/noty",
-            "new": ">= 3.2",
+            "new": ">= 3.2.0-beta",
             "old": ">= 3.1",
           },
           "typescript": {
             "info": "https://github.com/Microsoft/TypeScript",
-            "new": "^5",
+            "new": "^5.5.0-dev.20240601",
             "old": "^4",
           },
         },
@@ -1128,7 +1128,7 @@ test("preup 1", async ({expect = globalExpect}: any = {}) => {
         "peerDependencies": {
           "noty": {
             "info": "https://github.com/needim/noty",
-            "new": ">= 3.2",
+            "new": ">= 3.2.0-beta",
             "old": ">= 3.1",
           },
         },

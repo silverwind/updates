@@ -40,6 +40,10 @@ test("updateVersionRange", () => {
   expect(updateVersionRange("^5.9.0", "6.1.0", "^5.9")).toBe("^6.1");
   expect(updateVersionRange("^1.2.3", "1.3.0", undefined)).toBe("^1.3.0");
   expect(updateVersionRange("^1.0.0-alpha.1", "1.0.0-beta.2", undefined)).toBe("^1.0.0-beta.2");
+  // partial range bumped to a prerelease: keep the full version (can't shrink past major.minor.patch)
+  expect(updateVersionRange("^5.0.0", "6.0.0-beta.1", "^5")).toBe("^6.0.0-beta.1");
+  expect(updateVersionRange("~1.2.0", "1.3.0-rc.1", "~1.2")).toBe("~1.3.0-rc.1");
+  expect(updateVersionRange(">=5.0.0", "6.0.0-beta.1", ">=5")).toBe(">=6.0.0-beta.1");
 });
 
 test("normalizeRange", () => {
