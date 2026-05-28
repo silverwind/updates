@@ -296,8 +296,9 @@ export function updateGoMod(pkgStr: string, deps: Deps): [string, Record<string,
 
     const oldMajor = extractGoMajor(name);
     const newMajor = Number.parseInt(newValue.split(".")[0]);
+    const isIncompatible = newValue.includes("+incompatible"); // +incompatible modules keep a bare path, no /vN suffix
 
-    if (oldMajor !== newMajor && newMajor > 1) {
+    if (!isIncompatible && oldMajor !== newMajor && newMajor > 1) {
       const newPath = buildGoModulePath(name, newMajor);
       newPkgStr = newPkgStr.replace(new RegExp(`${esc(name)} +v${esc(oldValue)}`, "g"), `${newPath} v${newValue}`);
       // Rewrite tool paths referencing the old module path

@@ -235,6 +235,7 @@ export function findVersion(data: any, versions: Array<string>, {range, semvers,
   const cooldownActive = Boolean(cooldownDays && now);
 
   let greatestDate = 0;
+  let picked = false;
   let newVersion = oldVersion;
   // coerceToVersion always returns a 3-part numeric string, so parse cannot fail.
   let newVersionParsed = parse(oldVersion)!;
@@ -258,10 +259,15 @@ export function findVersion(data: any, versions: Array<string>, {range, semvers,
 
     // some registries like github don't have data.time available, fall back to greatest on them
     if (useGreatestPath) {
-      if (compareMain(parsed, newVersionParsed) >= 0 ||
+      const mainCmp = compareMain(parsed, newVersionParsed);
+      // a picked release must not be replaced by a same-main prerelease (seed exempt so prerelease ranges still upgrade)
+      const demotesRelease = picked && mainCmp === 0 &&
+        parsed.prerelease.length > 0 && newVersionParsed.prerelease.length === 0;
+      if ((mainCmp >= 0 && !demotesRelease) ||
           (pinnedRange && !satisfies(newVersion, pinnedRange))) {
         newVersion = candidateVersion;
         newVersionParsed = parsed;
+        picked = true;
       }
     } else {
       const dateMs = Date.parse(dateStr ?? time[version]);

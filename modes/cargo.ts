@@ -93,9 +93,9 @@ export function updateCargoToml(pkgStr: string, deps: Deps): string {
       new RegExp(`^(\\s*${nameEsc}\\s*=\\s*["'])${oldEsc}(["'].*)$`, "gm"),
       `$1${newValue}$2`,
     );
-    // Inline table: name = { version = "x.y.z", ... }
+    // Inline table: name = { ..., version = "x.y.z", ... } (version need not be the first key)
     newPkgStr = newPkgStr.replace(
-      new RegExp(`(\\s*${nameEsc}\\s*=\\s*\\{\\s*version\\s*=\\s*["'])${oldEsc}(["'])`, "g"),
+      new RegExp(`^(\\s*${nameEsc}\\s*=\\s*\\{[^}\\n]*?\\bversion\\s*=\\s*["'])${oldEsc}(["'])`, "gm"),
       `$1${newValue}$2`,
     );
     // Extended table: [section.name] with version = "x.y.z"
