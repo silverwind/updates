@@ -182,20 +182,20 @@ function replaceImageRefs(content: string, deps: Deps, patterns: Array<(name: st
 
 export function updateDockerfile(content: string, deps: Deps): string {
   return replaceImageRefs(content, deps, [
-    (name, tag) => new RegExp(`(FROM\\s+(?:--platform=\\S+\\s+)?)${name}:${tag}`, "g"),
+    (name, tag) => new RegExp(`(FROM\\s+(?:--platform=\\S+\\s+)?)${name}:${tag}(?![\\w.-])`, "g"),
   ]);
 }
 
 export function updateComposeFile(content: string, deps: Deps): string {
   return replaceImageRefs(content, deps, [
-    (name, tag) => new RegExp(`(image:\\s*['"]?)${name}:${tag}`, "g"),
+    (name, tag) => new RegExp(`(image:\\s*['"]?)${name}:${tag}(?![\\w.-])`, "g"),
   ]);
 }
 
 export function updateWorkflowDockerImages(content: string, deps: Deps): string {
   return replaceImageRefs(content, deps, [
-    (name, tag) => new RegExp(`((?:container|image):\\s*['"]?)${name}:${tag}`, "g"),
-    (name, tag) => new RegExp(`(uses:\\s*['"]?docker://)${name}:${tag}`, "g"),
+    (name, tag) => new RegExp(`((?:container|image):\\s*['"]?)${name}:${tag}(?![\\w.-])`, "g"),
+    (name, tag) => new RegExp(`(uses:\\s*['"]?docker://)${name}:${tag}(?![\\w.-])`, "g"),
   ]);
 }
 

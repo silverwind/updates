@@ -156,8 +156,6 @@ test("satisfies x-ranges", () => {
   expect(satisfies("1.5.0", "1.x")).toBe(true);
   expect(satisfies("1.0.0", "1.x")).toBe(true);
   expect(satisfies("2.0.0", "1.x")).toBe(false);
-  // Note: 1.2.x is not properly supported (regex overlap in expandXRanges)
-  // 1.x.x works as an alternative
   expect(satisfies("1.5.0", "1.x.x")).toBe(true);
   expect(satisfies("2.0.0", "1.x.x")).toBe(false);
   // star matches everything
@@ -222,10 +220,12 @@ test("validRange", () => {
   expect(validRange("not valid!!")).toBeNull();
 });
 
-test("satisfies 1.2.x pattern via x-range", () => {
-  // 1.2.x is consumed by the 1.x regex first (known limitation), so test via 1.x
-  expect(satisfies("1.5.0", "1.x")).toBe(true);
-  expect(satisfies("2.0.0", "1.x")).toBe(false);
+test("satisfies 1.2.x pattern", () => {
+  expect(satisfies("1.2.0", "1.2.x")).toBe(true);
+  expect(satisfies("1.2.5", "1.2.x")).toBe(true);
+  expect(satisfies("1.3.0", "1.2.x")).toBe(false);
+  expect(satisfies("1.1.9", "1.2.x")).toBe(false);
+  expect(validRange("1.2.x")).toBe("1.2.x");
 });
 
 test("satisfies bare single number partial", () => {

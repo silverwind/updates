@@ -266,17 +266,17 @@ function expandXRanges(range: string): string {
     return ">=0.0.0";
   }
 
-  // Handle patterns like 1.x, 1.*, 1.X, 1.x.x etc.
-  range = range.replace(/v?(\d+)\.[xX*](?:\.[xX*])?/g, (_, major) => {
-    const M = Number(major);
-    return `>=${M}.0.0 <${upperBound(M + 1, 0, 0)}`;
-  });
-
-  // Handle patterns like 1.2.x, 1.2.*
+  // Handle patterns like 1.2.x, 1.2.* (before the 2-part rule below, which would otherwise mis-match these)
   range = range.replace(/v?(\d+)\.(\d+)\.[xX*]/g, (_, major, minor) => {
     const M = Number(major);
     const m = Number(minor);
     return `>=${M}.${m}.0 <${upperBound(M, m + 1, 0)}`;
+  });
+
+  // Handle patterns like 1.x, 1.*, 1.X, 1.x.x etc.
+  range = range.replace(/v?(\d+)\.[xX*](?:\.[xX*])?/g, (_, major) => {
+    const M = Number(major);
+    return `>=${M}.0.0 <${upperBound(M + 1, 0, 0)}`;
   });
 
   // Handle bare partials: standalone "1" or "1.2" (not preceded by operator)

@@ -365,7 +365,10 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
   const pkgStrs: Record<string, string> = {};
   const filePerMode: Record<string, string> = {};
   const now = Date.now();
-  const cooldownDays = config.cooldown ? parseDuration(String(config.cooldown)) : 0;
+  const cooldownDaysFor = (local: Config["cooldown"]) => {
+    const raw = config.cooldown ?? local;
+    return raw ? parseDuration(String(raw)) : 0;
+  };
   const cwdStr = cwd();
   const toRelPath = (absPath: string) => absPath.replace(`${cwdStr}/`, "").replace(`${cwdStr}\\`, "");
   let numDependencies = 0;
@@ -397,9 +400,13 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
   const pnpmMemberFiles: WorkspaceMember[] = [];
   let pnpmWorkspaceActive = false;
 
-  type ActionDepInfo = ActionRef & {key: string, apiUrl: string, filePin: Record<string, string>};
+  type ActionDepInfo = ActionRef & {
+    key: string, apiUrl: string, filePin: Record<string, string>, fileCooldownDays: number,
+  };
   const actionDepInfos: Array<ActionDepInfo> = [];
-  type DockerDepInfo = {key: string, fullImage: string, ref: DockerImageRef, filePin: Record<string, string>};
+  type DockerDepInfo = {
+    key: string, fullImage: string, ref: DockerImageRef, filePin: Record<string, string>, fileCooldownDays: number,
+  };
   const dockerDepInfos: Array<DockerDepInfo> = [];
   type ModeCtx = {modeConfig: Config, projectDir: string, pin: Record<string, string>};
   const modeConfigs: Record<string, ModeCtx> = {};
@@ -422,7 +429,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
     return [];
   }
 
-  type FileFilters = {include: Set<RegExp>, exclude: Set<RegExp>, pin: Record<string, string>};
+  type FileFilters = {include: Set<RegExp>, exclude: Set<RegExp>, pin: Record<string, string>, cooldownDays: number};
 
   function collectDockerRefs(content: string, relPath: string, regexes: Array<RegExp>, filters: FileFilters): void {
     deps.docker ??= {};
@@ -434,7 +441,9 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
         const parsed = parseDockerTag(ref.tag);
         if (!parsed) continue;
         deps.docker[key] = {old: parsed.version, oldOrig: ref.tag} as Dep;
-        dockerDepInfos.push({key, fullImage: ref.fullImage, ref, filePin: filters.pin});
+        dockerDepInfos.push({
+          key, fullImage: ref.fullImage, ref, filePin: filters.pin, fileCooldownDays: filters.cooldownDays,
+        });
       }
     }
   }
@@ -443,7 +452,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
     const cfg = await loadConfig(fileDir);
     const inc = cfg.include?.length ? patternsToRegexSet([...(config.include ?? []), ...cfg.include]) : include;
     const exc = cfg.exclude?.length ? patternsToRegexSet([...(config.exclude ?? []), ...cfg.exclude]) : exclude;
-    return {include: inc, exclude: exc, pin: cfg.pin ?? {}};
+    return {include: inc, exclude: exc, pin: cfg.pin ?? {}, cooldownDays: cooldownDaysFor(cfg.cooldown)};
   }
 
   for (const file of files) {
@@ -465,7 +474,10 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
           const key = `${relPath}${fieldSep}${action.name}`;
           if (deps.actions[key]) continue;
           deps.actions[key] = {old: action.ref} as Dep;
-          actionDepInfos.push({...action, key, apiUrl: getForgeApiBaseUrl(action.host, forgeApiUrl), filePin: filters.pin});
+          actionDepInfos.push({
+            ...action, key, apiUrl: getForgeApiBaseUrl(action.host, forgeApiUrl),
+            filePin: filters.pin, fileCooldownDays: filters.cooldownDays,
+          });
         }
       }
 
@@ -760,8 +772,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
     const hasUrlDeps = mode === "npm" && Object.keys(maybeUrlDeps).length > 0;
     if (!hasDeps && !hasUrlDeps) continue;
     const {modeConfig, projectDir, pin} = modeConfigs[mode];
-    const cooldownRaw = config.cooldown ?? modeConfig.cooldown;
-    const modeCooldownDays = cooldownRaw ? parseDuration(String(cooldownRaw)) : 0;
+    const modeCooldownDays = cooldownDaysFor(modeConfig.cooldown);
     fetchTasks.push((async () => {
       const npmFollowUps = new Map<string, {name: string, promise: Promise<{repository?: PackageRepository, homepage?: string, date?: string}>}>();
       // Safety net for deps that bypass findNewVersion (URL tarballs, JSR
@@ -950,14 +961,14 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
           return null;
         }
 
-        await pMap(infos, async ({key, host, ref, name: actionName, isHash, filePin}) => {
+        await pMap(infos, async ({key, host, ref, name: actionName, isHash, filePin, fileCooldownDays}) => {
           const dep = deps.actions[key];
           const infoUrl = `https://${host || "github.com"}/${owner}/${repo}`;
           const actionPin = globalPin[actionName] ?? filePin[actionName];
 
           if (isHash) {
             const {usePre, useRel, cooldownOverride} = getVersionOpts(actionName);
-            const actionCooldownDays = cooldownOverride ?? cooldownDays;
+            const actionCooldownDays = cooldownOverride ?? fileCooldownDays;
             const result = await pickVersion({
               range: "0.0.0", semvers: new Set(["patch", "minor", "major"]), usePre, useRel,
               useGreatest: true, pinnedRange: actionPin,
@@ -987,7 +998,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
             if (!coerced) { delete deps.actions[key]; return; }
 
             const {usePre, useRel, semvers, cooldownOverride} = getVersionOpts(actionName);
-            const actionCooldownDays = cooldownOverride ?? cooldownDays;
+            const actionCooldownDays = cooldownOverride ?? fileCooldownDays;
             const result = await pickVersion({
               range: coerced, semvers, usePre, useRel,
               useGreatest: true, pinnedRange: actionPin,
@@ -1038,7 +1049,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
           const oldTag = dep.oldOrig || dep.old;
           const {semvers, cooldownOverride} = getVersionOpts(info.fullImage);
           const pinnedRange = globalPin[info.fullImage] ?? info.filePin[info.fullImage];
-          const dockerCooldownDays = cooldownOverride ?? cooldownDays;
+          const dockerCooldownDays = cooldownOverride ?? info.fileCooldownDays;
           const result = findDockerVersion(
             data.tags, oldTag, semvers,
             dockerCooldownDays || undefined, dockerCooldownDays ? now : undefined,
