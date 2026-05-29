@@ -190,7 +190,7 @@ export function parseGoMod(content: string): {deps: Record<string, string>, indi
           bestMatch = mod;
         }
       }
-      const source = bestMatch ? (indirect[bestMatch] ? indirect : deps[bestMatch] ? deps : null) : null;
+      const source = indirect[bestMatch] ? indirect : deps[bestMatch] ? deps : null;
       if (source) {
         tool[bestMatch] = source[bestMatch];
         delete source[bestMatch];

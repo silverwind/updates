@@ -62,10 +62,7 @@ type RenovatePackageRule = {
  */
 function isSimpleRule(rule: RenovatePackageRule): boolean {
   if (!Array.isArray(rule.matchPackageNames) || !rule.matchPackageNames.length) return false;
-  for (const key of Object.keys(rule)) {
-    if (key.startsWith("match") && key !== "matchPackageNames") return false;
-  }
-  return true;
+  return !Object.keys(rule).some(key => key.startsWith("match") && key !== "matchPackageNames");
 }
 
 async function readFirstExisting(rootDir: string): Promise<{path: string, text: string} | undefined> {

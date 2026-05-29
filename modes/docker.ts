@@ -39,15 +39,12 @@ export function parseDockerImageRef(ref: string): DockerImageRef | null {
   if (ref.includes("@")) return null; // digest-pinned, skip
 
   const colonIndex = ref.lastIndexOf(":");
-  let imagePart: string;
-  let tag: string;
-
   if (colonIndex === -1 || ref.lastIndexOf("/") > colonIndex) {
     return null; // no tag specified, skip
-  } else {
-    imagePart = ref.substring(0, colonIndex);
-    tag = ref.substring(colonIndex + 1);
   }
+
+  const imagePart = ref.substring(0, colonIndex);
+  const tag = ref.substring(colonIndex + 1);
 
   if (!tag || !dockerTagRe.test(tag)) return null; // non-semver tag
 
@@ -233,11 +230,7 @@ export function getExtractionRegex(filename: string): RegExp {
 }
 
 export function getDockerInfoUrl(ref: DockerImageRef): string {
-  if (!ref.registry) {
-    if (ref.namespace === "library") {
-      return `https://hub.docker.com/_/${ref.repo}`;
-    }
-    return `https://hub.docker.com/r/${ref.namespace}/${ref.repo}`;
-  }
-  return "";
+  if (ref.registry) return "";
+  if (ref.namespace === "library") return `https://hub.docker.com/_/${ref.repo}`;
+  return `https://hub.docker.com/r/${ref.namespace}/${ref.repo}`;
 }

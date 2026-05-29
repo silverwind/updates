@@ -143,9 +143,7 @@ export function parseMixedArg(arg: Arg): boolean | Set<string> {
   if (Array.isArray(arg) && arg.every(a => a === true)) {
     return true;
   } else if (Array.isArray(arg)) {
-    return new Set(arg.flatMap(val => {
-      return typeof val === "string" ? commaSeparatedToArray(val) : "";
-    }).filter(Boolean));
+    return new Set(arg.filter(val => typeof val === "string").flatMap(commaSeparatedToArray));
   } else if (typeof arg === "string") {
     return new Set([arg]);
   } else if (typeof arg === "boolean") {
@@ -157,8 +155,7 @@ export function parseMixedArg(arg: Arg): boolean | Set<string> {
 
 export function getOptionKey(name: string): string {
   for (const [key, {short}] of Object.entries(options)) {
-    if (key === name) return key;
-    if (short === name) return key;
+    if (key === name || short === name) return key;
   }
   return "";
 }
@@ -191,11 +188,7 @@ export function parsePinArg(arg: Arg): Record<string, string> {
 export function configMixedToRegexes(val: boolean | Array<string | RegExp> | undefined): Set<RegExp> | boolean {
   if (typeof val === "boolean") return val;
   if (!Array.isArray(val) || !val.length) return false;
-  const ret = new Set<RegExp>();
-  for (const entry of val) {
-    ret.add(argToRegex(entry, false, true));
-  }
-  return ret;
+  return patternsToRegexSet(val);
 }
 
 type FoundConfig = {configDir: string, filename: string, default: Config};

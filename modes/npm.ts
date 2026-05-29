@@ -338,17 +338,17 @@ export async function getLatestCommit(user: string, repo: string, ctx: ModeConte
   try {
     const cached = ctx.noCache ? null : await getCache(url);
     const res = await fetchForge(url, ctx, cached ? {"if-none-match": cached.etag} : undefined);
+    let body: string;
     if (res?.status === 304 && cached) {
-      const data = JSON.parse(cached.body);
-      const {sha: hash, commit} = data[0];
-      return {hash, commit};
+      body = cached.body;
+    } else if (res?.ok) {
+      body = await res.text();
+      const etag = res.headers.get("etag");
+      if (etag && !ctx.noCache) await setCache(url, etag, body);
+    } else {
+      return {hash: "", commit: {}};
     }
-    if (!res?.ok) return {hash: "", commit: {}};
-    const body = await res.text();
-    const etag = res.headers.get("etag");
-    if (etag && !ctx.noCache) await setCache(url, etag, body);
-    const data = JSON.parse(body);
-    const {sha: hash, commit} = data[0];
+    const {sha: hash, commit} = JSON.parse(body)[0];
     return {hash, commit};
   } catch {
     return {hash: "", commit: {}};

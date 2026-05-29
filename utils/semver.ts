@@ -31,10 +31,10 @@ function parseVersion(v: string): SemVer | null {
 function compareIdentifiers(a: string | number, b: string | number): number {
   const aNum = typeof a === "number";
   const bNum = typeof b === "number";
-  if (aNum && bNum) return (a) - (b);
+  if (aNum && bNum) return a - b;
   if (aNum) return -1; // numbers sort before strings
   if (bNum) return 1;
-  return (a) < (b) ? -1 : (a) > (b) ? 1 : 0;
+  return a < b ? -1 : a > b ? 1 : 0;
 }
 
 export function compareMain(a: SemVer, b: SemVer): number {
@@ -44,11 +44,13 @@ export function compareMain(a: SemVer, b: SemVer): number {
 function compareVersions(a: SemVer, b: SemVer): number {
   const main = compareMain(a, b);
   if (main !== 0) return main;
+  const aHasPre = a.prerelease.length > 0;
+  const bHasPre = b.prerelease.length > 0;
   // no prerelease on either => equal
-  if (!a.prerelease.length && !b.prerelease.length) return 0;
+  if (!aHasPre && !bHasPre) return 0;
   // prerelease has lower precedence than release
-  if (a.prerelease.length && !b.prerelease.length) return -1;
-  if (!a.prerelease.length && b.prerelease.length) return 1;
+  if (aHasPre && !bHasPre) return -1;
+  if (!aHasPre && bHasPre) return 1;
   // both have prerelease
   const len = Math.max(a.prerelease.length, b.prerelease.length);
   for (let i = 0; i < len; i++) {
@@ -350,23 +352,17 @@ function parseRange(range: string): Array<Array<Comparator>> | null {
 
 function testWithPrerelease(version: SemVer, comparators: Array<Comparator>): boolean {
   // All comparators in the AND group must pass
-  for (const comp of comparators) {
-    if (!testComparator(version, comp)) return false;
-  }
+  if (!comparators.every(comp => testComparator(version, comp))) return false;
 
   // Prerelease filtering: if version has prerelease tags,
   // at least one comparator must share the same [major, minor, patch]
   // and also have a prerelease tag
   if (version.prerelease.length > 0) {
-    for (const comp of comparators) {
-      if (comp.semver.prerelease.length > 0 &&
-          comp.semver.major === version.major &&
-          comp.semver.minor === version.minor &&
-          comp.semver.patch === version.patch) {
-        return true;
-      }
-    }
-    return false;
+    return comparators.some(comp =>
+      comp.semver.prerelease.length > 0 &&
+      comp.semver.major === version.major &&
+      comp.semver.minor === version.minor &&
+      comp.semver.patch === version.patch);
   }
 
   return true;

@@ -246,14 +246,14 @@ function formatOutput(output: Output): string {
         const id = `${mode}|${name}`;
         if (seen.has(id)) continue;
         seen.add(id);
-        const row = [];
-        row.push(mode === "go" ? shortenGoModule(name) : name);
-        if (hasMultipleModes) row.push(mode);
-        row.push(highlightDiff(data.old, data.new, red));
-        row.push(highlightDiff(data.new, data.old, green));
-        row.push(data.age || "");
-        row.push(data.info || "");
-        arr.push(row);
+        arr.push([
+          mode === "go" ? shortenGoModule(name) : name,
+          ...(hasMultipleModes ? [mode] : []),
+          highlightDiff(data.old, data.new, red),
+          highlightDiff(data.new, data.old, green),
+          data.age || "",
+          data.info || "",
+        ]);
       }
     }
   }

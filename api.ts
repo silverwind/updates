@@ -130,9 +130,9 @@ function resolveFiles(filesArg: Set<string> | false): Set<string> {
         throw new Error(`Unable to open ${file}: ${(err as Error).message}`);
       }
 
-      if (stat?.isFile()) {
+      if (stat.isFile()) {
         resolvedFiles.add(resolve(file));
-      } else if (stat?.isDirectory()) {
+      } else if (stat.isDirectory()) {
         for (const filename of Object.keys(modeByFileName)) {
           const f = join(file, filename);
           let stat: Stats | null = null;
@@ -149,10 +149,9 @@ function resolveFiles(filesArg: Set<string> | false): Set<string> {
         const normalized = resolve(file).replace(/\\/g, "/");
         const endsInWorkflowsDir = forgeDirs.some(forgeDir => normalized.endsWith(`${forgeDir}/workflows`));
         const endsInForgeDir = !endsInWorkflowsDir && forgeDirs.some(forgeDir => normalized.endsWith(forgeDir));
-        let forgeDirCandidates: Array<string>;
-        if (endsInWorkflowsDir) forgeDirCandidates = [dirname(normalized)];
-        else if (endsInForgeDir) forgeDirCandidates = [normalized];
-        else forgeDirCandidates = forgeDirs.map(forgeDir => join(normalized, forgeDir));
+        const forgeDirCandidates: Array<string> = endsInWorkflowsDir ? [dirname(normalized)] :
+          endsInForgeDir ? [normalized] :
+            forgeDirs.map(forgeDir => join(normalized, forgeDir));
         for (const forgeDir of forgeDirCandidates) {
           for (const workflow of resolveWorkflowFiles(forgeDir)) resolvedFiles.add(workflow);
         }
@@ -266,7 +265,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
   const dockerApiUrl = apiUrl(opts.dockerapi, "https://hub.docker.com");
   const goNoProxy = parseGoNoProxy();
 
-  const useVerboseColor = config.color === true || (config.noColor !== true && stderr.isTTY);
+  const useVerboseColor = config.color || (!config.noColor && stderr.isTTY);
   const colorFn = (color: "magenta" | "green" | "red") => useVerboseColor ? (text: string | number) => styleText(color, String(text)) : String;
   const magenta = colorFn("magenta");
   const vGreen = colorFn("green");
@@ -764,7 +763,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
   const argsForNpm = {registry: config.registry};
 
   for (const mode of Object.keys(modeConfigs)) {
-    const hasDeps = Boolean(deps[mode]) && Object.keys(deps[mode]).length > 0;
+    const hasDeps = deps[mode] && Object.keys(deps[mode]).length > 0;
     const hasUrlDeps = mode === "npm" && Object.keys(maybeUrlDeps).length > 0;
     if (!hasDeps && !hasUrlDeps) continue;
     const {modeConfig, projectDir, pin} = modeConfigs[mode];
@@ -813,7 +812,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
         if (!info) return;
 
         const [data, , registry] = info;
-        if (data?.error) throw new Error(data.error);
+        if (data.error) throw new Error(data.error);
 
         const {useGreatest, usePre, useRel, semvers, allowDowngrade: allowDown, cooldownOverride} = getVersionOpts(data.name);
         const oldRange = dep.old;

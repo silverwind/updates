@@ -48,7 +48,7 @@ export async function fetchActionTagDate(apiUrl: string, owner: string, repo: st
   }
   try {
     const res = await fetchForge(url, ctx);
-    if (!res?.ok) return "";
+    if (!res.ok) return "";
     const data = await res.json();
     const date = data?.committer?.date || data?.author?.date || "";
     if (date && !ctx.noCache) await setCache(url, "immutable", date);

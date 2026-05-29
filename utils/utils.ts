@@ -82,7 +82,7 @@ export function matchesAny(str: string, set: Set<RegExp> | boolean): boolean {
 }
 
 export function getProperty(obj: Record<string, any>, path: string): Record<string, any> {
-  return path.split(".").reduce((obj: Record<string, any>, prop: string) => obj?.[prop] ?? null, obj);
+  return path.split(".").reduce((acc: Record<string, any>, prop: string) => acc?.[prop] ?? null, obj);
 }
 
 export function commaSeparatedToArray(str: string): Array<string> {
