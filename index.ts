@@ -175,7 +175,7 @@ async function main(): Promise<void> {
   if (cliInclude.length) config.include = cliInclude;
   if (cliExclude.length) config.exclude = cliExclude;
 
-  const cliTypes = Array.isArray(args.types) ? args.types.filter((v): v is string => typeof v === "string") : [];
+  const cliTypes = parseArgList(args.types);
   if (cliTypes.length) config.types = cliTypes;
 
   const cliPin = parsePinArg(args.pin);

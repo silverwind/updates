@@ -259,12 +259,10 @@ export function findVersion(data: any, versions: Array<string>, {range, semvers,
 
     // some registries like github don't have data.time available, fall back to greatest on them
     if (useGreatestPath) {
-      const mainCmp = compareMain(parsed, newVersionParsed);
-      // a picked release must not be replaced by a same-main prerelease (seed exempt so prerelease ranges still upgrade)
-      const demotesRelease = picked && mainCmp === 0 &&
-        parsed.prerelease.length > 0 && newVersionParsed.prerelease.length === 0;
-      if ((mainCmp >= 0 && !demotesRelease) ||
-          (pinnedRange && !satisfies(newVersion, pinnedRange))) {
+      // seed (oldVersion) is a coerced release; accept any candidate whose main is >= it so prerelease ranges still upgrade.
+      // once a real candidate is picked, compare with full precedence so the highest prerelease wins and a release is not demoted.
+      const better = picked ? gt(candidateVersion, newVersion) : compareMain(parsed, newVersionParsed) >= 0;
+      if (better || (pinnedRange && !satisfies(newVersion, pinnedRange))) {
         newVersion = candidateVersion;
         newVersionParsed = parsed;
         picked = true;

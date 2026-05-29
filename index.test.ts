@@ -600,7 +600,7 @@ test("greatest", async ({expect = globalExpect}: any = {}) => {
           },
           "styled-components": {
             "info": "https://github.com/styled-components/styled-components",
-            "new": "5.0.0-rc.2",
+            "new": "5.0.0-regexrehydrate",
             "old": "2.5.0-1",
           },
           "updates": {
@@ -699,12 +699,12 @@ test("prerelease", async ({expect = globalExpect}: any = {}) => {
           },
           "react": {
             "info": "https://github.com/facebook/react/tree/HEAD/packages/react",
-            "new": "18.3.0-next-d1e35c703-20221110",
+            "new": "18.3.0-next-fecc288b7-20221025",
             "old": "18.0",
           },
           "styled-components": {
             "info": "https://github.com/styled-components/styled-components",
-            "new": "5.0.0-rc.2",
+            "new": "5.0.0-regexrehydrate",
             "old": "2.5.0-1",
           },
           "svgstore": {

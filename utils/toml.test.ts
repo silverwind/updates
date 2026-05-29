@@ -49,6 +49,18 @@ test("multi-line literal string", () => {
   expect(parseToml(`key = '''hello'''`)).toEqual({key: "hello"});
 });
 
+test("multi-line basic string spanning lines keeps body and leaks no keys", () => {
+  expect(parseToml(`a = """\nhello\nworld\n"""\nb = "x"`)).toEqual({a: "hello\nworld\n", b: "x"});
+  // a "key = value" line inside the string must not become a phantom dependency
+  expect(parseToml(`[dependencies]\nhelp = """\nfoo = bar\n"""\nserde = "1.0"`))
+    .toEqual({dependencies: {help: "foo = bar\n", serde: "1.0"}});
+});
+
+test("multi-line literal string spanning lines", () => {
+  expect(parseToml(`a = '''\nx = 1\n'''\n[dependencies]\nserde = "1"`))
+    .toEqual({a: "x = 1\n", dependencies: {serde: "1"}});
+});
+
 test("escape sequences in basic strings", () => {
   expect(parseToml(`a = "line1\\nline2"\nb = "col1\\tcol2"`)).toEqual({a: "line1\nline2", b: "col1\tcol2"});
 });

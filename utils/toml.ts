@@ -52,6 +52,7 @@ export function parseToml(input: string): TomlObject {
     const keys = splitDottedKey(rawKey);
     const target = descend(current, keys.slice(0, -1));
     const finalKey = keys[keys.length - 1];
+    const mlDelim = multilineStringDelim(rawVal);
 
     // Multi-line array
     if (rawVal.startsWith("[") && indexOfUnquoted(rawVal, "]") < 0) {
@@ -69,6 +70,21 @@ export function parseToml(input: string): TomlObject {
         parseArrayItems(aLine, items);
       }
       target[finalKey] = items;
+    } else if (mlDelim) {
+      // Multi-line basic/literal string: gather raw lines up to the closing delimiter, then
+      // re-wrap and hand to parseValue so escaping/literal handling stays in one place.
+      let body = rawVal.slice(3);
+      let j = i + 1;
+      for (; j < lines.length; j++) {
+        const closeIdx = lines[j].indexOf(mlDelim);
+        if (closeIdx >= 0) {
+          body += (body ? "\n" : "") + lines[j].slice(0, closeIdx);
+          break;
+        }
+        body += (body ? "\n" : "") + lines[j];
+      }
+      i = j;
+      target[finalKey] = parseValue(mlDelim + body + mlDelim);
     } else {
       target[finalKey] = parseValue(rawVal);
     }
@@ -85,6 +101,13 @@ function parseArrayItems(segment: string, items: Array<TomlValue>): void {
     if (!clean) continue;
     items.push(parseValue(clean));
   }
+}
+
+// Returns the opening delimiter if raw starts a multi-line string that does not close on the same line, else "".
+function multilineStringDelim(raw: string): string {
+  const delim = raw.slice(0, 3);
+  if (delim !== '"""' && delim !== "'''") return "";
+  return raw.includes(delim, 3) ? "" : delim;
 }
 
 function parseValue(raw: string): TomlValue {

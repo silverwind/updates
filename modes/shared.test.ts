@@ -329,6 +329,22 @@ test("findVersion greatest mode picks highest version", () => {
   expect(result).toBe("2.0.0");
 });
 
+test("findVersion greatest mode picks highest prerelease regardless of order", () => {
+  const opts = {
+    range: "1.0.0",
+    semvers: new Set(["major", "minor", "patch"]),
+    usePre: true,
+    useRel: false,
+    useGreatest: true,
+  } as const;
+  expect(findVersion({}, ["2.0.0-rc.2", "2.0.0-rc.1"], opts)).toBe("2.0.0-rc.2");
+  expect(findVersion({}, ["2.0.0-rc.1", "2.0.0-rc.2"], opts)).toBe("2.0.0-rc.2");
+  expect(findVersion({}, ["1.0.0-beta.10", "1.0.0-beta.5", "1.0.0-beta.3"], opts)).toBe("1.0.0-beta.10");
+  // a release must win over a same-main prerelease
+  expect(findVersion({}, ["2.0.0-rc.1", "2.0.0"], opts)).toBe("2.0.0");
+  expect(findVersion({}, ["2.0.0", "2.0.0-rc.1"], opts)).toBe("2.0.0");
+});
+
 test("findVersion time-based mode picks most recent", () => {
   const data = {
     versions: {"1.1.0": {}, "1.2.0": {}, "1.3.0": {}},
