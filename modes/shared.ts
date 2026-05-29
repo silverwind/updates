@@ -289,10 +289,10 @@ export function findNewVersion(data: any, {mode, range, useGreatest, useRel, use
   let getVersionDate: ((v: string) => string | undefined) | undefined;
   if (mode === "pypi") {
     const releases = data.releases;
-    versions = Object.keys(releases).filter(valid);
+    versions = Object.keys(releases);
     getVersionDate = (v: string) => releases?.[v]?.[0]?.upload_time_iso_8601;
   } else if (mode === "npm" || mode === "cargo") {
-    versions = Object.keys(data.versions).filter(valid);
+    versions = Object.keys(data.versions);
   } else if (mode === "go") {
     const oldVersion = coerceToVersion(range);
     if (!oldVersion) return null;

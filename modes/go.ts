@@ -264,6 +264,8 @@ export async function fetchGoProxyInfo(name: string, type: string, currentVersio
 }
 
 export function removeGoReplace(content: string, name: string): string {
+  // No replace directives means there is nothing to strip; skip the regex scans below.
+  if (!content.includes("replace")) return content;
   const e = esc(name);
   // Remove single-line: replace <name> [version] => <replacement> [version]
   content = content.replace(new RegExp(`^replace\\s+${e}(\\s+v\\S+)?\\s+=>\\s+\\S+(\\s+v\\S+)?\\s*\\n`, "gm"), "");
