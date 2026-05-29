@@ -52,6 +52,15 @@ export function buildGoModulePath(name: string, major: number): string {
   return major <= 1 ? base : `${base}/v${major}`;
 }
 
+// Module path adjusted for a target version's major suffix: .../v2 -> .../v3 on a
+// major bump, unchanged for same-major, v0/v1, and +incompatible versions.
+export function goModulePathForVersion(modulePath: string, version: string): string {
+  if (version.includes("+incompatible")) return modulePath;
+  const newMajor = Number.parseInt(stripv(version).split(".")[0]);
+  if (Number.isNaN(newMajor) || newMajor <= 1 || newMajor === extractGoMajor(modulePath)) return modulePath;
+  return buildGoModulePath(modulePath, newMajor);
+}
+
 type ReplaceMatch = {origModule: string, targetModule: string, targetVersion: string};
 
 function parseReplaceDirective(trimmed: string, inBlock: boolean): ReplaceMatch | null {
@@ -297,12 +306,9 @@ export function updateGoMod(pkgStr: string, deps: Deps): [string, Record<string,
       continue;
     }
 
-    const oldMajor = extractGoMajor(name);
-    const newMajor = Number.parseInt(newValue.split(".")[0]);
-    const isIncompatible = newValue.includes("+incompatible"); // +incompatible modules keep a bare path, no /vN suffix
+    const newPath = goModulePathForVersion(name, newValue);
 
-    if (!isIncompatible && oldMajor !== newMajor && newMajor > 1) {
-      const newPath = buildGoModulePath(name, newMajor);
+    if (newPath !== name) {
       newPkgStr = newPkgStr.replace(new RegExp(`${esc(name)} +v${esc(oldValue)}`, "g"), `${newPath} v${newValue}`);
       // Rewrite tool paths referencing the old module path
       if (depType === "tool") {

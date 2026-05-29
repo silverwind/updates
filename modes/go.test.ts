@@ -6,6 +6,7 @@ import {
   encodeGoModulePath,
   extractGoMajor,
   buildGoModulePath,
+  goModulePathForVersion,
   isGoPseudoVersion,
   parseGoMod,
   parseGoWork,
@@ -85,6 +86,15 @@ test("buildGoModulePath", () => {
   expect(buildGoModulePath("github.com/foo/bar/v2", 1)).toBe("github.com/foo/bar");
   expect(buildGoModulePath("github.com/foo/bar", 2)).toBe("github.com/foo/bar/v2");
   expect(buildGoModulePath("github.com/foo/bar", 1)).toBe("github.com/foo/bar");
+});
+
+test("goModulePathForVersion", () => {
+  expect(goModulePathForVersion("github.com/foo/bar/v2", "3.0.0")).toBe("github.com/foo/bar/v3");
+  expect(goModulePathForVersion("github.com/foo/bar", "2.1.0")).toBe("github.com/foo/bar/v2");
+  expect(goModulePathForVersion("github.com/foo/bar/v2", "2.5.0")).toBe("github.com/foo/bar/v2");
+  expect(goModulePathForVersion("github.com/foo/bar", "1.4.0")).toBe("github.com/foo/bar");
+  expect(goModulePathForVersion("github.com/foo/bar", "3.0.0+incompatible")).toBe("github.com/foo/bar");
+  expect(goModulePathForVersion("github.com/foo/bar/v2", "garbage")).toBe("github.com/foo/bar/v2"); // non-numeric major → unchanged
 });
 
 test("isGoPseudoVersion", () => {

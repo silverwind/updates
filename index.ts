@@ -97,7 +97,7 @@ async function main(): Promise<void> {
   Options:
     -u, --update                       Update versions and write dependency file
     -f, --file <path,...>              File or directory to use, defaults to current directory
-    -M, --modes <mode,...>             Which modes to enable. Default: npm,pypi,go,cargo,actions,docker
+    -M, --modes <mode,...>             Which modes to enable. Default: npm,pypi,go,cargo,actions,docker,make
     -i, --include <dep,...>            Include only given dependencies
     -e, --exclude <dep,...>            Exclude given dependencies
     -l, --pin <dep=range>              Pin dependency to given semver range
@@ -136,6 +136,7 @@ async function main(): Promise<void> {
     $ updates -f .github
     $ updates -f Dockerfile
     $ updates -f docker-compose.yml
+    $ updates -f Makefile
 `);
     await end();
   }

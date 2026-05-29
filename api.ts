@@ -40,6 +40,10 @@ import {
   updateDockerfile, updateComposeFile, updateWorkflowDockerImages,
   composeImageRe, workflowContainerRe, workflowDockerUsesRe,
 } from "./modes/docker.ts";
+import {
+  type MakeRewrite,
+  isMakeFileName, makeExactFileNames, parseMakeGoInstalls, fetchMakeInfo, updateMakefile,
+} from "./modes/make.ts";
 import {fetchCratesIoInfo, updateCargoToml, updateCargoRange, parseCargoLock, findLockedVersion} from "./modes/cargo.ts";
 import {baseType, filterDepsForMember, resolveWorkspaceMembers, parsePnpmWorkspace, type WorkspaceMember} from "./utils/workspace.ts";
 
@@ -54,7 +58,7 @@ const modeByFileName: Record<string, string> = {
   "Cargo.toml": "cargo",
 };
 
-const defaultModes = new Set(["npm", "pypi", "go", "cargo", "actions", "docker"]);
+const defaultModes = new Set(["npm", "pypi", "go", "cargo", "actions", "docker", "make"]);
 
 const apiUrl = (val: unknown, dflt: string | (() => string)) => typeof val === "string" ? normalizeUrl(val) : (typeof dflt === "function" ? dflt() : dflt);
 
@@ -141,7 +145,7 @@ function resolveFiles(filesArg: Set<string> | false): Set<string> {
         }
         try {
           for (const entry of readdirSync(file, {withFileTypes: true})) {
-            if (entry.isFile() && isDockerFileName(entry.name)) {
+            if (entry.isFile() && (isDockerFileName(entry.name) || isMakeFileName(entry.name))) {
               resolvedFiles.add(resolve(join(file, entry.name)));
             }
           }
@@ -161,7 +165,7 @@ function resolveFiles(filesArg: Set<string> | false): Set<string> {
     }
   } else {
     const forgeDirSet = new Set<string>(forgeDirs);
-    const candidates = [...Object.keys(modeByFileName), ...dockerExactFileNames, ...forgeDirs];
+    const candidates = [...Object.keys(modeByFileName), ...dockerExactFileNames, ...makeExactFileNames, ...forgeDirs];
     for (const [filename, path] of findUpSync(candidates, cwd())) {
       if (forgeDirSet.has(filename)) {
         for (const wf of resolveWorkflowFiles(path)) resolvedFiles.add(wf);
@@ -171,7 +175,9 @@ function resolveFiles(filesArg: Set<string> | false): Set<string> {
     }
     try {
       for (const entry of readdirSync(cwd(), {withFileTypes: true})) {
-        if (entry.isFile() && isDockerFileName(entry.name) && !dockerExactFileNames.includes(entry.name)) {
+        const isExtraDocker = isDockerFileName(entry.name) && !dockerExactFileNames.includes(entry.name);
+        const isExtraMake = isMakeFileName(entry.name) && !makeExactFileNames.includes(entry.name);
+        if (entry.isFile() && (isExtraDocker || isExtraMake)) {
           resolvedFiles.add(resolve(join(cwd(), entry.name)));
         }
       }
@@ -381,6 +387,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
     if (isWorkflowFile(file)) return enabledModes.has("actions") || enabledModes.has("docker");
     const filename = basename(file);
     if (isDockerFileName(filename)) return enabledModes.has("docker");
+    if (isMakeFileName(filename)) return enabledModes.has("make");
     const mode = modeByFileName[filename];
     return Boolean(mode) && enabledModes.has(mode);
   };
@@ -388,6 +395,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
 
   const wfData: Record<string, {absPath: string, content: string}> = {};
   const dockerFileData: Record<string, {absPath: string, content: string, fileType: string}> = {};
+  const makeFileData: Record<string, {absPath: string, content: string}> = {};
 
   type GoModFileInfo = {absPath: string, content: string, projectDir: string, usePath: string};
   const goModFiles: GoModFileInfo[] = [];
@@ -407,6 +415,11 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
     key: string, fullImage: string, ref: DockerImageRef, filePin: Record<string, string>, fileCooldownDays: number,
   };
   const dockerDepInfos: Array<DockerDepInfo> = [];
+  type MakeDepInfo = {
+    key: string, installPath: string, version: string, projectDir: string,
+    filePin: Record<string, string>, fileCooldownDays: number, newInstallPath?: string,
+  };
+  const makeDepInfos: Array<MakeDepInfo> = [];
   type ModeCtx = {modeConfig: Config, projectDir: string, pin: Record<string, string>};
   const modeConfigs: Record<string, ModeCtx> = {};
 
@@ -497,6 +510,26 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
       const filters = await resolveFileConfig(dirname(file));
       dockerFileData[relPath] = {absPath: file, content, fileType};
       collectDockerRefs(content, relPath, [getExtractionRegex(filename)], filters);
+      continue;
+    }
+
+    if (isMakeFileName(filename)) {
+      if (!enabledModes.has("make")) continue;
+      const content = fileContents.get(file)!;
+      const relPath = toRelPath(file);
+      const filters = await resolveFileConfig(dirname(file));
+      makeFileData[relPath] = {absPath: file, content};
+      deps.make ??= {};
+      for (const {installPath, version} of parseMakeGoInstalls(content)) {
+        if (!canInclude(installPath, "make", filters.include, filters.exclude, "make")) continue;
+        const key = `${relPath}${fieldSep}${installPath}`;
+        if (deps.make[key]) continue;
+        deps.make[key] = {old: stripv(version), oldOrig: version} as Dep;
+        makeDepInfos.push({
+          key, installPath, version, projectDir: dirname(file),
+          filePin: filters.pin, fileCooldownDays: filters.cooldownDays,
+        });
+      }
       continue;
     }
 
@@ -754,6 +787,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
 
   if (deps.actions) numDependencies += Object.keys(deps.actions).length;
   if (deps.docker) numDependencies += Object.keys(deps.docker).length;
+  if (deps.make) numDependencies += Object.keys(deps.make).length;
 
   if (numDependencies === 0) {
     return {results: {}, message: "No dependencies found, nothing to do."};
@@ -1062,6 +1096,27 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
     })());
   }
 
+  if (makeDepInfos.length) {
+    fetchTasks.push((async () => {
+      await pMap(makeDepInfos, async (info) => {
+        const {useGreatest, usePre, useRel, semvers, allowDowngrade: allowDown, cooldownOverride} = getVersionOpts(info.installPath);
+        const pinnedRange = globalPin[info.installPath] ?? info.filePin[info.installPath];
+        const makeCooldownDays = cooldownOverride ?? info.fileCooldownDays;
+        const update = await fetchMakeInfo(info.installPath, info.version, info.projectDir, ctx, goNoProxy, {
+          semvers, useGreatest, usePre, useRel, allowDowngrade: allowDown, pinnedRange,
+          cooldownDays: makeCooldownDays || undefined, now: makeCooldownDays ? now : undefined,
+        }).catch(() => null);
+        if (!update) { delete deps.make[info.key]; return; }
+        info.newInstallPath = update.newInstallPath;
+        const dep = deps.make[info.key];
+        dep.new = update.newVersion;
+        dep.info = update.info;
+        if (update.date) setDepAge(dep, update.date);
+      }, {concurrency});
+      if (!Object.keys(deps.make).length) delete deps.make;
+    })());
+  }
+
   await Promise.all(fetchTasks);
 
   if (!countDeps(deps)) {
@@ -1099,6 +1154,18 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
       }
     }
 
+    const makeUpdatesByRelPath = new Map<string, Array<MakeRewrite>>();
+    if (deps.make) {
+      for (const info of makeDepInfos) {
+        const dep = deps.make[info.key];
+        if (!dep?.new || !info.newInstallPath) continue;
+        const relPath = info.key.split(fieldSep)[0];
+        let list = makeUpdatesByRelPath.get(relPath);
+        if (!list) makeUpdatesByRelPath.set(relPath, list = []);
+        list.push({installPath: info.installPath, oldVersion: dep.oldOrig!, newInstallPath: info.newInstallPath, newVersion: dep.new});
+      }
+    }
+
     // Process actions before docker: a workflow file may hold both an action and a
     // docker-image update, and the actions branch syncs its rewrite into dockerFileData
     // (one-way). Running docker first would overwrite the action edit on disk.
@@ -1125,6 +1192,15 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
           const updateFn = fileType === "dockerfile" ? updateDockerfile :
             fileType === "compose" ? updateComposeFile : updateWorkflowDockerImages;
           write(absPath, updateFn(content, dockerDeps));
+        }
+        continue;
+      }
+
+      if (mode === "make") {
+        for (const [relPath, rewrites] of makeUpdatesByRelPath) {
+          const fileInfo = makeFileData[relPath];
+          if (!fileInfo) continue;
+          write(fileInfo.absPath, updateMakefile(fileInfo.content, rewrites));
         }
         continue;
       }

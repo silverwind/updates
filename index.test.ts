@@ -1356,6 +1356,30 @@ test("go pseudo-version update rewrites the full version", async ({expect = glob
   expect(updated).not.toContain("754e69321358");
 });
 
+test("make mode bumps go install versions and rewrites paths on major bumps", async ({expect = globalExpect}: any = {}) => {
+  const makeDir = join(testDir, "test-make");
+  mkdirSync(makeDir, {recursive: true});
+  const makePath = join(makeDir, "Makefile");
+  await writeFile(makePath, [
+    "UUID_PACKAGE ?= github.com/google/uuid@v1.4.0",
+    "TESTPKG_PACKAGE := github.com/example/testpkg@v1.0.0  # pinned tool",
+    "# DISABLED := github.com/example/testpkg@v0.5.0",
+    "SOURCE := $(wildcard *.go)",
+    "",
+  ].join("\n"));
+
+  await updates({files: [makePath], goproxy: goProxyUrl, update: true, color: false, noCache: true});
+
+  const updated = await readFile(makePath, "utf8");
+  // same-major bump (its /v2 is a pseudo-version and must be skipped); path, operator and spacing preserved
+  expect(updated).toContain("UUID_PACKAGE ?= github.com/google/uuid@v1.6.0");
+  // cross-major bump rewrites the /vN path segment; inline comment preserved
+  expect(updated).toContain("TESTPKG_PACKAGE := github.com/example/testpkg/v2@v2.0.0  # pinned tool");
+  // commented-out install and non-install line untouched
+  expect(updated).toContain("# DISABLED := github.com/example/testpkg@v0.5.0");
+  expect(updated).toContain("SOURCE := $(wildcard *.go)");
+});
+
 test("go prerelease with -p per-package", async ({expect = globalExpect}: any = {}) => {
   // With per-package --prerelease, Go prerelease versions should be offered for that package
   expect(await makeTest(`-j -f ${goPreFile} -p github.com/example/prerelpkg`)()).toMatchInlineSnapshot(`
