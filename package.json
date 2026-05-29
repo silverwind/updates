@@ -1,7 +1,7 @@
 {
   "name": "updates",
   "version": "17.17.3",
-  "description": "CLI dependency update tool for npm, uv, cargo, go and actions",
+  "description": "CLI dependency update tool for npm, uv, cargo, go, actions, docker and make",
   "author": "silverwind",
   "repository": "silverwind/updates",
   "license": "BSD-2-Clause",
@@ -19,7 +19,9 @@
     "golang",
     "rust",
     "python",
-    "github-actions"
+    "github-actions",
+    "docker",
+    "makefile"
   ],
   "bin": "dist/index.js",
   "exports": {

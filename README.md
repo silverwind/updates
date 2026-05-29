@@ -31,7 +31,7 @@ npx updates -u && npm i
 |:-|:-|
 |`-u, --update`|Update versions and write dependency file|
 |`-f, --file <path,...>`|File or directory to use, defaults to current directory|
-|`-M, --modes <mode,...>`|Which modes to enable. Either `npm`, `pypi`, `go`, `cargo`, `actions`, `docker`. Default: `npm,pypi,go,cargo,actions,docker`|
+|`-M, --modes <mode,...>`|Which modes to enable. Either `npm`, `pypi`, `go`, `cargo`, `actions`, `docker`, `make`. Default: `npm,pypi,go,cargo,actions,docker,make`|
 |`-i, --include <dep,...>`|Include only given dependencies|
 |`-e, --exclude <dep,...>`|Exclude given dependencies|
 |`-l, --pin <dep=range>`|Pin dependency to given semver range|
