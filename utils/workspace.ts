@@ -64,8 +64,10 @@ export function parsePnpmWorkspace(content: string): string[] {
       continue;
     }
     if (inPackages) {
-      if (/^\S/.test(line)) break;
-      const match = /^\s+-\s+['"]?([^'"#\s]+)['"]?/.exec(line);
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      if (!trimmed.startsWith("-")) break;
+      const match = /^\s*-\s+['"]?([^'"#\s]+)['"]?/.exec(line);
       if (match) patterns.push(match[1]);
     }
   }

@@ -1,5 +1,5 @@
 import {env} from "node:process";
-import {parse, coerce, compareMain, diff, diffParsed, gt, lt, satisfies, valid} from "../utils/semver.ts";
+import {parse, coerce, compareMain, diff, diffParsed, gt, gte, lt, satisfies, valid} from "../utils/semver.ts";
 import {getCache, setCache} from "../utils/fetchCache.ts";
 import pkg from "../package.json" with {type: "json"};
 
@@ -207,7 +207,7 @@ export function isAllowedVersionTransition(oldVersion: string, newVersion: strin
 
   // Pre-release to release: allow if upgrade, or with --release flag
   if (oldIsPre && !newIsPre) {
-    return gt(newCoerced, oldCoerced) || useRel;
+    return gte(newCoerced, oldCoerced) || useRel;
   }
 
   // General downgrade from release to lower release: only with --allow-downgrade
@@ -351,17 +351,19 @@ export function findNewVersion(data: any, {mode, range, useGreatest, useRel, use
   } else {
     let latestTag = "";
     let originalLatestTag = "";
+    let latestIsPre = false;
     if (mode === "pypi") {
       originalLatestTag = data.info.version; // may not be a 3-part semver
       latestTag = coerceToVersion(data.info.version); // add .0 to 6.0 so semver eats it
+      latestIsPre = isVersionPrerelease(originalLatestTag); // coercion strips the prerelease tag, so detect on the raw value
     } else {
       latestTag = data["dist-tags"].latest;
+      latestIsPre = isVersionPrerelease(latestTag);
     }
 
     const oldVersion = coerceToVersion(range);
     const oldIsPre = isRangePrerelease(range);
     const newIsPre = isVersionPrerelease(version);
-    const latestIsPre = isVersionPrerelease(latestTag);
     const transitionOpts = {useRel, allowDowngrade, name: data.name, matchesAny};
 
     // update to new prerelease
@@ -381,7 +383,7 @@ export function findNewVersion(data: any, {mode, range, useGreatest, useRel, use
     }
 
     // prevent upgrading to prerelease with --release-only
-    if (useRel && isVersionPrerelease(latestTag)) {
+    if (useRel && latestIsPre) {
       return version;
     }
 

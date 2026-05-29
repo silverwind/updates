@@ -70,6 +70,16 @@ export function parseToml(input: string): TomlObject {
         parseArrayItems(aLine, items);
       }
       target[finalKey] = items;
+    } else if (rawVal.startsWith("{") && !inlineTableClosed(rawVal)) {
+      // Multi-line inline table: gather lines until the table's closing brace.
+      let body = rawVal;
+      let j = i + 1;
+      for (; j < lines.length; j++) {
+        body += `\n${lines[j]}`;
+        if (inlineTableClosed(body)) break;
+      }
+      i = j;
+      target[finalKey] = parseInlineTable(body);
     } else if (mlDelim) {
       // Multi-line basic/literal string: gather raw lines up to the closing delimiter, then
       // re-wrap and hand to parseValue so escaping/literal handling stays in one place.
@@ -155,6 +165,27 @@ function parseInlineTable(raw: string): TomlObject {
     obj[key] = parseValue(part.slice(eq + 1).trim());
   }
   return obj;
+}
+
+// True once the brackets/braces in `s` balance out — i.e. the inline table that opened with "{" has closed.
+function inlineTableClosed(s: string): boolean {
+  let depth = 0;
+  let inStr: string | null = null;
+  for (let k = 0; k < s.length; k++) {
+    const ch = s[k];
+    if (inStr) {
+      if (ch === "\\" && inStr === '"') { k++; continue; }
+      if (ch === inStr) inStr = null;
+    } else if (ch === '"' || ch === "'") {
+      inStr = ch;
+    } else if (ch === "{" || ch === "[") {
+      depth++;
+    } else if (ch === "}" || ch === "]") {
+      depth--;
+      if (depth === 0) return true;
+    }
+  }
+  return false;
 }
 
 function splitTopLevel(s: string): Array<string> {

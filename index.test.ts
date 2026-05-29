@@ -885,15 +885,30 @@ test("patch", async ({expect = globalExpect}: any = {}) => {
     {
       "npm": {
         "dependencies": {
+          "eslint-plugin-storybook": {
+            "info": "",
+            "new": "10.0.0",
+            "old": "10.0.0-beta.5",
+          },
           "gulp-sourcemaps": {
             "info": "https://github.com/floridoo/gulp-sourcemaps",
             "new": "2.0.1",
             "old": "2.0.0",
           },
+          "html-webpack-plugin": {
+            "info": "",
+            "new": "4.0.0",
+            "old": "4.0.0-alpha.2",
+          },
           "noty": {
             "info": "https://github.com/needim/noty",
             "new": "3.1.4",
             "old": "3.1.0",
+          },
+          "styled-components": {
+            "info": "",
+            "new": "2.5.0",
+            "old": "2.5.0-1",
           },
           "updates": {
             "info": "https://github.com/silverwind/updates",

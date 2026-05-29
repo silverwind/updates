@@ -2,6 +2,15 @@
 // TODO: Use undici once https://github.com/nodejs/node/issues/43187 is resolved
 import dns from "node:dns";
 
+// Honor a requested address family when the cached result has a match; fall back to the first address otherwise.
+function selectAddr(addresses: {address: string, family: number}[], options: any) {
+  if (options.family === 4 || options.family === 6) {
+    const match = addresses.find(a => a.family === options.family);
+    if (match) return match;
+  }
+  return addresses[0];
+}
+
 export function enableDnsCache() {
   const dnsCache = new Map<string, {address: string, family: number}[]>();
   const dnsInflight = new Map<string, Array<{options: any, callback: (...args: any[]) => void}>>();
@@ -22,7 +31,8 @@ export function enableDnsCache() {
       if (options.all) {
         callback(null, cached);
       } else {
-        callback(null, cached[0].address, cached[0].family);
+        const addr = selectAddr(cached, options);
+        callback(null, addr.address, addr.family);
       }
       return;
     }
@@ -45,7 +55,8 @@ export function enableDnsCache() {
         } else if (opts.all) {
           cb(null, addresses);
         } else {
-          cb(null, addresses[0].address, addresses[0].family);
+          const addr = selectAddr(addresses, opts);
+          cb(null, addr.address, addr.family);
         }
       }
     });

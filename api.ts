@@ -1100,7 +1100,11 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
       }
     }
 
-    for (const mode of Object.keys(deps)) {
+    // Process actions before docker: a workflow file may hold both an action and a
+    // docker-image update, and the actions branch syncs its rewrite into dockerFileData
+    // (one-way). Running docker first would overwrite the action edit on disk.
+    const orderedModes = Object.keys(deps).sort((a, b) => (a === "docker" ? 1 : 0) - (b === "docker" ? 1 : 0));
+    for (const mode of orderedModes) {
       if (!Object.keys(deps[mode]).length) continue;
 
       if (mode === "actions") {

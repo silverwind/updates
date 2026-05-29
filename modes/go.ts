@@ -144,6 +144,7 @@ export function parseGoMod(content: string): {deps: Record<string, string>, indi
     if (/^replace\s*\(/.test(trimmed)) { inReplace = true; continue; }
     if (/^tool\s*\(/.test(trimmed)) { inTool = true; continue; }
     if (trimmed === ")") { inRequire = false; inReplace = false; inTool = false; continue; }
+    if (trimmed.startsWith("//")) continue; // full-line comments are not dependencies
 
     if (inTool) {
       if (trimmed && !trimmed.startsWith("//")) toolPaths.push(trimmed);

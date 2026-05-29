@@ -1,4 +1,4 @@
-import {coerce, diff, gte, satisfies} from "../utils/semver.ts";
+import {coerce, diff, gt, satisfies} from "../utils/semver.ts";
 import {type Deps, type ModeContext, type PackageInfo, fieldSep, fetchWithEtag, passesCooldown, stripv, formatVersionPrecision} from "./shared.ts";
 import {esc} from "../utils/utils.ts";
 
@@ -152,10 +152,19 @@ export function findDockerVersion(
 
     if (!passesCooldown(lastUpdated, cooldownDays, now)) continue;
 
+    if (coerced === bestVersion) {
+      // duplicate tags coerce to the same version — keep the most recently pushed one
+      if (bestTag && Date.parse(lastUpdated) > Date.parse(bestDate)) {
+        bestTag = tagName;
+        bestDate = lastUpdated;
+      }
+      continue;
+    }
+
     const d = diff(bestVersion, coerced);
     if (!d || !semvers.has(d)) continue;
 
-    if (gte(coerced, bestVersion)) {
+    if (gt(coerced, bestVersion)) {
       bestVersion = coerced;
       bestTag = tagName;
       bestDate = lastUpdated;

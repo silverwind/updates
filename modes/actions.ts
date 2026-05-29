@@ -66,7 +66,7 @@ export function formatActionVersion(newFullVersion: string, oldRef: string): str
 export function updateWorkflowFile(content: string, actionDeps: Array<{name: string, oldRef: string, newRef: string}>): string {
   let newContent = content;
   for (const {name, oldRef, newRef} of actionDeps) {
-    const re = new RegExp(`(uses:\\s*['"]?)${esc(name)}@${esc(oldRef)}(?![\\w.-])`, "g");
+    const re = new RegExp(`(uses:\\s*['"]?(?:https?:\\/\\/)?)${esc(name)}@${esc(oldRef)}(?![\\w.-])`, "g");
     newContent = newContent.replace(re, `$1${name}@${newRef}`);
   }
   return newContent;

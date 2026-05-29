@@ -193,7 +193,7 @@ export function configMixedToRegexes(val: boolean | Array<string | RegExp> | und
   if (!Array.isArray(val) || !val.length) return false;
   const ret = new Set<RegExp>();
   for (const entry of val) {
-    ret.add(argToRegex(entry, false, false));
+    ret.add(argToRegex(entry, false, true));
   }
   return ret;
 }

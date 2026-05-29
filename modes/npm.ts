@@ -365,21 +365,26 @@ export async function checkUrlDep(key: string, dep: Dep, ctx: ModeContext): Prom
   const [, user, repo, oldRef] = partsRe.exec(stripped) || [];
   if (!user || !repo || !oldRef) return null;
 
+  // replace the trailing ref occurrence, not an earlier coincidental match in the URL
+  const replaceRef = (ref: string) => {
+    const idx = dep.old.lastIndexOf(oldRef);
+    return dep.old.slice(0, idx) + ref + dep.old.slice(idx + oldRef.length);
+  };
+
   if (hashRe.test(oldRef)) {
     const {hash, commit} = await getLatestCommit(user, repo, ctx);
     if (!hash) return null;
 
     const newDate = commit?.committer?.date ?? commit?.author?.date;
     const newRef = hash.substring(0, oldRef.length);
-    if (oldRef !== newRef) {
-      const newRange = dep.old.replace(oldRef, newRef);
-      return {key, newRange, user, repo, oldRef, newRef, newDate};
+    if (oldRef.toLowerCase() !== newRef.toLowerCase()) {
+      return {key, newRange: replaceRef(newRef), user, repo, oldRef, newRef, newDate};
     }
   } else {
     const tags = await getTags(user, repo, ctx);
     const newTag = selectTag(tags, oldRef);
     if (newTag) {
-      return {key, newRange: dep.old.replace(oldRef, newTag), user, repo, oldRef, newRef: newTag};
+      return {key, newRange: replaceRef(newTag), user, repo, oldRef, newRef: newTag};
     }
   }
 

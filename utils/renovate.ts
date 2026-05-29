@@ -126,7 +126,10 @@ function normalize(raw: RenovateConfig, opts: RenovateImportOptions): Partial<Co
         for (const name of names) exclude.push(toMatcher(name));
       }
       if (typeof rule.allowedVersions === "string" && validRange(rule.allowedVersions)) {
-        for (const name of names) pin[name] = rule.allowedVersions;
+        // pin is keyed by literal package name; regex matchers can't be honored, so skip them
+        for (const name of names) {
+          if (typeof toMatcher(name) === "string") pin[name] = rule.allowedVersions;
+        }
       }
     }
   }
