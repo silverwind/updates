@@ -42,7 +42,9 @@ import {
 } from "./modes/docker.ts";
 import {
   type MakeRewrite,
-  isMakeFileName, makeExactFileNames, parseMakeGoInstalls, fetchMakeInfo, updateMakefile,
+  type MakeDockerImage,
+  isMakeFileName, makeExactFileNames, parseMakeGoInstalls, parseMakeDockerImages,
+  fetchMakeInfo, fetchMakeDockerInfo, formatMakeImageSpec, updateMakefile,
 } from "./modes/make.ts";
 import {fetchCratesIoInfo, updateCargoToml, updateCargoRange, parseCargoLock, findLockedVersion} from "./modes/cargo.ts";
 import {baseType, filterDepsForMember, resolveWorkspaceMembers, parsePnpmWorkspace, type WorkspaceMember} from "./utils/workspace.ts";
@@ -415,10 +417,14 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
     key: string, fullImage: string, ref: DockerImageRef, filePin: Record<string, string>, fileCooldownDays: number,
   };
   const dockerDepInfos: Array<DockerDepInfo> = [];
-  type MakeDepInfo = {
-    key: string, installPath: string, version: string, projectDir: string,
-    filePin: Record<string, string>, fileCooldownDays: number, newInstallPath?: string,
+  type MakeDepBase = {
+    key: string, name: string, oldSpec: string, projectDir: string,
+    filePin: Record<string, string>, fileCooldownDays: number, newSpec?: string,
   };
+  type MakeDepInfo = MakeDepBase & (
+    {kind: "go", installPath: string, version: string} |
+    {kind: "docker", image: MakeDockerImage}
+  );
   const makeDepInfos: Array<MakeDepInfo> = [];
   type ModeCtx = {modeConfig: Config, projectDir: string, pin: Record<string, string>};
   const modeConfigs: Record<string, ModeCtx> = {};
@@ -520,15 +526,23 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
       const filters = await resolveFileConfig(dirname(file));
       makeFileData[relPath] = {absPath: file, content};
       deps.make ??= {};
+      const makeShared = {projectDir: dirname(file), filePin: filters.pin, fileCooldownDays: filters.cooldownDays};
       for (const {installPath, version} of parseMakeGoInstalls(content)) {
         if (!canInclude(installPath, "make", filters.include, filters.exclude, "make")) continue;
         const key = `${relPath}${fieldSep}${installPath}`;
         if (deps.make[key]) continue;
         deps.make[key] = {old: stripv(version), oldOrig: version} as Dep;
-        makeDepInfos.push({
-          key, installPath, version, projectDir: dirname(file),
-          filePin: filters.pin, fileCooldownDays: filters.cooldownDays,
-        });
+        makeDepInfos.push({kind: "go", key, name: installPath, oldSpec: `${installPath}@${version}`, installPath, version, ...makeShared});
+      }
+      for (const image of parseMakeDockerImages(content)) {
+        if (!canInclude(image.writtenImage, "make", filters.include, filters.exclude, "make")) continue;
+        const key = `${relPath}${fieldSep}${image.writtenImage}`;
+        if (deps.make[key]) continue;
+        const parsed = parseDockerTag(image.ref.tag);
+        if (!parsed) continue;
+        const oldSpec = formatMakeImageSpec(image.writtenImage, image.ref.tag, image.digest);
+        deps.make[key] = {old: parsed.version, oldOrig: image.ref.tag} as Dep;
+        makeDepInfos.push({kind: "docker", key, name: image.writtenImage, oldSpec, image, ...makeShared});
       }
       continue;
     }
@@ -1099,19 +1113,29 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
   if (makeDepInfos.length) {
     fetchTasks.push((async () => {
       await pMap(makeDepInfos, async (info) => {
-        const {useGreatest, usePre, useRel, semvers, allowDowngrade: allowDown, cooldownOverride} = getVersionOpts(info.installPath);
-        const pinnedRange = globalPin[info.installPath] ?? info.filePin[info.installPath];
+        const {useGreatest, usePre, useRel, semvers, allowDowngrade: allowDown, cooldownOverride} = getVersionOpts(info.name);
+        const pinnedRange = globalPin[info.name] ?? info.filePin[info.name];
         const makeCooldownDays = cooldownOverride ?? info.fileCooldownDays;
-        const update = await fetchMakeInfo(info.installPath, info.version, info.projectDir, ctx, goNoProxy, {
+        const opts = {
           semvers, useGreatest, usePre, useRel, allowDowngrade: allowDown, pinnedRange,
           cooldownDays: makeCooldownDays || undefined, now: makeCooldownDays ? now : undefined,
-        }).catch(() => null);
-        if (!update) { delete deps.make[info.key]; return; }
-        info.newInstallPath = update.newInstallPath;
+        };
         const dep = deps.make[info.key];
-        dep.new = update.newVersion;
-        dep.info = update.info;
-        if (update.date) setDepAge(dep, update.date);
+        if (info.kind === "go") {
+          const update = await fetchMakeInfo(info.installPath, info.version, info.projectDir, ctx, goNoProxy, opts).catch(() => null);
+          if (!update) { delete deps.make[info.key]; return; }
+          info.newSpec = `${update.newInstallPath}@${update.newVersion}`;
+          dep.new = update.newVersion;
+          dep.info = update.info;
+          if (update.date) setDepAge(dep, update.date);
+        } else {
+          const update = await fetchMakeDockerInfo(info.image, ctx, opts).catch(() => null);
+          if (!update) { delete deps.make[info.key]; return; }
+          info.newSpec = formatMakeImageSpec(info.image.writtenImage, update.newTag, info.image.digest ? update.newDigest : null);
+          dep.new = update.newTag;
+          dep.info = update.info;
+          if (update.date) setDepAge(dep, update.date);
+        }
       }, {concurrency});
       if (!Object.keys(deps.make).length) delete deps.make;
     })());
@@ -1157,12 +1181,11 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
     const makeUpdatesByRelPath = new Map<string, Array<MakeRewrite>>();
     if (deps.make) {
       for (const info of makeDepInfos) {
-        const dep = deps.make[info.key];
-        if (!dep?.new || !info.newInstallPath) continue;
+        if (!info.newSpec || !deps.make[info.key]) continue;
         const relPath = info.key.split(fieldSep)[0];
         let list = makeUpdatesByRelPath.get(relPath);
         if (!list) makeUpdatesByRelPath.set(relPath, list = []);
-        list.push({installPath: info.installPath, oldVersion: dep.oldOrig!, newInstallPath: info.newInstallPath, newVersion: dep.new});
+        list.push({oldSpec: info.oldSpec, newSpec: info.newSpec});
       }
     }
 

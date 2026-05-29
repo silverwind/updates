@@ -1,9 +1,12 @@
 import {
   isMakeFileName,
   parseMakeGoInstalls,
+  parseMakeImageValue,
+  parseMakeDockerImages,
   moduleRootFromMajor,
   resolveGoModuleRoot,
   fetchMakeInfo,
+  fetchMakeDockerInfo,
   updateMakefile,
 } from "./make.ts";
 import {type ModeContext, fetchTimeout, goProbeTimeout} from "./shared.ts";
@@ -73,8 +76,8 @@ test("moduleRootFromMajor returns the path up to a /vN segment", () => {
 // updateMakefile
 test("updateMakefile rewrites version while preserving operator, spacing and comments", () => {
   const updated = updateMakefile(sample, [
-    {installPath: "github.com/air-verse/air", oldVersion: "v1.65.1", newInstallPath: "github.com/air-verse/air", newVersion: "v1.65.3"},
-    {installPath: "github.com/golangci/misspell/cmd/misspell", oldVersion: "v0.8.0", newInstallPath: "github.com/golangci/misspell/cmd/misspell", newVersion: "v0.9.0"},
+    {oldSpec: "github.com/air-verse/air@v1.65.1", newSpec: "github.com/air-verse/air@v1.65.3"},
+    {oldSpec: "github.com/golangci/misspell/cmd/misspell@v0.8.0", newSpec: "github.com/golangci/misspell/cmd/misspell@v0.9.0"},
   ]);
   expect(updated).toContain("AIR_PACKAGE := github.com/air-verse/air@v1.65.3");
   expect(updated).toContain("MISSPELL_PACKAGE ?= github.com/golangci/misspell/cmd/misspell@v0.9.0  # inline note");
@@ -83,10 +86,8 @@ test("updateMakefile rewrites version while preserving operator, spacing and com
 
 test("updateMakefile rewrites the install path on a major bump", () => {
   const updated = updateMakefile(sample, [{
-    installPath: "github.com/golangci/golangci-lint/v2/cmd/golangci-lint",
-    oldVersion: "v2.12.2",
-    newInstallPath: "github.com/golangci/golangci-lint/v3/cmd/golangci-lint",
-    newVersion: "v3.0.0",
+    oldSpec: "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2",
+    newSpec: "github.com/golangci/golangci-lint/v3/cmd/golangci-lint@v3.0.0",
   }]);
   expect(updated).toContain("GOLANGCI_PACKAGE ?= github.com/golangci/golangci-lint/v3/cmd/golangci-lint@v3.0.0");
 });
@@ -94,17 +95,31 @@ test("updateMakefile rewrites the install path on a major bump", () => {
 test("updateMakefile preserves CRLF line endings", () => {
   const crlf = "AIR := github.com/air-verse/air@v1.0.0\r\nFOO := bar\r\n";
   const updated = updateMakefile(crlf, [{
-    installPath: "github.com/air-verse/air", oldVersion: "v1.0.0", newInstallPath: "github.com/air-verse/air", newVersion: "v1.1.0",
+    oldSpec: "github.com/air-verse/air@v1.0.0", newSpec: "github.com/air-verse/air@v1.1.0",
   }]);
   expect(updated).toBe("AIR := github.com/air-verse/air@v1.1.0\r\nFOO := bar\r\n");
 });
 
 test("updateMakefile leaves a commented-out install untouched", () => {
   const updated = updateMakefile(sample, [{
-    installPath: "github.com/foo/bar", oldVersion: "v9.9.9", newInstallPath: "github.com/foo/bar", newVersion: "v10.0.0",
+    oldSpec: "github.com/foo/bar@v9.9.9", newSpec: "github.com/foo/bar@v10.0.0",
   }]);
   expect(updated).toContain("# COMMENTED_PACKAGE := github.com/foo/bar@v9.9.9");
   expect(updated).not.toContain("v10.0.0");
+});
+
+test("updateMakefile rewrites a spec directly followed by a # comment", () => {
+  const updated = updateMakefile("IMG := koalaman/app:1.0.0#pinned\n", [{oldSpec: "koalaman/app:1.0.0", newSpec: "koalaman/app:1.1.0"}]);
+  expect(updated).toBe("IMG := koalaman/app:1.1.0#pinned\n");
+});
+
+test("updateMakefile rewrites a docker image tag and digest in place", () => {
+  const content = "SHELLCHECK_IMAGE ?= docker.io/koalaman/shellcheck:v0.11.0@sha256:aaa  # renovate: datasource=docker\n";
+  const updated = updateMakefile(content, [{
+    oldSpec: "docker.io/koalaman/shellcheck:v0.11.0@sha256:aaa",
+    newSpec: "docker.io/koalaman/shellcheck:v0.12.0@sha256:bbb",
+  }]);
+  expect(updated).toBe("SHELLCHECK_IMAGE ?= docker.io/koalaman/shellcheck:v0.12.0@sha256:bbb  # renovate: datasource=docker\n");
 });
 
 // resolveGoModuleRoot
@@ -188,4 +203,95 @@ test("fetchMakeInfo upgrades a pseudo-version to a newer release", async () => {
     date: "2026-02-01T00:00:00Z",
     info: "https://github.com/example/pseudoupd",
   });
+});
+
+// parseMakeImageValue / parseMakeDockerImages
+const digestA = `sha256:${"a".repeat(64)}`;
+const digestB = `sha256:${"b".repeat(64)}`;
+
+test("parseMakeImageValue parses a Hub image with registry prefix and digest", () => {
+  expect(parseMakeImageValue(`docker.io/koalaman/shellcheck:v0.11.0@${digestA}`)).toEqual({
+    writtenImage: "docker.io/koalaman/shellcheck",
+    ref: {registry: null, namespace: "koalaman", repo: "shellcheck", tag: "v0.11.0", fullImage: "koalaman/shellcheck"},
+    digest: digestA,
+  });
+});
+
+test("parseMakeImageValue skips library images, host:port and non-Hub registries", () => {
+  expect(parseMakeImageValue("mysql:3306")).toBeNull(); // host:port, library namespace
+  expect(parseMakeImageValue("golang:1.21")).toBeNull(); // bare library image
+  expect(parseMakeImageValue("ghcr.io/foo/bar:1.2.3")).toBeNull(); // non-Hub registry
+  expect(parseMakeImageValue("plain-no-tag")).toBeNull();
+});
+
+test("parseMakeDockerImages extracts only namespaced Hub images, skipping comments", () => {
+  const content = [
+    `SHELLCHECK_IMAGE ?= docker.io/koalaman/shellcheck:v0.11.0@${digestA}  # renovate: datasource=docker`,
+    "PLAIN := koalaman/shellcheck:0.9.0",
+    "MYSQL_HOST ?= mysql:3306",
+    `# DISABLED := koalaman/shellcheck:0.1.0@${digestB}`,
+  ].join("\n");
+  expect(parseMakeDockerImages(content).map(i => ({image: i.writtenImage, tag: i.ref.tag, digest: i.digest}))).toEqual([
+    {image: "docker.io/koalaman/shellcheck", tag: "v0.11.0", digest: digestA},
+    {image: "koalaman/shellcheck", tag: "0.9.0", digest: null},
+  ]);
+});
+
+// fetchMakeDockerInfo
+function dockerHubCtx(): ModeContext {
+  return {
+    dockerApiUrl: "https://hub.docker.com", fetchTimeout, noCache: true,
+    doFetch: (url: string) => {
+      if (url.includes("/tags/v0.12.0")) return Promise.resolve({ok: true, json: () => Promise.resolve({digest: digestB})} as any);
+      if (url.includes("/tags")) return Promise.resolve({ok: true, json: () => Promise.resolve({count: 2, results: [
+        {name: "v0.11.0", tag_last_pushed: "2025-01-01T00:00:00Z"},
+        {name: "v0.12.0", tag_last_pushed: "2025-06-01T00:00:00Z"},
+      ]})} as any);
+      return Promise.resolve({ok: false} as any);
+    },
+  } as unknown as ModeContext;
+}
+
+test("fetchMakeDockerInfo bumps the tag and re-resolves the digest", async () => {
+  const image = parseMakeImageValue(`docker.io/koalaman/shellcheck:v0.11.0@${digestA}`)!;
+  expect(await fetchMakeDockerInfo(image, dockerHubCtx(), defaultOpts)).toEqual({
+    newTag: "v0.12.0",
+    newDigest: digestB,
+    date: "2025-06-01T00:00:00Z",
+    info: "https://hub.docker.com/r/koalaman/shellcheck",
+  });
+});
+
+test("fetchMakeDockerInfo bumps the tag only when no digest is pinned", async () => {
+  const image = parseMakeImageValue("koalaman/shellcheck:v0.11.0")!;
+  expect(await fetchMakeDockerInfo(image, dockerHubCtx(), defaultOpts)).toEqual({
+    newTag: "v0.12.0",
+    newDigest: null,
+    date: "2025-06-01T00:00:00Z",
+    info: "https://hub.docker.com/r/koalaman/shellcheck",
+  });
+});
+
+test("fetchMakeDockerInfo returns null when the new tag's digest cannot be resolved", async () => {
+  const ctx = {
+    dockerApiUrl: "https://hub.docker.com", fetchTimeout, noCache: true,
+    doFetch: (url: string) => {
+      if (url.includes("/tags/v0.12.0")) return Promise.resolve({ok: false} as any); // digest lookup fails
+      if (url.includes("/tags")) return Promise.resolve({ok: true, json: () => Promise.resolve({count: 2, results: [
+        {name: "v0.11.0", tag_last_pushed: "2025-01-01T00:00:00Z"},
+        {name: "v0.12.0", tag_last_pushed: "2025-06-01T00:00:00Z"},
+      ]})} as any);
+      return Promise.resolve({ok: false} as any);
+    },
+  } as unknown as ModeContext;
+  const image = parseMakeImageValue(`docker.io/koalaman/shellcheck:v0.11.0@${digestA}`)!;
+  expect(await fetchMakeDockerInfo(image, ctx, defaultOpts)).toBeNull();
+});
+
+test("fetchMakeDockerInfo returns null when no newer tag exists", async () => {
+  const ctx = {
+    dockerApiUrl: "https://hub.docker.com", fetchTimeout, noCache: true,
+    doFetch: () => Promise.resolve({ok: true, json: () => Promise.resolve({count: 1, results: [{name: "v0.11.0", tag_last_pushed: "2025-01-01T00:00:00Z"}]})} as any),
+  } as unknown as ModeContext;
+  expect(await fetchMakeDockerInfo(parseMakeImageValue("koalaman/shellcheck:v0.11.0")!, ctx, defaultOpts)).toBeNull();
 });

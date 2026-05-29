@@ -13,7 +13,7 @@
 - `Cargo.toml` - rust dependencies, including workspaces
 - `.{github,gitea,forgejo}/workflows` - actions and docker images
 - `Dockerfile*`, `docker-*.{yml,yaml}` - docker images
-- `Makefile`, `*.mk` - go tool versions in `go install` paths
+- `Makefile`, `*.mk` - go tool versions in `go install` paths and docker image tags
 
 ## Usage
 

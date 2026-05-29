@@ -1,5 +1,9 @@
 import {type ModeContext, stripv, formatVersionPrecision, findNewVersion} from "./shared.ts";
 import {encodeGoModulePath, goModulePathForVersion, fetchGoProxyInfo, getGoInfoUrl, isGoPseudoVersion} from "./go.ts";
+import {
+  type DockerImageRef,
+  parseDockerImageRef, fetchDockerInfo, findDockerVersion, getDockerInfoUrl, fetchDockerTagDigest,
+} from "./docker.ts";
 import {esc, matchesAny} from "../utils/utils.ts";
 
 export const makeExactFileNames = ["Makefile", "makefile", "GNUmakefile"];
@@ -13,7 +17,8 @@ export type MakeInstall = {installPath: string, version: string};
 // Variable assignment holding a single `go install` spec, e.g.
 //   AIR_PACKAGE ?= github.com/air-verse/air@v1.65.1
 // Captures: 1=install path, 2=version. Assignment operators: = := ::= ?= +=
-const makeAssignRe = /^\s*[A-Za-z_][\w.]*\s*(?:::=|:=|\?=|\+=|=)\s*(\S+)@(v\d\S*)\s*$/;
+const makeAssignPrefix = String.raw`^\s*[A-Za-z_][\w.]*\s*(?:::=|:=|\?=|\+=|=)\s*`;
+const makeAssignRe = new RegExp(`${makeAssignPrefix}${String.raw`(\S+)@(v\d\S*)\s*$`}`);
 // Module path must start with a host segment containing a dot (github.com, golang.org, …)
 const goHostRe = /^[^/\s]+\.[^/\s]+\//;
 
@@ -34,6 +39,49 @@ export function parseMakeGoInstalls(content: string): Array<MakeInstall> {
     installs.push({installPath, version});
   }
   return installs;
+}
+
+export type MakeDockerImage = {
+  writtenImage: string,   // image part exactly as authored, may include a `docker.io/` prefix
+  ref: DockerImageRef,    // normalized for Docker Hub resolution (registry stripped); ref.tag holds the tag
+  digest: string | null,  // `sha256:…` pin if present
+};
+
+// Variable assignment holding a single container image, e.g.
+//   SHELLCHECK_IMAGE ?= docker.io/koalaman/shellcheck:v0.11.0@sha256:61862…
+const makeImageRe = new RegExp(`${makeAssignPrefix}${String.raw`(\S+)\s*$`}`);
+const makeImageDigestRe = /@(sha256:[0-9a-f]{64})$/;
+
+// Reassemble a `[registry/]namespace/repo:tag[@sha256:…]` spec exactly as authored.
+export function formatMakeImageSpec(writtenImage: string, tag: string, digest: string | null): string {
+  return `${writtenImage}:${tag}${digest ? `@${digest}` : ""}`;
+}
+
+export function parseMakeImageValue(value: string): MakeDockerImage | null {
+  let digest: string | null = null;
+  let imageWithTag = value;
+  const digestMatch = makeImageDigestRe.exec(value);
+  if (digestMatch) {
+    digest = digestMatch[1];
+    imageWithTag = value.slice(0, digestMatch.index);
+  }
+  // `docker.io/` is Docker Hub; strip it for resolution but keep it in writtenImage.
+  const ref = parseDockerImageRef(imageWithTag.replace(/^docker\.io\//, ""));
+  // Require a Hub namespace: skips bare library images and `host:port` vars (mysql:3306).
+  if (!ref || ref.registry || ref.namespace === "library") return null;
+  const writtenImage = imageWithTag.slice(0, imageWithTag.lastIndexOf(":"));
+  return {writtenImage, ref, digest};
+}
+
+export function parseMakeDockerImages(content: string): Array<MakeDockerImage> {
+  const images: Array<MakeDockerImage> = [];
+  for (const rawLine of content.split(/\r?\n/)) {
+    const match = makeImageRe.exec(stripComment(rawLine));
+    if (!match) continue;
+    const image = parseMakeImageValue(match[1]);
+    if (image) images.push(image);
+  }
+  return images;
 }
 
 // Module root is some prefix of the install path. A `/vN` segment marks the
@@ -105,17 +153,35 @@ export async function fetchMakeInfo(installPath: string, version: string, goCwd:
   return {newInstallPath, newVersion: newVersionFormatted, date: data.Time ?? "", info: getGoInfoUrl(newModulePath)};
 }
 
-export type MakeRewrite = {installPath: string, oldVersion: string, newInstallPath: string, newVersion: string};
+export type MakeDockerUpdate = {newTag: string, newDigest: string | null, date: string, info: string};
 
-// Surgically rewrites each `installPath@oldVersion` to `newInstallPath@newVersion`
-// in place, touching only the matched span. The `^([^#\n]*?)` prefix anchors the
-// match to a line's code portion — it cannot cross a `#`, so occurrences inside
-// full-line or inline comments are never rewritten. Untouched bytes (including
-// CRLF endings) are preserved verbatim.
+export async function fetchMakeDockerInfo(image: MakeDockerImage, ctx: ModeContext, opts: MakeVersionOpts): Promise<MakeDockerUpdate | null> {
+  const {namespace, repo, fullImage, tag} = image.ref;
+  const [data] = await fetchDockerInfo(fullImage, "docker", ctx); // throws for non-Hub registries
+  const result = findDockerVersion(data.tags, tag, opts.semvers, opts.cooldownDays, opts.now, opts.pinnedRange);
+  if (!result) return null;
+
+  let newDigest: string | null = null;
+  if (image.digest) {
+    // Keep the pin valid: resolve the new tag's digest, and skip rather than write a stale one.
+    newDigest = await fetchDockerTagDigest(namespace, repo, result.newTag, ctx);
+    if (!newDigest) return null;
+  }
+  return {newTag: result.newTag, newDigest, date: result.date, info: getDockerInfoUrl(image.ref)};
+}
+
+export type MakeRewrite = {oldSpec: string, newSpec: string};
+
+// Surgically rewrites each `oldSpec` (the exact `path@version` or `image:tag[@sha256:…]`
+// token as authored) to `newSpec` in place, touching only the matched span. The
+// `^([^#\n]*?)` prefix anchors the match to a line's code portion — it cannot cross a
+// `#`, so occurrences inside full-line or inline comments are never rewritten. Untouched
+// bytes (including CRLF endings) are preserved verbatim.
 export function updateMakefile(content: string, rewrites: Array<MakeRewrite>): string {
-  for (const {installPath, oldVersion, newInstallPath, newVersion} of rewrites) {
-    const re = new RegExp(`^([^#\\n]*?)${esc(installPath)}@${esc(oldVersion)}(?=\\s|$)`, "gm");
-    content = content.replace(re, `$1${newInstallPath}@${newVersion}`);
+  for (const {oldSpec, newSpec} of rewrites) {
+    // Trailing boundary allows whitespace, a directly-attached `#` comment, or EOL.
+    const re = new RegExp(`^([^#\\n]*?)${esc(oldSpec)}(?=[\\s#]|$)`, "gm");
+    content = content.replace(re, `$1${newSpec}`);
   }
   return content;
 }

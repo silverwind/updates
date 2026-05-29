@@ -273,6 +273,15 @@ beforeAll(async () => {
     dockerServer.get(route, (_, res) => res.send(gz));
   }
 
+  // Namespaced image + per-tag digest for make-mode docker images
+  const makeImgTagsGz = await gzipPromise(JSON.stringify({count: 2, results: [
+    {name: "v0.11.0", tag_last_pushed: "2025-01-01T00:00:00Z"},
+    {name: "v0.12.0", tag_last_pushed: "2025-06-01T00:00:00Z"},
+  ]}));
+  const makeImgDigestGz = await gzipPromise(JSON.stringify({digest: `sha256:${"b".repeat(64)}`}));
+  dockerServer.get("/v2/repositories/koalaman/shellcheck/tags", (_, res) => res.send(makeImgTagsGz));
+  dockerServer.get("/v2/repositories/koalaman/shellcheck/tags/v0.12.0", (_, res) => res.send(makeImgDigestGz));
+
   // Cargo / crates.io API fixtures
   const serdeVersions = await readFile(fileURLToPath(new URL("fixtures/cargo/serde-versions.json", import.meta.url)), "utf8");
   const serdeVersionsGz = await gzipPromise(serdeVersions);
@@ -1378,6 +1387,30 @@ test("make mode bumps go install versions and rewrites paths on major bumps", as
   // commented-out install and non-install line untouched
   expect(updated).toContain("# DISABLED := github.com/example/testpkg@v0.5.0");
   expect(updated).toContain("SOURCE := $(wildcard *.go)");
+});
+
+test("make mode bumps docker image tags and re-resolves digests in Makefiles", async ({expect = globalExpect}: any = {}) => {
+  const makeDir = join(testDir, "test-make-docker");
+  mkdirSync(makeDir, {recursive: true});
+  const makePath = join(makeDir, "Makefile");
+  const oldDigest = `sha256:${"a".repeat(64)}`;
+  const newDigest = `sha256:${"b".repeat(64)}`;
+  await writeFile(makePath, [
+    `SHELLCHECK_IMAGE ?= docker.io/koalaman/shellcheck:v0.11.0@${oldDigest}  # renovate: datasource=docker`,
+    "PLAIN := koalaman/shellcheck:v0.11.0",
+    "TEST_MYSQL_HOST ?= mysql:3306",
+    "",
+  ].join("\n"));
+
+  await updates({files: [makePath], dockerapi: dockerUrl, update: true, color: false, noCache: true});
+
+  const updated = await readFile(makePath, "utf8");
+  // tag + digest bumped, registry prefix and renovate comment preserved
+  expect(updated).toContain(`SHELLCHECK_IMAGE ?= docker.io/koalaman/shellcheck:v0.12.0@${newDigest}  # renovate: datasource=docker`);
+  // plain image without a digest bumped, no digest introduced
+  expect(updated).toContain("PLAIN := koalaman/shellcheck:v0.12.0");
+  // host:port var left untouched
+  expect(updated).toContain("TEST_MYSQL_HOST ?= mysql:3306");
 });
 
 test("go prerelease with -p per-package", async ({expect = globalExpect}: any = {}) => {

@@ -109,6 +109,17 @@ export async function fetchDockerHubTags(namespace: string, repo: string, ctx: M
   return tags;
 }
 
+// Resolve the manifest digest for a single tag (used to keep `image:tag@sha256:…` pins in sync).
+export async function fetchDockerTagDigest(namespace: string, repo: string, tag: string, ctx: ModeContext): Promise<string | null> {
+  const url = `${ctx.dockerApiUrl}/v2/repositories/${namespace}/${repo}/tags/${tag}`;
+  try {
+    const result = await fetchWithEtag(url, ctx, {headers: {"accept-encoding": "gzip, deflate, br"}});
+    if (!("body" in result)) return null;
+    const digest = JSON.parse(result.body).digest;
+    return typeof digest === "string" ? digest : null;
+  } catch { return null; }
+}
+
 export async function fetchDockerInfo(name: string, type: string, ctx: ModeContext): Promise<PackageInfo> {
   const {registry, namespace, repo} = parseImageParts(name);
 
