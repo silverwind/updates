@@ -29,7 +29,17 @@ for (const [index, token] of result.tokens.entries()) {
   const key = getOptionKey(token.value.substring(dashes));
   if (!key) continue;
   const next = result.tokens[index + 1];
-  values[token.name] = [true];
+  // The flag was wrongly swallowed as this option's value; drop only that bogus
+  // value (the dash-prefixed token.value, which may not be the last element)
+  // rather than discarding the whole accumulated array, so other repeats like
+  // `-i react -i -p -i vue` keep both `react` and `vue`.
+  const swallowed = values[token.name];
+  if (Array.isArray(swallowed)) {
+    const pos = swallowed.indexOf(token.value);
+    if (pos !== -1) swallowed.splice(pos, 1);
+  } else {
+    values[token.name] = true;
+  }
   const list = (values[key] ??= []) as Array<string | boolean>;
   list.push(next?.kind === "positional" && next.value ? next.value : true);
 }
@@ -50,6 +60,9 @@ function argToConfigMixed(arg: Arg): boolean | Array<string | RegExp> | undefine
 
 let red: (text: string | number) => string = String;
 let green: (text: string | number) => string = String;
+// Effective json setting (CLI flag or config file), so error output matches the
+// success/message paths even when json comes from the config file rather than -j.
+let jsonOutput = false;
 
 function deriveStartDir(first: string | undefined): string {
   if (!first) return cwd();
@@ -70,7 +83,7 @@ function resolveColor(fileConfig: UpdatesOptions): boolean {
 async function end(err?: Error | void, exitCode?: number): Promise<void> {
   if (err) {
     const error = err.message ?? String(err);
-    if (args.json) {
+    if (jsonOutput) {
       console.info(JSON.stringify({error}));
     } else {
       console.info(red(error));
@@ -160,6 +173,7 @@ async function main(): Promise<void> {
   const config: UpdatesOptions = {...fileConfig};
   config.pin = undefined;
   if (args.json) config.json = true;
+  jsonOutput = Boolean(config.json);
   if (args.verbose) config.verbose = true;
   if (args["no-cache"]) config.noCache = true;
   if (args.update) config.update = true;
@@ -244,7 +258,10 @@ function formatOutput(output: Output): string {
   for (const mode of modes) {
     for (const type of Object.keys(output.results[mode])) {
       for (const [name, data] of Object.entries(output.results[mode][type])) {
-        const id = `${mode}|${name}`;
+        // Key on the visible columns (incl. versions) so the same dep at
+        // different versions across dep-sections/workspace members keeps a row
+        // each; only truly identical rows collapse.
+        const id = `${mode}|${name}|${data.old}|${data.new}`;
         if (seen.has(id)) continue;
         seen.add(id);
         arr.push([

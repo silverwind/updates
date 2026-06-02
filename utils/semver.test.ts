@@ -250,3 +250,60 @@ test("satisfies partial hyphen ranges", () => {
   expect(satisfies("2.99.99", "1.2.3 - 2")).toBe(true);
   expect(satisfies("3.0.0", "1.2.3 - 2")).toBe(false);
 });
+
+test("satisfies caret with trailing wildcard", () => {
+  // ^1.x := >=1.0.0 <2.0.0-0
+  expect(validRange("^1.x")).toBe("^1.x");
+  expect(satisfies("1.0.0", "^1.x")).toBe(true);
+  expect(satisfies("1.9.9", "^1.x")).toBe(true);
+  expect(satisfies("2.0.0", "^1.x")).toBe(false);
+  // ^1.x.x := >=1.0.0 <2.0.0-0
+  expect(validRange("^1.x.x")).toBe("^1.x.x");
+  expect(satisfies("1.5.0", "^1.x.x")).toBe(true);
+  expect(satisfies("2.0.0", "^1.x.x")).toBe(false);
+  // ^1.2.x := >=1.2.0 <2.0.0-0 (caret keeps the major-level upper bound)
+  expect(validRange("^1.2.x")).toBe("^1.2.x");
+  expect(satisfies("1.2.0", "^1.2.x")).toBe(true);
+  expect(satisfies("1.3.0", "^1.2.x")).toBe(true);
+  expect(satisfies("1.9.9", "^1.2.x")).toBe(true);
+  expect(satisfies("2.0.0", "^1.2.x")).toBe(false);
+  expect(satisfies("1.1.9", "^1.2.x")).toBe(false);
+  // ^0.x := >=0.0.0 <1.0.0-0
+  expect(validRange("^0.x")).toBe("^0.x");
+  expect(satisfies("0.9.9", "^0.x")).toBe(true);
+  expect(satisfies("1.0.0", "^0.x")).toBe(false);
+});
+
+test("satisfies tilde with trailing wildcard", () => {
+  // ~1.x := >=1.0.0 <2.0.0-0
+  expect(validRange("~1.x")).toBe("~1.x");
+  expect(satisfies("1.9.9", "~1.x")).toBe(true);
+  expect(satisfies("2.0.0", "~1.x")).toBe(false);
+  // ~1.2.x := >=1.2.0 <1.3.0-0 (tilde keeps the minor-level upper bound)
+  expect(validRange("~1.2.x")).toBe("~1.2.x");
+  expect(satisfies("1.2.0", "~1.2.x")).toBe(true);
+  expect(satisfies("1.2.9", "~1.2.x")).toBe(true);
+  expect(satisfies("1.3.0", "~1.2.x")).toBe(false);
+});
+
+test("satisfies operator-prefixed x-ranges", () => {
+  // >=1.2.x := >=1.2.0
+  expect(validRange(">=1.2.x")).toBe(">=1.2.x");
+  expect(satisfies("1.5.0", ">=1.2.x")).toBe(true);
+  expect(satisfies("1.2.0", ">=1.2.x")).toBe(true);
+  expect(satisfies("1.1.0", ">=1.2.x")).toBe(false);
+  // >=1.2.x <2.0.0 := >=1.2.0 <2.0.0
+  expect(validRange(">=1.2.x <2.0.0")).toBe(">=1.2.x <2.0.0");
+  expect(satisfies("1.5.0", ">=1.2.x <2.0.0")).toBe(true);
+  expect(satisfies("2.0.0", ">=1.2.x <2.0.0")).toBe(false);
+  expect(satisfies("1.1.0", ">=1.2.x <2.0.0")).toBe(false);
+  // >=1.x := >=1.0.0
+  expect(satisfies("0.9.9", ">=1.x")).toBe(false);
+  expect(satisfies("3.0.0", ">=1.x")).toBe(true);
+  // <=1.2.x := <1.3.0-0 (any 1.2.z passes)
+  expect(satisfies("1.2.9", "<=1.2.x")).toBe(true);
+  expect(satisfies("1.3.0", "<=1.2.x")).toBe(false);
+  // >1.x := >=2.0.0 (greater than the whole 1.x line)
+  expect(satisfies("1.9.9", ">1.x")).toBe(false);
+  expect(satisfies("2.0.0", ">1.x")).toBe(true);
+});

@@ -54,22 +54,17 @@ export function parseToml(input: string): TomlObject {
     const finalKey = keys[keys.length - 1];
     const mlDelim = multilineStringDelim(rawVal);
 
-    // Multi-line array
-    if (rawVal.startsWith("[") && indexOfUnquoted(rawVal, "]") < 0) {
-      const items: Array<TomlValue> = [];
-      parseArrayItems(rawVal.slice(1), items);
-      for (let j = i + 1; j < lines.length; j++) {
-        const aLine = stripComment(lines[j]).trim();
-        if (!aLine) continue;
-        const closeIdx = indexOfUnquoted(aLine, "]");
-        if (closeIdx >= 0) {
-          parseArrayItems(aLine.slice(0, closeIdx), items);
-          i = j;
-          break;
-        }
-        parseArrayItems(aLine, items);
+    // Multi-line array: gather lines until the outer array's closing "]" (depth-aware), then
+    // parse the full text with parseValue so nested arrays and inline tables stay intact.
+    if (rawVal.startsWith("[") && !inlineTableClosed(rawVal)) {
+      let body = rawVal;
+      let j = i + 1;
+      for (; j < lines.length; j++) {
+        body += `\n${stripComment(lines[j])}`;
+        if (inlineTableClosed(body)) break;
       }
-      target[finalKey] = items;
+      i = j;
+      target[finalKey] = parseValue(body);
     } else if (rawVal.startsWith("{") && !inlineTableClosed(rawVal)) {
       // Multi-line inline table: gather lines until the table's closing brace.
       let body = rawVal;

@@ -138,7 +138,7 @@ export function findDockerVersion(
   cooldownDays?: number,
   now?: number,
   pinnedRange?: string,
-): {newTag: string, date: string} | null {
+): {newTag: string, hubTag: string, date: string} | null {
   const oldParsed = parseDockerTag(oldTag);
   if (!oldParsed) return null;
 
@@ -182,7 +182,9 @@ export function findDockerVersion(
   if (!bestTag || bestVersion === oldCoerced) return null;
   const newTag = formatDockerVersion(bestVersion, oldTag);
   if (newTag === oldTag) return null;
-  return {newTag, date: bestDate};
+  // `newTag` is precision-matched to the authored tag for the rewrite; `hubTag` is the real
+  // Hub tag, needed to resolve the digest when Hub only publishes higher-precision tags.
+  return {newTag, hubTag: bestTag, date: bestDate};
 }
 
 function replaceImageRefs(content: string, deps: Deps, patterns: Array<(name: string, tag: string) => RegExp>): string {

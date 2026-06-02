@@ -390,7 +390,9 @@ export function findNewVersion(data: any, {mode, range, useGreatest, useRel, use
     // prevent downgrade to older version except with --allow-downgrade
     if (lt(latestTag, oldVersion) && !latestIsPre) {
       if (!isAllowedVersionTransition(range, latestTag, transitionOpts)) {
-        return null;
+        // latest dist-tag is a disallowed downgrade — fall back to the in-range
+        // `version` like the sibling branches, but only if it is a real upgrade.
+        return gt(version, oldVersion) ? version : null;
       }
       return latestTag;
     }

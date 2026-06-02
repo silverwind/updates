@@ -13,6 +13,7 @@ import {satisfies} from "./utils/semver.ts";
 import {npmTypes} from "./utils/utils.ts";
 import {updates} from "./api.ts";
 import {forgeDirs} from "./modes/actions.ts";
+import {resolutionsBasePackage} from "./modes/npm.ts";
 import type {UpdatesOptions} from "./api.ts";
 
 const execFileAsync = promisify(execFile);
@@ -122,11 +123,6 @@ function defaultRoute(req: any, res: any) {
   console.error(`default handler hit for ${req.url}`);
   res.statusCode = 404;
   res.end();
-}
-
-function resolutionsBasePackage(name: string) {
-  const packages = name.match(/(@[^/]+\/)?([^/]+)/g) || [];
-  return packages[packages.length - 1];
 }
 
 let npmServer: ReturnType<typeof makeServer>;
@@ -2089,6 +2085,37 @@ test("fetch error includes URL and no stack trace", async ({expect = globalExpec
   }
 });
 
+test("repeated multi-value flag survives swallowed flag recovery", async ({expect = globalExpect}: any = {}) => {
+  // `-i react -i -p`: the second -i wrongly swallows -p; recovery must keep the
+  // earlier `react` include (not reset the array) and still enable prerelease.
+  const results = await makeTest("-j -i react -i -p")();
+  // include `react` survived (without the fix the cleared array drops it and every
+  // outdated dep returns); the prerelease new version confirms `-p` still applied.
+  expect(Object.keys(results.npm.dependencies)).toEqual(["react"]);
+  expect(results.npm.dependencies.react.new).toBe("0.0.0-experimental-d1e35c703-20221110");
+
+  // `-i react -i -p -i gulp-sourcemaps`: the swallowed `-p` is NOT the last value;
+  // recovery must drop that specific bogus value, keeping both real includes.
+  const nonLast = await makeTest("-j -i react -i -p -i gulp-sourcemaps")();
+  const keys = Object.keys(nonLast.npm.dependencies);
+  expect(keys).toContain("react");
+  expect(keys).toContain("gulp-sourcemaps");
+  expect(nonLast.npm.dependencies.react.new).toBe("0.0.0-experimental-d1e35c703-20221110");
+});
+
+test("text output keeps same dep at different versions across sections", async ({expect = globalExpect}: any = {}) => {
+  // gulp-sourcemaps appears in dependencies (2.0.0 -> 2.6.5) and peerDependencies
+  // (>=2.0.0 -> >=2.6.5); both rows must show, not collapse to one.
+  const {stdout, stderr} = await execFileAsync(execPath, [
+    script, "-n", "-i", "gulp-sourcemaps",
+    "--forgeapi", githubUrl, "--registry", npmUrl, "-f", testFile,
+  ]);
+  expect(stderr).toEqual("");
+  const rows = stdout.split("\n").filter(line => line.includes("gulp-sourcemaps"));
+  expect(rows.length).toBe(2);
+  expect(stdout).toContain(">=2.6.5");
+});
+
 // Config option tests — each test gets its own temp dir for concurrency safety
 async function configTest(config: string, args: string): Promise<{stdout: string, stderr: string}> {
   const dir = mkdtempSync(join(tmpdir(), "updates-cfg-"));
@@ -2126,6 +2153,17 @@ test("config cli overrides config", async ({expect = globalExpect}: any = {}) =>
   // Config has minor (patch+minor), CLI -P overrides to patch-only
   const {stdout} = await configTest(`{ minor: true }`, "-j -i gulp-sourcemaps -P");
   expect(JSON.parse(stdout).results.npm.dependencies["gulp-sourcemaps"].new).toBe("2.0.1");
+});
+
+test("config json yields JSON error output without -j flag", async ({expect = globalExpect}: any = {}) => {
+  // json comes from the config file, not the CLI; errors must still print as JSON.
+  try {
+    await configTest(`{ json: true }`, "-i noty --registry http://test.invalid -T 1000");
+    throw new Error("Expected non-zero exit");
+  } catch (err: any) {
+    const output = JSON.parse(err?.stdout || "{}");
+    expect(output.error).toContain("test.invalid");
+  }
 });
 
 test("cli greatest with regex", async ({expect = globalExpect}: any = {}) => {
@@ -2258,4 +2296,55 @@ test("api output structure", async ({expect = globalExpect}: any = {}) => {
   expect(dep).toHaveProperty("old");
   expect(dep).toHaveProperty("new");
   expect(dep).toHaveProperty("info");
+});
+
+// Bug: two non-workspace manifests of the same mode shared single mode-keyed
+// slots, so only the last file was written and same name+type deps collided.
+test("two non-workspace package.json: both updated, no dep loss", async ({expect = globalExpect}: any = {}) => {
+  const dir = mkdtempSync(join(tmpdir(), "updates-multi-"));
+  try {
+    const fileA = join(dir, "a", "package.json");
+    const fileB = join(dir, "b", "package.json");
+    mkdirSync(join(dir, "a"), {recursive: true});
+    mkdirSync(join(dir, "b"), {recursive: true});
+    await writeFile(fileA, `${JSON.stringify({dependencies: {noty: "3.1.0"}}, null, 2)}\n`);
+    await writeFile(fileB, `${JSON.stringify({dependencies: {"gulp-sourcemaps": "2.0.0"}}, null, 2)}\n`);
+
+    const output = await updates(apiOpts({files: [fileA, fileB], update: true}));
+
+    // Both deps survive (neither file's unique dep is lost to a shared slot).
+    const npm = output.results.npm;
+    const allDeps = Object.assign({}, ...Object.values(npm) as Array<Record<string, any>>);
+    expect(allDeps.noty?.new).toBe("3.1.4");
+    expect(allDeps["gulp-sourcemaps"]?.new).toBe("2.6.5");
+
+    // Both files are written with their own update (not just the last one).
+    expect(await readFile(fileA, "utf8")).toContain(`"noty": "3.1.4"`);
+    expect(await readFile(fileB, "utf8")).toContain(`"gulp-sourcemaps": "2.6.5"`);
+  } finally {
+    await rm(dir, {recursive: true, force: true, maxRetries: 10, retryDelay: 100}).catch(() => {});
+  }
+});
+
+test("two non-workspace package.json with the same dep: both updated", async ({expect = globalExpect}: any = {}) => {
+  const dir = mkdtempSync(join(tmpdir(), "updates-multi-same-"));
+  try {
+    const fileA = join(dir, "a", "package.json");
+    const fileB = join(dir, "b", "package.json");
+    mkdirSync(join(dir, "a"), {recursive: true});
+    mkdirSync(join(dir, "b"), {recursive: true});
+    await writeFile(fileA, `${JSON.stringify({dependencies: {noty: "3.1.0"}}, null, 2)}\n`);
+    await writeFile(fileB, `${JSON.stringify({dependencies: {noty: "3.1.0"}}, null, 2)}\n`);
+
+    const output = await updates(apiOpts({files: [fileA, fileB], update: true}));
+
+    // Same name+type from both files must not collide into one dep entry.
+    const notyEntries = Object.values(output.results.npm).filter(section => "noty" in section);
+    expect(notyEntries.length).toBe(2);
+
+    expect(await readFile(fileA, "utf8")).toContain(`"noty": "3.1.4"`);
+    expect(await readFile(fileB, "utf8")).toContain(`"noty": "3.1.4"`);
+  } finally {
+    await rm(dir, {recursive: true, force: true, maxRetries: 10, retryDelay: 100}).catch(() => {});
+  }
 });

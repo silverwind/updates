@@ -1,5 +1,4 @@
 import {env} from "node:process";
-import {basename} from "node:path";
 import rc from "../utils/rc.ts";
 import {getCache, setCache} from "../utils/fetchCache.ts";
 import {
@@ -35,6 +34,15 @@ const stripRe = /^.*?:\/\/(.*?@)?(github\.com[:/])/i;
 const partsRe = /^([^/]+)\/([^/]+)\/(?:.*\/)?([0-9a-f]+|v?[0-9]+\.[0-9]+\.[0-9]+)$/i;
 const npmVersionRe = /[0-9]+(\.[0-9]+)?(\.[0-9]+)?/g;
 const npmVersionRePre = /[0-9]+\.[0-9]+\.[0-9]+(-.+)?/g;
+// matches each path segment incl. its scope, e.g. `foo/@scope/pkg` -> [`foo`, `@scope/pkg`]
+const segmentRe = /(@[^/]+\/)?([^/]+)/g;
+
+// resolves a `resolutions`/`overrides` key to the published package, keeping the scope on the
+// final segment, e.g. `@babel/core` -> `@babel/core`, `foo/@scope/pkg` -> `@scope/pkg`
+export function resolutionsBasePackage(name: string): string {
+  const segments = name.match(segmentRe);
+  return segments ? segments[segments.length - 1] : name;
+}
 
 const defaultRegistry = "https://registry.npmjs.org";
 let npmrc: Npmrc | null = null;
@@ -140,7 +148,7 @@ const npmFullDataCache = new Map<string, Promise<Record<string, any> | null>>();
 
 export async function fetchNpmInfo(name: string, type: string, config: Config, args: Record<string, any>, ctx: ModeContext): Promise<PackageInfo> {
   const {auth, registry} = resolveNpmRegistry(name, config, args);
-  const packageName = type === "resolutions" ? basename(name) : name;
+  const packageName = type === "resolutions" ? resolutionsBasePackage(name) : name;
   const url = npmPackageUrl(registry, packageName);
 
   let dataPromise = npmDataCache.get(url);

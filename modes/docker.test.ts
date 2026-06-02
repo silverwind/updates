@@ -184,7 +184,7 @@ test("findDockerVersion finds upgrade with same suffix", () => {
     "18-alpine": "2024-01-01",
   };
   const result = findDockerVersion(tagMap, "18", new Set(["patch", "minor", "major"]));
-  expect(result).toEqual({newTag: "20", date: "2024-06-01"});
+  expect(result).toEqual({newTag: "20", hubTag: "20", date: "2024-06-01"});
 });
 
 test("findDockerVersion returns null when no upgrade", () => {
@@ -199,7 +199,7 @@ test("findDockerVersion filters by suffix", () => {
     "20-alpine": "2024-06-01",
   };
   const result = findDockerVersion(tagMap, "18-alpine", new Set(["patch", "minor", "major"]));
-  expect(result).toEqual({newTag: "20-alpine", date: "2024-06-01"});
+  expect(result).toEqual({newTag: "20-alpine", hubTag: "20-alpine", date: "2024-06-01"});
 });
 
 test("findDockerVersion returns null for invalid tag", () => {
@@ -215,7 +215,7 @@ test("findDockerVersion handles partial version tags", () => {
   };
   // Tags "20", "20.11", "20.11.1" all coerce; highest coerced (20.11.1) wins
   const result = findDockerVersion(tagMap, "18", new Set(["patch", "minor", "major"]));
-  expect(result).toEqual({newTag: "20", date: "2024-06-15"});
+  expect(result).toEqual({newTag: "20", hubTag: "20.11.1", date: "2024-06-15"});
 });
 
 test("findDockerVersion respects pinnedRange and blocks out-of-range upgrade", () => {
@@ -235,7 +235,7 @@ test("findDockerVersion respects pinnedRange and allows in-range upgrade", () =>
     "9.7": "2024-12-01",
   };
   const result = findDockerVersion(tagMap, "8.0.0", new Set(["patch", "minor", "major"]), undefined, undefined, "8.0");
-  expect(result).toEqual({newTag: "8.0.41", date: "2024-06-01"});
+  expect(result).toEqual({newTag: "8.0.41", hubTag: "8.0.41", date: "2024-06-01"});
 });
 
 // updateDockerfile

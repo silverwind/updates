@@ -163,8 +163,10 @@ export async function fetchMakeDockerInfo(image: MakeDockerImage, ctx: ModeConte
 
   let newDigest: string | null = null;
   if (image.digest) {
-    // Keep the pin valid: resolve the new tag's digest, and skip rather than write a stale one.
-    newDigest = await fetchDockerTagDigest(namespace, repo, result.newTag, ctx);
+    // Keep the pin valid: resolve the digest via the real Hub tag (newTag is precision-reduced
+    // to the authored tag and may 404 when Hub only publishes higher-precision tags), and skip
+    // rather than write a stale one.
+    newDigest = await fetchDockerTagDigest(namespace, repo, result.hubTag, ctx);
     if (!newDigest) return null;
   }
   return {newTag: result.newTag, newDigest, date: result.date, info: getDockerInfoUrl(image.ref)};

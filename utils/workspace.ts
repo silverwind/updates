@@ -30,18 +30,22 @@ export function filterDepsForMember(allDeps: Deps, memberPath: string): Deps {
 const globChars = /[*?{[]/;
 
 export async function resolveWorkspaceMembers(patterns: string[], workspaceDir: string, manifestFilename: string, concurrency = 32): Promise<WorkspaceMember[]> {
+  const includes = patterns.filter(pattern => !pattern.startsWith("!"));
+  const excludes = patterns.filter(pattern => pattern.startsWith("!")).map(pattern => pattern.slice(1));
+  const excluded = new Set(excludes.flatMap(pattern => globSync(pattern, {cwd: workspaceDir})).map(dir => dir.replace(/\\/g, "/")));
   const seen = new Set<string>();
   const candidates: Array<{absPath: string, memberPath: string}> = [];
-  for (const pattern of patterns) {
+  for (const pattern of includes) {
     const dirs = globChars.test(pattern) ?
       globSync(pattern, {cwd: workspaceDir}).map(dir => resolve(join(workspaceDir, dir))) :
       [resolve(join(workspaceDir, pattern))];
     for (const dir of dirs) {
+      const rel = relative(workspaceDir, dir).replace(/\\/g, "/");
+      if (excluded.has(rel)) continue;
       const absPath = join(dir, manifestFilename);
       if (seen.has(absPath)) continue;
       seen.add(absPath);
-      const rel = relative(workspaceDir, dir);
-      candidates.push({absPath, memberPath: `./${rel.replace(/\\/g, "/")}`});
+      candidates.push({absPath, memberPath: `./${rel}`});
     }
   }
   const reads = await pMap(candidates, async ({absPath, memberPath}) => {

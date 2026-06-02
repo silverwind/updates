@@ -65,6 +65,20 @@ test("resolveWorkspaceMembers glob patterns", async ({expect = globalExpect}: an
   expect(paths).toEqual(["./packages/bar", "./packages/foo"]);
 });
 
+test("resolveWorkspaceMembers excludes negated patterns", async ({expect = globalExpect}: any = {}) => {
+  const dir = mkdtempSync(join(tmpdir(), "ws-test-"));
+  mkdirSync(join(dir, "packages", "foo"), {recursive: true});
+  mkdirSync(join(dir, "packages", "bar"), {recursive: true});
+  mkdirSync(join(dir, "packages", "internal"), {recursive: true});
+  writeFileSync(join(dir, "packages", "foo", "package.json"), "{\"name\": \"foo\"}");
+  writeFileSync(join(dir, "packages", "bar", "package.json"), "{\"name\": \"bar\"}");
+  writeFileSync(join(dir, "packages", "internal", "package.json"), "{\"name\": \"internal\"}");
+
+  const members = await resolveWorkspaceMembers(["packages/*", "!packages/internal"], dir, "package.json");
+  const paths = members.map(m => m.memberPath).sort();
+  expect(paths).toEqual(["./packages/bar", "./packages/foo"]);
+});
+
 test("resolveWorkspaceMembers skips missing", async ({expect = globalExpect}: any = {}) => {
   const dir = mkdtempSync(join(tmpdir(), "ws-test-"));
   const members = await resolveWorkspaceMembers(["nonexistent"], dir, "Cargo.toml");

@@ -182,7 +182,8 @@ function expandTilde(range: string): string {
   // ~1.2.3 := >=1.2.3 <1.3.0-0
   // ~1.2   := >=1.2.0 <1.3.0-0
   // ~1     := >=1.0.0 <2.0.0-0
-  return range.replace(/~\s*v?(\d+)(?:\.(\d+))?(?:\.(\d+))?((?:-[a-zA-Z0-9._-]+)?)/g, (_, major, minor, patch, pre) => {
+  // Trailing wildcard segments (e.g. ~1.x, ~1.2.x) are consumed and treated as omitted.
+  return range.replace(/~\s*v?(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:\.[xX*])*((?:-[a-zA-Z0-9._-]+)?)/g, (_, major, minor, patch, pre) => {
     const M = Number(major);
     if (minor === undefined) {
       return `>=${M}.0.0 <${upperBound(M + 1, 0, 0)}`;
@@ -200,7 +201,8 @@ function expandCaret(range: string): string {
   // ^0.0.3 := >=0.0.3 <0.0.4-0
   // ^0.0   := >=0.0.0 <0.1.0-0
   // ^0     := >=0.0.0 <1.0.0-0
-  return range.replace(/\^\s*v?(\d+)(?:\.(\d+))?(?:\.(\d+))?((?:-[a-zA-Z0-9._-]+)?)/g, (_, major, minor, patch, pre) => {
+  // Trailing wildcard segments (e.g. ^1.x, ^1.2.x) are consumed and treated as omitted.
+  return range.replace(/\^\s*v?(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:\.[xX*])*((?:-[a-zA-Z0-9._-]+)?)/g, (_, major, minor, patch, pre) => {
     const M = Number(major);
     const preSuffix = pre || "";
     if (minor === undefined) {
@@ -258,6 +260,30 @@ function expandHyphen(range: string): string {
     });
 }
 
+// Expands an x-range component (e.g. 1.2.x or 1.x), honoring a leading comparison operator the way
+// node-semver does: a bare/`=` x-range becomes a `>=lo <hi` pair, while an operator-prefixed one
+// collapses to a single bound (e.g. >=1.2.x := >=1.2.0, >1.2.x := >=1.3.0, <=1.2.x := <1.3.0-0).
+function expandXRangeComparator(op: string | undefined, major: number, minor: number, wildMinor: boolean): string {
+  if (!op || op === "=") {
+    return wildMinor ?
+      `>=${major}.0.0 <${upperBound(major + 1, 0, 0)}` :
+      `>=${major}.${minor}.0 <${upperBound(major, minor + 1, 0)}`;
+  }
+  if (op === ">") {
+    // >1 := >=2.0.0, >1.2 := >=1.3.0
+    return wildMinor ? `>=${major + 1}.0.0` : `>=${major}.${minor + 1}.0`;
+  }
+  if (op === "<=") {
+    // <=1.x := <2.0.0-0, <=1.2.x := <1.3.0-0 (any matching patch should pass)
+    return wildMinor ? `<${upperBound(major + 1, 0, 0)}` : `<${upperBound(major, minor + 1, 0)}`;
+  }
+  if (op === "<") {
+    return wildMinor ? `<${major}.0.0-0` : `<${major}.${minor}.0-0`;
+  }
+  // >=
+  return wildMinor ? `>=${major}.0.0` : `>=${major}.${minor}.0`;
+}
+
 function expandXRanges(range: string): string {
   // *, x, X -> >=0.0.0
   // 1.x, 1.*, 1 -> >=1.0.0 <2.0.0-0
@@ -269,17 +295,13 @@ function expandXRanges(range: string): string {
   }
 
   // Handle patterns like 1.2.x, 1.2.* (before the 2-part rule below, which would otherwise mis-match these)
-  range = range.replace(/v?(\d+)\.(\d+)\.[xX*]/g, (_, major, minor) => {
-    const M = Number(major);
-    const m = Number(minor);
-    return `>=${M}.${m}.0 <${upperBound(M, m + 1, 0)}`;
-  });
+  // wildMinor=false: minor is fixed (1.2.x), so the implied range spans one minor. true: minor is wild (1.x).
+  range = range.replace(/(>=|<=|>|<|=)?\s*v?(\d+)\.(\d+)\.[xX*]/g, (_, op, major, minor) =>
+    expandXRangeComparator(op, Number(major), Number(minor), false));
 
   // Handle patterns like 1.x, 1.*, 1.X, 1.x.x etc.
-  range = range.replace(/v?(\d+)\.[xX*](?:\.[xX*])?/g, (_, major) => {
-    const M = Number(major);
-    return `>=${M}.0.0 <${upperBound(M + 1, 0, 0)}`;
-  });
+  range = range.replace(/(>=|<=|>|<|=)?\s*v?(\d+)\.[xX*](?:\.[xX*])?/g, (_, op, major) =>
+    expandXRangeComparator(op, Number(major), 0, true));
 
   // Handle bare partials: standalone "1" or "1.2" (not preceded by operator)
   // Use negative lookbehind to skip if preceded by comparison operators (with optional spaces)

@@ -1,6 +1,6 @@
 import {
   isJsr, isLocalDep, parseJsrDependency, updateVersionRange, normalizeRange,
-  updatePackageJson, fetchJsrInfo, getLatestCommit, getTags, checkUrlDep,
+  updatePackageJson, fetchJsrInfo, getLatestCommit, getTags, checkUrlDep, fetchNpmInfo,
 } from "./npm.ts";
 import {type ModeContext, fetchTimeout, fieldSep} from "./shared.ts";
 
@@ -102,6 +102,23 @@ test("fetchJsrInfo fetch failure throws", async () => {
     doFetch: () => Promise.resolve({ok: false, status: 404, statusText: "Not Found"}),
   } as unknown as ModeContext;
   await expect(fetchJsrInfo("@std/semver", "dependencies", ctx)).rejects.toThrow("404");
+});
+
+// fetchNpmInfo
+test("fetchNpmInfo resolutions key keeps scope", async () => {
+  let fetchedUrl = "";
+  const ctx = {
+    fetchTimeout,
+    noCache: true,
+    doFetch: (url: string) => {
+      fetchedUrl = url;
+      return Promise.resolve({ok: true, text: () => Promise.resolve("{}"), headers: new Headers()});
+    },
+  } as unknown as ModeContext;
+  const [, , , name] = await fetchNpmInfo("@babel/core", "resolutions", {}, {}, ctx);
+  expect(name).toBe("@babel/core");
+  // the scope must survive: fetch @babel/core, never the unscoped `core`
+  expect(fetchedUrl.endsWith("/@babel%2fcore")).toBe(true);
 });
 
 // getLatestCommit

@@ -91,6 +91,14 @@ test("multi-line array with brackets inside strings", () => {
   expect(parseToml(input)).toEqual({deps: ["apispec[marshmallow]==6.10.0", "foo"]});
 });
 
+test("multi-line array of nested arrays", () => {
+  expect(parseToml(`a = [\n  [1, 2],\n  [3, 4],\n]`)).toEqual({a: [[1, 2], [3, 4]]});
+});
+
+test("multi-line array of inline tables with inner arrays", () => {
+  expect(parseToml(`a = [\n  { f = ["x"] },\n  { f = ["y"] },\n]`)).toEqual({a: [{f: ["x"]}, {f: ["y"]}]});
+});
+
 test("inline array with brackets inside strings", () => {
   expect(parseToml(`deps = ["apispec[marshmallow]==6.10.0", "foo"]`))
     .toEqual({deps: ["apispec[marshmallow]==6.10.0", "foo"]});

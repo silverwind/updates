@@ -100,3 +100,11 @@ test("operator without space", () => {
   };
   expect(updatePyprojectToml(input, deps)).toBe(`dependencies = [\n  "requests>=2.31.0",\n]\n`);
 });
+
+test("rewrites single-quoted dependency preserving single quotes", () => {
+  const input = `dependencies = [\n  'requests >=2.28.0',\n]\n`;
+  const deps = {
+    [`dependencies${fieldSep}requests`]: {old: "2.28.0", new: "2.31.0"} as any,
+  };
+  expect(updatePyprojectToml(input, deps)).toBe(`dependencies = [\n  'requests >=2.31.0',\n]\n`);
+});

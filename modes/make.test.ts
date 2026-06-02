@@ -288,6 +288,30 @@ test("fetchMakeDockerInfo returns null when the new tag's digest cannot be resol
   expect(await fetchMakeDockerInfo(image, ctx, defaultOpts)).toBeNull();
 });
 
+test("fetchMakeDockerInfo re-resolves the digest via the real Hub tag when only 3-part tags are published", async () => {
+  // Authored tag is 2-part (`v0.12`), so newTag is precision-reduced to `v0.13`, but Hub only
+  // publishes the 3-part `v0.13.0` — the digest lookup must use the real Hub tag, not newTag.
+  const ctx = {
+    dockerApiUrl: "https://hub.docker.com", fetchTimeout, noCache: true,
+    doFetch: (url: string) => {
+      if (url.endsWith("/tags/v0.13.0")) return Promise.resolve({ok: true, json: () => Promise.resolve({digest: digestB})} as any);
+      if (url.includes("/tags/")) return Promise.resolve({ok: false} as any); // a 2-part `/tags/v0.13` lookup 404s
+      if (url.includes("/tags")) return Promise.resolve({ok: true, json: () => Promise.resolve({count: 2, results: [
+        {name: "v0.12.0", tag_last_pushed: "2025-01-01T00:00:00Z"},
+        {name: "v0.13.0", tag_last_pushed: "2025-06-01T00:00:00Z"},
+      ]})} as any);
+      return Promise.resolve({ok: false} as any);
+    },
+  } as unknown as ModeContext;
+  const image = parseMakeImageValue(`docker.io/koalaman/shellcheck:v0.12@${digestA}`)!;
+  expect(await fetchMakeDockerInfo(image, ctx, defaultOpts)).toEqual({
+    newTag: "v0.13",
+    newDigest: digestB,
+    date: "2025-06-01T00:00:00Z",
+    info: "https://hub.docker.com/r/koalaman/shellcheck",
+  });
+});
+
 test("fetchMakeDockerInfo returns null when no newer tag exists", async () => {
   const ctx = {
     dockerApiUrl: "https://hub.docker.com", fetchTimeout, noCache: true,

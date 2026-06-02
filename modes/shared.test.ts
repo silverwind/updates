@@ -675,6 +675,26 @@ test("findNewVersion pinnedRange excludes latestTag", () => {
   expect(result).toBe("1.1.0");
 });
 
+test("findNewVersion falls back to in-range upgrade when latest dist-tag is a lower release", () => {
+  // Abbreviated metadata (no time field) so findVersion picks the greatest
+  // in-range candidate. latest dist-tag (1.9.9) is below the installed 2.0.0,
+  // so the downgrade guard must not discard the valid 2.0.1 upgrade.
+  const data = {
+    name: "pkg",
+    "dist-tags": {latest: "1.9.9"},
+    versions: {"1.9.9": {}, "2.0.0": {}, "2.0.1": {}},
+  };
+  const result = findNewVersion(data, {
+    mode: "npm",
+    range: "2.0.0",
+    useGreatest: false,
+    useRel: false,
+    usePre: false,
+    semvers: new Set(["patch", "minor", "major"]),
+  }, defaultOpts);
+  expect(result).toBe("2.0.1");
+});
+
 test("findNewVersion go mode cross-major upgrade", () => {
   const data = {
     name: "github.com/foo/bar",
