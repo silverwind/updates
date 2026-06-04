@@ -126,6 +126,18 @@ export default {
 
 Values in `updates.config` override anything inherited.
 
+### Native package manager minimum release age
+
+For npm packages, `updates` automatically honors the minimum-release-age supply-chain settings that npm, pnpm and bun expose, so it won't propose a version those package managers would refuse to install. The nearest config above each manifest is read:
+
+|Package manager|File|Setting (and unit)|Exclude list|
+|---|---|---|---|
+|npm|`.npmrc`|`min-release-age` (days)|`min-release-age-exclude`|
+|pnpm|`pnpm-workspace.yaml` or `.npmrc`|`minimumReleaseAge` / `minimum-release-age` (minutes)|`minimumReleaseAgeExclude` / `minimum-release-age-exclude`|
+|bun|`bunfig.toml` `[install]`|`minimumReleaseAge` (seconds)|`minimumReleaseAgeExcludes`|
+
+When several are present, the most conservative age and the union of exclude lists apply. An explicit `cooldown` in `updates.config`, `--cooldown`, or an `overrides` entry always takes precedence over the native value; the native value is only used as a fallback when `updates` has no cooldown of its own.
+
 ## API
 
 `updates` can be used as a library:

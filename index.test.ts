@@ -2282,6 +2282,93 @@ test("api overrides last match wins", async ({expect = globalExpect}: any = {}) 
   expect(output.results.npm.dependencies.noty.new).toBe("3.1.4");
 });
 
+async function nativeCooldownDir(prefix: string, configFile: string, configContent: string, deps: Record<string, string> = {noty: "3.1.0"}) {
+  const dir = mkdtempSync(join(tmpdir(), prefix));
+  writeFileSync(join(dir, configFile), configContent);
+  await writeFile(join(dir, "package.json"), `${JSON.stringify({dependencies: deps}, null, 2)}\n`);
+  return dir;
+}
+
+test("api native .npmrc min-release-age holds back too-new version", async ({expect = globalExpect}: any = {}) => {
+  const dir = await nativeCooldownDir("updates-native-npmrc-", ".npmrc", "min-release-age=999999\n");
+  try {
+    const output = await updates(apiOpts({files: [join(dir, "package.json")]}));
+    expect(output.message).toBe("All dependencies are up to date.");
+  } finally {
+    await rm(dir, {recursive: true, force: true, maxRetries: 10, retryDelay: 100}).catch(() => {});
+  }
+});
+
+test("api native pnpm-workspace.yaml minimumReleaseAge holds back too-new version", async ({expect = globalExpect}: any = {}) => {
+  const dir = await nativeCooldownDir("updates-native-pnpm-", "pnpm-workspace.yaml", "minimumReleaseAge: 1440000000\n");
+  try {
+    const output = await updates(apiOpts({files: [join(dir, "package.json")]}));
+    expect(output.message).toBe("All dependencies are up to date.");
+  } finally {
+    await rm(dir, {recursive: true, force: true, maxRetries: 10, retryDelay: 100}).catch(() => {});
+  }
+});
+
+test("api native bunfig.toml minimumReleaseAge holds back too-new version", async ({expect = globalExpect}: any = {}) => {
+  const dir = await nativeCooldownDir("updates-native-bun-", "bunfig.toml", "[install]\nminimumReleaseAge = 99999999999\n");
+  try {
+    const output = await updates(apiOpts({files: [join(dir, "package.json")]}));
+    expect(output.message).toBe("All dependencies are up to date.");
+  } finally {
+    await rm(dir, {recursive: true, force: true, maxRetries: 10, retryDelay: 100}).catch(() => {});
+  }
+});
+
+test("api explicit cooldown overrides native min-release-age", async ({expect = globalExpect}: any = {}) => {
+  const dir = await nativeCooldownDir("updates-native-override-", ".npmrc", "min-release-age=999999\n");
+  try {
+    const output = await updates(apiOpts({files: [join(dir, "package.json")], cooldown: "1d"}));
+    expect(output.results.npm.dependencies.noty.new).toBe("3.1.4");
+  } finally {
+    await rm(dir, {recursive: true, force: true, maxRetries: 10, retryDelay: 100}).catch(() => {});
+  }
+});
+
+test("api native exclude bypasses min-release-age", async ({expect = globalExpect}: any = {}) => {
+  const dir = await nativeCooldownDir("updates-native-exclude-", ".npmrc", "min-release-age=999999\nmin-release-age-exclude=noty\n");
+  try {
+    const output = await updates(apiOpts({files: [join(dir, "package.json")]}));
+    expect(output.results.npm.dependencies.noty.new).toBe("3.1.4");
+  } finally {
+    await rm(dir, {recursive: true, force: true, maxRetries: 10, retryDelay: 100}).catch(() => {});
+  }
+});
+
+test("api native glob exclude bypasses min-release-age", async ({expect = globalExpect}: any = {}) => {
+  const dir = await nativeCooldownDir("updates-native-glob-", "pnpm-workspace.yaml", "minimumReleaseAge: 1440000000\nminimumReleaseAgeExclude:\n  - 'not*'\n");
+  try {
+    const output = await updates(apiOpts({files: [join(dir, "package.json")]}));
+    expect(output.results.npm.dependencies.noty.new).toBe("3.1.4");
+  } finally {
+    await rm(dir, {recursive: true, force: true, maxRetries: 10, retryDelay: 100}).catch(() => {});
+  }
+});
+
+test("api explicit cooldown 0 disables native min-release-age", async ({expect = globalExpect}: any = {}) => {
+  const dir = await nativeCooldownDir("updates-native-zero-", ".npmrc", "min-release-age=999999\n");
+  try {
+    const output = await updates(apiOpts({files: [join(dir, "package.json")], cooldown: 0}));
+    expect(output.results.npm.dependencies.noty.new).toBe("3.1.4");
+  } finally {
+    await rm(dir, {recursive: true, force: true, maxRetries: 10, retryDelay: 100}).catch(() => {});
+  }
+});
+
+test("api native quoted minimumReleaseAge holds back too-new version", async ({expect = globalExpect}: any = {}) => {
+  const dir = await nativeCooldownDir("updates-native-quoted-", "pnpm-workspace.yaml", "minimumReleaseAge: \"1440000000\"\n");
+  try {
+    const output = await updates(apiOpts({files: [join(dir, "package.json")]}));
+    expect(output.message).toBe("All dependencies are up to date.");
+  } finally {
+    await rm(dir, {recursive: true, force: true, maxRetries: 10, retryDelay: 100}).catch(() => {});
+  }
+});
+
 test("api modes filter", async ({expect = globalExpect}: any = {}) => {
   const output = await updates(apiOpts({include: ["noty"], modes: ["pypi"]}));
   expect(output.message).toBe("No dependencies found, nothing to do.");

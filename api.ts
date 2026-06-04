@@ -16,6 +16,7 @@ import {
 } from "./modes/shared.ts";
 import {loadConfig, configMixedToRegexes, patternsToRegexSet} from "./config.ts";
 import type {Config, Override} from "./config.ts";
+import {npmEcosystemCooldown} from "./utils/pmCooldown.ts";
 import {
   fetchNpmInfo, fetchNpmVersionInfo, fetchJsrInfo, isJsr, isLocalDep, parseJsrDependency,
   getNpmrc, updatePackageJson, updateVersionRange, normalizeRange, checkUrlDep,
@@ -374,12 +375,41 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
   // never overwrites each other's content/config and never merges their deps.
   // Each gets a unique memberPath (the first stays "." to preserve the original
   // single-manifest output shape), mirroring the workspace `|memberPath` scheme.
-  type PlainFile = {absPath: string, content: string, memberPath: string, projectDir: string, modeConfig: Config, pin: Record<string, string>, modeCooldownDays: number};
+  type Native = {nativeCooldownDays: number, nativeExclude: Set<RegExp>};
+  type PlainFile = {absPath: string, content: string, memberPath: string, projectDir: string, modeConfig: Config, pin: Record<string, string>, modeCooldownDays: number | undefined} & Native;
   const plainFiles: Record<string, Array<PlainFile>> = {};
   const now = Date.now();
-  const cooldownDaysFor = (local: Config["cooldown"]) => {
+  // Returns the `updates`-configured cooldown in days, or undefined when neither
+  // a global nor a local cooldown is set. An explicit 0 is kept distinct from
+  // undefined so that `cooldown: 0` / `--cooldown 0` disables the native fallback.
+  const cooldownDaysFor = (local: Config["cooldown"]): number | undefined => {
     const raw = config.cooldown ?? local;
-    return raw ? parseDuration(String(raw)) : 0;
+    return raw === undefined || raw === null ? undefined : parseDuration(String(raw));
+  };
+  // Native package-manager minimum-release-age settings (npm/pnpm/bun), resolved
+  // per project dir. Only the npm mode has such settings. Exclude patterns may be
+  // globs (e.g. `@myorg/*`), so they are compiled to the same matcher used
+  // elsewhere. Memoized per run so repeated lookups don't re-walk the filesystem.
+  const emptyExclude = new Set<RegExp>();
+  const nativeCache = new Map<string, Native>();
+  const nativeFor = (mode: string, projectDir: string): Native => {
+    if (mode !== "npm") return {nativeCooldownDays: 0, nativeExclude: emptyExclude};
+    let entry = nativeCache.get(projectDir);
+    if (!entry) {
+      const {days, exclude} = npmEcosystemCooldown(projectDir);
+      entry = {nativeCooldownDays: days, nativeExclude: exclude.size ? patternsToRegexSet(Array.from(exclude)) : emptyExclude};
+      nativeCache.set(projectDir, entry);
+    }
+    return entry;
+  };
+  // Effective cooldown for a dependency. An explicit `updates` cooldown (override
+  // or mode/global config, including an explicit 0) wins; otherwise fall back to
+  // the native PM setting, which a native exclude list can waive per package.
+  const resolveCooldownDays = (name: string, modeCooldownDays: number | undefined, cooldownOverride: number | undefined, nativeCooldownDays: number, nativeExclude: Set<RegExp>) => {
+    if (cooldownOverride !== undefined) return cooldownOverride;
+    if (modeCooldownDays !== undefined) return modeCooldownDays;
+    if (matchesAny(name, nativeExclude)) return 0;
+    return nativeCooldownDays;
   };
   const cwdStr = cwd();
   const toRelPath = (absPath: string) => absPath.replace(`${cwdStr}/`, "").replace(`${cwdStr}\\`, "");
@@ -475,7 +505,8 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
     const cfg = await loadConfig(fileDir);
     const inc = cfg.include?.length ? patternsToRegexSet([...(config.include ?? []), ...cfg.include]) : include;
     const exc = cfg.exclude?.length ? patternsToRegexSet([...(config.exclude ?? []), ...cfg.exclude]) : exclude;
-    return {include: inc, exclude: exc, pin: cfg.pin ?? {}, cooldownDays: cooldownDaysFor(cfg.cooldown)};
+    // docker/actions/make have no native fallback, so collapse undefined to 0.
+    return {include: inc, exclude: exc, pin: cfg.pin ?? {}, cooldownDays: cooldownDaysFor(cfg.cooldown) ?? 0};
   }
 
   for (const file of files) {
@@ -665,7 +696,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
         const modeFiles = plainFiles[mode] ??= [];
         const isFirstOfMode = !modeFiles.length;
         const memberPath = isFirstOfMode ? "." : toRelPath(file);
-        modeFiles.push({absPath: resolve(file), content: cargoContent, memberPath, projectDir: workspaceDir, modeConfig, pin, modeCooldownDays: cooldownDaysFor(modeConfig.cooldown)});
+        modeFiles.push({absPath: resolve(file), content: cargoContent, memberPath, projectDir: workspaceDir, modeConfig, pin, modeCooldownDays: cooldownDaysFor(modeConfig.cooldown), ...nativeFor(mode, workspaceDir)});
         if (isFirstOfMode) modeConfigs[mode] = {modeConfig, projectDir: workspaceDir, pin};
         collectCargoDeps(cargoParsed, memberPath === "." ? "" : `|${memberPath}`);
       }
@@ -757,7 +788,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
     const memberPath = isFirstOfMode ? "." : toRelPath(file);
     const typePrefix = memberPath === "." ? "" : `|${memberPath}`;
     const content = fileContents.get(file)!;
-    modeFiles.push({absPath: resolve(file), content, memberPath, projectDir, modeConfig, pin, modeCooldownDays: cooldownDaysFor(modeConfig.cooldown)});
+    modeFiles.push({absPath: resolve(file), content, memberPath, projectDir, modeConfig, pin, modeCooldownDays: cooldownDaysFor(modeConfig.cooldown), ...nativeFor(mode, projectDir)});
 
     let pkg: Record<string, any> = {};
     try {
@@ -837,6 +868,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
     if (!hasDeps && !hasUrlDeps) continue;
     const {modeConfig: defaultModeConfig, projectDir: defaultProjectDir, pin: defaultPin} = modeConfigs[mode];
     const defaultCooldownDays = cooldownDaysFor(defaultModeConfig.cooldown);
+    const defaultNative = nativeFor(mode, defaultProjectDir);
     fetchTasks.push((async () => {
       // Non-workspace manifests with a disambiguating `|memberPath` type suffix
       // each carry their own config/projectDir/pin/cooldown; the empty-suffix
@@ -845,7 +877,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
       for (const entry of plainFiles[mode] ?? []) {
         if (entry.memberPath !== ".") ctxBySuffix.set(`|${entry.memberPath}`, entry);
       }
-      const defaultCtx = {modeConfig: defaultModeConfig, projectDir: defaultProjectDir, pin: defaultPin, modeCooldownDays: defaultCooldownDays};
+      const defaultCtx = {modeConfig: defaultModeConfig, projectDir: defaultProjectDir, pin: defaultPin, modeCooldownDays: defaultCooldownDays, ...defaultNative};
       const ctxForType = (type: string) => {
         const suffix = type.slice(baseType(type).length);
         return (suffix && ctxBySuffix.get(suffix)) || defaultCtx;
@@ -857,10 +889,10 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
       const dropIfTooNew = (modeDeps: Deps) => {
         for (const [k, {date}] of Object.entries(modeDeps)) {
           if (!date) continue;
-          const {modeCooldownDays} = ctxForType(k.split(fieldSep)[0]);
-          if (!modeCooldownDays && !overridesHaveCooldown) continue;
+          const {modeCooldownDays, nativeCooldownDays, nativeExclude} = ctxForType(k.split(fieldSep)[0]);
+          if (!modeCooldownDays && !nativeCooldownDays && !overridesHaveCooldown) continue;
           const [, name] = k.split(fieldSep);
-          const cd = getVersionOpts(name).cooldownOverride ?? modeCooldownDays;
+          const cd = resolveCooldownDays(name, modeCooldownDays, getVersionOpts(name).cooldownOverride, nativeCooldownDays, nativeExclude);
           if (cd && !passesCooldown(date, cd, now)) delete modeDeps[k];
         }
       };
@@ -868,7 +900,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
       await pMap(Object.keys(deps[mode]), async (key) => {
         const [type, name] = key.split(fieldSep);
         const baseT = baseType(type);
-        const {modeConfig, projectDir, pin, modeCooldownDays} = ctxForType(type);
+        const {modeConfig, projectDir, pin, modeCooldownDays, nativeCooldownDays, nativeExclude} = ctxForType(type);
         const dep = deps[mode][key];
         let info: PackageInfo | null = null;
         if (mode === "npm") {
@@ -901,7 +933,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
         const oldRange = dep.old;
         const oldOrig = dep.oldOrig;
         const pinnedRange = pin[name];
-        const depCooldownDays = cooldownOverride ?? modeCooldownDays;
+        const depCooldownDays = resolveCooldownDays(name, modeCooldownDays, cooldownOverride, nativeCooldownDays, nativeExclude);
         const newVersion = findNewVersion(data, {
           usePre, useRel, useGreatest, semvers, range: oldRange, mode, pinnedRange,
           cooldownDays: depCooldownDays || undefined, now: depCooldownDays ? now : undefined,

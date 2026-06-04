@@ -14,7 +14,11 @@ export type Config = {
   types?: Array<string>;
   /** URL to npm registry */
   registry?: string;
-  /** Minimum dependency age, e.g. 7 (days), "1w", "2d", "6h" */
+  /**
+   * Minimum dependency age, e.g. 7 (days), "1w", "2d", "6h". When unset, npm
+   * packages fall back to the native minimum-release-age settings found in
+   * .npmrc / pnpm-workspace.yaml / bunfig.toml.
+   */
   cooldown?: number | string;
   /** Pin dependencies to semver ranges */
   pin?: Record<string, string>;
