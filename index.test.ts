@@ -2369,6 +2369,26 @@ test("api native quoted minimumReleaseAge holds back too-new version", async ({e
   }
 });
 
+test("api native .yarnrc.yml npmMinimalAgeGate holds back too-new version", async ({expect = globalExpect}: any = {}) => {
+  const dir = await nativeCooldownDir("updates-native-yarn-", ".yarnrc.yml", "npmMinimalAgeGate: 1440000000\n");
+  try {
+    const output = await updates(apiOpts({files: [join(dir, "package.json")]}));
+    expect(output.message).toBe("All dependencies are up to date.");
+  } finally {
+    await rm(dir, {recursive: true, force: true, maxRetries: 10, retryDelay: 100}).catch(() => {});
+  }
+});
+
+test("api native yarn npmPreapprovedPackages bypasses age gate", async ({expect = globalExpect}: any = {}) => {
+  const dir = await nativeCooldownDir("updates-native-yarn-ok-", ".yarnrc.yml", "npmMinimalAgeGate: 1440000000\nnpmPreapprovedPackages:\n  - noty\n");
+  try {
+    const output = await updates(apiOpts({files: [join(dir, "package.json")]}));
+    expect(output.results.npm.dependencies.noty.new).toBe("3.1.4");
+  } finally {
+    await rm(dir, {recursive: true, force: true, maxRetries: 10, retryDelay: 100}).catch(() => {});
+  }
+});
+
 test("api modes filter", async ({expect = globalExpect}: any = {}) => {
   const output = await updates(apiOpts({include: ["noty"], modes: ["pypi"]}));
   expect(output.message).toBe("No dependencies found, nothing to do.");

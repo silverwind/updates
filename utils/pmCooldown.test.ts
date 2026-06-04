@@ -67,6 +67,21 @@ test("bunfig.toml minimumReleaseAge in seconds with excludes", ({expect = global
   expect(Array.from(exclude).sort()).toEqual(["left-pad", "react"]);
 });
 
+test(".yarnrc.yml npmMinimalAgeGate in minutes with preapproved", ({expect = globalExpect}: any = {}) => {
+  const dir = mkdir("pmcd-yarn-");
+  writeFileSync(join(dir, ".yarnrc.yml"), "npmMinimalAgeGate: 4320\nnpmPreapprovedPackages:\n  - react\n  - \"@myorg/*\"\n");
+  const {days, exclude} = npmEcosystemCooldown(dir);
+  expect(days).toBe(3); // 4320 minutes = 3 days
+  expect(Array.from(exclude).sort()).toEqual(["@myorg/*", "react"]);
+});
+
+test(".yarnrc.yml npmMinimalAgeGate as duration string", ({expect = globalExpect}: any = {}) => {
+  const dir = mkdir("pmcd-yarn-dur-");
+  writeFileSync(join(dir, ".yarnrc.yml"), "npmMinimalAgeGate: \"7d\"\n");
+  const {days} = npmEcosystemCooldown(dir);
+  expect(days).toBe(7);
+});
+
 test("most conservative value and union of excludes across managers", ({expect = globalExpect}: any = {}) => {
   const dir = mkdir("pmcd-all-");
   writeFileSync(join(dir, ".npmrc"), "min-release-age=2\nmin-release-age-exclude=a\n");

@@ -17,7 +17,7 @@ export type Config = {
   /**
    * Minimum dependency age, e.g. 7 (days), "1w", "2d", "6h". When unset, npm
    * packages fall back to the native minimum-release-age settings found in
-   * .npmrc / pnpm-workspace.yaml / bunfig.toml.
+   * .npmrc / pnpm-workspace.yaml / bunfig.toml / .yarnrc.yml.
    */
   cooldown?: number | string;
   /** Pin dependencies to semver ranges */
