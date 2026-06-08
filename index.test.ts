@@ -119,8 +119,7 @@ function makeUrl(server: ReturnType<typeof makeServer>) {
   return Object.assign(new URL("http://127.0.0.1"), {port}).toString();
 }
 
-function defaultRoute(req: any, res: any) {
-  console.error(`default handler hit for ${req.url}`);
+function defaultRoute(_: any, res: any) {
   res.statusCode = 404;
   res.end();
 }
@@ -146,9 +145,9 @@ beforeAll(async () => {
   githubServer = makeServer(defaultRoute);
   pypiServer = makeServer(defaultRoute);
   jsrServer = makeServer(defaultRoute);
-  goProxyServer = makeServer((_, res) => { res.statusCode = 404; res.end(); });
-  dockerServer = makeServer((_, res) => { res.statusCode = 404; res.end(); });
-  cargoServer = makeServer((_, res) => { res.statusCode = 404; res.end(); });
+  goProxyServer = makeServer(defaultRoute);
+  dockerServer = makeServer(defaultRoute);
+  cargoServer = makeServer(defaultRoute);
 
   const [commits, tags] = await Promise.all([
     readFile(fileURLToPath(new URL("fixtures/github/updates-commits.json", import.meta.url)), "utf8"),
