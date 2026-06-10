@@ -146,6 +146,16 @@ const npmDataCache = new Map<string, Promise<Record<string, any>>>();
 const npmVersionInfoCache = new Map<string, Promise<NpmVersionInfo>>();
 const npmFullDataCache = new Map<string, Promise<Record<string, any> | null>>();
 
+// Strip a registry package doc to the fields version selection reads. The
+// per-version objects (dependencies, dist, engines, …) dominate doc size and
+// are never used. Keeps the original doc shape so legacy cache entries with
+// full bodies stay readable.
+function reduceNpmDoc(data: Record<string, any>): Record<string, any> {
+  const versions: Record<string, Record<string, never>> = {};
+  for (const version of Object.keys(data.versions ?? {})) versions[version] = {};
+  return {name: data.name, "dist-tags": data["dist-tags"], versions, time: data.time, error: data.error};
+}
+
 export async function fetchNpmInfo(name: string, type: string, config: Config, args: Record<string, any>, ctx: ModeContext): Promise<PackageInfo> {
   const {auth, registry} = resolveNpmRegistry(name, config, args);
   const packageName = type === "resolutions" ? resolutionsBasePackage(name) : name;
@@ -154,20 +164,11 @@ export async function fetchNpmInfo(name: string, type: string, config: Config, a
   let dataPromise = npmDataCache.get(url);
   if (!dataPromise) {
     const opts = getFetchOpts(auth?.type, auth?.token);
-    const headers: Record<string, string> = {...opts.headers as Record<string, string>, "accept": "application/vnd.npm.install-v1+json"};
-    opts.headers = headers;
+    opts.headers = {...opts.headers as Record<string, string>, "accept": "application/vnd.npm.install-v1+json"};
     dataPromise = (async () => {
-      const cached = ctx.noCache ? null : await getCache(url);
-      if (cached) headers["if-none-match"] = cached.etag;
-      const res = await ctx.doFetch(url, {signal: AbortSignal.timeout(ctx.fetchTimeout), ...opts});
-      if (res?.status === 304 && cached) return JSON.parse(cached.body);
-      if (res?.ok) {
-        const text = await res.text();
-        const etag = res.headers.get("etag");
-        if (etag && !ctx.noCache) await setCache(url, etag, text);
-        return JSON.parse(text);
-      }
-      throwFetchError(res, url, name, registry);
+      const result = await fetchWithEtag(url, ctx, opts, reduceNpmDoc);
+      if (!("body" in result)) throwFetchError(result.res, url, name, registry);
+      return JSON.parse(result.body);
     })().catch(err => { npmDataCache.delete(url); throw err; });
     npmDataCache.set(url, dataPromise);
   }
@@ -187,7 +188,12 @@ export async function fetchNpmVersionInfo(name: string, version: string, config:
     try {
       const fetchOpts = getFetchOpts(auth?.type, auth?.token);
       // Per-version npm metadata is immutable — cache forever.
-      const result = await fetchImmutable(url, ctx, fetchOpts);
+      // Undefined fields drop out at JSON.stringify time.
+      const result = await fetchImmutable(url, ctx, fetchOpts, data => ({
+        repository: data.repository,
+        homepage: data.homepage,
+        _npmOperationalInternal: data._npmOperationalInternal?.tmp ? {tmp: data._npmOperationalInternal.tmp} : undefined,
+      }));
       if (!("body" in result)) return {};
       const data = JSON.parse(result.body);
       let date = "";
@@ -266,7 +272,10 @@ export async function fetchJsrInfo(packageName: string, type: string, ctx: ModeC
 
   const result = await fetchWithEtag(url, ctx, {
     headers: {"accept-encoding": "gzip, deflate, br"},
-  });
+  }, data => ({
+    latest: data.latest,
+    versions: Object.fromEntries(Object.entries(data.versions ?? {}).map(([version, meta]) => [version, {createdAt: (meta as Record<string, any>)?.createdAt}])),
+  }));
   if ("body" in result) {
     const data = JSON.parse(result.body);
     // Transform JSR format to match npm-like format for compatibility
@@ -350,9 +359,11 @@ export async function getLatestCommit(user: string, repo: string, ctx: ModeConte
     if (res?.status === 304 && cached) {
       body = cached.body;
     } else if (res?.ok) {
-      body = await res.text();
+      // Only the newest commit's date-bearing fields are read; drop the rest before caching.
+      const {sha, commit} = JSON.parse(await res.text())[0];
+      body = JSON.stringify([{sha, commit: {committer: commit?.committer, author: commit?.author}}]);
       const etag = res.headers.get("etag");
-      if (etag && !ctx.noCache) await setCache(url, etag, body);
+      if (etag && !ctx.noCache) setCache(url, etag, body);
     } else {
       return {hash: "", commit: {}};
     }

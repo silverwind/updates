@@ -1,7 +1,7 @@
 import {createHash} from "node:crypto";
-import {readFile, writeFile, mkdir} from "node:fs/promises";
+import {readFile, writeFile, mkdir, rename} from "node:fs/promises";
 import {join} from "node:path";
-import {env, platform} from "node:process";
+import {env, platform, pid} from "node:process";
 import {homedir} from "node:os";
 
 const cacheDir = join(
@@ -38,9 +38,30 @@ export async function getCache(url: string): Promise<{etag: string, body: string
   }
 }
 
-export async function setCache(url: string, etag: string, body: string): Promise<void> {
-  try {
-    await (dirCreated ??= mkdir(cacheDir, {recursive: true}));
-    await writeFile(join(cacheDir, `${cacheKey(url)}.cache`), `${etag}\n${body}`);
-  } catch {}
+const pendingWrites = new Set<Promise<void>>();
+let tmpCounter = 0;
+
+// Writes are intentionally not awaited by callers so a response can be
+// consumed without waiting on disk. flushCacheWrites() awaits completion
+// before the process may exit. The temp-file + rename dance keeps writes
+// atomic: an interrupted process can never leave a torn entry that would
+// poison later runs (the etag would revalidate but the body fail to parse).
+export function setCache(url: string, etag: string, body: string): void {
+  const write = (async () => {
+    try {
+      await (dirCreated ??= mkdir(cacheDir, {recursive: true}));
+      const file = join(cacheDir, `${cacheKey(url)}.cache`);
+      const tmpFile = `${file}.${pid}-${tmpCounter++}.tmp`;
+      await writeFile(tmpFile, `${etag}\n${body}`);
+      await rename(tmpFile, file);
+    } catch {}
+  })();
+  pendingWrites.add(write);
+  write.then(() => pendingWrites.delete(write));
+}
+
+export async function flushCacheWrites(): Promise<void> {
+  // Loop: concurrent updates() calls share this set and may enqueue while a
+  // flush is in progress.
+  while (pendingWrites.size) await Promise.all(pendingWrites);
 }

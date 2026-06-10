@@ -25,6 +25,7 @@ import {
   type ModeContext,
 } from "./shared.ts";
 import {esc, matchesAny} from "../utils/utils.ts";
+import {flushCacheWrites} from "../utils/fetchCache.ts";
 
 const defaultOpts = {
   allowDowngrade: false as any,
@@ -890,6 +891,7 @@ test("fetchWithEtag returns body on 200 and sends If-None-Match on second call",
   expect("body" in r1 && r1.body).toBe(`{"ver":1}`);
   expect(lastHeaders?.["if-none-match"]).toBeUndefined();
 
+  await flushCacheWrites();
   const r2 = await fetchWithEtag(url, ctx);
   expect("body" in r2).toBe(true);
   expect(lastHeaders?.["if-none-match"]).toBe(`W/"1"`);
@@ -914,6 +916,7 @@ test("fetchWithEtag returns cached body on 304", async () => {
   } as unknown as ModeContext;
 
   await fetchWithEtag(url, ctx);
+  await flushCacheWrites();
   const r = await fetchWithEtag(url, ctx);
   expect(seenIfNoneMatch).toBe(`"v1"`);
   expect("body" in r && r.body).toBe(`{"cached":true}`);
@@ -970,6 +973,7 @@ test("fetchImmutable serves cached body without fetching on second call", async 
   } as unknown as ModeContext;
 
   const r1 = await fetchImmutable(url, ctx);
+  await flushCacheWrites();
   const r2 = await fetchImmutable(url, ctx);
   expect("body" in r1 && r1.body).toBe(`{"version":"1.0.0"}`);
   expect("body" in r2 && r2.body).toBe(`{"version":"1.0.0"}`);

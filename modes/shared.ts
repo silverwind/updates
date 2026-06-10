@@ -1,5 +1,5 @@
 import {env} from "node:process";
-import {parse, coerce, compareMain, diff, diffParsed, gt, gte, lt, satisfies, valid} from "../utils/semver.ts";
+import {parse, coerce, compareMain, compareParsed, diff, diffParsed, gt, gte, lt, satisfies, valid} from "../utils/semver.ts";
 import {getCache, setCache} from "../utils/fetchCache.ts";
 import pkg from "../package.json" with {type: "json"};
 
@@ -125,11 +125,29 @@ async function readBody(res: Response): Promise<string> {
   return JSON.stringify(await res.json());
 }
 
+// Shrink a JSON body to the subset of fields a mode actually reads before it
+// is cached or returned. Must keep the original document shape so legacy cache
+// entries holding full bodies stay readable. Registry docs can be megabytes
+// (npm/pypi list every version with dist/file metadata), the used subset is
+// usually a few KB. Bodies below the threshold are kept as-is: reducing them
+// costs more than the re-parse it saves.
+export type BodyReducer = (data: any) => any;
+const reduceThreshold = 16384;
+
+function reduceBody(body: string, reduce: BodyReducer | undefined): string {
+  if (!reduce || body.length < reduceThreshold) return body;
+  try {
+    return JSON.stringify(reduce(JSON.parse(body)));
+  } catch {
+    return body; // non-JSON or unexpected shape: cache as-is
+  }
+}
+
 // Fetch with ETag revalidation against the persistent disk cache. The fetch
 // timeout signal is created inside, after the cache read, so slow disks do
 // not eat the network budget. Returns {body} on success, or {res} on error.
 export async function fetchWithEtag(
-  url: string, ctx: ModeContext, opts: RequestInit = {},
+  url: string, ctx: ModeContext, opts: RequestInit = {}, reduce?: BodyReducer,
 ): Promise<{body: string, res?: Response} | {res: Response | undefined}> {
   const cached = ctx.noCache ? null : await getCache(url);
   const baseHeaders = opts.headers as Record<string, string> | undefined;
@@ -138,16 +156,16 @@ export async function fetchWithEtag(
   if (!res) return {res: undefined};
   if (res.status === 304 && cached) return {body: cached.body, res};
   if (!res.ok) return {res};
-  const body = await readBody(res);
+  const body = reduceBody(await readBody(res), reduce);
   const etag = res.headers?.get?.("etag");
-  if (etag && !ctx.noCache) await setCache(url, etag, body);
+  if (etag && !ctx.noCache) setCache(url, etag, body);
   return {body, res};
 }
 
 // Persistent cache for immutable URLs (e.g. per-version metadata, commit
 // dates). No revalidation — once cached, reused forever.
 export async function fetchImmutable(
-  url: string, ctx: ModeContext, opts: RequestInit = {},
+  url: string, ctx: ModeContext, opts: RequestInit = {}, reduce?: BodyReducer,
 ): Promise<{body: string, res?: Response} | {res: Response | undefined}> {
   if (!ctx.noCache) {
     const cached = await getCache(url);
@@ -156,8 +174,8 @@ export async function fetchImmutable(
   const res = await ctx.doFetch(url, {...opts, signal: AbortSignal.timeout(ctx.fetchTimeout)});
   if (!res) return {res: undefined};
   if (!res.ok) return {res};
-  const body = await readBody(res);
-  if (!ctx.noCache) await setCache(url, "immutable", body);
+  const body = reduceBody(await readBody(res), reduce);
+  if (!ctx.noCache) setCache(url, "immutable", body);
   return {body, res};
 }
 
@@ -261,7 +279,7 @@ export function findVersion(data: any, versions: Array<string>, {range, semvers,
     if (useGreatestPath) {
       // seed (oldVersion) is a coerced release; accept any candidate whose main is >= it so prerelease ranges still upgrade.
       // once a real candidate is picked, compare with full precedence so the highest prerelease wins and a release is not demoted.
-      const better = picked ? gt(candidateVersion, newVersion) : compareMain(parsed, newVersionParsed) >= 0;
+      const better = picked ? compareParsed(parsed, newVersionParsed) > 0 : compareMain(parsed, newVersionParsed) >= 0;
       if (better || (pinnedRange && !satisfies(newVersion, pinnedRange))) {
         newVersion = candidateVersion;
         newVersionParsed = parsed;
@@ -571,7 +589,7 @@ async function fetchTagsPage(url: string, ctx: ModeContext): Promise<{tags: Arra
   const tags = parseTags(await res.json());
   const link = res.headers.get("link") || "";
   const etag = res.headers.get("etag");
-  if (etag && !ctx.noCache) await setCache(url, etag, JSON.stringify({link, tags}));
+  if (etag && !ctx.noCache) setCache(url, etag, JSON.stringify({link, tags}));
   return {tags, link};
 }
 

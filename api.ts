@@ -14,6 +14,7 @@ import {
   doFetch, findVersion, findNewVersion, coerceToVersion, getInfoUrl, getGithubTokens,
   passesCooldown, stripv, hashRe as npmHashRe,
 } from "./modes/shared.ts";
+import {flushCacheWrites} from "./utils/fetchCache.ts";
 import {loadConfig, configMixedToRegexes, patternsToRegexSet} from "./config.ts";
 import type {Config, Override} from "./config.ts";
 import {
@@ -1176,7 +1177,13 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
     })());
   }
 
-  await Promise.all(fetchTasks);
+  // Cache writes are detached from the fetch paths; settle them before
+  // returning so even an error exit cannot abandon in-flight writes.
+  try {
+    await Promise.all(fetchTasks);
+  } finally {
+    await flushCacheWrites();
+  }
 
   if (!countDeps(deps)) {
     return {results: {}, message: "All dependencies are up to date."};

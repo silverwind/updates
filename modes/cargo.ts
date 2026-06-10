@@ -8,13 +8,19 @@ type CratesIoVersionsResponse = {versions: Array<CratesIoVersion>};
 
 const cratesIoCache = new Map<string, Promise<Record<string, any>>>();
 
+// Versions come with authors/features/checksum payloads; only num/created_at
+// survive into version selection, yanked ones are dropped entirely.
+const reduceCargoDoc = (data: CratesIoVersionsResponse) => ({
+  versions: (data.versions || []).filter(v => !v.yanked).map(v => ({num: v.num, created_at: v.created_at})),
+});
+
 export async function fetchCratesIoInfo(name: string, type: string, ctx: ModeContext): Promise<PackageInfo> {
   const base = normalizeUrl(ctx.cratesIoUrl);
   const url = `${base}/api/v1/crates/${encodeURIComponent(name)}/versions?per_page=100`;
 
   let dataPromise = ctx.noCache ? undefined : cratesIoCache.get(url);
   if (!dataPromise) {
-    dataPromise = fetchWithEtag(url, ctx, getFetchOpts()).then(result => {
+    dataPromise = fetchWithEtag(url, ctx, getFetchOpts(), reduceCargoDoc).then(result => {
       if (!("body" in result)) throwFetchError(result.res, url, name, ctx.cratesIoUrl);
       let body: CratesIoVersionsResponse;
       try {

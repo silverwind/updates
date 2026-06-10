@@ -75,15 +75,38 @@ export function extractDockerRefs(content: string, regex: RegExp): Array<{ref: D
 
 const maxPages = 10;
 
-export async function fetchDockerHubTags(namespace: string, repo: string, ctx: ModeContext): Promise<Record<string, string>> {
+// Dedup concurrent lookups for the same repo within one run — a Dockerfile and
+// a Makefile can reference the same image from independent fetch tasks, which
+// would double the requests and race the cache writes. Keyed by ctx so each
+// updates() call (and each test) starts fresh.
+const hubTagsByCtx = new WeakMap<ModeContext, Map<string, Promise<Record<string, string>>>>();
+
+export function fetchDockerHubTags(namespace: string, repo: string, ctx: ModeContext): Promise<Record<string, string>> {
+  let byRepo = hubTagsByCtx.get(ctx);
+  if (!byRepo) hubTagsByCtx.set(ctx, byRepo = new Map());
+  const key = `${namespace}/${repo}`;
+  let promise = byRepo.get(key);
+  if (!promise) byRepo.set(key, promise = fetchDockerHubTagsUncached(namespace, repo, ctx));
+  return promise;
+}
+
+async function fetchDockerHubTagsUncached(namespace: string, repo: string, ctx: ModeContext): Promise<Record<string, string>> {
   const tags: Record<string, string> = {};
   const baseUrl = `${ctx.dockerApiUrl}/v2/repositories/${namespace}/${repo}/tags`;
   const pageUrl = (page: number) => `${baseUrl}?page_size=100&ordering=last_updated&page=${page}`;
   const pageOpts = {headers: {"accept-encoding": "gzip, deflate, br"}};
 
+  // Hub tag pages carry per-architecture image lists; only name and push date are read.
+  const reduceTagsPage = (data: Record<string, any>) => ({
+    count: data.count,
+    results: (data.results || []).map((r: Record<string, any>) => ({
+      name: r.name, tag_last_pushed: r.tag_last_pushed, last_updated: r.last_updated,
+    })),
+  });
+
   const fetchPage = async (page: number): Promise<any | null> => {
     try {
-      const result = await fetchWithEtag(pageUrl(page), ctx, pageOpts);
+      const result = await fetchWithEtag(pageUrl(page), ctx, pageOpts, reduceTagsPage);
       if (!("body" in result)) return null;
       return JSON.parse(result.body);
     } catch { return null; }
@@ -113,7 +136,7 @@ export async function fetchDockerHubTags(namespace: string, repo: string, ctx: M
 export async function fetchDockerTagDigest(namespace: string, repo: string, tag: string, ctx: ModeContext): Promise<string | null> {
   const url = `${ctx.dockerApiUrl}/v2/repositories/${namespace}/${repo}/tags/${tag}`;
   try {
-    const result = await fetchWithEtag(url, ctx, {headers: {"accept-encoding": "gzip, deflate, br"}});
+    const result = await fetchWithEtag(url, ctx, {headers: {"accept-encoding": "gzip, deflate, br"}}, data => ({digest: data.digest}));
     if (!("body" in result)) return null;
     const digest = JSON.parse(result.body).digest;
     return typeof digest === "string" ? digest : null;

@@ -41,7 +41,8 @@ export function compareMain(a: SemVer, b: SemVer): number {
   return (a.major - b.major) || (a.minor - b.minor) || (a.patch - b.patch);
 }
 
-function compareVersions(a: SemVer, b: SemVer): number {
+// Compare pre-parsed versions, letting hot loops skip the parse-cache lookups.
+export function compareParsed(a: SemVer, b: SemVer): number {
   const main = compareMain(a, b);
   if (main !== 0) return main;
   const aHasPre = a.prerelease.length > 0;
@@ -98,7 +99,7 @@ export function diff(v1: string, v2: string): string | null {
 export function diffParsed(a: SemVer, b: SemVer): string | null {
   if (a.version === b.version) return null;
 
-  const cmp = compareVersions(a, b);
+  const cmp = compareParsed(a, b);
   const highVersion = cmp > 0 ? a : b;
   const lowVersion = cmp > 0 ? b : a;
   const highHasPre = highVersion.prerelease.length > 0;
@@ -123,7 +124,7 @@ export function diffParsed(a: SemVer, b: SemVer): string | null {
 function compare(v1: string, v2: string): number | null {
   const a = parseVersion(v1);
   const b = parseVersion(v2);
-  return a && b ? compareVersions(a, b) : null;
+  return a && b ? compareParsed(a, b) : null;
 }
 
 export function gt(v1: string, v2: string): boolean {
@@ -162,7 +163,7 @@ function parseComparator(comp: string): Comparator | null {
 }
 
 function testComparator(v: SemVer, comp: Comparator): boolean {
-  const cmp = compareVersions(v, comp.semver);
+  const cmp = compareParsed(v, comp.semver);
   switch (comp.op) {
     case ">=": return cmp >= 0;
     case "<=": return cmp <= 0;

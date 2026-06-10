@@ -51,7 +51,7 @@ export async function fetchActionTagDate(apiUrl: string, owner: string, repo: st
     if (!res.ok) return "";
     const data = await res.json();
     const date = data?.committer?.date || data?.author?.date || "";
-    if (date && !ctx.noCache) await setCache(url, "immutable", date);
+    if (date && !ctx.noCache) setCache(url, "immutable", date);
     return date;
   } catch {
     return "";

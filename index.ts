@@ -12,7 +12,21 @@ import {prewarmOrigins} from "./utils/prewarm.ts";
 import type {Arg} from "./config.ts";
 import type {Output, UpdatesOptions} from "./api.ts";
 
-for (const url of prewarmOrigins(cwd(), argv.slice(2))) fetch(url, {method: "HEAD"}).catch(() => {});
+// Scan raw argv for the -f/--file target so the prewarm probes the project
+// being checked, not the invocation cwd. Runs before parseArgs to fire ASAP.
+function prewarmStartDir(rawArgs: readonly string[]): string {
+  for (const [index, arg] of rawArgs.entries()) {
+    if (arg === "-f" || arg === "--file") {
+      const value = rawArgs[index + 1];
+      if (value && !value.startsWith("-")) return deriveStartDir(value);
+    } else if (arg.startsWith("--file=")) {
+      return deriveStartDir(arg.substring(7));
+    }
+  }
+  return cwd();
+}
+
+for (const url of prewarmOrigins(prewarmStartDir(argv.slice(2)), argv.slice(2))) fetch(url, {method: "HEAD"}).catch(() => {});
 
 const result = parseArgs({
   strict: false,
