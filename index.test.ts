@@ -356,14 +356,23 @@ function makeTest(args: string) {
   };
 }
 
-test("simple", async ({expect = globalExpect}: any = {}) => {
-  const {stdout, stderr} = await execFileAsync(process.execPath, [
-    script,
-    "-n",
+// Point every registry/API at its mock server. A repeated flag's later
+// occurrence wins, so tests can override by appending (e.g. --registry).
+function apiArgs(): string[] {
+  return [
+    "--registry", npmUrl,
     "--forgeapi", githubUrl,
     "--pypiapi", pypiUrl,
-    "--registry", npmUrl,
-    "-f", testFile,
+    "--jsrapi", jsrUrl,
+    "--goproxy", goProxyUrl,
+    "--cargoapi", cargoUrl,
+    "--dockerapi", dockerUrl,
+  ];
+}
+
+test("simple", async ({expect = globalExpect}: any = {}) => {
+  const {stdout, stderr} = await execFileAsync(process.execPath, [
+    script, "-n", ...apiArgs(), "-f", testFile,
   ]);
   expect(stderr).toEqual("");
   expect(stdout).toContain("prismjs");
@@ -372,13 +381,7 @@ test("simple", async ({expect = globalExpect}: any = {}) => {
 
 test("version info fallback", async ({expect = globalExpect}: any = {}) => {
   const {stdout, stderr} = await execFileAsync(process.execPath, [
-    script,
-    "-j", "-n",
-    "--forgeapi", githubUrl,
-    "--pypiapi", pypiUrl,
-    "--registry", npmUrl,
-    "-f", testFile,
-    "-i", "noty",
+    script, "-j", "-n", ...apiArgs(), "-f", testFile, "-i", "noty",
   ]);
   expect(stderr).toEqual("");
   const {results} = JSON.parse(stdout);
@@ -389,11 +392,7 @@ test("version info fallback", async ({expect = globalExpect}: any = {}) => {
 
 test("empty", async ({expect = globalExpect}: any = {}) => {
   const {stdout, stderr} = await execFileAsync(process.execPath, [
-    script,
-    "-n",
-    "--forgeapi", githubUrl,
-    "--pypiapi", pypiUrl,
-    "-f", emptyFile,
+    script, "-n", ...apiArgs(), "-f", emptyFile,
   ]);
   expect(stderr).toEqual("");
   expect(stdout).toContain("No dependencies");
@@ -401,13 +400,7 @@ test("empty", async ({expect = globalExpect}: any = {}) => {
 
 test("jsr", async ({expect = globalExpect}: any = {}) => {
   const {stdout, stderr} = await execFileAsync(process.execPath, [
-    script,
-    "-n",
-    "-j",
-    "--forgeapi", githubUrl,
-    "--pypiapi", pypiUrl,
-    "--jsrapi", jsrUrl,
-    "-f", jsrFile,
+    script, "-n", "-j", ...apiArgs(), "-f", jsrFile,
   ]);
   expect(stderr).toEqual("");
   const {results} = JSON.parse(stdout);
@@ -433,11 +426,7 @@ if (!versions.bun) {
         symlinkSync(script, bin);
       }
       const {stdout, stderr} = await execFileAsync(bin, [
-        "-n",
-        "--forgeapi", githubUrl,
-        "--pypiapi", pypiUrl,
-        "--registry", npmUrl,
-        "-f", testFile,
+        "-n", ...apiArgs(), "-f", testFile,
       ], {shell: platform === "win32"});
       expect(stderr).toEqual("");
       expect(stdout).toContain("prismjs");
@@ -1120,7 +1109,7 @@ test("uv", async ({expect = globalExpect}: any = {}) => {
 });
 
 test("invalid config", async ({expect = globalExpect}: any = {}) => {
-  const args = ["-j", "-f", invalidConfigFile, "-c", "--forgeapi", githubUrl, "--pypiapi", pypiUrl];
+  const args = ["-j", "-f", invalidConfigFile, "-c", ...apiArgs()];
   try {
     await execFileAsync(execPath, [script, ...args]);
     throw new Error("Expected error but got success");
@@ -1607,9 +1596,7 @@ test("pnpm workspace update", async ({expect = globalExpect}: any = {}) => {
     script,
     "-u",
     "-f", join(testPnpmWorkDir, "pnpm-workspace.yaml"),
-    "-c",
-    "--registry", npmUrl,
-    "--forgeapi", githubUrl,
+    "-c", ...apiArgs(),
   ], {cwd: testPnpmWorkDir});
 
   const rootPkg = await readFile(join(testPnpmWorkDir, "package.json"), "utf8");
@@ -2075,7 +2062,7 @@ test("fetch error includes URL and no stack trace", async ({expect = globalExpec
   const url = "http://test.invalid";
   try {
     await execFileAsync(execPath, [
-      script, "-j", "-T", "1000", "--registry", url, "-f", testFile,
+      script, "-j", "-T", "1000", ...apiArgs(), "--registry", url, "-f", testFile,
     ]);
     throw new Error("Expected error but got success");
   } catch (err: any) {
@@ -2107,8 +2094,7 @@ test("text output keeps same dep at different versions across sections", async (
   // gulp-sourcemaps appears in dependencies (2.0.0 -> 2.6.5) and peerDependencies
   // (>=2.0.0 -> >=2.6.5); both rows must show, not collapse to one.
   const {stdout, stderr} = await execFileAsync(execPath, [
-    script, "-n", "-i", "gulp-sourcemaps",
-    "--forgeapi", githubUrl, "--registry", npmUrl, "-f", testFile,
+    script, "-n", "-i", "gulp-sourcemaps", ...apiArgs(), "-f", testFile,
   ]);
   expect(stderr).toEqual("");
   const rows = stdout.split("\n").filter(line => line.includes("gulp-sourcemaps"));

@@ -22,20 +22,11 @@ afterAll(() => {
 });
 
 test("empty dir returns no origins", () => {
-  expect(prewarmOrigins(makeDir(), [])).toEqual([]);
-});
-
-test("--help short-circuits regardless of files", () => {
-  const dir = makeDir({"package.json": "{}", "Cargo.toml": ""});
-  expect(prewarmOrigins(dir, ["--help"])).toEqual([]);
-  expect(prewarmOrigins(dir, ["-h"])).toEqual([]);
-  expect(prewarmOrigins(dir, ["--version"])).toEqual([]);
-  expect(prewarmOrigins(dir, ["-v"])).toEqual([]);
-  expect(prewarmOrigins(dir, ["foo", "--help", "bar"])).toEqual([]);
+  expect(prewarmOrigins(makeDir(), {})).toEqual([]);
 });
 
 test("package.json triggers npm + jsr + github", () => {
-  const origins = prewarmOrigins(makeDir({"package.json": "{}"}), []);
+  const origins = prewarmOrigins(makeDir({"package.json": "{}"}), {});
   expect(origins).toEqual(expect.arrayContaining([
     "https://registry.npmjs.org/",
     "https://jsr.io/",
@@ -45,7 +36,7 @@ test("package.json triggers npm + jsr + github", () => {
 });
 
 test("pnpm-workspace.yaml triggers same set as package.json", () => {
-  const origins = prewarmOrigins(makeDir({"pnpm-workspace.yaml": ""}), []);
+  const origins = prewarmOrigins(makeDir({"pnpm-workspace.yaml": ""}), {});
   expect(origins).toEqual(expect.arrayContaining([
     "https://registry.npmjs.org/",
     "https://jsr.io/",
@@ -54,41 +45,75 @@ test("pnpm-workspace.yaml triggers same set as package.json", () => {
 });
 
 test("pyproject.toml triggers pypi", () => {
-  expect(prewarmOrigins(makeDir({"pyproject.toml": ""}), [])).toEqual(["https://pypi.org/"]);
+  expect(prewarmOrigins(makeDir({"pyproject.toml": ""}), {})).toEqual(["https://pypi.org/"]);
 });
 
 test("Cargo.toml triggers crates.io", () => {
-  expect(prewarmOrigins(makeDir({"Cargo.toml": ""}), [])).toEqual(["https://crates.io/"]);
+  expect(prewarmOrigins(makeDir({"Cargo.toml": ""}), {})).toEqual(["https://crates.io/"]);
 });
 
 test("go.mod triggers proxy.golang.org", () => {
-  expect(prewarmOrigins(makeDir({"go.mod": ""}), [])).toEqual(["https://proxy.golang.org/"]);
+  expect(prewarmOrigins(makeDir({"go.mod": ""}), {})).toEqual(["https://proxy.golang.org/"]);
 });
 
 test("go.work triggers proxy.golang.org", () => {
-  expect(prewarmOrigins(makeDir({"go.work": ""}), [])).toEqual(["https://proxy.golang.org/"]);
+  expect(prewarmOrigins(makeDir({"go.work": ""}), {})).toEqual(["https://proxy.golang.org/"]);
 });
 
 test("Dockerfile triggers hub.docker.com", () => {
-  expect(prewarmOrigins(makeDir({"Dockerfile": ""}), [])).toEqual(["https://hub.docker.com/"]);
+  expect(prewarmOrigins(makeDir({"Dockerfile": ""}), {})).toEqual(["https://hub.docker.com/"]);
 });
 
 test("docker-compose.yml triggers hub.docker.com", () => {
-  expect(prewarmOrigins(makeDir({"docker-compose.yml": ""}), [])).toEqual(["https://hub.docker.com/"]);
+  expect(prewarmOrigins(makeDir({"docker-compose.yml": ""}), {})).toEqual(["https://hub.docker.com/"]);
 });
 
 test(".github/workflows dir triggers github + hub.docker.com", () => {
   const dir = mkdtempSync(join(tmpdir(), "updates-prewarm-"));
   created.push(dir);
   mkdirSync(join(dir, ".github", "workflows"), {recursive: true});
-  expect(prewarmOrigins(dir, [])).toEqual(expect.arrayContaining([
+  expect(prewarmOrigins(dir, {})).toEqual(expect.arrayContaining([
     "https://api.github.com/",
     "https://hub.docker.com/",
   ]));
 });
 
+test("API override args redirect origins", () => {
+  const origins = prewarmOrigins(makeDir({"package.json": "{}"}), {
+    registry: "http://127.0.0.1:1234/",
+    jsrapi: "http://127.0.0.1:2345",
+    forgeapi: "http://127.0.0.1:3456/sub/path",
+  });
+  expect(origins).toEqual(expect.arrayContaining([
+    "http://127.0.0.1:1234/",
+    "http://127.0.0.1:2345/",
+    "http://127.0.0.1:3456/",
+  ]));
+  expect(origins).toHaveLength(3);
+});
+
+test("registry from .npmrc in start dir is used", () => {
+  const dir = makeDir({"package.json": "{}", ".npmrc": "registry=http://127.0.0.1:1234/\nsave-exact=false"});
+  expect(prewarmOrigins(dir, {})).toContain("http://127.0.0.1:1234/");
+});
+
+test("registry arg wins over .npmrc registry", () => {
+  const dir = makeDir({"package.json": "{}", ".npmrc": "registry=http://127.0.0.1:1234/"});
+  expect(prewarmOrigins(dir, {registry: "http://127.0.0.1:5678/"})).toContain("http://127.0.0.1:5678/");
+});
+
+test("unparsable override skips the origin", () => {
+  expect(prewarmOrigins(makeDir({"Cargo.toml": ""}), {cargoapi: "not a url"})).toEqual([]);
+});
+
+test("per-ecosystem overrides", () => {
+  expect(prewarmOrigins(makeDir({"pyproject.toml": ""}), {pypiapi: "http://127.0.0.1:1/"})).toEqual(["http://127.0.0.1:1/"]);
+  expect(prewarmOrigins(makeDir({"go.mod": ""}), {goproxy: "http://127.0.0.1:2/"})).toEqual(["http://127.0.0.1:2/"]);
+  expect(prewarmOrigins(makeDir({"Dockerfile": ""}), {dockerapi: "http://127.0.0.1:3/"})).toEqual(["http://127.0.0.1:3/"]);
+});
+
 test("multi-mode project: package.json + Cargo.toml dedupes correctly", () => {
-  const origins = prewarmOrigins(makeDir({"package.json": "{}", "Cargo.toml": ""}), []);
+  const origins = prewarmOrigins(makeDir({"package.json": "{}", "Cargo.toml": ""}), {});
   expect(origins).toEqual(expect.arrayContaining([
     "https://registry.npmjs.org/",
     "https://jsr.io/",
@@ -103,6 +128,6 @@ test("github overlap is deduplicated when both package.json and .github/workflow
   created.push(dir);
   writeFileSync(join(dir, "package.json"), "{}");
   mkdirSync(join(dir, ".github", "workflows"), {recursive: true});
-  const origins = prewarmOrigins(dir, []);
+  const origins = prewarmOrigins(dir, {});
   expect(origins.filter(origin => origin === "https://api.github.com/")).toHaveLength(1);
 });

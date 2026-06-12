@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import {argv, cwd, stdout, stderr, exit, platform, versions} from "node:process";
+import {cwd, stdout, stderr, exit, platform, versions} from "node:process";
 import {stripVTControlCharacters, styleText, parseArgs} from "node:util";
 import {dirname, isAbsolute, resolve} from "node:path";
 import {statSync} from "node:fs";
@@ -11,22 +11,6 @@ import {shortenGoModule} from "./modes/go.ts";
 import {prewarmOrigins} from "./utils/prewarm.ts";
 import type {Arg} from "./config.ts";
 import type {Output, UpdatesOptions} from "./api.ts";
-
-// Scan raw argv for the -f/--file target so the prewarm probes the project
-// being checked, not the invocation cwd. Runs before parseArgs to fire ASAP.
-function prewarmStartDir(rawArgs: readonly string[]): string {
-  for (const [index, arg] of rawArgs.entries()) {
-    if (arg === "-f" || arg === "--file") {
-      const value = rawArgs[index + 1];
-      if (value && !value.startsWith("-")) return deriveStartDir(value);
-    } else if (arg.startsWith("--file=")) {
-      return deriveStartDir(arg.substring(7));
-    }
-  }
-  return cwd();
-}
-
-for (const url of prewarmOrigins(prewarmStartDir(argv.slice(2)), argv.slice(2))) fetch(url, {method: "HEAD"}).catch(() => {});
 
 const result = parseArgs({
   strict: false,
@@ -60,6 +44,14 @@ for (const [index, token] of result.tokens.entries()) {
 
 const args = result.values;
 const positionals = result.positionals;
+
+const fileSet = parseMixedArg(args.file);
+const filesList = [...(fileSet instanceof Set ? fileSet : []), ...positionals];
+const startDir = deriveStartDir(filesList[0]);
+
+if (!args.help && !args.version) {
+  for (const url of prewarmOrigins(startDir, args)) fetch(url, {method: "HEAD"}).catch(() => {});
+}
 
 function cliPatternToRegex(pattern: string): string | RegExp {
   return /^\/.+\/$/.test(pattern) ? new RegExp(pattern.slice(1, -1)) : pattern;
@@ -172,10 +164,6 @@ async function main(): Promise<void> {
     console.info(packageVersion);
     await end();
   }
-
-  const fileSet = parseMixedArg(args.file);
-  const filesList = [...(fileSet instanceof Set ? fileSet : []), ...positionals];
-  const startDir = deriveStartDir(filesList[0]);
 
   const fileConfig = await loadConfig(startDir);
   const useColor = resolveColor(fileConfig);
