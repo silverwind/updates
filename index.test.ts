@@ -436,6 +436,7 @@ if (!versions.bun) {
         "-n",
         "--forgeapi", githubUrl,
         "--pypiapi", pypiUrl,
+        "--registry", npmUrl,
         "-f", testFile,
       ], {shell: platform === "win32"});
       expect(stderr).toEqual("");
