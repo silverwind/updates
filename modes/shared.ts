@@ -628,7 +628,7 @@ export type CheckResult = {
 };
 
 export function throwFetchError(res: Response | undefined, url: string, name: string, source: string): never {
-  if (res?.status && res?.statusText) {
+  if (res?.status && res.statusText) {
     throw new Error(`Received ${res.status} ${res.statusText} from ${url}`);
   }
   throw new Error(`Unable to fetch ${name} from ${source}`);
@@ -670,7 +670,7 @@ export function getInfoUrl({repository, homepage, info}: {repository?: PackageRe
     const url = typeof repository === "string" ? repository : repository.url;
     infoUrl = resolvePackageJsonUrl(url);
     if (infoUrl && typeof repository !== "string" && repository.directory) {
-      infoUrl = `${infoUrl}/${getSubDir(infoUrl)}/${repository.directory}`;
+      infoUrl += `/${getSubDir(infoUrl)}/${repository.directory}`;
     }
   }
 

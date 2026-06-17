@@ -50,7 +50,9 @@ const filesList = [...(fileSet instanceof Set ? fileSet : []), ...positionals];
 const startDir = deriveStartDir(filesList[0]);
 
 if (!args.help && !args.version) {
-  for (const url of prewarmOrigins(startDir, args)) fetch(url, {method: "HEAD"}).catch(() => {});
+  for (const url of prewarmOrigins(startDir, args)) {
+    (async () => { try { await fetch(url, {method: "HEAD"}); } catch {} })();
+  }
 }
 
 function cliPatternToRegex(pattern: string): string | RegExp {
@@ -83,7 +85,7 @@ function resolveColor(fileConfig: UpdatesOptions): boolean {
   if (args.color === true) return true;
   if (fileConfig.noColor === true) return false;
   if (fileConfig.color === true) return true;
-  return Boolean(stdout.isTTY);
+  return stdout.isTTY;
 }
 
 async function end(err?: Error | void, exitCode?: number): Promise<void> {
@@ -228,8 +230,8 @@ async function main(): Promise<void> {
     }
 
     if (config.update) {
-      for (const mode of Object.keys(output.results)) {
-        if (Object.values(output.results[mode]).some(deps => Object.keys(deps).length)) {
+      for (const [mode, modeResults] of Object.entries(output.results)) {
+        if (Object.values(modeResults).some(deps => Object.keys(deps).length)) {
           console.info(green(`✨ ${mode} updated`));
         }
       }
@@ -258,8 +260,8 @@ function formatOutput(output: Output): string {
   const seen = new Set<string>();
 
   for (const mode of modes) {
-    for (const type of Object.keys(output.results[mode])) {
-      for (const [name, data] of Object.entries(output.results[mode][type])) {
+    for (const typeDeps of Object.values(output.results[mode])) {
+      for (const [name, data] of Object.entries(typeDeps)) {
         // Key on the visible columns (incl. versions) so the same dep at
         // different versions across dep-sections/workspace members keeps a row
         // each; only truly identical rows collapse.

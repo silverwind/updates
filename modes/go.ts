@@ -129,7 +129,7 @@ function buildGoPackageInfo(
     old: currentVersion,
     new: stripv(highestVersion),
     Time: highestTime,
-    ...(highestPath !== name ? {newPath: highestPath} : {}),
+    ...(highestPath !== name && {newPath: highestPath}),
     sameMajorNew: stripv(latestVersion),
     sameMajorTime: latestTime,
   }, type, null, name];
@@ -245,9 +245,12 @@ export async function fetchGoProxyInfo(name: string, type: string, currentVersio
   const currentMajor = extractGoMajor(name);
   const probeGoMajor = async (major: number): Promise<ProbeResult | null> => {
     const path = buildGoModulePath(name, major);
-    return ctx.doFetch(`${ctx.goProxyUrl}/${encodeGoModulePath(path)}/@latest`, {signal: AbortSignal.timeout(ctx.goProbeTimeout), headers: {"accept-encoding": "gzip, deflate, br"}})
-      .then(async (r) => r.ok ? {...await r.json() as {Version: string, Time: string}, path} : null)
-      .catch(() => null);
+    try {
+      const r = await ctx.doFetch(`${ctx.goProxyUrl}/${encodeGoModulePath(path)}/@latest`, {signal: AbortSignal.timeout(ctx.goProbeTimeout), headers: {"accept-encoding": "gzip, deflate, br"}});
+      return r.ok ? {...await r.json() as {Version: string, Time: string}, path} : null;
+    } catch {
+      return null;
+    }
   };
 
   // Fetch @latest and probe for next major version in parallel
@@ -364,7 +367,6 @@ export function parseGoWork(content: string): {use: string[], replace: Record<st
     if (inReplace || /^replace\s+/.test(trimmed)) {
       const parsed = parseReplaceDirective(trimmed, inReplace);
       if (parsed) replace[parsed.targetModule] = parsed.targetVersion;
-      continue;
     }
   }
 
@@ -378,7 +380,7 @@ export function getGoInfoUrl(name: string): string {
   if (pathParts.length > 3) {
     const [, user, repo, ...other] = pathParts;
     url.pathname = `/${user}/${repo}/${getSubDir(str)}/${other.join("/")}`;
-    return url.toString();
+    return url.href;
   } else {
     return str;
   }

@@ -57,7 +57,7 @@ export function setCache(url: string, etag: string, body: string): void {
     } catch {}
   })();
   pendingWrites.add(write);
-  write.then(() => pendingWrites.delete(write));
+  (async () => { await write; pendingWrites.delete(write); })();
 }
 
 export async function flushCacheWrites(): Promise<void> {

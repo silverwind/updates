@@ -20,26 +20,32 @@ export async function fetchCratesIoInfo(name: string, type: string, ctx: ModeCon
 
   let dataPromise = ctx.noCache ? undefined : cratesIoCache.get(url);
   if (!dataPromise) {
-    dataPromise = fetchWithEtag(url, ctx, getFetchOpts(), reduceCargoDoc).then(result => {
-      if (!("body" in result)) throwFetchError(result.res, url, name, ctx.cratesIoUrl);
-      let body: CratesIoVersionsResponse;
+    dataPromise = (async () => {
       try {
-        body = JSON.parse(result.body);
-      } catch {
-        throw new Error(`Invalid JSON from ${url}`);
-      }
-      const versions = (body.versions || []).filter((v: CratesIoVersion) => !v.yanked);
-      const versionsObj: Record<string, Record<string, never>> = {};
-      const time: Record<string, string> = {};
-      for (const v of versions) {
-        if (v.num) {
-          versionsObj[v.num] = {};
-          time[v.num] = v.created_at || "";
+        const result = await fetchWithEtag(url, ctx, getFetchOpts(), reduceCargoDoc);
+        if (!("body" in result)) throwFetchError(result.res, url, name, ctx.cratesIoUrl);
+        let body: CratesIoVersionsResponse;
+        try {
+          body = JSON.parse(result.body);
+        } catch {
+          throw new Error(`Invalid JSON from ${url}`);
         }
+        const versions = (body.versions || []).filter((v: CratesIoVersion) => !v.yanked);
+        const versionsObj: Record<string, Record<string, never>> = {};
+        const time: Record<string, string> = {};
+        for (const v of versions) {
+          if (v.num) {
+            versionsObj[v.num] = {};
+            time[v.num] = v.created_at || "";
+          }
+        }
+        const latest = versions[0]?.num ?? "";
+        return {name, versions: versionsObj, time, "dist-tags": {latest}};
+      } catch (err) {
+        cratesIoCache.delete(url);
+        throw err;
       }
-      const latest = versions[0]?.num ?? "";
-      return {name, versions: versionsObj, time, "dist-tags": {latest}};
-    }).catch(err => { cratesIoCache.delete(url); throw err; });
+    })();
     cratesIoCache.set(url, dataPromise);
   }
   return [await dataPromise, type, null, name];

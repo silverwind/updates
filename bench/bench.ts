@@ -136,7 +136,9 @@ async function main() {
   stdout.write(`${JSON.stringify({iters, results: all}, null, 2)}\n`);
 }
 
-main().catch(err => {
+try {
+  await main();
+} catch (err: any) {
   stderr.write(`bench failed: ${err?.stack || err}\n`);
   exit(1);
-});
+}

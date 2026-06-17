@@ -158,6 +158,15 @@ export async function pMap<T, R>(iterable: Iterable<T>, mapper: (item: T) => Pro
   return results;
 }
 
+// Resolve a promise to its value, or null if it rejects.
+export async function tryOrNull<T>(promise: Promise<T>): Promise<T | null> {
+  try {
+    return await promise;
+  } catch {
+    return null;
+  }
+}
+
 export const esc = (str: string) => str.replace(/[|\\{}()[\]^$+*?.-]/g, "\\$&");
 
 export async function walkUp<T>(startDir: string, probe: (dir: string) => Promise<T | null>): Promise<T | null> {

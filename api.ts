@@ -6,7 +6,7 @@ import {readFile} from "node:fs/promises";
 import {parseToml} from "./utils/toml.ts";
 import {valid, validRange} from "./utils/semver.ts";
 import {timerel} from "timerel";
-import {npmTypes, uvTypes, goTypes, cargoTypes, parseUvDependencies, nonPackageEngines, parseDuration, matchesAny, getProperty, timestamp, pMap} from "./utils/utils.ts";
+import {npmTypes, uvTypes, goTypes, cargoTypes, parseUvDependencies, nonPackageEngines, parseDuration, matchesAny, getProperty, timestamp, pMap, tryOrNull} from "./utils/utils.ts";
 import {
   type Dep, type Deps, type DepsByMode, type Output, type ModeContext,
   type PackageRepository, type PackageInfo,
@@ -101,8 +101,8 @@ function setDepAge(dep: Dep, date: string): void {
 
 function countDeps(deps: DepsByMode): number {
   let num = 0;
-  for (const mode of Object.keys(deps)) {
-    num += Object.keys(deps[mode]).length;
+  for (const value of Object.values(deps)) {
+    num += Object.keys(value).length;
   }
   return num;
 }
@@ -212,15 +212,15 @@ function write(file: string, content: string): void {
 
 function buildOutput(deps: DepsByMode): Output {
   const output: Output = {results: {}};
-  for (const mode of Object.keys(deps)) {
-    for (const [key, props] of Object.entries(deps[mode])) {
+  for (const [mode, modeDeps] of Object.entries(deps)) {
+    for (const [key, props] of Object.entries(modeDeps)) {
       if (typeof props.oldPrint === "string") props.old = props.oldPrint;
       if (typeof props.newPrint === "string") props.new = props.newPrint;
       if (typeof props.oldOrig === "string" && !isJsr(props.oldOrig)) {
         props.old = mode === "go" ? shortenGoVersion(props.oldOrig) : props.oldOrig;
       }
       if (mode === "go") props.new = shortenGoVersion(props.new);
-      if (mode === "actions") {
+      else if (mode === "actions") {
         props.old = stripv(props.old);
         props.new = stripv(props.new);
       }
@@ -323,7 +323,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
     if (o.exclude && matchesAny(name, o.exclude)) return false;
     return true;
   };
-  const overridesHaveCooldown = compiledOverrides.some(o => Boolean(o.cooldownDays));
+  const overridesHaveCooldown = compiledOverrides.some(o => o.cooldownDays);
 
   // Kick off `gh auth token` early so the first forge request isn't blocked on a subprocess.
   if (enabledModes.has("actions")) getGithubTokens();
@@ -636,7 +636,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
           for (const [name, value] of Object.entries(obj)) {
             if (!canInclude(name, mode, modeInclude, modeExclude, depType)) continue;
             if (typeof value === "object" && value !== null && "version" in value && !("git" in value) && !("path" in value)) {
-              const versionStr = String((value as Record<string, string>).version);
+              const versionStr = (value as Record<string, string>).version;
               if (validRange(versionStr)) {
                 addDep(mode, depType, typePrefix, name, findLockedVersion(lockedVersions, name, versionStr) ?? normalizeRange(versionStr), versionStr);
               }
@@ -685,7 +685,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
 
       const [filters, rootContent, members] = await Promise.all([
         resolveModeFilters(workspaceDir),
-        readFile(rootPkgPath, "utf8").catch(() => null),
+        tryOrNull(readFile(rootPkgPath, "utf8")),
         resolveWorkspaceMembers(packagePatterns, workspaceDir, "package.json", concurrency),
       ]);
       const {modeConfig, modeInclude, modeExclude, pin} = filters;
@@ -832,11 +832,11 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
   const fetchTasks: Array<Promise<void>> = [];
   const argsForNpm = {registry: config.registry};
 
-  for (const mode of Object.keys(modeConfigs)) {
+  for (const [mode, modeConfigEntry] of Object.entries(modeConfigs)) {
     const hasDeps = deps[mode] && Object.keys(deps[mode]).length > 0;
     const hasUrlDeps = mode === "npm" && Object.keys(maybeUrlDeps).length > 0;
     if (!hasDeps && !hasUrlDeps) continue;
-    const {modeConfig: defaultModeConfig, projectDir: defaultProjectDir, pin: defaultPin} = modeConfigs[mode];
+    const {modeConfig: defaultModeConfig, projectDir: defaultProjectDir, pin: defaultPin} = modeConfigEntry;
     const defaultCooldownDays = cooldownDaysFor(defaultModeConfig.cooldown);
     fetchTasks.push((async () => {
       // Non-workspace manifests with a disambiguating `|memberPath` type suffix
@@ -1158,14 +1158,14 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
         };
         const dep = deps.make[info.key];
         if (info.kind === "go") {
-          const update = await fetchMakeInfo(info.installPath, info.version, info.projectDir, ctx, goNoProxy, opts).catch(() => null);
+          const update = await tryOrNull(fetchMakeInfo(info.installPath, info.version, info.projectDir, ctx, goNoProxy, opts));
           if (!update) { delete deps.make[info.key]; return; }
           info.newSpec = `${update.newInstallPath}@${update.newVersion}`;
           dep.new = update.newVersion;
           dep.info = update.info;
           if (update.date) setDepAge(dep, update.date);
         } else {
-          const update = await fetchMakeDockerInfo(info.image, ctx, opts).catch(() => null);
+          const update = await tryOrNull(fetchMakeDockerInfo(info.image, ctx, opts));
           if (!update) { delete deps.make[info.key]; return; }
           info.newSpec = formatMakeImageSpec(info.image.writtenImage, update.newTag, info.image.digest ? update.newDigest : null);
           dep.new = update.newTag;

@@ -375,7 +375,7 @@ function parseRange(range: string): Array<Array<Comparator>> | null {
 
 function testWithPrerelease(version: SemVer, comparators: Array<Comparator>): boolean {
   // All comparators in the AND group must pass
-  if (!comparators.every(comp => testComparator(version, comp))) return false;
+  if (comparators.some(comp => !testComparator(version, comp))) return false;
 
   // Prerelease filtering: if version has prerelease tags,
   // at least one comparator must share the same [major, minor, patch]

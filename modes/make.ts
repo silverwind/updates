@@ -105,11 +105,14 @@ export async function resolveGoModuleRoot(installPath: string, ctx: ModeContext)
   const heuristic = moduleRootFromMajor(installPath);
   if (heuristic) return heuristic;
   const candidates = prefixCandidates(installPath);
-  const resolved = await Promise.all(candidates.map(candidate =>
-    ctx.doFetch(`${ctx.goProxyUrl}/${encodeGoModulePath(candidate)}/@latest`, {signal: AbortSignal.timeout(ctx.goProbeTimeout)})
-      .then(res => res.ok ? candidate : null)
-      .catch(() => null),
-  ));
+  const resolved = await Promise.all(candidates.map(async candidate => {
+    try {
+      const res = await ctx.doFetch(`${ctx.goProxyUrl}/${encodeGoModulePath(candidate)}/@latest`, {signal: AbortSignal.timeout(ctx.goProbeTimeout)});
+      return res.ok ? candidate : null;
+    } catch {
+      return null;
+    }
+  }));
   return resolved.find(Boolean) ?? null; // candidates are longest-first
 }
 

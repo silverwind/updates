@@ -2116,7 +2116,9 @@ async function configTest(config: string, args: string): Promise<{stdout: string
   try {
     return await execFileAsync(execPath, [script, ...argsArr], {cwd: dir});
   } finally {
-    await rm(dir, {recursive: true, force: true, maxRetries: 10, retryDelay: 100}).catch(() => {});
+    try {
+      await rm(dir, {recursive: true, force: true, maxRetries: 10, retryDelay: 100});
+    } catch {}
   }
 }
 
@@ -2308,7 +2310,9 @@ test("two non-workspace package.json: both updated, no dep loss", async ({expect
     expect(await readFile(fileA, "utf8")).toContain(`"noty": "3.1.4"`);
     expect(await readFile(fileB, "utf8")).toContain(`"gulp-sourcemaps": "2.6.5"`);
   } finally {
-    await rm(dir, {recursive: true, force: true, maxRetries: 10, retryDelay: 100}).catch(() => {});
+    try {
+      await rm(dir, {recursive: true, force: true, maxRetries: 10, retryDelay: 100});
+    } catch {}
   }
 });
 
@@ -2331,6 +2335,8 @@ test("two non-workspace package.json with the same dep: both updated", async ({e
     expect(await readFile(fileA, "utf8")).toContain(`"noty": "3.1.4"`);
     expect(await readFile(fileB, "utf8")).toContain(`"noty": "3.1.4"`);
   } finally {
-    await rm(dir, {recursive: true, force: true, maxRetries: 10, retryDelay: 100}).catch(() => {});
+    try {
+      await rm(dir, {recursive: true, force: true, maxRetries: 10, retryDelay: 100});
+    } catch {}
   }
 });

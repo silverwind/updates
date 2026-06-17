@@ -166,10 +166,15 @@ export async function fetchNpmInfo(name: string, type: string, config: Config, a
     const opts = getFetchOpts(auth?.type, auth?.token);
     opts.headers = {...opts.headers as Record<string, string>, "accept": "application/vnd.npm.install-v1+json"};
     dataPromise = (async () => {
-      const result = await fetchWithEtag(url, ctx, opts, reduceNpmDoc);
-      if (!("body" in result)) throwFetchError(result.res, url, name, registry);
-      return JSON.parse(result.body);
-    })().catch(err => { npmDataCache.delete(url); throw err; });
+      try {
+        const result = await fetchWithEtag(url, ctx, opts, reduceNpmDoc);
+        if (!("body" in result)) throwFetchError(result.res, url, name, registry);
+        return JSON.parse(result.body);
+      } catch (err) {
+        npmDataCache.delete(url);
+        throw err;
+      }
+    })();
     npmDataCache.set(url, dataPromise);
   }
   return [await dataPromise, type, registry, name];
@@ -207,10 +212,15 @@ export async function fetchNpmVersionInfo(name: string, version: string, config:
         const fullUrl = npmPackageUrl(registry, name);
         let fullPromise = npmFullDataCache.get(fullUrl);
         if (!fullPromise) {
-          fullPromise = ctx.doFetch(fullUrl, {...fetchOpts, signal: AbortSignal.timeout(ctx.fetchTimeout)}).then(res => {
-            if (res?.ok) return res.json();
-            return null;
-          }).catch(() => { npmFullDataCache.delete(fullUrl); return null; });
+          fullPromise = (async () => {
+            try {
+              const res = await ctx.doFetch(fullUrl, {...fetchOpts, signal: AbortSignal.timeout(ctx.fetchTimeout)});
+              return res?.ok ? await res.json() : null;
+            } catch {
+              npmFullDataCache.delete(fullUrl);
+              return null;
+            }
+          })();
           npmFullDataCache.set(fullUrl, fullPromise);
         }
         const fullData = await fullPromise;
