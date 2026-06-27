@@ -18,7 +18,8 @@ export async function fetchCratesIoInfo(name: string, type: string, ctx: ModeCon
   const base = normalizeUrl(ctx.cratesIoUrl);
   const url = `${base}/api/v1/crates/${encodeURIComponent(name)}/versions?per_page=100`;
 
-  let dataPromise = ctx.noCache ? undefined : cratesIoCache.get(url);
+  // dedup in-flight/completed requests per run; disk-cache staleness is gated by ctx.noCache inside fetchWithEtag
+  let dataPromise = cratesIoCache.get(url);
   if (!dataPromise) {
     dataPromise = (async () => {
       try {
@@ -107,7 +108,7 @@ export function updateCargoToml(pkgStr: string, deps: Deps): string {
     );
     // Inline table: name = { ..., version = "x.y.z", ... } (version need not be the first key)
     newPkgStr = newPkgStr.replace(
-      new RegExp(`^(\\s*${nameEsc}\\s*=\\s*\\{[^}\\n]*?\\bversion\\s*=\\s*["'])${oldEsc}(["'])`, "gm"),
+      new RegExp(`^(\\s*${nameEsc}\\s*=\\s*\\{(?:"[^"]*"|'[^']*'|[^}\\n])*?\\bversion\\s*=\\s*["'])${oldEsc}(["'])`, "gm"),
       `$1${newValue}$2`,
     );
     // Extended table: [section.name] with version = "x.y.z"

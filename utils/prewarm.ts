@@ -32,7 +32,8 @@ export function prewarmOrigins(dir: string, args: Record<string, unknown>): stri
   const forgeOrigin = resolveOrigin(args.forgeapi, "https://api.github.com/");
   const dockerOrigin = resolveOrigin(args.dockerapi, "https://hub.docker.com/");
   if (has("package.json", "pnpm-workspace.yaml")) {
-    add(resolveOrigin(args.registry ?? npmrcRegistry(dir), "https://registry.npmjs.org/"));
+    const registry = typeof args.registry === "string" ? args.registry : npmrcRegistry(dir);
+    add(resolveOrigin(registry, "https://registry.npmjs.org/"));
     add(resolveOrigin(args.jsrapi, "https://jsr.io/"));
     add(forgeOrigin);
   }

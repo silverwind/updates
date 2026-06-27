@@ -70,7 +70,7 @@ export function parseToml(input: string): TomlObject {
       let body = rawVal;
       let j = i + 1;
       for (; j < lines.length; j++) {
-        body += `\n${lines[j]}`;
+        body += `\n${stripComment(lines[j])}`;
         if (inlineTableClosed(body)) break;
       }
       i = j;

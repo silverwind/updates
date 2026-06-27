@@ -154,8 +154,8 @@ function resolveFiles(filesArg: Set<string> | false): Set<string> {
           }
         } catch {}
         const normalized = resolve(file).replace(/\\/g, "/");
-        const endsInWorkflowsDir = forgeDirs.some(forgeDir => normalized.endsWith(`${forgeDir}/workflows`));
-        const endsInForgeDir = !endsInWorkflowsDir && forgeDirs.some(forgeDir => normalized.endsWith(forgeDir));
+        const endsInWorkflowsDir = forgeDirs.some(forgeDir => normalized.endsWith(`/${forgeDir}/workflows`));
+        const endsInForgeDir = !endsInWorkflowsDir && forgeDirs.some(forgeDir => normalized.endsWith(`/${forgeDir}`));
         const forgeDirCandidates: Array<string> = endsInWorkflowsDir ? [dirname(normalized)] :
           endsInForgeDir ? [normalized] :
             forgeDirs.map(forgeDir => join(normalized, forgeDir));
@@ -479,6 +479,27 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
     return {include: inc, exclude: exc, pin: cfg.pin ?? {}, cooldownDays: cooldownDaysFor(cfg.cooldown)};
   }
 
+  // A workspace manifest owns the empty dep-prefix for its mode, so plain manifests of the
+  // same mode must avoid the "." memberPath to keep their dep keys disjoint. Determine this up
+  // front so the result is independent of file iteration order (e.g. `-f plaindir -f wsdir`).
+  const workspaceModes = new Set<string>();
+  const parsedCargoToml = new Map<string, Record<string, any>>();
+  for (const file of files) {
+    const filename = basename(file);
+    if (filename === "go.work") workspaceModes.add("go");
+    else if (filename === "pnpm-workspace.yaml") workspaceModes.add("npm");
+    else if (filename === "Cargo.toml") {
+      const content = fileContents.get(file);
+      if (!content) continue;
+      try {
+        const parsed = parseToml(content);
+        parsedCargoToml.set(file, parsed);
+        const members = (parsed.workspace as Record<string, any>)?.members;
+        if (Array.isArray(members) && members.length) workspaceModes.add("cargo");
+      } catch {}
+    }
+  }
+
   for (const file of files) {
     if (isWorkflowFile(file)) {
       const actionsEnabled = enabledModes.has("actions");
@@ -606,14 +627,16 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
       continue;
     }
 
-    if (filename === "go.mod" && goWorkData) continue;
-    if (filename === "package.json" && pnpmWorkspaceActive) continue;
+    // Skip only manifests already consumed as workspace members; unrelated ones (e.g. from a
+    // second `-f` directory) fall through to be processed as plain files.
+    if (filename === "go.mod" && goModFiles.some(m => m.absPath === resolve(file))) continue;
+    if (filename === "package.json" && pnpmMemberFiles.some(m => m.absPath === resolve(file))) continue;
 
     if (filename === "Cargo.toml") {
       deps[mode] ??= {};
       const cargoDepsBefore = Object.keys(deps[mode]).length;
       const cargoContent = fileContents.get(file)!;
-      const cargoParsed = parseToml(cargoContent);
+      const cargoParsed = parsedCargoToml.get(file) ?? parseToml(cargoContent);
       const workspaceDir = dirname(resolve(file));
 
       const lockPath = findUpSync(["Cargo.lock"], workspaceDir).get("Cargo.lock");
@@ -664,7 +687,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
         // Track each non-workspace Cargo.toml per file so several of them never
         // overwrite each other; first keeps the "." memberPath (empty prefix).
         const modeFiles = plainFiles[mode] ??= [];
-        const isFirstOfMode = !modeFiles.length;
+        const isFirstOfMode = !modeFiles.length && !workspaceModes.has(mode);
         const memberPath = isFirstOfMode ? "." : toRelPath(file);
         modeFiles.push({absPath: resolve(file), content: cargoContent, memberPath, projectDir: workspaceDir, modeConfig, pin, modeCooldownDays: cooldownDaysFor(modeConfig.cooldown)});
         if (isFirstOfMode) modeConfigs[mode] = {modeConfig, projectDir: workspaceDir, pin};
@@ -754,7 +777,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
     // preserve the single-manifest output shape; further ones are disambiguated
     // by their relative path so deps from distinct files never collide.
     const modeFiles = plainFiles[mode] ??= [];
-    const isFirstOfMode = !modeFiles.length;
+    const isFirstOfMode = !modeFiles.length && !workspaceModes.has(mode);
     const memberPath = isFirstOfMode ? "." : toRelPath(file);
     const typePrefix = memberPath === "." ? "" : `|${memberPath}`;
     const content = fileContents.get(file)!;
@@ -1270,23 +1293,27 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
         continue;
       }
 
-      if (mode === "go" && goWorkData) {
-        for (const goMod of goModFiles) {
-          const localDeps = filterDepsForMember(deps[mode], goMod.usePath);
-          if (!Object.keys(localDeps).length) continue;
-          const [updatedContent, majorVersionRewrites] = updateGoMod(goMod.content, localDeps);
-          if (updatedContent !== goMod.content) write(goMod.absPath, updatedContent);
-          rewriteGoImports(goMod.projectDir, majorVersionRewrites, write);
+      // Workspace members and unrelated plain manifests of the same mode can coexist (e.g. a
+      // workspace dir plus a second `-f` directory), so write both rather than treating the
+      // workspace as exclusive. Their dep keys are kept disjoint via the memberPath prefixes.
+      if (mode === "go") {
+        if (goWorkData) {
+          for (const goMod of goModFiles) {
+            const localDeps = filterDepsForMember(deps[mode], goMod.usePath);
+            if (!Object.keys(localDeps).length) continue;
+            const [updatedContent, majorVersionRewrites] = updateGoMod(goMod.content, localDeps);
+            if (updatedContent !== goMod.content) write(goMod.absPath, updatedContent);
+            rewriteGoImports(goMod.projectDir, majorVersionRewrites, write);
+          }
+          const workDeps: Deps = {};
+          for (const [key, dep] of Object.entries(deps[mode])) {
+            if (key.split(fieldSep)[0] === "replace") workDeps[key] = dep;
+          }
+          if (Object.keys(workDeps).length) {
+            const [updatedWork] = updateGoMod(goWorkData.content, workDeps);
+            if (updatedWork !== goWorkData.content) write(goWorkData.file, updatedWork);
+          }
         }
-        const workDeps: Deps = {};
-        for (const [key, dep] of Object.entries(deps[mode])) {
-          if (key.split(fieldSep)[0] === "replace") workDeps[key] = dep;
-        }
-        if (Object.keys(workDeps).length) {
-          const [updatedWork] = updateGoMod(goWorkData.content, workDeps);
-          if (updatedWork !== goWorkData.content) write(goWorkData.file, updatedWork);
-        }
-      } else if (mode === "go") {
         for (const goMod of plainFiles.go ?? []) {
           const localDeps = filterDepsForMember(deps[mode], goMod.memberPath);
           if (!Object.keys(localDeps).length) continue;
@@ -1294,15 +1321,14 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
           write(goMod.absPath, updatedContent);
           rewriteGoImports(goMod.projectDir, majorVersionRewrites, write);
         }
-      } else if (mode === "cargo" && cargoWorkspaceActive) {
-        updateMembers(mode, cargoMemberFiles, updateCargoToml);
       } else if (mode === "cargo") {
+        if (cargoWorkspaceActive) updateMembers(mode, cargoMemberFiles, updateCargoToml);
         updateMembers(mode, plainFiles.cargo ?? [], updateCargoToml);
-      } else if (mode === "npm" && pnpmWorkspaceActive) {
-        updateMembers(mode, pnpmMemberFiles, updatePackageJson);
+      } else if (mode === "npm") {
+        if (pnpmWorkspaceActive) updateMembers(mode, pnpmMemberFiles, updatePackageJson);
+        updateMembers(mode, plainFiles.npm ?? [], updatePackageJson);
       } else {
-        const fn = (mode === "npm") ? updatePackageJson : updatePyprojectToml;
-        updateMembers(mode, plainFiles[mode] ?? [], fn);
+        updateMembers(mode, plainFiles[mode] ?? [], updatePyprojectToml);
       }
     }
   }

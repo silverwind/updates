@@ -304,24 +304,14 @@ function expandXRanges(range: string): string {
   range = range.replace(/(>=|<=|>|<|=)?\s*v?(\d+)\.[xX*](?:\.[xX*])?/g, (_, op, major) =>
     expandXRangeComparator(op, Number(major), 0, true));
 
-  // Handle bare partials: standalone "1" or "1.2" (not preceded by operator)
-  // Use negative lookbehind to skip if preceded by comparison operators (with optional spaces)
-  range = range.replace(/(^|[\s|])(\d+)\.(\d+)(?=\s|$)/g, (match, prefix, major, minor, offset) => {
-    // Check if preceded by a comparison operator in the original string
-    const before = range.substring(0, offset).trimEnd();
-    if (/[<>=]$/.test(before)) return match;
-    const M = Number(major);
-    const m = Number(minor);
-    return `${prefix}>=${M}.${m}.0 <${upperBound(M, m + 1, 0)}`;
-  });
+  // Handle bare partials "1.2" and "1", honoring a leading comparison operator the same way
+  // the x-range passes above do (e.g. >1.2 := >=1.3.0, <=1 := <2.0.0-0). A bare/`=` partial
+  // collapses to the `>=lo <hi` pair via expandXRangeComparator's first branch.
+  range = range.replace(/(^|[\s|])(>=|<=|>|<|=)?\s*v?(\d+)\.(\d+)(?=\s|$)/g, (_, prefix, op, major, minor) =>
+    `${prefix}${expandXRangeComparator(op, Number(major), Number(minor), false)}`);
 
-  range = range.replace(/(^|[\s|])(\d+)(?=\s|$)/g, (match, prefix, major, offset) => {
-    // Check if preceded by a comparison operator
-    const before = range.substring(0, offset).trimEnd();
-    if (/[<>=]$/.test(before)) return match;
-    const M = Number(major);
-    return `${prefix}>=${M}.0.0 <${upperBound(M + 1, 0, 0)}`;
-  });
+  range = range.replace(/(^|[\s|])(>=|<=|>|<|=)?\s*v?(\d+)(?=\s|$)/g, (_, prefix, op, major) =>
+    `${prefix}${expandXRangeComparator(op, Number(major), 0, true)}`);
 
   return range;
 }

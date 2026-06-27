@@ -49,9 +49,11 @@ export function enableDnsCache() {
       if (!err && addresses?.length) {
         dnsCache.set(hostname, addresses);
       }
+      // A success with no addresses would crash the non-`all` branch on addr.address; treat it as a failure.
+      const lookupErr = err || (addresses?.length ? null : Object.assign(new Error(`getaddrinfo ENOTFOUND ${hostname}`), {code: "ENOTFOUND", hostname}));
       for (const {options: opts, callback: cb} of waiters) {
-        if (err) {
-          cb(err);
+        if (lookupErr) {
+          cb(lookupErr);
         } else if (opts.all) {
           cb(null, addresses);
         } else {

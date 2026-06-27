@@ -38,8 +38,14 @@ for (const [index, token] of result.tokens.entries()) {
   } else {
     values[token.name] = true;
   }
-  const list = (values[key] ??= []) as Array<string | boolean>;
-  list.push(next?.kind === "positional" && next.value ? next.value : true);
+  const recovered = next?.kind === "positional" && next.value ? next.value : true;
+  if (options[key]?.multiple) {
+    const list = (values[key] ??= []) as Array<string | boolean>;
+    list.push(recovered);
+  } else {
+    // non-multiple options expect a scalar; an array shape is rejected by the typeof string consumers
+    values[key] = recovered;
+  }
 }
 
 const args = result.values;

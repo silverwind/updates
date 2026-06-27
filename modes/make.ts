@@ -84,10 +84,11 @@ export function parseMakeDockerImages(content: string): Array<MakeDockerImage> {
   return images;
 }
 
-// Module root is some prefix of the install path. A `/vN` segment marks the
-// boundary without a lookup; otherwise probe prefixes longest-first and take
-// the longest that resolves as a module.
-const midMajorRe = /\/v\d+(?=\/|$)/;
+// Module root is some prefix of the install path. A `/vN` segment (v2+ only, per
+// Go's module-path convention) marks the boundary without a lookup; otherwise probe
+// prefixes longest-first and take the longest that resolves as a module. v0/v1 carry
+// no path suffix, so a literal /v0 or /v1 segment is an ordinary directory.
+const midMajorRe = /\/v(?:[2-9]|[1-9]\d+)(?=\/|$)/;
 
 export function moduleRootFromMajor(installPath: string): string | null {
   const match = midMajorRe.exec(installPath);

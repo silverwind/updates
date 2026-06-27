@@ -135,7 +135,9 @@ function argToRegex(arg: string | RegExp, cli: boolean, insensitive: boolean): R
   if (cli && typeof arg === "string") {
     return /^\/.+\/$/.test(arg) ? new RegExp(arg.slice(1, -1)) : globToRegex(arg, insensitive);
   } else {
-    return arg instanceof RegExp ? arg : globToRegex(arg, insensitive);
+    const re = arg instanceof RegExp ? arg : globToRegex(arg, insensitive);
+    // strip g/y: these matchers are only used with .test(), where a stateful lastIndex flakes
+    return /[gy]/.test(re.flags) ? new RegExp(re.source, re.flags.replace(/[gy]/g, "")) : re;
   }
 }
 

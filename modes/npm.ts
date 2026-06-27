@@ -291,7 +291,7 @@ export async function fetchJsrInfo(packageName: string, type: string, ctx: ModeC
     // Transform JSR format to match npm-like format for compatibility
     const versions: Record<string, any> = {};
     const time: Record<string, string> = {};
-    for (const [version, metadata] of Object.entries(data.versions as Record<string, any>)) {
+    for (const [version, metadata] of Object.entries((data.versions ?? {}) as Record<string, any>)) {
       versions[version] = {
         version,
         time: metadata.createdAt,

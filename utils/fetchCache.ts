@@ -50,6 +50,11 @@ export function setCache(url: string, etag: string, body: string): void {
   const write = (async () => {
     try {
       await (dirCreated ??= mkdir(cacheDir, {recursive: true}));
+    } catch {
+      dirCreated = null; // a transient mkdir failure must not poison every later write this run
+      return;
+    }
+    try {
       const file = join(cacheDir, `${cacheKey(url)}.cache`);
       const tmpFile = `${file}.${pid}-${tmpCounter++}.tmp`;
       await writeFile(tmpFile, `${etag}\n${body}`);

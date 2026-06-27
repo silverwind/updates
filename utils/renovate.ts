@@ -93,6 +93,12 @@ function toMatcher(name: string): string | RegExp {
   }
 }
 
+// Renovate matchPackageNames entries may be minimatch globs (e.g. "@babel/*"),
+// whose characters are never valid in a package identifier across ecosystems.
+function isGlob(name: string): boolean {
+  return /[*?[\]{}!()|+]/.test(name);
+}
+
 export type RenovateImportOptions = {
   /** Import minimumReleaseAge as cooldown. Off by default. */
   cooldown?: boolean;
@@ -123,9 +129,9 @@ function normalize(raw: RenovateConfig, opts: RenovateImportOptions): Partial<Co
         for (const name of names) exclude.push(toMatcher(name));
       }
       if (typeof rule.allowedVersions === "string" && validRange(rule.allowedVersions)) {
-        // pin is keyed by literal package name; regex matchers can't be honored, so skip them
+        // pin is keyed by literal package name; regex and glob matchers can't be honored, so skip them
         for (const name of names) {
-          if (typeof toMatcher(name) === "string") pin[name] = rule.allowedVersions;
+          if (!isGlob(name) && typeof toMatcher(name) === "string") pin[name] = rule.allowedVersions;
         }
       }
     }

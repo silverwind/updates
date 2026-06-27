@@ -1607,6 +1607,25 @@ test("pnpm workspace update", async ({expect = globalExpect}: any = {}) => {
   expect(libBPkg).not.toContain('"18.0"');
 });
 
+test("pnpm workspace alongside unrelated package.json", async ({expect = globalExpect}: any = {}) => {
+  // A pnpm workspace and an unrelated plain package.json (second -f path) must both be
+  // processed, regardless of order — the workspace no longer suppresses the plain manifest.
+  for (const files of [[pnpmWorkspaceFile, testFile], [testFile, pnpmWorkspaceFile]]) {
+    const result = await updates({files, registry: npmUrl, forgeapi: githubUrl, color: false, noCache: true});
+    const {npm} = result.results;
+    expect(npm).toBeDefined();
+
+    // workspace root + members still resolve
+    expect(npm["devDependencies"]?.["typescript"]).toBeDefined();
+    expect(npm["dependencies|./packages/app-a"]?.["prismjs"]).toBeDefined();
+    expect(npm["dependencies|./packages/lib-b"]?.["react"]).toBeDefined();
+
+    // the unrelated plain package.json (gulp-sourcemaps is unique to it) is no longer dropped
+    const allNames = Object.values(npm).flatMap((group: any) => Object.keys(group));
+    expect(allNames).toContain("gulp-sourcemaps");
+  }
+});
+
 test("pin", async ({expect = globalExpect}: any = {}) => {
   const result = await updates({
     files: [testFile],

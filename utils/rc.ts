@@ -35,8 +35,7 @@ function findUp(filename: string): string | undefined {
   while (true) {
     const filePath = join(dir, filename);
     try {
-      statSync(filePath);
-      return filePath;
+      if (statSync(filePath).isFile()) return filePath;
     } catch {}
     const parent = dirname(dir);
     if (parent === dir) break;
