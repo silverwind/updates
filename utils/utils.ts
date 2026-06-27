@@ -167,7 +167,7 @@ export async function tryOrNull<T>(promise: Promise<T>): Promise<T | null> {
   }
 }
 
-export const esc = (str: string) => str.replace(/[|\\{}()[\]^$+*?.-]/g, "\\$&");
+export const esc = (str: string) => RegExp.escape(str);
 
 export async function walkUp<T>(startDir: string, probe: (dir: string) => Promise<T | null>): Promise<T | null> {
   let dir = startDir;

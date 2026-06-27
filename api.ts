@@ -44,6 +44,8 @@ import {
 import {
   type MakeRewrite,
   type MakeDockerImage,
+  type MakeUpdate,
+  type MakeDockerUpdate,
   isMakeFileName, makeExactFileNames, parseMakeGoInstalls, parseMakeDockerImages,
   fetchMakeInfo, fetchMakeDockerInfo, formatMakeImageSpec, updateMakefile,
 } from "./modes/make.ts";
@@ -188,14 +190,14 @@ function resolveFiles(filesArg: Set<string> | false): Set<string> {
   }
 
   // go.work supersedes go.mod in the same directory
-  for (const file of resolvedFiles) {
+  for (const file of Array.from(resolvedFiles)) {
     if (basename(file) === "go.work") {
       resolvedFiles.delete(join(dirname(file), "go.mod"));
     }
   }
 
   // pnpm-workspace.yaml supersedes package.json in the same directory
-  for (const file of resolvedFiles) {
+  for (const file of Array.from(resolvedFiles)) {
     if (basename(file) === "pnpm-workspace.yaml") {
       resolvedFiles.delete(join(dirname(file), "package.json"));
     }
@@ -320,8 +322,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
   }));
   const overrideMatches = (o: CompiledOverride, name: string): boolean => {
     if (o.include && !matchesAny(name, o.include)) return false;
-    if (o.exclude && matchesAny(name, o.exclude)) return false;
-    return true;
+    return !o.exclude || !matchesAny(name, o.exclude);
   };
   const overridesHaveCooldown = compiledOverrides.some(o => o.cooldownDays);
 
@@ -1086,7 +1087,11 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
             let oldTagName = commitShaToTag.get(ref);
             if (!oldTagName) {
               for (const [sha, name] of commitShaToTag) {
-                if (sha.startsWith(ref)) { oldTagName = name; break; }
+                if (!sha.startsWith(ref)) {
+                  continue;
+                }
+
+                oldTagName = name; break;
               }
             }
             dep.old = ref;
@@ -1180,21 +1185,22 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
           cooldownDays: makeCooldownDays || undefined, now: makeCooldownDays ? now : undefined,
         };
         const dep = deps.make[info.key];
+        let update: MakeUpdate | MakeDockerUpdate;
         if (info.kind === "go") {
-          const update = await tryOrNull(fetchMakeInfo(info.installPath, info.version, info.projectDir, ctx, goNoProxy, opts));
-          if (!update) { delete deps.make[info.key]; return; }
-          info.newSpec = `${update.newInstallPath}@${update.newVersion}`;
-          dep.new = update.newVersion;
-          dep.info = update.info;
-          if (update.date) setDepAge(dep, update.date);
+          const goUpdate = await tryOrNull(fetchMakeInfo(info.installPath, info.version, info.projectDir, ctx, goNoProxy, opts));
+          if (!goUpdate) { delete deps.make[info.key]; return; }
+          info.newSpec = `${goUpdate.newInstallPath}@${goUpdate.newVersion}`;
+          dep.new = goUpdate.newVersion;
+          update = goUpdate;
         } else {
-          const update = await tryOrNull(fetchMakeDockerInfo(info.image, ctx, opts));
-          if (!update) { delete deps.make[info.key]; return; }
-          info.newSpec = formatMakeImageSpec(info.image.writtenImage, update.newTag, info.image.digest ? update.newDigest : null);
-          dep.new = update.newTag;
-          dep.info = update.info;
-          if (update.date) setDepAge(dep, update.date);
+          const dockerUpdate = await tryOrNull(fetchMakeDockerInfo(info.image, ctx, opts));
+          if (!dockerUpdate) { delete deps.make[info.key]; return; }
+          info.newSpec = formatMakeImageSpec(info.image.writtenImage, dockerUpdate.newTag, info.image.digest ? dockerUpdate.newDigest : null);
+          dep.new = dockerUpdate.newTag;
+          update = dockerUpdate;
         }
+        dep.info = update.info;
+        if (update.date) setDepAge(dep, update.date);
       }, {concurrency});
       if (!Object.keys(deps.make).length) delete deps.make;
     })());

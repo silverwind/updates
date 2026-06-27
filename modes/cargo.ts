@@ -35,10 +35,12 @@ export async function fetchCratesIoInfo(name: string, type: string, ctx: ModeCon
         const versionsObj: Record<string, Record<string, never>> = {};
         const time: Record<string, string> = {};
         for (const v of versions) {
-          if (v.num) {
-            versionsObj[v.num] = {};
-            time[v.num] = v.created_at || "";
+          if (!v.num) {
+            continue;
           }
+
+          versionsObj[v.num] = {};
+          time[v.num] = v.created_at || "";
         }
         const latest = versions[0]?.num ?? "";
         return {name, versions: versionsObj, time, "dist-tags": {latest}};

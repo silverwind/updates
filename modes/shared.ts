@@ -658,7 +658,11 @@ export function getInfoUrl({repository, homepage, info}: {repository?: PackageRe
   if (info) { // pypi
     const urls = info.project_urls;
     for (const key of ["repository", "Repository", "repo", "Repo", "source", "Source", "source code", "Source code", "Source Code", "homepage", "Homepage"]) {
-      if (urls?.[key]) { repository = urls[key]; break; }
+      if (!urls?.[key]) {
+        continue;
+      }
+
+      repository = urls[key]; break;
     }
     repository ??= `https://pypi.org/project/${name}/`;
   }

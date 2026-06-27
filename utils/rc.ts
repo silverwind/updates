@@ -48,19 +48,21 @@ export function parseEnvVars(prefix: string): Record<string, any> {
   const result: Record<string, any> = {};
   const prefixLower = prefix.toLowerCase();
   for (const [key, value] of Object.entries(env)) {
-    if (key.toLowerCase().startsWith(prefixLower)) {
-      const keyPath = key.substring(prefix.length).split("__").filter(Boolean);
-      if (keyPath.length === 0) continue;
-      let cursor: Record<string, any> = result;
-      for (let i = 0; i < keyPath.length; i++) {
-        const subKey = keyPath[i];
-        if (i === keyPath.length - 1) {
-          cursor[subKey] = value;
-        } else {
-          if (cursor[subKey] === undefined) cursor[subKey] = {};
-          if (typeof cursor[subKey] === "object") cursor = cursor[subKey];
-          else break;
-        }
+    if (!key.toLowerCase().startsWith(prefixLower)) {
+      continue;
+    }
+
+    const keyPath = key.substring(prefix.length).split("__").filter(Boolean);
+    if (keyPath.length === 0) continue;
+    let cursor: Record<string, any> = result;
+    for (let i = 0; i < keyPath.length; i++) {
+      const subKey = keyPath[i];
+      if (i === keyPath.length - 1) {
+        cursor[subKey] = value;
+      } else {
+        if (cursor[subKey] === undefined) cursor[subKey] = {};
+        if (typeof cursor[subKey] === "object") cursor = cursor[subKey];
+        else break;
       }
     }
   }

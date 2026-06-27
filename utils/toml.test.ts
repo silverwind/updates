@@ -10,7 +10,7 @@ test("integer value", () => {
 });
 
 test("float value", () => {
-  expect(parseToml(`pi = 3.14`)).toEqual({pi: 3.14});
+  expect(parseToml(`num = 1.5`)).toEqual({num: 1.5});
 });
 
 test("boolean values", () => {
