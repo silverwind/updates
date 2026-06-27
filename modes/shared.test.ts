@@ -152,10 +152,11 @@ test("stripv removes leading v", () => {
 });
 
 test("esc escapes regex special chars", () => {
-  expect(esc("foo.bar")).toBe("foo\\.bar");
-  expect(esc("a[b]")).toBe("a\\[b\\]");
-  expect(esc("no-special")).toBe("no\\-special");
-  expect(esc("plain")).toBe("plain");
+  for (const str of ["foo.bar", "a[b]", "no-special", "plain", "a+b*c?", "(x)|{y}^$"]) {
+    expect(new RegExp(`^${esc(str)}$`).test(str)).toBe(true);
+  }
+  // special chars must match literally, not act as metacharacters
+  expect(new RegExp(`^${esc("a.b")}$`).test("axb")).toBe(false);
 });
 
 test("normalizeUrl strips trailing slash", () => {
