@@ -44,7 +44,7 @@ npx updates -u && npm i
 |`-m, --minor [<dep,...>]`|Consider only up to semver-minor|
 |`-d, --allow-downgrade [<dep,...>]`|Allow version downgrades when using latest version|
 |`-s, --sockets <num>`|Maximum number of parallel HTTP sockets opened. Default: 96|
-|`-T, --timeout <ms>`|Network request timeout in ms (go probes use half). Default: 5000|
+|`-T, --timeout <ms>`|Network timeout in ms per attempt, 2 retries on transient errors (go probes use half, no retry). Default: 5000|
 |`-r, --registry <url>`|Override npm registry URL|
 |`-I, --indirect`|Include indirect Go dependencies|
 |`-E, --error-on-outdated`|Exit with code 2 when updates are available and 0 when not|
