@@ -4,7 +4,7 @@ import {getCache, setCache} from "../utils/fetchCache.ts";
 import {
   type Config, type CheckResult, type Dep, type Deps, type ModeContext, type PackageInfo, type PackageRepository,
   normalizeUrl, getFetchOpts, fieldSep, fetchForge, selectTag, fetchWithEtag, fetchImmutable,
-  coerceToVersion, hashRe, fetchActionTags, throwFetchError,
+  coerceToVersion, hashRe, fetchActionTags, throwFetchError, fetchWithRetry,
 } from "./shared.ts";
 
 export type Npmrc = {
@@ -214,7 +214,7 @@ export async function fetchNpmVersionInfo(name: string, version: string, config:
         if (!fullPromise) {
           fullPromise = (async () => {
             try {
-              const res = await ctx.doFetch(fullUrl, {...fetchOpts, signal: AbortSignal.timeout(ctx.fetchTimeout)});
+              const res = await fetchWithRetry(ctx, fullUrl, fetchOpts);
               return res?.ok ? await res.json() : null;
             } catch {
               npmFullDataCache.delete(fullUrl);

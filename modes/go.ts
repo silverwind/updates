@@ -1,7 +1,9 @@
 import {env} from "node:process";
 import {join, dirname} from "node:path";
 import {readFileSync, globSync} from "node:fs";
-import {type Deps, type ModeContext, type PackageInfo, fieldSep, stripv, getSubDir, normalizeUrl} from "./shared.ts";
+import {
+  type Deps, type ModeContext, type PackageInfo, fieldSep, stripv, getSubDir, normalizeUrl, fetchWithRetry,
+} from "./shared.ts";
 import {esc} from "../utils/utils.ts";
 
 let execFilePromise: ReturnType<typeof loadExecFile> | undefined;
@@ -256,7 +258,7 @@ export async function fetchGoProxyInfo(name: string, type: string, currentVersio
   // Fetch @latest and probe for next major version in parallel
   const skip = shouldSkipMajorProbe(name, type, currentVersion);
   const [res, earlyProbe] = await Promise.all([
-    ctx.doFetch(`${ctx.goProxyUrl}/${encoded}/@latest`, {signal: AbortSignal.timeout(ctx.fetchTimeout), headers: {"accept-encoding": "gzip, deflate, br"}}),
+    fetchWithRetry(ctx, `${ctx.goProxyUrl}/${encoded}/@latest`, {headers: {"accept-encoding": "gzip, deflate, br"}}),
     skip ? null : probeGoMajor(currentMajor + 1),
   ]);
   if (!res.ok) return noUpdateInfo(name, currentVersion, type);

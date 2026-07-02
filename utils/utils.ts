@@ -167,7 +167,9 @@ export async function tryOrNull<T>(promise: Promise<T>): Promise<T | null> {
   }
 }
 
-export const esc = (str: string) => RegExp.escape(str);
+// RegExp.escape needs Node 24; fall back to a manual escape on Node 22.
+export const esc = (str: string) =>
+  RegExp.escape ? RegExp.escape(str) : str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 export async function walkUp<T>(startDir: string, probe: (dir: string) => Promise<T | null>): Promise<T | null> {
   let dir = startDir;

@@ -96,6 +96,7 @@ export const packageVersion = pkg.version;
 export const fieldSep = "\0";
 export const fetchTimeout = 5000;
 export const goProbeTimeout = 2500;
+export const fetchRetries = 2;
 
 export const stripv = (str: string): string => str[0] === "v" ? str.substring(1) : str;
 export const normalizeUrl = (url: string) => url.endsWith("/") ? url.slice(0, -1) : url;
@@ -110,11 +111,40 @@ export function getFetchOpts(authType?: string, authToken?: string): RequestInit
   };
 }
 
+// Retryable failures; deterministic ones (bad URL, NXDOMAIN, TLS) are not.
+const transientErrorCodes = new Set([
+  "ECONNRESET", "ECONNREFUSED", "ETIMEDOUT", "EAI_AGAIN", "EPIPE",
+  "UND_ERR_SOCKET", "UND_ERR_CONNECT_TIMEOUT", "UND_ERR_HEADERS_TIMEOUT", "UND_ERR_BODY_TIMEOUT",
+]);
+
+function isTransientFetchError(err: any): boolean {
+  if (err?.name === "TimeoutError" || err?.name === "AbortError") return true;
+  // fetch wraps socket/DNS errors as a TypeError with the real error in `cause`.
+  const code = err?.code ?? err?.cause?.code;
+  return typeof code === "string" && transientErrorCodes.has(code);
+}
+
 export async function doFetch(url: string, opts?: RequestInit): Promise<Response> {
   try {
     return await fetch(url, opts);
   } catch (err: any) {
-    throw new Error(`Failed to fetch ${url}${err?.message ? `: ${err.message}` : ""}`);
+    const error: any = new Error(`Failed to fetch ${url}${err?.message ? `: ${err.message}` : ""}`, {cause: err});
+    error.transient = isTransientFetchError(err);
+    throw error;
+  }
+}
+
+// Retry only transient failures; a fresh AbortSignal is made per attempt since
+// an aborted one can't be reused. Non-ok responses resolve normally, not retried.
+export async function fetchWithRetry(
+  ctx: ModeContext, url: string, opts: RequestInit = {},
+): Promise<Response> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await ctx.doFetch(url, {...opts, signal: AbortSignal.timeout(ctx.fetchTimeout)});
+    } catch (err: any) {
+      if (attempt >= fetchRetries || !err?.transient) throw err;
+    }
   }
 }
 
@@ -143,16 +173,16 @@ function reduceBody(body: string, reduce: BodyReducer | undefined): string {
   }
 }
 
-// Fetch with ETag revalidation against the persistent disk cache. The fetch
-// timeout signal is created inside, after the cache read, so slow disks do
-// not eat the network budget. Returns {body} on success, or {res} on error.
+// Fetch with ETag revalidation against the persistent disk cache. The timeout
+// signal is created after the cache read, so slow disks do not eat the network
+// budget. Returns {body} on success, or {res} on error.
 export async function fetchWithEtag(
   url: string, ctx: ModeContext, opts: RequestInit = {}, reduce?: BodyReducer,
 ): Promise<{body: string, res?: Response} | {res: Response | undefined}> {
   const cached = ctx.noCache ? null : await getCache(url);
   const baseHeaders = opts.headers as Record<string, string> | undefined;
   const headers = cached ? {...baseHeaders, "if-none-match": cached.etag} : baseHeaders;
-  const res = await ctx.doFetch(url, {...opts, headers, signal: AbortSignal.timeout(ctx.fetchTimeout)});
+  const res = await fetchWithRetry(ctx, url, {...opts, headers});
   if (!res) return {res: undefined};
   if (res.status === 304 && cached) return {body: cached.body, res};
   if (!res.ok) return {res};
@@ -171,7 +201,7 @@ export async function fetchImmutable(
     const cached = await getCache(url);
     if (cached) return {body: cached.body};
   }
-  const res = await ctx.doFetch(url, {...opts, signal: AbortSignal.timeout(ctx.fetchTimeout)});
+  const res = await fetchWithRetry(ctx, url, opts);
   if (!res) return {res: undefined};
   if (!res.ok) return {res};
   const body = reduceBody(await readBody(res), reduce);
@@ -509,27 +539,25 @@ export async function fetchForge(url: string, ctx: ModeContext, extraHeaders?: R
   // `gh auth token` probe does not consume the fetch's timeout budget.
   const tokens = await getForgeTokens(hostname, ctx.forgeApiUrl);
 
-  const signal = AbortSignal.timeout(ctx.fetchTimeout);
   const optsFor = (token?: string): RequestInit => {
     const opts = getFetchOpts("Bearer", token);
     if (extraHeaders) opts.headers = {...opts.headers as Record<string, string>, ...extraHeaders};
-    opts.signal = signal;
     return opts;
   };
 
-  if (!tokens.length) return ctx.doFetch(url, optsFor());
+  if (!tokens.length) return fetchWithRetry(ctx, url, optsFor());
 
   const cached = hostname ? workingTokenCache.get(hostname) : undefined;
-  if (cached) return ctx.doFetch(url, optsFor(cached));
+  if (cached) return fetchWithRetry(ctx, url, optsFor(cached));
 
   for (const token of tokens) {
-    const response = await ctx.doFetch(url, optsFor(token));
+    const response = await fetchWithRetry(ctx, url, optsFor(token));
     if (response.status !== 401 && response.status !== 403) {
       if (hostname) workingTokenCache.set(hostname, token);
       return response;
     }
   }
-  return ctx.doFetch(url, optsFor());
+  return fetchWithRetry(ctx, url, optsFor());
 }
 
 // Picks the highest valid semver tag. GitHub does not guarantee a particular
