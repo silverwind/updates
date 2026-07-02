@@ -111,8 +111,7 @@ export function getFetchOpts(authType?: string, authToken?: string): RequestInit
   };
 }
 
-// Errors worth retrying: request timeouts and transient socket/DNS failures.
-// Deterministic failures (bad URL, NXDOMAIN, TLS errors) fail on first attempt.
+// Retryable failures; deterministic ones (bad URL, NXDOMAIN, TLS) are not.
 const transientErrorCodes = new Set([
   "ECONNRESET", "ECONNREFUSED", "ETIMEDOUT", "EAI_AGAIN", "EPIPE",
   "UND_ERR_SOCKET", "UND_ERR_CONNECT_TIMEOUT", "UND_ERR_HEADERS_TIMEOUT", "UND_ERR_BODY_TIMEOUT",
@@ -135,11 +134,9 @@ export async function doFetch(url: string, opts?: RequestInit): Promise<Response
   }
 }
 
-// Retry a fetch on transient network failure (timeout / connection reset). A
-// fresh AbortSignal is created per attempt since an aborted one can't be reused.
-// Deterministic errors and HTTP error statuses (4xx/5xx) are not retried —
-// they throw or resolve on the first attempt for callers to handle.
-export async function fetchRetrying(
+// Retry only transient failures; a fresh AbortSignal is made per attempt since
+// an aborted one can't be reused. Non-ok responses resolve normally, not retried.
+export async function fetchWithRetry(
   ctx: ModeContext, url: string, opts: RequestInit = {},
 ): Promise<Response> {
   for (let attempt = 0; ; attempt++) {
@@ -176,17 +173,16 @@ function reduceBody(body: string, reduce: BodyReducer | undefined): string {
   }
 }
 
-// Fetch with ETag revalidation against the persistent disk cache. The fetch
-// timeout signal is created per attempt inside fetchRetrying, after the cache
-// read, so slow disks do not eat the network budget. Returns {body} on
-// success, or {res} on error.
+// Fetch with ETag revalidation against the persistent disk cache. The timeout
+// signal is created after the cache read, so slow disks do not eat the network
+// budget. Returns {body} on success, or {res} on error.
 export async function fetchWithEtag(
   url: string, ctx: ModeContext, opts: RequestInit = {}, reduce?: BodyReducer,
 ): Promise<{body: string, res?: Response} | {res: Response | undefined}> {
   const cached = ctx.noCache ? null : await getCache(url);
   const baseHeaders = opts.headers as Record<string, string> | undefined;
   const headers = cached ? {...baseHeaders, "if-none-match": cached.etag} : baseHeaders;
-  const res = await fetchRetrying(ctx, url, {...opts, headers});
+  const res = await fetchWithRetry(ctx, url, {...opts, headers});
   if (!res) return {res: undefined};
   if (res.status === 304 && cached) return {body: cached.body, res};
   if (!res.ok) return {res};
@@ -205,7 +201,7 @@ export async function fetchImmutable(
     const cached = await getCache(url);
     if (cached) return {body: cached.body};
   }
-  const res = await fetchRetrying(ctx, url, opts);
+  const res = await fetchWithRetry(ctx, url, opts);
   if (!res) return {res: undefined};
   if (!res.ok) return {res};
   const body = reduceBody(await readBody(res), reduce);
@@ -549,19 +545,19 @@ export async function fetchForge(url: string, ctx: ModeContext, extraHeaders?: R
     return opts;
   };
 
-  if (!tokens.length) return fetchRetrying(ctx, url, optsFor());
+  if (!tokens.length) return fetchWithRetry(ctx, url, optsFor());
 
   const cached = hostname ? workingTokenCache.get(hostname) : undefined;
-  if (cached) return fetchRetrying(ctx, url, optsFor(cached));
+  if (cached) return fetchWithRetry(ctx, url, optsFor(cached));
 
   for (const token of tokens) {
-    const response = await fetchRetrying(ctx, url, optsFor(token));
+    const response = await fetchWithRetry(ctx, url, optsFor(token));
     if (response.status !== 401 && response.status !== 403) {
       if (hostname) workingTokenCache.set(hostname, token);
       return response;
     }
   }
-  return fetchRetrying(ctx, url, optsFor());
+  return fetchWithRetry(ctx, url, optsFor());
 }
 
 // Picks the highest valid semver tag. GitHub does not guarantee a particular
