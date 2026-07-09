@@ -35,5 +35,7 @@ jobs:
         if: ${{matrix.js[0] == 'bun'}}
       - run: make deps lint test
         if: ${{matrix.js[0] == 'node'}}
-      - run: bun install && bunx --bun tsdown && bun test --timeout 180000
+      # no --bun for tsdown: yuku native modules segfault bun on windows,
+      # https://github.com/yuku-toolchain/yuku/issues/84
+      - run: bun install && bunx tsdown && bun test --timeout 180000
         if: ${{matrix.js[0] == 'bun'}}
