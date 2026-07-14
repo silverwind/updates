@@ -3,6 +3,7 @@ import {readFile} from "node:fs/promises";
 import {parseJsonish} from "./json5.ts";
 import {validRange} from "./semver.ts";
 import {walkUp, memoizeAsync} from "./utils.ts";
+import {getCache, setCache} from "./fetchCache.ts";
 import type {Config} from "../config.ts";
 
 const forgeDirs = [".github", ".gitea", ".forgejo", ".gitlab"];
@@ -42,9 +43,11 @@ function parseRenovateDuration(str: string): number | undefined {
 }
 
 type RenovateConfig = {
+  extends?: Array<string>;
   minimumReleaseAge?: string;
   ignoreDeps?: Array<string>;
   packageRules?: Array<RenovatePackageRule>;
+  presets?: Record<string, RenovateConfig>;
   [key: string]: unknown;
 };
 
@@ -73,10 +76,10 @@ async function readFirstExisting(rootDir: string): Promise<{path: string, text: 
     } catch {}
   }
   try {
-    const text = await readFile(join(rootDir, "package.json"), "utf8");
-    const pkg = JSON.parse(text);
+    const pkgPath = join(rootDir, "package.json");
+    const pkg = JSON.parse(await readFile(pkgPath, "utf8"));
     if (pkg && typeof pkg === "object" && pkg.renovate && typeof pkg.renovate === "object") {
-      return {path: "package.json", text: JSON.stringify(pkg.renovate)};
+      return {path: pkgPath, text: JSON.stringify(pkg.renovate)};
     }
   } catch {}
   return undefined;
@@ -143,6 +146,192 @@ function normalize(raw: RenovateConfig, opts: RenovateImportOptions): Partial<Co
   return out;
 }
 
+/** Fetch a preset file as text, or null if missing/unreachable. Injectable for tests. */
+export type PresetFetcher = (url: string) => Promise<string | null>;
+
+// Forge presets resolve against a fixed public endpoint (as Renovate does): the
+// host is never part of the `forge>` string. gitea>/forgejo> point at gitea.com /
+// code.forgejo.org, matching Renovate's default endpoints. A self-hosted instance
+// is reached instead via an `http` preset (a full raw URL). local> needs the
+// running platform and built-in presets (config:, :x, helpers:, …) have no URL;
+// both are skipped.
+const forgeRawUrl: Record<string, (slug: string, ref: string, file: string) => string> = {
+  github: (slug, ref, file) => `https://raw.githubusercontent.com/${slug}/${ref}/${file}`,
+  gitlab: (slug, ref, file) => `https://gitlab.com/${slug}/-/raw/${ref}/${file}`,
+  gitea: (slug, ref, file) => `https://gitea.com/api/v1/repos/${slug}/raw/${file}?ref=${ref}`,
+  forgejo: (slug, ref, file) => `https://code.forgejo.org/api/v1/repos/${slug}/raw/${file}?ref=${ref}`,
+};
+
+const maxPresetDepth = 10;
+
+type PresetLocation =
+  {kind: "forge", forge: string, slug: string, ref: string, name?: string, subpath?: string} |
+  {kind: "http", url: string};
+
+/**
+ * Parse a Renovate preset reference into a fetchable location, or null if it is
+ * a built-in or otherwise unresolvable preset. Handles a full `http(s)://` URL,
+ * `forge>owner/repo`, `:preset` names, `//path` subpaths, `#ref` refs and
+ * `(params)` (params ignored).
+ */
+function parsePreset(preset: string): PresetLocation | null {
+  if (/^https?:\/\//i.test(preset)) return {kind: "http", url: preset}; // custom-FQDN raw preset file
+  const gt = preset.indexOf(">");
+  if (gt === -1) return null; // built-in preset, no URL
+  const forge = preset.slice(0, gt);
+  // Object.hasOwn, not `in`: `in` matches inherited keys like __proto__/constructor.
+  if (!Object.hasOwn(forgeRawUrl, forge)) return null; // local>, unknown forge
+  let rest = preset.slice(gt + 1).replace(/\([^)]*\)\s*$/, ""); // drop params, unsupported
+  let ref = "HEAD";
+  const hash = rest.indexOf("#");
+  if (hash !== -1) { ref = rest.slice(hash + 1) || "HEAD"; rest = rest.slice(0, hash); }
+  let subpath: string | undefined;
+  let name: string | undefined;
+  const dslash = rest.indexOf("//");
+  if (dslash !== -1) {
+    subpath = rest.slice(dslash + 2);
+    rest = rest.slice(0, dslash);
+  } else {
+    const colon = rest.indexOf(":");
+    if (colon !== -1) { name = rest.slice(colon + 1); rest = rest.slice(0, colon); }
+  }
+  const slug = rest.replace(/\/+$/, "");
+  if (!slug.includes("/")) return null;
+  return {kind: "forge", forge, slug, ref, name, subpath};
+}
+
+// Repo config files Renovate probes, in order, to locate a preset's source.
+const presetConfigFiles = ["default.json", "default.json5", "renovate.json", "renovate.json5", ".renovaterc.json", ".renovaterc"];
+
+// Candidate paths for an explicit `//subpath` preset, appending .json/.json5 when extensionless.
+function subpathFiles(subpath: string): Array<string> {
+  return /\.json5?$/.test(subpath) ? [subpath] : [`${subpath}.json`, `${subpath}.json5`];
+}
+
+// A null body (missing/unreachable) or unparseable body is skipped, never fatal.
+function tryParse(body: string | null): RenovateConfig | null {
+  if (body === null) return null;
+  try {
+    const parsed = parseJsonish(body);
+    return parsed && typeof parsed === "object" ? parsed as RenovateConfig : null;
+  } catch {
+    return null;
+  }
+}
+
+async function fetchPresetConfig(loc: PresetLocation, fetchText: PresetFetcher): Promise<RenovateConfig | null> {
+  // An `http` preset is a full URL to a single file; the whole document is the preset.
+  if (loc.kind === "http") return tryParse(await fetchText(loc.url));
+
+  const build = forgeRawUrl[loc.forge];
+  const fetchParsed = async (file: string) => tryParse(await fetchText(build(loc.slug, loc.ref, file)));
+
+  // An explicit `//path` points straight at a file.
+  if (loc.subpath) {
+    for (const file of subpathFiles(loc.subpath)) {
+      const parsed = await fetchParsed(file);
+      if (parsed) return parsed;
+    }
+    return null;
+  }
+  // Otherwise Renovate reads the repo's first existing config file, then selects
+  // the preset out of it: `presets[name]`, or the whole config for the default preset.
+  const name = loc.name ?? "default";
+  for (const file of presetConfigFiles) {
+    const parsed = await fetchParsed(file);
+    if (!parsed) continue;
+    const sub = parsed.presets?.[name];
+    if (sub && typeof sub === "object") return sub;
+    return loc.name ? null : parsed; // named-but-missing → skip; default → whole config
+  }
+  return null;
+}
+
+// Concatenate arrays (packageRules, ignoreDeps), let scalars from `over` win.
+function mergeRenovate(base: RenovateConfig, over: RenovateConfig): RenovateConfig {
+  const out: RenovateConfig = {...base};
+  for (const [key, value] of Object.entries(over)) {
+    const prev = out[key];
+    out[key] = Array.isArray(value) && Array.isArray(prev) ? [...prev, ...value] : value;
+  }
+  return out;
+}
+
+/**
+ * Recursively resolve `extends` presets and merge them ahead of the config's own
+ * fields (which take precedence), mirroring Renovate. Fetch failures are skipped
+ * so an unreachable preset never blocks a build. `seen` is the current resolution
+ * path (cloned per branch) so cycles are caught while diamonds still resolve on
+ * each path, matching Renovate's path-scoped recursion.
+ */
+async function resolveExtends(
+  cfg: RenovateConfig, fetchText: PresetFetcher, seen: Set<string>, depth: number,
+): Promise<RenovateConfig> {
+  let merged: RenovateConfig = {};
+  const presets = Array.isArray(cfg.extends) ? cfg.extends : [];
+  for (const preset of presets) {
+    if (typeof preset !== "string" || depth >= maxPresetDepth || seen.has(preset)) continue;
+    const loc = parsePreset(preset);
+    if (!loc) continue;
+    const raw = await fetchPresetConfig(loc, fetchText);
+    if (raw) merged = mergeRenovate(merged, await resolveExtends(raw, fetchText, new Set(seen).add(preset), depth + 1));
+  }
+  const {extends: _extends, ...own} = cfg;
+  return mergeRenovate(merged, own);
+}
+
+/** Options controlling the production preset fetcher, mirroring the CLI's cache/timeout flags. */
+export type PresetFetchOptions = {noCache?: boolean, timeout?: number};
+
+// Fallback only for direct API callers; the CLI always passes the resolved
+// config.timeout (default 5000). Kept bounded so a hanging preset host can never
+// stall startup the way a fixed 30s per candidate file did.
+const defaultPresetTimeout = 10000;
+
+// Build request headers (shared user-agent/encoding via getFetchOpts) plus a host
+// token for private presets, matching Renovate's hostRules model. Reuses updates'
+// token resolution (UPDATES_FORGE_TOKENS per host, plus GitHub env/`gh` tokens),
+// imported lazily so config loads without presets pull in nothing.
+async function presetHeaders(url: string, etag?: string): Promise<Record<string, string>> {
+  let hostname = "";
+  try { hostname = new URL(url).hostname; } catch {}
+  const {getForgeTokens, getFetchOpts} = await import("../modes/shared.ts");
+  const [token] = hostname ? await getForgeTokens(hostname, "https://api.github.com") : [];
+  const headers = {...getFetchOpts("Bearer", token).headers} as Record<string, string>;
+  if (etag) headers["if-none-match"] = etag;
+  return headers;
+}
+
+/**
+ * Build the production preset fetcher: ETag-revalidated, honoring `noCache` and
+ * `timeout`, sending a host token when one is configured. Any network or body-read
+ * failure falls back to the cached copy (or null), so a preset fetch never throws
+ * into config loading.
+ */
+export function makePresetFetcher({noCache = false, timeout = defaultPresetTimeout}: PresetFetchOptions = {}): PresetFetcher {
+  return async (url) => {
+    const cached = noCache ? null : await getCache(url);
+    const headers = await presetHeaders(url, cached?.etag);
+    let res: Response;
+    try {
+      res = await fetch(url, {headers, signal: AbortSignal.timeout(timeout)});
+    } catch {
+      return cached?.body ?? null; // offline / connect failure
+    }
+    if (res.status === 304 && cached) return cached.body;
+    if (!res.ok) return cached?.body ?? null; // server error / rate-limit: prefer cache over dropping
+    let body: string;
+    try {
+      body = await res.text();
+    } catch {
+      return cached?.body ?? null; // mid-stream abort/reset
+    }
+    const etag = res.headers.get("etag");
+    if (etag && !noCache) setCache(url, etag, body);
+    return body;
+  };
+}
+
 type RenovateRaw = {parsed: RenovateConfig, path: string};
 
 const findRenovateUp = memoizeAsync((startDir: string) => walkUp(startDir, async (dir): Promise<RenovateRaw | null> => {
@@ -158,8 +347,20 @@ const findRenovateUp = memoizeAsync((startDir: string) => walkUp(startDir, async
   return {parsed: raw as RenovateConfig, path: found.path};
 }));
 
-export async function loadRenovateConfig(rootDir: string, opts: RenovateImportOptions = {}): Promise<Partial<Config>> {
+// Resolving `extends` is network I/O, so memoize per config-file path: a monorepo
+// whose packages share one renovate config resolves its presets once per process,
+// mirroring findRenovateUp. `opts` (cooldown) is applied per call after the cache.
+const resolvedExtendsCache = new Map<string, Promise<RenovateConfig>>();
+
+export async function loadRenovateConfig(
+  rootDir: string, opts: RenovateImportOptions = {}, fetchText: PresetFetcher = makePresetFetcher(),
+): Promise<Partial<Config>> {
   const found = await findRenovateUp(rootDir);
   if (!found) return {};
-  return normalize(found.parsed, opts);
+  let resolved = resolvedExtendsCache.get(found.path);
+  if (!resolved) {
+    resolved = resolveExtends(found.parsed, fetchText, new Set(), 0);
+    resolvedExtendsCache.set(found.path, resolved);
+  }
+  return normalize(await resolved, opts);
 }

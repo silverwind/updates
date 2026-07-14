@@ -4,6 +4,7 @@ import {access} from "node:fs/promises";
 import type {ParseArgsOptionsConfig} from "node:util";
 import {validRange} from "./utils/semver.ts";
 import {commaSeparatedToArray, esc, walkUp, memoizeAsync} from "./utils/utils.ts";
+import type {PresetFetchOptions} from "./utils/renovate.ts";
 
 export type Config = {
   /** Array of dependencies to include */
@@ -223,10 +224,11 @@ async function tryLoadInDir(dir: string): Promise<FoundConfig | null> {
 
 const findConfigUp = memoizeAsync((startDir: string) => walkUp(startDir, tryLoadInDir));
 
-export async function loadConfig(startDir: string): Promise<Config> {
+export async function loadConfig(startDir: string, presetFetch: PresetFetchOptions = {}): Promise<Config> {
   const found = await findConfigUp(startDir);
   const raw: Config = found?.default ?? {};
-  const {loadRenovateConfig} = await import("./utils/renovate.ts");
-  const renovateConfig = await loadRenovateConfig(found?.configDir ?? startDir, raw.inherit?.renovate);
+  const {loadRenovateConfig, makePresetFetcher} = await import("./utils/renovate.ts");
+  const fetchText = makePresetFetcher(presetFetch);
+  const renovateConfig = await loadRenovateConfig(found?.configDir ?? startDir, raw.inherit?.renovate, fetchText);
   return {...renovateConfig, ...raw};
 }
