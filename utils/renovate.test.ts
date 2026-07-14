@@ -1,4 +1,4 @@
-import {test, expect, afterAll, vi} from "vitest";
+import {test, expect, afterAll} from "vitest";
 import {mkdtempSync, rmSync, mkdirSync, writeFileSync, copyFileSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
@@ -192,13 +192,43 @@ test("named preset missing from the config is skipped (does not fall back to who
 test("built-in and unresolvable presets are skipped without fetching", async () => {
   const dir = makeDir();
   writeFileSync(join(dir, "renovate.json"), JSON.stringify({
-    extends: ["config:recommended", "local>org/a", "gitea>org/b", "forgejo>org/c"],
+    extends: ["config:recommended", ":pinVersions", "local>org/a", "bitbucket>org/b"],
     ignoreDeps: ["own"],
   }));
   let called = false;
   const fetchText = fetcher(() => { called = true; return null; });
   expect(await loadRenovateConfig(dir, {}, fetchText)).toEqual({exclude: ["own"]});
   expect(called).toBe(false);
+});
+
+test("gitea and forgejo presets resolve against their default endpoints", async () => {
+  const dir = makeDir();
+  writeFileSync(join(dir, "renovate.json"), JSON.stringify({
+    extends: ["gitea>org/a", "forgejo>org/b"],
+  }));
+  const urls: Array<string> = [];
+  const fetchText = fetcher((url) => {
+    urls.push(url);
+    if (url === "https://gitea.com/api/v1/repos/org/a/raw/default.json?ref=HEAD") return JSON.stringify({ignoreDeps: ["gt"]});
+    if (url === "https://code.forgejo.org/api/v1/repos/org/b/raw/default.json?ref=HEAD") return JSON.stringify({ignoreDeps: ["fj"]});
+    return null;
+  });
+  expect(await loadRenovateConfig(dir, {}, fetchText)).toEqual({exclude: ["gt", "fj"]});
+});
+
+test("http preset is fetched directly as a single file", async () => {
+  const dir = makeDir();
+  writeFileSync(join(dir, "renovate.json"), JSON.stringify({
+    extends: ["https://git.example.com/org/repo/raw/branch/main/renovate.json"],
+    ignoreDeps: ["own"],
+  }));
+  const urls: Array<string> = [];
+  const fetchText = fetcher((url) => {
+    urls.push(url);
+    return JSON.stringify({ignoreDeps: ["remote"]});
+  });
+  expect(await loadRenovateConfig(dir, {}, fetchText)).toEqual({exclude: ["remote", "own"]});
+  expect(urls).toEqual(["https://git.example.com/org/repo/raw/branch/main/renovate.json"]);
 });
 
 test("unreachable preset is skipped, local config still applies", async () => {
@@ -246,22 +276,32 @@ test("diamond extends resolves the shared preset on each path", async () => {
   expect(await loadRenovateConfig(dir, {}, fetchText)).toEqual({exclude: ["c", "a", "c", "b"]});
 });
 
+// Swap globalThis.fetch directly (not vi.stubGlobal, which bun's test runner lacks).
+async function withFetch(impl: typeof fetch, fn: () => Promise<void>): Promise<void> {
+  const original = globalThis.fetch;
+  globalThis.fetch = impl;
+  try {
+    await fn();
+  } finally {
+    globalThis.fetch = original;
+  }
+}
+
 test("makePresetFetcher returns null (not throw) when the body read fails", async () => {
   const fetchText = makePresetFetcher({noCache: true});
-  vi.stubGlobal("fetch", () => Promise.resolve({
+  const impl = (() => Promise.resolve({
     ok: true, status: 200, headers: new Headers(), text: () => Promise.reject(new Error("reset")),
-  }));
-  expect(await fetchText("https://example.com/x")).toBe(null);
-  vi.unstubAllGlobals();
+  })) as unknown as typeof fetch;
+  await withFetch(impl, async () => {
+    expect(await fetchText("https://example.com/x")).toBe(null);
+  });
 });
 
 test("makePresetFetcher returns null on a non-ok response with no cache", async () => {
   const fetchText = makePresetFetcher({noCache: true});
-  vi.stubGlobal("fetch", () => Promise.resolve({
-    ok: false, status: 503, headers: new Headers(), text: () => Promise.resolve(""),
-  }));
-  expect(await fetchText("https://example.com/y")).toBe(null);
-  vi.unstubAllGlobals();
+  await withFetch(() => Promise.resolve(new Response(null, {status: 503})), async () => {
+    expect(await fetchText("https://example.com/y")).toBe(null);
+  });
 });
 
 test.each([".github", ".gitea", ".forgejo", ".gitlab"])("forge dir config in %s", async (forge) => {

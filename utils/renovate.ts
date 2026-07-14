@@ -149,30 +149,38 @@ function normalize(raw: RenovateConfig, opts: RenovateImportOptions): Partial<Co
 /** Fetch a preset file as text, or null if missing/unreachable. Injectable for tests. */
 export type PresetFetcher = (url: string) => Promise<string | null>;
 
-// Only git-forge presets with a known public host are resolvable. gitea>/forgejo>
-// need a self-hosted endpoint and local> needs the running platform, neither of
-// which exists here; built-in presets (config:, :x, helpers:, group:, …) are
-// bundled inside Renovate itself and have no URL. All of those are skipped.
+// Forge presets resolve against a fixed public endpoint (as Renovate does): the
+// host is never part of the `forge>` string. gitea>/forgejo> point at gitea.com /
+// code.forgejo.org, matching Renovate's default endpoints. A self-hosted instance
+// is reached instead via an `http` preset (a full raw URL). local> needs the
+// running platform and built-in presets (config:, :x, helpers:, …) have no URL;
+// both are skipped.
 const forgeRawUrl: Record<string, (slug: string, ref: string, file: string) => string> = {
   github: (slug, ref, file) => `https://raw.githubusercontent.com/${slug}/${ref}/${file}`,
   gitlab: (slug, ref, file) => `https://gitlab.com/${slug}/-/raw/${ref}/${file}`,
+  gitea: (slug, ref, file) => `https://gitea.com/api/v1/repos/${slug}/raw/${file}?ref=${ref}`,
+  forgejo: (slug, ref, file) => `https://code.forgejo.org/api/v1/repos/${slug}/raw/${file}?ref=${ref}`,
 };
 
 const maxPresetDepth = 10;
 
-type PresetLocation = {forge: string, slug: string, ref: string, name?: string, subpath?: string};
+type PresetLocation =
+  {kind: "forge", forge: string, slug: string, ref: string, name?: string, subpath?: string} |
+  {kind: "http", url: string};
 
 /**
  * Parse a Renovate preset reference into a fetchable location, or null if it is
- * a built-in or otherwise unresolvable preset. Handles `forge>owner/repo`,
- * `:preset` names, `//path` subpaths, `#ref` refs and `(params)` (params ignored).
+ * a built-in or otherwise unresolvable preset. Handles a full `http(s)://` URL,
+ * `forge>owner/repo`, `:preset` names, `//path` subpaths, `#ref` refs and
+ * `(params)` (params ignored).
  */
 function parsePreset(preset: string): PresetLocation | null {
+  if (/^https?:\/\//i.test(preset)) return {kind: "http", url: preset}; // custom-FQDN raw preset file
   const gt = preset.indexOf(">");
   if (gt === -1) return null; // built-in preset, no URL
   const forge = preset.slice(0, gt);
   // Object.hasOwn, not `in`: `in` matches inherited keys like __proto__/constructor.
-  if (!Object.hasOwn(forgeRawUrl, forge)) return null; // local>, gitea>, forgejo>, unknown host
+  if (!Object.hasOwn(forgeRawUrl, forge)) return null; // local>, unknown forge
   let rest = preset.slice(gt + 1).replace(/\([^)]*\)\s*$/, ""); // drop params, unsupported
   let ref = "HEAD";
   const hash = rest.indexOf("#");
@@ -189,7 +197,7 @@ function parsePreset(preset: string): PresetLocation | null {
   }
   const slug = rest.replace(/\/+$/, "");
   if (!slug.includes("/")) return null;
-  return {forge, slug, ref, name, subpath};
+  return {kind: "forge", forge, slug, ref, name, subpath};
 }
 
 // Repo config files Renovate probes, in order, to locate a preset's source.
@@ -212,6 +220,9 @@ function tryParse(body: string | null): RenovateConfig | null {
 }
 
 async function fetchPresetConfig(loc: PresetLocation, fetchText: PresetFetcher): Promise<RenovateConfig | null> {
+  // An `http` preset is a full URL to a single file; the whole document is the preset.
+  if (loc.kind === "http") return tryParse(await fetchText(loc.url));
+
   const build = forgeRawUrl[loc.forge];
   const fetchParsed = async (file: string) => tryParse(await fetchText(build(loc.slug, loc.ref, file)));
 
@@ -277,15 +288,29 @@ export type PresetFetchOptions = {noCache?: boolean, timeout?: number};
 // stall startup the way a fixed 30s per candidate file did.
 const defaultPresetTimeout = 10000;
 
+// Host-based auth for private presets, matching Renovate's hostRules model. Reuses
+// updates' token resolution (UPDATES_FORGE_TOKENS per host, plus GitHub env/`gh`
+// tokens). Imported lazily so config loads without presets pull in nothing.
+async function presetAuthToken(url: string): Promise<string | undefined> {
+  let hostname: string;
+  try { hostname = new URL(url).hostname; } catch { return undefined; }
+  const {getForgeTokens} = await import("../modes/shared.ts");
+  const [token] = await getForgeTokens(hostname, "https://api.github.com");
+  return token;
+}
+
 /**
  * Build the production preset fetcher: ETag-revalidated, honoring `noCache` and
- * `timeout`. Any network or body-read failure falls back to the cached copy (or
- * null), so a preset fetch never throws into config loading.
+ * `timeout`, sending a host token when one is configured. Any network or body-read
+ * failure falls back to the cached copy (or null), so a preset fetch never throws
+ * into config loading.
  */
 export function makePresetFetcher({noCache = false, timeout = defaultPresetTimeout}: PresetFetchOptions = {}): PresetFetcher {
   return async (url) => {
     const cached = noCache ? null : await getCache(url);
     const headers: Record<string, string> = {"user-agent": "updates"};
+    const token = await presetAuthToken(url);
+    if (token) headers.authorization = `Bearer ${token}`;
     if (cached) headers["if-none-match"] = cached.etag;
     let res: Response;
     try {
