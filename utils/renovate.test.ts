@@ -206,9 +206,8 @@ test("gitea and forgejo presets resolve against their default endpoints", async 
   writeFileSync(join(dir, "renovate.json"), JSON.stringify({
     extends: ["gitea>org/a", "forgejo>org/b"],
   }));
-  const urls: Array<string> = [];
+  // Only the exact default-endpoint URLs return content, so a pass proves the URLs.
   const fetchText = fetcher((url) => {
-    urls.push(url);
     if (url === "https://gitea.com/api/v1/repos/org/a/raw/default.json?ref=HEAD") return JSON.stringify({ignoreDeps: ["gt"]});
     if (url === "https://code.forgejo.org/api/v1/repos/org/b/raw/default.json?ref=HEAD") return JSON.stringify({ignoreDeps: ["fj"]});
     return null;
