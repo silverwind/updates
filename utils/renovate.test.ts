@@ -99,6 +99,21 @@ test("renovate.json5 with comments and trailing commas", async () => {
   expect(await loadRenovateConfig(dir)).toEqual({pin: {react: "^18.0.0"}});
 });
 
+test("renovate.json5 with unquoted keys and single-quoted strings", async () => {
+  const dir = makeDir();
+  writeFileSync(join(dir, "renovate.json5"), `{
+    extends: ['github>sxzz/renovate-config'],
+    automerge: true,
+    packageRules: [
+      {
+        matchPackageNames: ['react'],
+        allowedVersions: '^18.0.0',
+      },
+    ],
+  }`);
+  expect(await loadRenovateConfig(dir)).toEqual({pin: {react: "^18.0.0"}});
+});
+
 test.each([".github", ".gitea", ".forgejo", ".gitlab"])("forge dir config in %s", async (forge) => {
   const dir = makeDir();
   mkdirSync(join(dir, forge));
