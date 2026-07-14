@@ -437,7 +437,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
   const modeConfigs: Record<string, ModeCtx> = {};
 
   async function resolveModeFilters(projectDir: string) {
-    const modeConfig = await loadConfig(projectDir);
+    const modeConfig = await loadConfig(projectDir, {noCache: config.noCache, timeout: config.timeout || fetchTimeout});
     const modeInclude = modeConfig.include?.length ? patternsToRegexSet([...(config.include ?? []), ...modeConfig.include]) : include;
     const modeExclude = modeConfig.exclude?.length ? patternsToRegexSet([...(config.exclude ?? []), ...modeConfig.exclude]) : exclude;
     const pin: Record<string, string> = {...modeConfig.pin, ...globalPin};
@@ -474,7 +474,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
   }
 
   async function resolveFileConfig(fileDir: string): Promise<FileFilters> {
-    const cfg = await loadConfig(fileDir);
+    const cfg = await loadConfig(fileDir, {noCache: config.noCache, timeout: config.timeout || fetchTimeout});
     const inc = cfg.include?.length ? patternsToRegexSet([...(config.include ?? []), ...cfg.include]) : include;
     const exc = cfg.exclude?.length ? patternsToRegexSet([...(config.exclude ?? []), ...cfg.exclude]) : exclude;
     return {include: inc, exclude: exc, pin: cfg.pin ?? {}, cooldownDays: cooldownDaysFor(cfg.cooldown)};

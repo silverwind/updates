@@ -173,7 +173,12 @@ async function main(): Promise<void> {
     await end();
   }
 
-  const fileConfig = await loadConfig(startDir);
+  // args are parsed here but config.noCache/timeout are set below, so derive the
+  // preset-fetch options straight from args for this initial load.
+  const fileConfig = await loadConfig(startDir, {
+    noCache: Boolean(args["no-cache"]),
+    timeout: (typeof args.timeout === "string" && Number(args.timeout)) || fetchTimeout,
+  });
   const useColor = resolveColor(fileConfig);
   if (useColor) {
     red = (text: string | number) => styleText("red", String(text));
