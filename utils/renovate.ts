@@ -236,10 +236,10 @@ async function fetchPresetConfig(loc: PresetLocation, fetchText: PresetFetcher):
   }
   // Otherwise Renovate reads the repo's first existing config file, then selects
   // the preset out of it: `presets[name]`, or the whole config for the default preset.
+  const name = loc.name ?? "default";
   for (const file of presetConfigFiles) {
     const parsed = await fetchParsed(file);
     if (!parsed) continue;
-    const name = loc.name ?? "default";
     const sub = parsed.presets?.[name];
     if (sub && typeof sub === "object") return sub;
     return loc.name ? null : parsed; // named-but-missing → skip; default → whole config
@@ -288,15 +288,18 @@ export type PresetFetchOptions = {noCache?: boolean, timeout?: number};
 // stall startup the way a fixed 30s per candidate file did.
 const defaultPresetTimeout = 10000;
 
-// Host-based auth for private presets, matching Renovate's hostRules model. Reuses
-// updates' token resolution (UPDATES_FORGE_TOKENS per host, plus GitHub env/`gh`
-// tokens). Imported lazily so config loads without presets pull in nothing.
-async function presetAuthToken(url: string): Promise<string | undefined> {
-  let hostname: string;
-  try { hostname = new URL(url).hostname; } catch { return undefined; }
-  const {getForgeTokens} = await import("../modes/shared.ts");
-  const [token] = await getForgeTokens(hostname, "https://api.github.com");
-  return token;
+// Build request headers (shared user-agent/encoding via getFetchOpts) plus a host
+// token for private presets, matching Renovate's hostRules model. Reuses updates'
+// token resolution (UPDATES_FORGE_TOKENS per host, plus GitHub env/`gh` tokens),
+// imported lazily so config loads without presets pull in nothing.
+async function presetHeaders(url: string, etag?: string): Promise<Record<string, string>> {
+  let hostname = "";
+  try { hostname = new URL(url).hostname; } catch {}
+  const {getForgeTokens, getFetchOpts} = await import("../modes/shared.ts");
+  const [token] = hostname ? await getForgeTokens(hostname, "https://api.github.com") : [];
+  const headers = {...getFetchOpts("Bearer", token).headers} as Record<string, string>;
+  if (etag) headers["if-none-match"] = etag;
+  return headers;
 }
 
 /**
@@ -308,10 +311,7 @@ async function presetAuthToken(url: string): Promise<string | undefined> {
 export function makePresetFetcher({noCache = false, timeout = defaultPresetTimeout}: PresetFetchOptions = {}): PresetFetcher {
   return async (url) => {
     const cached = noCache ? null : await getCache(url);
-    const headers: Record<string, string> = {"user-agent": "updates"};
-    const token = await presetAuthToken(url);
-    if (token) headers.authorization = `Bearer ${token}`;
-    if (cached) headers["if-none-match"] = cached.etag;
+    const headers = await presetHeaders(url, cached?.etag);
     let res: Response;
     try {
       res = await fetch(url, {headers, signal: AbortSignal.timeout(timeout)});
