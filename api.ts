@@ -6,7 +6,7 @@ import {readFile} from "node:fs/promises";
 import {parseToml} from "./utils/toml.ts";
 import {valid, validRange} from "./utils/semver.ts";
 import {timerel} from "timerel";
-import {npmTypes, uvTypes, goTypes, cargoTypes, parseUvDependencies, nonPackageEngines, parseDuration, matchesAny, getProperty, timestamp, pMap, tryOrNull} from "./utils/utils.ts";
+import {npmTypes, uvTypes, goTypes, cargoTypes, parseUvDependencies, nonPackageEngines, parseDuration, parsePositiveInt, matchesAny, getProperty, timestamp, pMap, tryOrNull} from "./utils/utils.ts";
 import {
   type Dep, type Deps, type DepsByMode, type Output, type ModeContext,
   type PackageRepository, type PackageInfo,
@@ -264,6 +264,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
   }
 
   const config: Config = {...opts};
+  if (typeof config.timeout === "number") config.timeout = parsePositiveInt(config.timeout, "timeout");
 
   const maxSockets = 25;
   const concurrency = config.sockets ?? maxSockets;
@@ -284,7 +285,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
 
   const ctx: ModeContext = {
     fetchTimeout: userTimeout || fetchTimeout,
-    goProbeTimeout: userTimeout ? userTimeout / 2 : goProbeTimeout,
+    goProbeTimeout: userTimeout ? Math.max(1, Math.floor(userTimeout / 2)) : goProbeTimeout,
     forgeApiUrl,
     pypiApiUrl,
     jsrApiUrl,

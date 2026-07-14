@@ -144,6 +144,12 @@ export function parseDuration(str: string): number {
   return Number(str);
 }
 
+export function parsePositiveInt(value: string | number, label: string): number {
+  const rounded = Math.round(Number(value));
+  if (!Number.isFinite(rounded) || rounded < 1) throw new Error(`Invalid ${label}: ${value}`);
+  return rounded;
+}
+
 export async function pMap<T, R>(iterable: Iterable<T>, mapper: (item: T) => Promise<R>, {concurrency = Infinity}: {concurrency?: number} = {}): Promise<Array<R>> {
   const items = Array.from(iterable);
   if (!Number.isFinite(concurrency)) return Promise.all(items.map(mapper));

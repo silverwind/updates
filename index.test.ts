@@ -1185,6 +1185,20 @@ test("go", async ({expect = globalExpect}: any = {}) => {
   `);
 });
 
+test("fractional timeout does not throw a non-integer AbortSignal delay", async ({expect = globalExpect}: any = {}) => {
+  const {results} = await updates({files: [goFile], goproxy: goProxyUrl, timeout: 9999.4, color: false, noCache: true});
+  expect(results?.go?.deps).toBeTruthy();
+});
+
+test("negative timeout is rejected", async ({expect = globalExpect}: any = {}) => {
+  await expect(updates({files: [goFile], goproxy: goProxyUrl, timeout: -1, color: false, noCache: true}))
+    .rejects.toThrow(/invalid timeout/i);
+});
+
+test("invalid -T exits with an error", async ({expect = globalExpect}: any = {}) => {
+  await expect(execFileAsync(execPath, [script, "-T", "-5", ...apiArgs(), "-f", testFile])).rejects.toThrow();
+});
+
 test("cargo", async ({expect = globalExpect}: any = {}) => {
   expect(await makeTest(`-j -f ${cargoFile}`)()).toMatchInlineSnapshot(`
     {

@@ -6,7 +6,7 @@ import {statSync} from "node:fs";
 import {updates} from "./api.ts";
 import {options, parseMixedArg, getOptionKey, parseArgList, parsePinArg, loadConfig} from "./config.ts";
 import {packageVersion, fetchTimeout} from "./modes/shared.ts";
-import {highlightDiff, textTable} from "./utils/utils.ts";
+import {highlightDiff, parsePositiveInt, textTable} from "./utils/utils.ts";
 import {shortenGoModule} from "./modes/go.ts";
 import {prewarmOrigins} from "./utils/prewarm.ts";
 import type {Arg} from "./config.ts";
@@ -173,11 +173,13 @@ async function main(): Promise<void> {
     await end();
   }
 
+  const cliTimeout = typeof args.timeout === "string" ? parsePositiveInt(args.timeout, "timeout") : undefined;
+
   // args are parsed here but config.noCache/timeout are set below, so derive the
   // preset-fetch options straight from args for this initial load.
   const fileConfig = await loadConfig(startDir, {
     noCache: Boolean(args["no-cache"]),
-    timeout: (typeof args.timeout === "string" && Number(args.timeout)) || fetchTimeout,
+    timeout: cliTimeout ?? fetchTimeout,
   });
   const useColor = resolveColor(fileConfig);
   if (useColor) {
@@ -195,7 +197,7 @@ async function main(): Promise<void> {
   if (args.indirect) config.indirect = true;
   if (args["error-on-outdated"]) config.errorOnOutdated = true;
   if (args["error-on-unchanged"]) config.errorOnUnchanged = true;
-  if (typeof args.timeout === "string") config.timeout = Number(args.timeout) || undefined;
+  if (cliTimeout !== undefined) config.timeout = cliTimeout;
   if (typeof args.sockets === "string") config.sockets = Number(args.sockets) || undefined;
   if (typeof args.registry === "string") config.registry = args.registry;
   if (typeof args.cooldown === "string") config.cooldown = Number(args.cooldown) || args.cooldown;
