@@ -12,11 +12,24 @@ import type {Server} from "node:http";
 import {satisfies} from "./utils/semver.ts";
 import {npmTypes} from "./utils/utils.ts";
 import {updates} from "./api.ts";
+import {parseCliArgs, resolveConfig} from "./cli.ts";
 import {forgeDirs} from "./modes/actions.ts";
 import {resolutionsBasePackage} from "./modes/npm.ts";
 import type {UpdatesOptions} from "./api.ts";
 
 const execFileAsync = promisify(execFile);
+
+// Fail loudly if any in-process fetch escapes the loopback mock servers.
+const realFetch = globalThis.fetch;
+globalThis.fetch = ((input: any, init?: any) => {
+  const url = input?.url ?? input; // string, URL, or Request — all accepted by new URL()
+  let host = "";
+  try { host = new URL(url).hostname; } catch {}
+  if (host !== "127.0.0.1" && host !== "localhost") {
+    throw new Error(`test attempted a non-mocked network request to ${url}`);
+  }
+  return realFetch(input, init);
+}) as typeof fetch;
 
 const globalExpect = expect;
 const gzipPromise = (data: string | Buffer) => promisify(gzip)(data, {level: constants.Z_BEST_SPEED});
@@ -184,8 +197,21 @@ beforeAll(async () => {
     Promise.all(jsrFilesPromises),
   ]);
 
+  // Parse each npm fixture once, reused for the packument and per-version routes.
+  const npmParsed = new Map<string, any>();
+  for (const file of npmFiles) {
+    try { npmParsed.set(file.urlName, JSON.parse(file.data)); } catch {}
+  }
+  // Blank per-version bodies: the client re-reduces the packument, so serving the
+  // full ~54MB is downloaded and parsed for nothing.
+  const stripNpmDoc = (doc: any) => ({...doc, versions: Object.fromEntries(Object.keys(doc.versions ?? {}).map(v => [v, {}]))});
+
   const gzipAll = await Promise.all([
-    ...npmFiles.filter(Boolean).map(async (file) => ({type: "npm" as const, key: `/${file.urlName}`, gz: await gzipPromise(file.data)})),
+    ...npmFiles.map(async (file) => {
+      const parsed = npmParsed.get(file.urlName);
+      const body = parsed ? JSON.stringify(stripNpmDoc(parsed)) : file.data;
+      return {type: "npm" as const, key: `/${file.urlName}`, gz: await gzipPromise(body)};
+    }),
     ...pypiFiles.map(async ({pkgName, data}) => ({type: "pypi" as const, key: `/pypi/${pkgName}/json`, gz: await gzipPromise(data)})),
     ...jsrFiles.map(async ({scope, name, data}) => ({type: "jsr" as const, key: `/@${scope}/${name}/meta.json`, gz: await gzipPromise(data)})),
     (async () => ({type: "github" as const, key: "/repos/silverwind/updates/commits", gz: await gzipPromise(commits)}))(),
@@ -197,22 +223,24 @@ beforeAll(async () => {
     server.get(key, (_, res) => res.send(gz));
   }
 
-  // Register npm version-specific routes for abbreviated metadata follow-up fetches
-  const npmVersionGzips = await Promise.all(npmFiles.filter(Boolean).flatMap((file) => {
-    let data: any;
-    try { data = JSON.parse(file.data); } catch { return []; }
-    return Object.entries(data.versions || {}).map(async ([version, versionData]: [string, any]) => {
-      const vData = {...versionData, _npmOperationalInternal: {tmp: `tmp/${file.urlName}_${version}_${Date.parse(data.time?.[version] || "2024-01-01") || 0}_0`}};
-      return {key: `/${file.urlName}/${version}`, gz: await gzipPromise(JSON.stringify(vData))};
-    });
-  }));
-  for (const {key, gz} of npmVersionGzips) {
-    npmServer.get(key, (_, res) => res.send(gz));
+  // Per-version follow-up routes; gzip lazily since tests hit only a few of ~6000.
+  for (const [urlName, data] of npmParsed) {
+    const versions = data.versions || {};
+    const time = data.time || {};
+    for (const version of Object.keys(versions)) {
+      let gz: Buffer | undefined;
+      npmServer.get(`/${urlName}/${version}`, async (_, res) => {
+        if (!gz) {
+          const vData = {...versions[version], _npmOperationalInternal: {tmp: `tmp/${urlName}_${version}_${Date.parse(time[version] || "2024-01-01") || 0}_0`}};
+          gz = await gzipPromise(JSON.stringify(vData));
+        }
+        res.send(gz);
+      });
+    }
   }
 
   // Override noty/3.1.4 to omit _npmOperationalInternal so the fallback to full packument is tested
-  const notyFixture = JSON.parse(npmFiles.find(f => f.urlName === "noty")!.data);
-  const notyVersionGz = await gzipPromise(JSON.stringify(notyFixture.versions["3.1.4"]));
+  const notyVersionGz = await gzipPromise(JSON.stringify(npmParsed.get("noty").versions["3.1.4"]));
   npmServer.get("/noty/3.1.4", (_, res) => res.send(notyVersionGz));
 
   // Go proxy fixtures
@@ -310,6 +338,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  globalThis.fetch = realFetch;
   await Promise.all([
     rm(testDir, {recursive: true}),
     npmServer?.close(),
@@ -322,26 +351,30 @@ afterAll(async () => {
   ]);
 });
 
+// Run the CLI in-process. Takes [script, ...args] like execFileAsync and returns
+// the JSON stdout the binary would print. noCache avoids per-test disk-cache churn.
+async function runCliExec(argvWithScript: Array<string>): Promise<{stdout: string, stderr: string}> {
+  const {args, positionals} = parseCliArgs(argvWithScript.slice(1));
+  const config = await resolveConfig(args, positionals);
+  config.noCache = true;
+  const output = await updates(config);
+  const stdout = output.message ?
+    JSON.stringify({message: output.message}) :
+    JSON.stringify({results: output.results});
+  return {stdout, stderr: ""};
+}
+
 function makeTest(args: string) {
   return async () => {
-    const argsArr = [
-      ...args.split(/\s+/), "-c",
-      "--forgeapi", githubUrl,
-      "--pypiapi", pypiUrl,
-      "--jsrapi", jsrUrl,
-      "--goproxy", goProxyUrl,
-      "--cargoapi", cargoUrl,
-    ];
-
-    let stdout: string;
-    let results: Record<string, any>;
-    try {
-      ({stdout} = await execFileAsync(execPath, [script, ...argsArr], {cwd: testDir}));
-      ({results} = JSON.parse(stdout));
-    } catch (err) {
-      console.error(err);
-      throw err;
-    }
+    const argv = args.split(/\s+/).filter(Boolean);
+    const hasFile = argv.includes("-f") || argv.includes("--file");
+    const {stdout} = await runCliExec([
+      script, ...argv, "-c", // -c absorbs a dangling optional-value flag (-g/-p/-R/-P)
+      ...apiArgs(),
+      ...(hasFile ? [] : ["-f", join(testDir, "package.json")]),
+    ]);
+    // undefined when the CLI printed {message} (nothing to update), else results
+    const {results} = JSON.parse(stdout);
 
     // Parse results, with custom validation for the dynamic "age" property
     for (const mode of Object.keys(results || {})) {
@@ -380,7 +413,7 @@ test("simple", async ({expect = globalExpect}: any = {}) => {
 });
 
 test("version info fallback", async ({expect = globalExpect}: any = {}) => {
-  const {stdout, stderr} = await execFileAsync(process.execPath, [
+  const {stdout, stderr} = await runCliExec([
     script, "-j", "-n", ...apiArgs(), "-f", testFile, "-i", "noty",
   ]);
   expect(stderr).toEqual("");
@@ -399,7 +432,7 @@ test("empty", async ({expect = globalExpect}: any = {}) => {
 });
 
 test("jsr", async ({expect = globalExpect}: any = {}) => {
-  const {stdout, stderr} = await execFileAsync(process.execPath, [
+  const {stdout, stderr} = await runCliExec([
     script, "-n", "-j", ...apiArgs(), "-f", jsrFile,
   ]);
   expect(stderr).toEqual("");
@@ -1264,13 +1297,13 @@ test("go update", async ({expect = globalExpect}: any = {}) => {
   const goMainContent = readFileSync(goUpdateMainFile, "utf8");
   await writeFile(join(testGoModDir, "main.go"), goMainContent);
 
-  await execFileAsync(execPath, [
+  await runCliExec([
     script,
     "-u",
     "-f", join(testGoModDir, "go.mod"),
     "-c",
     "--goproxy", goProxyUrl,
-  ], {cwd: testGoModDir});
+  ]);
 
   const updatedContent = await readFile(join(testGoModDir, "go.mod"), "utf8");
 
@@ -1295,13 +1328,13 @@ test("go update v1 to v2", async ({expect = globalExpect}: any = {}) => {
   await writeFile(join(testGoModDir, "go.mod"), readFileSync(goUpdateV2ModFile, "utf8"));
   await writeFile(join(testGoModDir, "main.go"), readFileSync(goUpdateV2MainFile, "utf8"));
 
-  await execFileAsync(execPath, [
+  await runCliExec([
     script,
     "-u",
     "-f", join(testGoModDir, "go.mod"),
     "-c",
     "--goproxy", goProxyUrl,
-  ], {cwd: testGoModDir});
+  ]);
 
   const updatedContent = await readFile(join(testGoModDir, "go.mod"), "utf8");
   expect(updatedContent).toContain("github.com/example/testpkg/v2 v2.0.0");
@@ -1452,13 +1485,13 @@ test("go replace update", async ({expect = globalExpect}: any = {}) => {
   const goReplaceContent = readFileSync(goReplaceFile, "utf8");
   await writeFile(join(testGoModDir, "go.mod"), goReplaceContent);
 
-  await execFileAsync(execPath, [
+  await runCliExec([
     script,
     "-u",
     "-f", join(testGoModDir, "go.mod"),
     "-c",
     "--goproxy", goProxyUrl,
-  ], {cwd: testGoModDir});
+  ]);
 
   const updatedContent = await readFile(join(testGoModDir, "go.mod"), "utf8");
 
@@ -1498,13 +1531,13 @@ test("go workspace update", async ({expect = globalExpect}: any = {}) => {
   writeFileSync(join(testGoWorkDir, "app", "main.go"), readFileSync(join(goWorkspaceDir, "app", "main.go"), "utf8"));
   writeFileSync(join(testGoWorkDir, "lib", "go.mod"), readFileSync(join(goWorkspaceDir, "lib", "go.mod"), "utf8"));
 
-  await execFileAsync(execPath, [
+  await runCliExec([
     script,
     "-u",
     "-f", join(testGoWorkDir, "go.work"),
     "-c",
     "--goproxy", goProxyUrl,
-  ], {cwd: testGoWorkDir});
+  ]);
 
   const appMod = await readFile(join(testGoWorkDir, "app", "go.mod"), "utf8");
   const libMod = await readFile(join(testGoWorkDir, "lib", "go.mod"), "utf8");
@@ -1555,13 +1588,13 @@ test("cargo workspace update", async ({expect = globalExpect}: any = {}) => {
   writeFileSync(join(testCargoWorkDir, "crate-a", "Cargo.toml"), readFileSync(join(cargoWorkspaceDir, "crate-a", "Cargo.toml"), "utf8"));
   writeFileSync(join(testCargoWorkDir, "crate-b", "Cargo.toml"), readFileSync(join(cargoWorkspaceDir, "crate-b", "Cargo.toml"), "utf8"));
 
-  await execFileAsync(execPath, [
+  await runCliExec([
     script,
     "-u",
     "-f", join(testCargoWorkDir, "Cargo.toml"),
     "-c",
     "--cargoapi", cargoUrl,
-  ], {cwd: testCargoWorkDir});
+  ]);
 
   const rootToml = await readFile(join(testCargoWorkDir, "Cargo.toml"), "utf8");
   const crateAToml = await readFile(join(testCargoWorkDir, "crate-a", "Cargo.toml"), "utf8");
@@ -1606,12 +1639,12 @@ test("pnpm workspace update", async ({expect = globalExpect}: any = {}) => {
   writeFileSync(join(testPnpmWorkDir, "packages", "app-a", "package.json"), readFileSync(join(pnpmWorkspaceDir, "packages", "app-a", "package.json"), "utf8"));
   writeFileSync(join(testPnpmWorkDir, "packages", "lib-b", "package.json"), readFileSync(join(pnpmWorkspaceDir, "packages", "lib-b", "package.json"), "utf8"));
 
-  await execFileAsync(execPath, [
+  await runCliExec([
     script,
     "-u",
     "-f", join(testPnpmWorkDir, "pnpm-workspace.yaml"),
     "-c", ...apiArgs(),
-  ], {cwd: testPnpmWorkDir});
+  ]);
 
   const rootPkg = await readFile(join(testPnpmWorkDir, "package.json"), "utf8");
   const appAPkg = await readFile(join(testPnpmWorkDir, "packages", "app-a", "package.json"), "utf8");
@@ -1662,7 +1695,8 @@ test("pin", async ({expect = globalExpect}: any = {}) => {
 });
 
 function actionsArgs(...extra: Array<string>) {
-  return [script, "-c", "--forgeapi", githubUrl, "-M", "actions", "-f", actionsDir, ...extra];
+  // --dockerapi keeps the subprocess prewarm's docker HEAD on the mock.
+  return [script, "-c", "--forgeapi", githubUrl, "--dockerapi", dockerUrl, "-M", "actions", "-f", actionsDir, ...extra];
 }
 
 function getActionsDeps(results: any) {
@@ -1671,7 +1705,7 @@ function getActionsDeps(results: any) {
 }
 
 test("actions basic", async ({expect = globalExpect}: any = {}) => {
-  const {stdout, stderr} = await execFileAsync(process.execPath, actionsArgs("-j"));
+  const {stdout, stderr} = await runCliExec(actionsArgs("-j"));
   expect(stderr).toEqual("");
   const output = JSON.parse(stdout);
   expect(output.results.actions).toBeDefined();
@@ -1691,7 +1725,7 @@ test("actions basic", async ({expect = globalExpect}: any = {}) => {
 });
 
 test("actions include filter", async ({expect = globalExpect}: any = {}) => {
-  const {stdout, stderr} = await execFileAsync(process.execPath, actionsArgs("-j", "-i", "actions/checkout"));
+  const {stdout, stderr} = await runCliExec(actionsArgs("-j", "-i", "actions/checkout"));
   expect(stderr).toEqual("");
   const actionsDeps = getActionsDeps(JSON.parse(stdout).results);
   expect(actionsDeps["actions/checkout"]).toBeDefined();
@@ -1699,7 +1733,7 @@ test("actions include filter", async ({expect = globalExpect}: any = {}) => {
 });
 
 test("actions exclude filter", async ({expect = globalExpect}: any = {}) => {
-  const {stdout, stderr} = await execFileAsync(process.execPath, actionsArgs("-j", "-e", "actions/checkout"));
+  const {stdout, stderr} = await runCliExec(actionsArgs("-j", "-e", "actions/checkout"));
   expect(stderr).toEqual("");
   const actionsDeps = getActionsDeps(JSON.parse(stdout).results);
   expect(actionsDeps["actions/checkout"]).toBeUndefined();
@@ -1714,7 +1748,7 @@ test("actions text output", async ({expect = globalExpect}: any = {}) => {
 });
 
 test("actions positional args", async ({expect = globalExpect}: any = {}) => {
-  const {stdout, stderr} = await execFileAsync(process.execPath, [script, "-c", "--forgeapi", githubUrl, "-M", "actions", "-j", actionsDir]);
+  const {stdout, stderr} = await runCliExec([script, "-c", "--forgeapi", githubUrl, "-M", "actions", "-j", actionsDir]);
   expect(stderr).toEqual("");
   const output = JSON.parse(stdout);
   const actionsDeps = getActionsDeps(output.results);
@@ -1730,7 +1764,7 @@ test("actions update", async ({expect = globalExpect}: any = {}) => {
   const wfPath = join(tmpActionsDir, "ci.yaml");
   await writeFile(wfPath, "name: ci\non: push\njobs:\n  ci:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v2\n");
 
-  const {stderr} = await execFileAsync(process.execPath, [
+  const {stderr} = await runCliExec([
     script, "-u", "-c", "--forgeapi", githubUrl, "-M", "actions",
     "-f", join(testDir, "actions-update-test/.github/workflows"),
   ]);
@@ -1742,7 +1776,7 @@ test("actions update", async ({expect = globalExpect}: any = {}) => {
 });
 
 test("actions no false upgrade on same major", async ({expect = globalExpect}: any = {}) => {
-  const {stdout, stderr} = await execFileAsync(process.execPath, actionsArgs("-j", "-i", "actions/checkout"));
+  const {stdout, stderr} = await runCliExec(actionsArgs("-j", "-i", "actions/checkout"));
   expect(stderr).toEqual("");
   const actionsDeps = getActionsDeps(JSON.parse(stdout).results);
   // actions/checkout@v10 should not show as an update even though v10.0.1 patch exists
@@ -1761,7 +1795,7 @@ test("actions tag fallback when short tag missing", async ({expect = globalExpec
   const wfPath = join(tmpDir, "ci.yaml");
   await writeFile(wfPath, "name: ci\non: push\njobs:\n  ci:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/setup-node@v1\n      - uses: actions/setup-node@v1.0\n      - uses: actions/setup-node@v1.0.0\n");
 
-  const {stdout, stderr} = await execFileAsync(process.execPath, [
+  const {stdout, stderr} = await runCliExec([
     script, "-j", "-c", "--forgeapi", githubUrl, "-M", "actions",
     "-f", tmpDir,
   ]);
@@ -1777,7 +1811,7 @@ test("actions tag fallback preserves precision when tag exists", async ({expect 
   const wfPath = join(tmpDir, "ci.yaml");
   await writeFile(wfPath, "name: ci\non: push\njobs:\n  ci:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v2\n");
 
-  const {stdout, stderr} = await execFileAsync(process.execPath, [
+  const {stdout, stderr} = await runCliExec([
     script, "-j", "-c", "--forgeapi", githubUrl, "-M", "actions",
     "-f", tmpDir,
   ]);
@@ -1793,7 +1827,7 @@ test("actions tag fallback updates workflow file", async ({expect = globalExpect
   const wfPath = join(tmpDir, "ci.yaml");
   await writeFile(wfPath, "name: ci\non: push\njobs:\n  ci:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/setup-node@v1\n");
 
-  const {stderr} = await execFileAsync(process.execPath, [
+  const {stderr} = await runCliExec([
     script, "-u", "-c", "--forgeapi", githubUrl, "-M", "actions",
     "-f", tmpDir,
   ]);
@@ -1809,7 +1843,7 @@ test("actions hash-pinned", async ({expect = globalExpect}: any = {}) => {
   const wfPath = join(tmpActionsDir, "ci.yaml");
   await writeFile(wfPath, "name: ci\non: push\njobs:\n  ci:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@cccc000000000000000000000000000000000006 # v4.2.0\n");
 
-  const {stdout, stderr} = await execFileAsync(process.execPath, [
+  const {stdout, stderr} = await runCliExec([
     script, "-j", "-c", "--forgeapi", githubUrl, "-M", "actions",
     "-f", join(testDir, "actions-hash-test/.github/workflows"),
   ]);
@@ -1827,7 +1861,7 @@ test("actions hash-pinned update", async ({expect = globalExpect}: any = {}) => 
   const wfPath = join(tmpActionsDir, "ci.yaml");
   await writeFile(wfPath, "name: ci\non: push\njobs:\n  ci:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@cccc000000000000000000000000000000000006 # v4.2.0\n");
 
-  const {stderr} = await execFileAsync(process.execPath, [
+  const {stderr} = await runCliExec([
     script, "-u", "-c", "--forgeapi", githubUrl, "-M", "actions",
     "-f", join(testDir, "actions-hash-update/.github/workflows"),
   ]);
@@ -1840,7 +1874,7 @@ test("actions hash-pinned update", async ({expect = globalExpect}: any = {}) => 
 
 test("actions composite action discovery", async ({expect = globalExpect}: any = {}) => {
   const compositeDir = fileURLToPath(new URL("fixtures/actions-composite/.github", import.meta.url));
-  const {stdout, stderr} = await execFileAsync(process.execPath, [
+  const {stdout, stderr} = await runCliExec([
     script, "-j", "-c", "--forgeapi", githubUrl, "-M", "actions", "-f", compositeDir,
   ]);
   expect(stderr).toEqual("");
@@ -1866,7 +1900,7 @@ test.each(forgeDirs)("actions composite action update %s", async (forgeDirName, 
   await writeFile(join(forgeDir, "workflows", "ci.yml"), "name: ci\non: push\njobs:\n  ci:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v2\n");
   await writeFile(join(forgeDir, "actions", "my-action", "action.yml"), "name: my-action\nruns:\n  using: composite\n  steps:\n    - uses: actions/setup-node@v1.0\n      shell: bash\n");
 
-  const {stderr} = await execFileAsync(process.execPath, [
+  const {stderr} = await runCliExec([
     script, "-u", "-c", "--forgeapi", githubUrl, "-M", "actions", "-f", forgeDir,
   ]);
   expect(stderr).toEqual("");
@@ -1882,7 +1916,7 @@ function dockerArgs(...extra: Array<string>) {
 }
 
 test("docker Dockerfile basic", async ({expect = globalExpect}: any = {}) => {
-  const {stdout, stderr} = await execFileAsync(process.execPath, dockerArgs("-j", "-f", dockerfileFixture));
+  const {stdout, stderr} = await runCliExec(dockerArgs("-j", "-f", dockerfileFixture));
   expect(stderr).toEqual("");
   const output = JSON.parse(stdout);
   expect(output.results.docker).toBeDefined();
@@ -1903,7 +1937,7 @@ test("docker Dockerfile basic", async ({expect = globalExpect}: any = {}) => {
 });
 
 test("docker compose basic", async ({expect = globalExpect}: any = {}) => {
-  const {stdout, stderr} = await execFileAsync(process.execPath, dockerArgs("-j", "-f", composeFixture));
+  const {stdout, stderr} = await runCliExec(dockerArgs("-j", "-f", composeFixture));
   expect(stderr).toEqual("");
   const output = JSON.parse(stdout);
   expect(output.results.docker).toBeDefined();
@@ -1926,7 +1960,7 @@ test("docker compose basic", async ({expect = globalExpect}: any = {}) => {
 });
 
 test("docker workflow container/image", async ({expect = globalExpect}: any = {}) => {
-  const {stdout, stderr} = await execFileAsync(process.execPath, dockerArgs("-j", "-f", dockerActionsDir));
+  const {stdout, stderr} = await runCliExec(dockerArgs("-j", "-f", dockerActionsDir));
   expect(stderr).toEqual("");
   const output = JSON.parse(stdout);
   expect(output.results.docker).toBeDefined();
@@ -1949,14 +1983,14 @@ test("docker workflow container/image", async ({expect = globalExpect}: any = {}
 });
 
 test("actions mode does not include docker from workflows", async ({expect = globalExpect}: any = {}) => {
-  const {stdout, stderr} = await execFileAsync(process.execPath, actionsArgs("-j", "-f", dockerActionsDir));
+  const {stdout, stderr} = await runCliExec(actionsArgs("-j", "-f", dockerActionsDir));
   expect(stderr).toEqual("");
   const output = JSON.parse(stdout);
   expect(output.results.docker).toBeUndefined();
 });
 
 test("docker include filter", async ({expect = globalExpect}: any = {}) => {
-  const {stdout, stderr} = await execFileAsync(process.execPath, dockerArgs("-j", "-f", composeFixture, "-i", "node"));
+  const {stdout, stderr} = await runCliExec(dockerArgs("-j", "-f", composeFixture, "-i", "node"));
   expect(stderr).toEqual("");
   const output = JSON.parse(stdout);
   const composeKey = Object.keys(output.results.docker).find(t => t.endsWith("docker-compose.yaml"));
@@ -1967,7 +2001,7 @@ test("docker include filter", async ({expect = globalExpect}: any = {}) => {
 });
 
 test("docker exclude filter", async ({expect = globalExpect}: any = {}) => {
-  const {stdout, stderr} = await execFileAsync(process.execPath, dockerArgs("-j", "-f", composeFixture, "-e", "node"));
+  const {stdout, stderr} = await runCliExec(dockerArgs("-j", "-f", composeFixture, "-e", "node"));
   expect(stderr).toEqual("");
   const output = JSON.parse(stdout);
   const composeKey = Object.keys(output.results.docker).find(t => t.endsWith("docker-compose.yaml"));
@@ -1991,7 +2025,7 @@ test("docker update Dockerfile", async ({expect = globalExpect}: any = {}) => {
   const dockerfilePath = join(tmpDir, "Dockerfile");
   await writeFile(dockerfilePath, "FROM node:18\nRUN npm install\n");
 
-  const {stderr} = await execFileAsync(process.execPath, dockerArgs("-u", "-f", dockerfilePath));
+  const {stderr} = await runCliExec(dockerArgs("-u", "-f", dockerfilePath));
   expect(stderr).toEqual("");
 
   const updatedContent = await readFile(dockerfilePath, "utf8");
@@ -2005,7 +2039,7 @@ test("docker update compose", async ({expect = globalExpect}: any = {}) => {
   const composePath = join(tmpDir, "docker-compose.yaml");
   await writeFile(composePath, "services:\n  web:\n    image: node:18\n  db:\n    image: redis:7\n");
 
-  const {stderr} = await execFileAsync(process.execPath, dockerArgs("-u", "-f", composePath));
+  const {stderr} = await runCliExec(dockerArgs("-u", "-f", composePath));
   expect(stderr).toEqual("");
 
   const updatedContent = await readFile(composePath, "utf8");
@@ -2042,7 +2076,7 @@ test("docker update workflow", async ({expect = globalExpect}: any = {}) => {
     "",
   ].join("\n"));
 
-  const {stderr} = await execFileAsync(process.execPath, dockerArgs("-u", "-f", wfDir));
+  const {stderr} = await runCliExec(dockerArgs("-u", "-f", wfDir));
   expect(stderr).toEqual("");
 
   const updatedContent = await readFile(wfPath, "utf8");
@@ -2057,7 +2091,7 @@ test("docker update workflow", async ({expect = globalExpect}: any = {}) => {
 });
 
 test("docker Dockerfile.dev pattern", async ({expect = globalExpect}: any = {}) => {
-  const {stdout, stderr} = await execFileAsync(process.execPath, dockerArgs("-j", "-f", dockerfileDevFixture));
+  const {stdout, stderr} = await runCliExec(dockerArgs("-j", "-f", dockerfileDevFixture));
   expect(stderr).toEqual("");
   const output = JSON.parse(stdout);
   expect(output.results.docker).toBeDefined();
@@ -2068,7 +2102,7 @@ test("docker Dockerfile.dev pattern", async ({expect = globalExpect}: any = {}) 
 });
 
 test("docker docker-stack.yml pattern", async ({expect = globalExpect}: any = {}) => {
-  const {stdout, stderr} = await execFileAsync(process.execPath, dockerArgs("-j", "-f", dockerStackFixture));
+  const {stdout, stderr} = await runCliExec(dockerArgs("-j", "-f", dockerStackFixture));
   expect(stderr).toEqual("");
   const output = JSON.parse(stdout);
   expect(output.results.docker).toBeDefined();
@@ -2079,7 +2113,7 @@ test("docker docker-stack.yml pattern", async ({expect = globalExpect}: any = {}
 });
 
 test("docker directory discovery", async ({expect = globalExpect}: any = {}) => {
-  const {stdout, stderr} = await execFileAsync(process.execPath, dockerArgs("-j", "-f", dockerDir));
+  const {stdout, stderr} = await runCliExec(dockerArgs("-j", "-f", dockerDir));
   expect(stderr).toEqual("");
   const output = JSON.parse(stdout);
   expect(output.results.docker).toBeDefined();

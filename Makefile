@@ -1,4 +1,4 @@
-SOURCE_FILES := index.ts api.ts config.ts $(wildcard modes/*.ts utils/*.ts)
+SOURCE_FILES := index.ts api.ts cli.ts config.ts $(wildcard modes/*.ts utils/*.ts)
 DIST_FILES := dist/index.js dist/api.js dist/api.d.ts dist/shared.js
 
 node_modules: pnpm-lock.yaml
