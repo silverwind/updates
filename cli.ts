@@ -19,12 +19,21 @@ function argToConfigMixed(arg: Arg): boolean | Array<string | RegExp> | undefine
   return Array.from(parsed).map(cliPatternToRegex);
 }
 
-export function deriveStartDir(first: string | undefined): string {
+function deriveStartDir(first: string | undefined): string {
   if (!first) return cwd();
   const abs = isAbsolute(first) ? first : resolve(cwd(), first);
   let isDir = false;
   try { isDir = statSync(abs).isDirectory(); } catch {}
   return isDir ? abs : dirname(abs);
+}
+
+// Flatten -f/--file plus positionals into the target list, and derive the
+// directory config discovery walks up from. Shared by the binary's prewarm
+// path and resolveConfig, which both need it before any config is loaded.
+export function resolveFileArgs(args: Record<string, Arg>, positionals: Array<string>): {filesList: Array<string>, startDir: string} {
+  const fileSet = parseMixedArg(args.file);
+  const filesList = [...(fileSet instanceof Set ? fileSet : []), ...positionals];
+  return {filesList, startDir: deriveStartDir(filesList[0])};
 }
 
 // Parse argv into option values, fixing the parseArgs "-a -b" → {a: "-b"} defect.
@@ -73,9 +82,7 @@ export async function resolveConfig(
   args: Record<string, Arg>,
   positionals: Array<string>,
 ): Promise<UpdatesOptions> {
-  const fileSet = parseMixedArg(args.file);
-  const filesList = [...(fileSet instanceof Set ? fileSet : []), ...positionals];
-  const startDir = deriveStartDir(filesList[0]);
+  const {filesList, startDir} = resolveFileArgs(args, positionals);
 
   const cliTimeout = typeof args.timeout === "string" ? parsePositiveInt(args.timeout, "timeout") : undefined;
 

@@ -1,5 +1,5 @@
 import {type Deps, type ModeContext, type PackageInfo, fieldSep, fetchWithEtag, getFetchOpts, normalizeUrl, throwFetchError} from "./shared.ts";
-import {cargoTypes, esc} from "../utils/utils.ts";
+import {cargoTypes, esc, pushTo} from "../utils/utils.ts";
 import {gt, valid, satisfies} from "../utils/semver.ts";
 import {updateVersionRange, normalizeRange} from "./npm.ts";
 
@@ -14,7 +14,7 @@ const reduceCargoDoc = (data: CratesIoVersionsResponse) => ({
   versions: (data.versions || []).filter(v => !v.yanked).map(v => ({num: v.num, created_at: v.created_at})),
 });
 
-export async function fetchCratesIoInfo(name: string, type: string, ctx: ModeContext): Promise<PackageInfo> {
+export async function fetchCratesIoInfo(name: string, ctx: ModeContext): Promise<PackageInfo> {
   const base = normalizeUrl(ctx.cratesIoUrl);
   const url = `${base}/api/v1/crates/${encodeURIComponent(name)}/versions?per_page=100`;
 
@@ -35,10 +35,7 @@ export async function fetchCratesIoInfo(name: string, type: string, ctx: ModeCon
         const versionsObj: Record<string, Record<string, never>> = {};
         const time: Record<string, string> = {};
         for (const v of versions) {
-          if (!v.num) {
-            continue;
-          }
-
+          if (!v.num) continue;
           versionsObj[v.num] = {};
           time[v.num] = v.created_at || "";
         }
@@ -51,7 +48,7 @@ export async function fetchCratesIoInfo(name: string, type: string, ctx: ModeCon
     })();
     cratesIoCache.set(url, dataPromise);
   }
-  return [await dataPromise, type, null, name];
+  return [await dataPromise, null];
 }
 
 export function parseCargoLock(lockStr: string): Map<string, string[]> {
@@ -63,9 +60,7 @@ export function parseCargoLock(lockStr: string): Map<string, string[]> {
     const name = nameMatch[1];
     const version = versionMatch[1];
     if (!valid(version)) continue;
-    let versions = map.get(name);
-    if (!versions) map.set(name, versions = []);
-    versions.push(version);
+    pushTo(map, name, version);
   }
   return map;
 }

@@ -71,7 +71,8 @@ export function passesCooldown(date: string | undefined, cooldownDays: number | 
   return (now - ms) / (24 * 3600 * 1000) >= cooldownDays;
 }
 
-export type PackageInfo = [Record<string, any>, string, string | null, string];
+// [data, registry]; registry is null for modes that have no per-package registry.
+export type PackageInfo = [Record<string, any>, string | null];
 
 export type PackageRepository = string | {
   type: string,
@@ -96,7 +97,11 @@ export const packageVersion = pkg.version;
 export const fieldSep = "\0";
 export const fetchTimeout = 5000;
 export const goProbeTimeout = 2500;
-export const fetchRetries = 2;
+export const maxSockets = 25;
+// Cap pagination so a repo with hundreds of tag pages doesn't fan out hundreds
+// of concurrent requests. Shared by the forge tag and Docker Hub tag walks.
+export const maxTagPages = 10;
+const fetchRetries = 2;
 
 export const stripv = (str: string): string => str[0] === "v" ? str.substring(1) : str;
 export const normalizeUrl = (url: string) => url.endsWith("/") ? url.slice(0, -1) : url;
@@ -173,6 +178,16 @@ function reduceBody(body: string, reduce: BodyReducer | undefined): string {
   }
 }
 
+// Read and reduce a response body, persisting it under `cacheTag` when caching
+// is on. Never-revalidated URLs pass the literal "immutable" tag.
+async function readAndCache(
+  url: string, res: Response, ctx: ModeContext, reduce: BodyReducer | undefined, cacheTag: string | null | undefined,
+): Promise<{body: string, res: Response}> {
+  const body = reduceBody(await readBody(res), reduce);
+  if (cacheTag && !ctx.noCache) setCache(url, cacheTag, body);
+  return {body, res};
+}
+
 // Fetch with ETag revalidation against the persistent disk cache. The timeout
 // signal is created after the cache read, so slow disks do not eat the network
 // budget. Returns {body} on success, or {res} on error.
@@ -186,10 +201,7 @@ export async function fetchWithEtag(
   if (!res) return {res: undefined};
   if (res.status === 304 && cached) return {body: cached.body, res};
   if (!res.ok) return {res};
-  const body = reduceBody(await readBody(res), reduce);
-  const etag = res.headers?.get?.("etag");
-  if (etag && !ctx.noCache) setCache(url, etag, body);
-  return {body, res};
+  return readAndCache(url, res, ctx, reduce, res.headers?.get?.("etag"));
 }
 
 // Persistent cache for immutable URLs (e.g. per-version metadata, commit
@@ -204,9 +216,7 @@ export async function fetchImmutable(
   const res = await fetchWithRetry(ctx, url, opts);
   if (!res) return {res: undefined};
   if (!res.ok) return {res};
-  const body = reduceBody(await readBody(res), reduce);
-  if (!ctx.noCache) setCache(url, "immutable", body);
-  return {body, res};
+  return readAndCache(url, res, ctx, reduce, "immutable");
 }
 
 export function isVersionPrerelease(version: string): boolean {
@@ -485,7 +495,7 @@ const githubTokenEnvNames = ["UPDATES_GITHUB_API_TOKEN", "GITHUB_API_TOKEN", "GH
 
 function envGithubTokens(): string[] {
   return Array.from(new Set(
-    githubTokenEnvNames.map(name => env[name]).filter(Boolean as unknown as (v: string | undefined) => v is string),
+    githubTokenEnvNames.map(name => env[name]).filter((value): value is string => Boolean(value)),
   ));
 }
 
@@ -621,10 +631,6 @@ async function fetchTagsPage(url: string, ctx: ModeContext): Promise<{tags: Arra
   return {tags, link};
 }
 
-// Cap pagination so a repo with hundreds of tag pages doesn't fan out
-// hundreds of concurrent requests. Matches fetchDockerHubTags's cap.
-const maxTagPages = 10;
-
 export async function fetchActionTags(apiUrl: string, owner: string, repo: string, ctx: ModeContext): Promise<Array<TagEntry>> {
   const tagsUrl = (page: number) => `${apiUrl}/repos/${owner}/${repo}/tags?per_page=100&page=${page}`;
   try {
@@ -686,11 +692,9 @@ export function getInfoUrl({repository, homepage, info}: {repository?: PackageRe
   if (info) { // pypi
     const urls = info.project_urls;
     for (const key of ["repository", "Repository", "repo", "Repo", "source", "Source", "source code", "Source code", "Source Code", "homepage", "Homepage"]) {
-      if (!urls?.[key]) {
-        continue;
-      }
-
-      repository = urls[key]; break;
+      if (!urls?.[key]) continue;
+      repository = urls[key];
+      break;
     }
     repository ??= `https://pypi.org/project/${name}/`;
   }

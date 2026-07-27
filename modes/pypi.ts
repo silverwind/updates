@@ -13,12 +13,12 @@ function reducePypiDoc(data: Record<string, any>): Record<string, any> {
   return {info: {name, version, project_urls}, releases};
 }
 
-export async function fetchPypiInfo(name: string, type: string, ctx: ModeContext): Promise<PackageInfo> {
+export async function fetchPypiInfo(name: string, ctx: ModeContext): Promise<PackageInfo> {
   const url = `${ctx.pypiApiUrl}/pypi/${name}/json`;
   const result = await fetchWithEtag(url, ctx, {
     headers: {"accept-encoding": "gzip, deflate, br"},
   }, reducePypiDoc);
-  if ("body" in result) return [JSON.parse(result.body), type, null, name];
+  if ("body" in result) return [JSON.parse(result.body), null];
   throwFetchError(result.res, url, name, ctx.pypiApiUrl);
 }
 

@@ -1,4 +1,4 @@
-import {valid, parse, coerce, diff, gt, gte, lt, neq, satisfies, validRange} from "./semver.ts";
+import {valid, parse, coerce, diff, gt, gte, lt, satisfies, validRange} from "./semver.ts";
 
 test("valid", () => {
   expect(valid("1.0.0")).toBe("1.0.0");
@@ -100,15 +100,6 @@ test("lt", () => {
   expect(lt("1.0.0", "1.0.0")).toBe(false);
   expect(lt("1.0.0-alpha", "1.0.0")).toBe(true);
   expect(lt("abc", "1.0.0")).toBe(false);
-});
-
-test("neq", () => {
-  expect(neq("1.0.0", "2.0.0")).toBe(true);
-  expect(neq("1.0.0", "1.0.0")).toBe(false);
-  expect(neq("1.0.0-alpha", "1.0.0")).toBe(true);
-  // invalid input returns true
-  expect(neq("abc", "1.0.0")).toBe(true);
-  expect(neq("1.0.0", "abc")).toBe(true);
 });
 
 test("satisfies caret ranges", () => {

@@ -139,10 +139,6 @@ export function lt(v1: string, v2: string): boolean {
   return (compare(v1, v2) ?? 1) < 0;
 }
 
-export function neq(v1: string, v2: string): boolean {
-  return (compare(v1, v2) ?? 1) !== 0;
-}
-
 // --- Range parsing ---
 
 type Comparator = {

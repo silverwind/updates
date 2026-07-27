@@ -161,7 +161,7 @@ export type MakeDockerUpdate = {newTag: string, newDigest: string | null, date: 
 
 export async function fetchMakeDockerInfo(image: MakeDockerImage, ctx: ModeContext, opts: MakeVersionOpts): Promise<MakeDockerUpdate | null> {
   const {namespace, repo, fullImage, tag} = image.ref;
-  const [data] = await fetchDockerInfo(fullImage, "docker", ctx); // throws for non-Hub registries
+  const [data] = await fetchDockerInfo(fullImage, ctx); // throws for non-Hub registries
   const result = findDockerVersion(data.tags, tag, opts.semvers, opts.cooldownDays, opts.now, opts.pinnedRange);
   if (!result) return null;
 

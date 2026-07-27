@@ -1,5 +1,5 @@
 import {coerce, diff, gt, satisfies} from "../utils/semver.ts";
-import {type Deps, type ModeContext, type PackageInfo, fieldSep, fetchWithEtag, passesCooldown, stripv, formatVersionPrecision} from "./shared.ts";
+import {type Deps, type ModeContext, type PackageInfo, fieldSep, fetchWithEtag, passesCooldown, stripv, formatVersionPrecision, maxTagPages} from "./shared.ts";
 import {esc} from "../utils/utils.ts";
 
 export type DockerImageRef = {
@@ -73,8 +73,6 @@ export function extractDockerRefs(content: string, regex: RegExp): Array<{ref: D
   return results;
 }
 
-const maxPages = 10;
-
 // Dedup concurrent lookups for the same repo within one run — a Dockerfile and
 // a Makefile can reference the same image from independent fetch tasks, which
 // would double the requests and race the cache writes. Keyed by ctx so each
@@ -117,7 +115,7 @@ async function fetchDockerHubTagsUncached(namespace: string, repo: string, ctx: 
   for (const result of firstPage.results || []) {
     tags[result.name] = result.tag_last_pushed || result.last_updated || "";
   }
-  const totalPages = Math.min(Math.ceil((firstPage.count || 0) / 100), maxPages);
+  const totalPages = Math.min(Math.ceil((firstPage.count || 0) / 100), maxTagPages);
   if (totalPages < 2) return tags;
 
   const rest = await Promise.all(
@@ -143,7 +141,7 @@ export async function fetchDockerTagDigest(namespace: string, repo: string, tag:
   } catch { return null; }
 }
 
-export async function fetchDockerInfo(name: string, type: string, ctx: ModeContext): Promise<PackageInfo> {
+export async function fetchDockerInfo(name: string, ctx: ModeContext): Promise<PackageInfo> {
   const {registry, namespace, repo} = parseImageParts(name);
 
   if (registry) {
@@ -151,7 +149,7 @@ export async function fetchDockerInfo(name: string, type: string, ctx: ModeConte
   }
 
   const tags = await fetchDockerHubTags(namespace, repo, ctx);
-  return [{tags, name}, type, null, name];
+  return [{tags, name}, null];
 }
 
 export function findDockerVersion(

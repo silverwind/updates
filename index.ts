@@ -2,9 +2,8 @@
 import {stdout, stderr, exit, platform, versions} from "node:process";
 import {stripVTControlCharacters, styleText} from "node:util";
 import {updates} from "./api.ts";
-import {parseCliArgs, resolveConfig, deriveStartDir} from "./cli.ts";
-import {parseMixedArg} from "./config.ts";
-import {packageVersion, fetchTimeout} from "./modes/shared.ts";
+import {parseCliArgs, resolveConfig, resolveFileArgs} from "./cli.ts";
+import {packageVersion, fetchTimeout, maxSockets} from "./modes/shared.ts";
 import {highlightDiff, textTable} from "./utils/utils.ts";
 import {shortenGoModule} from "./modes/go.ts";
 import {prewarmOrigins} from "./utils/prewarm.ts";
@@ -12,9 +11,7 @@ import type {Output, UpdatesOptions} from "./api.ts";
 
 const {args, positionals} = parseCliArgs();
 
-const fileSet = parseMixedArg(args.file);
-const filesList = [...(fileSet instanceof Set ? fileSet : []), ...positionals];
-const startDir = deriveStartDir(filesList[0]);
+const {startDir} = resolveFileArgs(args, positionals);
 
 if (!args.help && !args.version) {
   for (const url of prewarmOrigins(startDir, args)) {
@@ -57,8 +54,6 @@ async function main(): Promise<void> {
   for (const stream of [stdout, stderr]) {
     (stream as any)?._handle?.setBlocking?.(true);
   }
-
-  const maxSockets = 25;
 
   if (args.help) {
     stdout.write(`usage: updates [options] [files...]

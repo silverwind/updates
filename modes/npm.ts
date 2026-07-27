@@ -100,22 +100,22 @@ function registryUrl(scope: string, npmrcConfig: Npmrc): string {
 }
 
 function getAuthAndRegistry(name: string, registry: string): AuthAndRegistry {
-  if (!npmrc) npmrc = getNpmrc();
+  const npmrcConfig = getNpmrc();
 
   const scope = name.startsWith("@") ? name.split("/")[0] : "";
   const cacheKey = `${scope}:${registry}`;
   const cached = authCache.get(cacheKey);
   if (cached) return cached;
 
-  const fallback = (): AuthAndRegistry => ({auth: getRegistryAuthToken(registry, npmrc!), registry});
+  const fallback = (): AuthAndRegistry => ({auth: getRegistryAuthToken(registry, npmrcConfig), registry});
   let result: AuthAndRegistry;
   if (!name.startsWith("@")) {
     result = fallback();
   } else {
-    const url = normalizeUrl(registryUrl(scope, npmrc));
+    const url = normalizeUrl(registryUrl(scope, npmrcConfig));
     if (url !== registry) {
       try {
-        const newAuth = getRegistryAuthToken(url, npmrc);
+        const newAuth = getRegistryAuthToken(url, npmrcConfig);
         result = newAuth?.token ? {auth: newAuth, registry: url} : fallback();
       } catch {
         result = fallback();
@@ -130,9 +130,8 @@ function getAuthAndRegistry(name: string, registry: string): AuthAndRegistry {
 }
 
 function resolveNpmRegistry(name: string, config: Config, args: Record<string, any>): AuthAndRegistry & {originalRegistry: string} {
-  if (!npmrc) npmrc = getNpmrc();
   const originalRegistry = normalizeUrl((typeof args.registry === "string" ? args.registry : false) ||
-    config.registry || npmrc.registry || defaultRegistry,
+    config.registry || getNpmrc().registry || defaultRegistry,
   );
   return {...getAuthAndRegistry(name, originalRegistry), originalRegistry};
 }
@@ -177,7 +176,7 @@ export async function fetchNpmInfo(name: string, type: string, config: Config, a
     })();
     npmDataCache.set(url, dataPromise);
   }
-  return [await dataPromise, type, registry, name];
+  return [await dataPromise, registry];
 }
 
 export type NpmVersionInfo = {repository?: PackageRepository, homepage?: string, date?: string};
@@ -272,7 +271,7 @@ export function parseJsrDependency(value: string, packageName?: string): {scope:
   return {scope: null, name: null, version: ""};
 }
 
-export async function fetchJsrInfo(packageName: string, type: string, ctx: ModeContext): Promise<PackageInfo> {
+export async function fetchJsrInfo(packageName: string, ctx: ModeContext): Promise<PackageInfo> {
   const match = /^@([^/]+)\/(.+)$/.exec(packageName);
   if (!match) {
     throw new Error(`Invalid JSR package name: ${packageName}`);
@@ -306,7 +305,7 @@ export async function fetchJsrInfo(packageName: string, type: string, ctx: ModeC
       versions,
       time,
     };
-    return [transformedData, type, ctx.jsrApiUrl, packageName];
+    return [transformedData, ctx.jsrApiUrl];
   }
   throwFetchError(result.res, url, packageName, "JSR");
 }

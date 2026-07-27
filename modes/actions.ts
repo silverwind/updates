@@ -3,7 +3,7 @@ import {readdirSync} from "node:fs";
 import {parse} from "../utils/semver.ts";
 import {type CheckResult, type ModeContext, type TagEntry, stripv, hashRe, fetchForge, fetchActionTags, formatVersionPrecision} from "./shared.ts";
 import {getCache, setCache} from "../utils/fetchCache.ts";
-import {esc} from "../utils/utils.ts";
+import {esc, forgeDirs} from "../utils/utils.ts";
 
 export {hashRe, type CheckResult, type TagEntry, fetchActionTags};
 export const actionsUsesRe = /^\s*(?:-\s*)?uses:\s*['"]?([^'"#\s]+)['"]?/gm;
@@ -71,8 +71,6 @@ export function updateWorkflowFile(content: string, actionDeps: Array<{name: str
   }
   return newContent;
 }
-
-export const forgeDirs = [".github", ".gitea", ".forgejo"] as const;
 
 const workflowFileRe = new RegExp(`(?:^|/)(?:${forgeDirs.map(esc).join("|")})\\/(?:workflows\\/[^/]+|(?:[^/]+\\/)*action)\\.ya?ml$`);
 

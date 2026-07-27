@@ -351,8 +351,8 @@ test("fetchDockerInfo library image", async () => {
     fetchTimeout,
     doFetch: () => Promise.resolve({ok: true, json: () => Promise.resolve({count: 1, results: [{name: "18", tag_last_pushed: "2024-01-01"}]})}),
   } as unknown as ModeContext;
-  const [data, , , name] = await fetchDockerInfo("node", "docker", ctx);
-  expect(name).toBe("node");
+  const [data] = await fetchDockerInfo("node", ctx);
+  expect(data.name).toBe("node");
   expect(data.tags).toEqual({"18": "2024-01-01"});
 });
 
@@ -362,12 +362,11 @@ test("fetchDockerInfo namespaced image", async () => {
     fetchTimeout,
     doFetch: () => Promise.resolve({ok: true, json: () => Promise.resolve({count: 0, results: []})}),
   } as unknown as ModeContext;
-  const [data, , , name] = await fetchDockerInfo("myorg/myapp", "docker", ctx);
-  expect(name).toBe("myorg/myapp");
+  const [data] = await fetchDockerInfo("myorg/myapp", ctx);
   expect(data.name).toBe("myorg/myapp");
 });
 
 test("fetchDockerInfo non-Docker-Hub registry throws", async () => {
   const ctx = {} as unknown as ModeContext;
-  await expect(fetchDockerInfo("ghcr.io/owner/repo", "docker", ctx)).rejects.toThrow("not yet supported");
+  await expect(fetchDockerInfo("ghcr.io/owner/repo", ctx)).rejects.toThrow("not yet supported");
 });

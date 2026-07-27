@@ -52,6 +52,9 @@ export const nonPackageEngines = [
   "bun",
 ];
 
+// Forge config directories holding workflow files, in discovery order.
+export const forgeDirs = [".github", ".gitea", ".forgejo"] as const;
+
 export const uvTypes = [
   "project.dependencies",
   "project.optional-dependencies",
@@ -185,6 +188,16 @@ export async function walkUp<T>(startDir: string, probe: (dir: string) => Promis
     const parent = dirname(dir);
     if (parent === dir) return null;
     dir = parent;
+  }
+}
+
+// Append to a Map-of-arrays, creating the bucket on first use.
+export function pushTo<K, V>(map: Map<K, Array<V>>, key: K, value: V): void {
+  const list = map.get(key);
+  if (list) {
+    list.push(value);
+  } else {
+    map.set(key, [value]);
   }
 }
 

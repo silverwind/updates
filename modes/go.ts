@@ -75,7 +75,6 @@ function parseReplaceDirective(trimmed: string, inBlock: boolean): ReplaceMatch 
   return {origModule, targetModule, targetVersion};
 }
 
-
 function shouldSkipMajorProbe(name: string, type: string, currentVersion: string): boolean {
   return type === "indirect" || name.startsWith("golang.org/x/") || isGoPseudoVersion(currentVersion);
 }
@@ -87,9 +86,8 @@ export function isGoPseudoVersion(version: string): boolean {
 
 type ProbeResult = {Version: string, Time: string, path: string};
 
-
-function noUpdateInfo(name: string, currentVersion: string, type: string): PackageInfo {
-  return [{name, old: currentVersion, new: currentVersion}, type, null, name];
+function noUpdateInfo(name: string, currentVersion: string): PackageInfo {
+  return [{name, old: currentVersion, new: currentVersion}, null];
 }
 
 export async function probeMajorVersions(
@@ -119,7 +117,7 @@ export async function probeMajorVersions(
 }
 
 function buildGoPackageInfo(
-  name: string, type: string, currentVersion: string,
+  name: string, currentVersion: string,
   probe: ProbeResult | null,
   latestVersion: string, latestTime: string,
 ): PackageInfo {
@@ -134,7 +132,7 @@ function buildGoPackageInfo(
     ...(highestPath !== name && {newPath: highestPath}),
     sameMajorNew: stripv(latestVersion),
     sameMajorTime: latestTime,
-  }, type, null, name];
+  }, null];
 }
 
 export function parseGoMod(content: string): {deps: Record<string, string>, indirect: Record<string, string>, replace: Record<string, string>, tool: Record<string, string>} {
@@ -212,7 +210,7 @@ export function parseGoMod(content: string): {deps: Record<string, string>, indi
   return {deps, indirect, replace, tool};
 }
 
-export async function fetchGoVcsInfo(name: string, type: string, currentVersion: string, goCwd: string, ctx: ModeContext): Promise<PackageInfo> {
+async function fetchGoVcsInfo(name: string, type: string, currentVersion: string, goCwd: string, ctx: ModeContext): Promise<PackageInfo> {
   const currentMajor = extractGoMajor(name);
 
   const goListQuery = async (modulePath: string, timeout: number): Promise<ProbeResult | null> => {
@@ -232,12 +230,12 @@ export async function fetchGoVcsInfo(name: string, type: string, currentVersion:
     goListQuery(name, ctx.fetchTimeout),
     skip ? null : goListQuery(buildGoModulePath(name, currentMajor + 1), ctx.goProbeTimeout),
   ]);
-  if (!latest) return noUpdateInfo(name, currentVersion, type);
+  if (!latest) return noUpdateInfo(name, currentVersion);
 
   const probeResult = await probeMajorVersions(currentMajor, firstProbe, (major) =>
     goListQuery(buildGoModulePath(name, major), ctx.goProbeTimeout),
   );
-  return buildGoPackageInfo(name, type, currentVersion, probeResult, latest.Version, latest.Time);
+  return buildGoPackageInfo(name, currentVersion, probeResult, latest.Version, latest.Time);
 }
 
 export async function fetchGoProxyInfo(name: string, type: string, currentVersion: string, goCwd: string, ctx: ModeContext, goNoProxy: Array<string>): Promise<PackageInfo> {
@@ -261,7 +259,7 @@ export async function fetchGoProxyInfo(name: string, type: string, currentVersio
     fetchWithRetry(ctx, `${ctx.goProxyUrl}/${encoded}/@latest`, {headers: {"accept-encoding": "gzip, deflate, br"}}),
     skip ? null : probeGoMajor(currentMajor + 1),
   ]);
-  if (!res.ok) return noUpdateInfo(name, currentVersion, type);
+  if (!res.ok) return noUpdateInfo(name, currentVersion);
 
   let latestVersion: string;
   let latestTime: string;
@@ -270,12 +268,12 @@ export async function fetchGoProxyInfo(name: string, type: string, currentVersio
     latestVersion = data.Version;
     latestTime = data.Time;
   } catch {
-    return noUpdateInfo(name, currentVersion, type);
+    return noUpdateInfo(name, currentVersion);
   }
 
   const probeResult = await probeMajorVersions(currentMajor, earlyProbe, probeGoMajor);
 
-  return buildGoPackageInfo(name, type, currentVersion, probeResult, latestVersion, latestTime);
+  return buildGoPackageInfo(name, currentVersion, probeResult, latestVersion, latestTime);
 }
 
 export function removeGoReplace(content: string, name: string): string {

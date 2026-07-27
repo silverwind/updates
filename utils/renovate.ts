@@ -2,16 +2,17 @@ import {join} from "node:path";
 import {readFile} from "node:fs/promises";
 import {parseJsonish} from "./json5.ts";
 import {validRange} from "./semver.ts";
-import {walkUp, memoizeAsync} from "./utils.ts";
+import {walkUp, memoizeAsync, forgeDirs} from "./utils.ts";
 import {getCache, setCache} from "./fetchCache.ts";
 import type {Config} from "../config.ts";
 
-const forgeDirs = [".github", ".gitea", ".forgejo", ".gitlab"];
+// Renovate also reads .gitlab, which has no workflow files and so is absent from the actions list.
+const renovateDirs = [...forgeDirs, ".gitlab"];
 
 const configFileNames = [
   "renovate.json",
   "renovate.json5",
-  ...forgeDirs.flatMap(dir => [`${dir}/renovate.json`, `${dir}/renovate.json5`]),
+  ...renovateDirs.flatMap(dir => [`${dir}/renovate.json`, `${dir}/renovate.json5`]),
   ".renovaterc",
   ".renovaterc.json",
   ".renovaterc.json5",

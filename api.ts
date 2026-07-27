@@ -6,11 +6,11 @@ import {readFile} from "node:fs/promises";
 import {parseToml} from "./utils/toml.ts";
 import {valid, validRange} from "./utils/semver.ts";
 import {timerel} from "timerel";
-import {npmTypes, uvTypes, goTypes, cargoTypes, parseUvDependencies, nonPackageEngines, parseDuration, parsePositiveInt, matchesAny, getProperty, timestamp, pMap, tryOrNull} from "./utils/utils.ts";
+import {npmTypes, uvTypes, goTypes, cargoTypes, parseUvDependencies, nonPackageEngines, parseDuration, parsePositiveInt, matchesAny, getProperty, memoizeAsync, timestamp, forgeDirs, pMap, pushTo, tryOrNull} from "./utils/utils.ts";
 import {
   type Dep, type Deps, type DepsByMode, type Output, type ModeContext,
   type PackageRepository, type PackageInfo,
-  fieldSep, normalizeUrl, fetchTimeout, goProbeTimeout,
+  fieldSep, normalizeUrl, fetchTimeout, goProbeTimeout, maxSockets,
   doFetch, findVersion, findNewVersion, coerceToVersion, getInfoUrl, getGithubTokens,
   passesCooldown, stripv, hashRe as npmHashRe,
 } from "./modes/shared.ts";
@@ -31,7 +31,7 @@ import {
   type ActionRef, type TagEntry,
   actionsUsesRe, parseActionRef, getForgeApiBaseUrl,
   fetchActionTags, fetchActionTagDate, formatActionVersion,
-  updateWorkflowFile, isWorkflowFile, resolveWorkflowFiles, forgeDirs,
+  updateWorkflowFile, isWorkflowFile, resolveWorkflowFiles,
 } from "./modes/actions.ts";
 import {
   type DockerImageRef,
@@ -64,6 +64,12 @@ const modeByFileName: Record<string, string> = {
 };
 
 const defaultModes = new Set(["npm", "pypi", "go", "cargo", "actions", "docker", "make"]);
+
+// A workspace manifest supersedes the plain manifest in the same directory
+const supersededByWorkspace: Record<string, string> = {
+  "go.work": "go.mod",
+  "pnpm-workspace.yaml": "package.json",
+};
 
 const apiUrl = (val: unknown, dflt: string | (() => string)) => typeof val === "string" ? normalizeUrl(val) : (typeof dflt === "function" ? dflt() : dflt);
 
@@ -189,18 +195,9 @@ function resolveFiles(filesArg: Set<string> | false): Set<string> {
     } catch {}
   }
 
-  // go.work supersedes go.mod in the same directory
   for (const file of Array.from(resolvedFiles)) {
-    if (basename(file) === "go.work") {
-      resolvedFiles.delete(join(dirname(file), "go.mod"));
-    }
-  }
-
-  // pnpm-workspace.yaml supersedes package.json in the same directory
-  for (const file of Array.from(resolvedFiles)) {
-    if (basename(file) === "pnpm-workspace.yaml") {
-      resolvedFiles.delete(join(dirname(file), "package.json"));
-    }
+    const superseded = supersededByWorkspace[basename(file)];
+    if (superseded) resolvedFiles.delete(join(dirname(file), superseded));
   }
 
   return resolvedFiles;
@@ -266,7 +263,6 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
   const config: Config = {...opts};
   if (typeof config.timeout === "number") config.timeout = parsePositiveInt(config.timeout, "timeout");
 
-  const maxSockets = 25;
   const concurrency = config.sockets ?? maxSockets;
   const userTimeout = config.timeout ?? 0;
   const forgeApiUrl = apiUrl(opts.forgeapi, "https://api.github.com");
@@ -386,10 +382,23 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
   };
   const cwdStr = cwd();
   const toRelPath = (absPath: string) => absPath.replace(`${cwdStr}/`, "").replace(`${cwdStr}\\`, "");
-  let numDependencies = 0;
 
   const addDep = (mode: string, depType: string, typePrefix: string, name: string, old: string, oldOrig: string) => {
     deps[mode][`${depType}${typePrefix}${fieldSep}${name}`] = {old, oldOrig} as Dep;
+  };
+
+  // Classify one npm dependency value: jsr specifier, semver range, local
+  // link:/file: path, or a URL/tarball deferred to checkUrlDep.
+  const addNpmDep = (depType: string, typePrefix: string, name: string, value: string) => {
+    if (isJsr(value)) {
+      addDep("npm", depType, typePrefix, name, parseJsrDependency(value, name).version, value);
+    } else if (validRange(value)) {
+      addDep("npm", depType, typePrefix, name, normalizeRange(value), value);
+    } else if (isLocalDep(value)) {
+      addDep("npm", depType, typePrefix, name, "0.0.0", value);
+    } else {
+      maybeUrlDeps[`${depType}${typePrefix}${fieldSep}${name}`] = {old: value} as Dep;
+    }
   };
 
   const files = resolveFiles(config.files?.length ? new Set(config.files) : false);
@@ -438,12 +447,23 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
   const modeConfigs: Record<string, ModeCtx> = {};
   const presetFetch = {noCache: config.noCache, timeout: config.timeout || fetchTimeout};
 
+  // Load a directory's config and merge its include/exclude patterns onto the
+  // global ones. Callers differ only in how they use `pin` and `cooldown`.
+  // Memoized per directory: sibling manifests and workflow/Dockerfile/Makefile
+  // targets share a dir, and recompiling their regex sets per file is pure waste.
+  const resolveDirConfig = memoizeAsync(async (dir: string) => {
+    const dirConfig = await loadConfig(dir, presetFetch);
+    return {
+      dirConfig,
+      include: dirConfig.include?.length ? patternsToRegexSet([...(config.include ?? []), ...dirConfig.include]) : include,
+      exclude: dirConfig.exclude?.length ? patternsToRegexSet([...(config.exclude ?? []), ...dirConfig.exclude]) : exclude,
+    };
+  });
+
   async function resolveModeFilters(projectDir: string) {
-    const modeConfig = await loadConfig(projectDir, presetFetch);
-    const modeInclude = modeConfig.include?.length ? patternsToRegexSet([...(config.include ?? []), ...modeConfig.include]) : include;
-    const modeExclude = modeConfig.exclude?.length ? patternsToRegexSet([...(config.exclude ?? []), ...modeConfig.exclude]) : exclude;
-    const pin: Record<string, string> = {...modeConfig.pin, ...globalPin};
-    return {modeConfig, modeInclude, modeExclude, pin};
+    const {dirConfig, include: modeInclude, exclude: modeExclude} = await resolveDirConfig(projectDir);
+    const pin: Record<string, string> = {...dirConfig.pin, ...globalPin};
+    return {modeConfig: dirConfig, modeInclude, modeExclude, pin};
   }
 
   function resolveDepTypes(mode: string, modeConfig: Config): Array<string> {
@@ -476,10 +496,8 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
   }
 
   async function resolveFileConfig(fileDir: string): Promise<FileFilters> {
-    const cfg = await loadConfig(fileDir, presetFetch);
-    const inc = cfg.include?.length ? patternsToRegexSet([...(config.include ?? []), ...cfg.include]) : include;
-    const exc = cfg.exclude?.length ? patternsToRegexSet([...(config.exclude ?? []), ...cfg.exclude]) : exclude;
-    return {include: inc, exclude: exc, pin: cfg.pin ?? {}, cooldownDays: cooldownDaysFor(cfg.cooldown)};
+    const {dirConfig, include, exclude} = await resolveDirConfig(fileDir);
+    return {include, exclude, pin: dirConfig.pin ?? {}, cooldownDays: cooldownDaysFor(dirConfig.cooldown)};
   }
 
   // A workspace manifest owns the empty dep-prefix for its mode, so plain manifests of the
@@ -489,8 +507,8 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
   const parsedCargoToml = new Map<string, Record<string, any>>();
   for (const file of files) {
     const filename = basename(file);
-    if (filename === "go.work") workspaceModes.add("go");
-    else if (filename === "pnpm-workspace.yaml") workspaceModes.add("npm");
+    // Cargo has no dedicated workspace filename, so it alone needs the content parsed.
+    if (supersededByWorkspace[filename]) workspaceModes.add(modeByFileName[filename]);
     else if (filename === "Cargo.toml") {
       const content = fileContents.get(file);
       if (!content) continue;
@@ -626,7 +644,6 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
         }
       }
 
-      numDependencies += Object.keys(deps[mode]).length;
       continue;
     }
 
@@ -637,7 +654,6 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
 
     if (filename === "Cargo.toml") {
       deps[mode] ??= {};
-      const cargoDepsBefore = Object.keys(deps[mode]).length;
       const cargoContent = fileContents.get(file)!;
       const cargoParsed = parsedCargoToml.get(file) ?? parseToml(cargoContent);
       const workspaceDir = dirname(resolve(file));
@@ -697,7 +713,6 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
         collectCargoDeps(cargoParsed, memberPath === "." ? "" : `|${memberPath}`);
       }
 
-      numDependencies += Object.keys(deps[mode]).length - cargoDepsBefore;
       continue;
     }
 
@@ -728,15 +743,8 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
             }
           } else if (typeof obj === "object" && !Array.isArray(obj)) {
             for (const [name, value] of Object.entries(obj)) {
-              if (!canInclude(name, mode, modeInclude, modeExclude, depType)) continue;
-              if (isJsr(value)) {
-                addDep(mode, depType, typePrefix, name, parseJsrDependency(value, name).version, value);
-              } else if (validRange(value)) {
-                addDep(mode, depType, typePrefix, name, normalizeRange(value), value);
-              } else if (isLocalDep(value)) {
-                addDep(mode, depType, typePrefix, name, "0.0.0", value);
-              } else {
-                maybeUrlDeps[`${depType}${typePrefix}${fieldSep}${name}`] = {old: value} as Dep;
+              if (canInclude(name, mode, modeInclude, modeExclude, depType)) {
+                addNpmDep(depType, typePrefix, name, value);
               }
             }
           }
@@ -765,7 +773,6 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
         collectNpmDeps(memberPkg, `|${member.memberPath}`);
       }
 
-      numDependencies += Object.keys(deps[mode]).length + Object.keys(maybeUrlDeps).length;
       continue;
     }
 
@@ -799,9 +806,6 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
       throw new Error(`Error parsing ${file}: ${(err as Error).message}`);
     }
 
-    const depsBefore = Object.keys(deps[mode]).length;
-    const urlDepsBefore = Object.keys(maybeUrlDeps).length;
-
     for (const depType of dependencyTypes) {
       let obj: Record<string, string> | Array<string> | string;
       if (mode === "npm" || mode === "go") {
@@ -825,33 +829,24 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
         } else {
           for (const [name, value] of Object.entries(obj)) {
             if (!canInclude(name, mode, modeInclude, modeExclude, depType)) continue;
-            if (mode === "npm" && isJsr(value)) {
-              addDep(mode, depType, typePrefix, name, parseJsrDependency(value, name).version, value);
-            } else if (mode !== "go" && validRange(value)) {
-              addDep(mode, depType, typePrefix, name, normalizeRange(value), value);
-            } else if (mode === "npm" && isLocalDep(value)) {
-              addDep(mode, depType, typePrefix, name, "0.0.0", value);
-            } else if (mode === "npm") {
-              maybeUrlDeps[`${depType}${typePrefix}${fieldSep}${name}`] = {old: value} as Dep;
+            if (mode === "npm") {
+              addNpmDep(depType, typePrefix, name, value);
             } else if (mode === "go") {
               addDep(mode, depType, typePrefix, name, shortenGoVersion(value), stripv(value));
+            } else if (validRange(value)) {
+              addDep(mode, depType, typePrefix, name, normalizeRange(value), value);
             }
           }
         }
       }
     }
 
-    numDependencies += (Object.keys(deps[mode]).length - depsBefore) + (Object.keys(maybeUrlDeps).length - urlDepsBefore);
     // Only the first manifest seeds the mode-level default context (used for the
     // empty-suffix deps); later manifests carry their own context via plainFiles.
     if (isFirstOfMode) modeConfigs[mode] = {modeConfig, projectDir, pin};
   }
 
-  if (deps.actions) numDependencies += Object.keys(deps.actions).length;
-  if (deps.docker) numDependencies += Object.keys(deps.docker).length;
-  if (deps.make) numDependencies += Object.keys(deps.make).length;
-
-  if (numDependencies === 0) {
+  if (!countDeps(deps) && !Object.keys(maybeUrlDeps).length) {
     return {results: {}, message: "No dependencies found, nothing to do."};
   }
 
@@ -901,7 +896,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
         if (mode === "npm") {
           const {oldOrig} = dep;
           if (oldOrig && isJsr(oldOrig)) {
-            info = await fetchJsrInfo(name, baseT, ctx);
+            info = await fetchJsrInfo(name, ctx);
           } else if (oldOrig && isLocalDep(oldOrig)) {
             try {
               info = await fetchNpmInfo(name, baseT, modeConfig, argsForNpm, ctx);
@@ -915,13 +910,13 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
         } else if (mode === "go") {
           info = await fetchGoProxyInfo(name, baseT, dep.oldOrig || dep.old, projectDir, ctx, goNoProxy);
         } else if (mode === "cargo") {
-          info = await fetchCratesIoInfo(name, baseT, ctx);
+          info = await fetchCratesIoInfo(name, ctx);
         } else {
-          info = await fetchPypiInfo(name, baseT, ctx);
+          info = await fetchPypiInfo(name, ctx);
         }
         if (!info) return;
 
-        const [data, , registry] = info;
+        const [data, registry] = info;
         if (data.error) throw new Error(data.error);
 
         const {useGreatest, usePre, useRel, semvers, allowDowngrade: allowDown, cooldownOverride} = getVersionOpts(data.name);
@@ -1013,15 +1008,13 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
 
   if (actionDepInfos.length) {
     fetchTasks.push((async () => {
-      const depsByRepo = new Map<string, {apiUrl: string, owner: string, repo: string, infos: Array<ActionDepInfo>}>();
+      const depsByRepo = new Map<string, Array<ActionDepInfo>>();
       for (const info of actionDepInfos) {
-        const repoKey = `${info.apiUrl}/${info.owner}/${info.repo}`;
-        let entry = depsByRepo.get(repoKey);
-        if (!entry) depsByRepo.set(repoKey, entry = {apiUrl: info.apiUrl, owner: info.owner, repo: info.repo, infos: []});
-        entry.infos.push(info);
+        pushTo(depsByRepo, `${info.apiUrl}/${info.owner}/${info.repo}`, info);
       }
 
-      await pMap(depsByRepo.values(), async ({apiUrl, owner, repo, infos}) => {
+      await pMap(depsByRepo.values(), async (infos) => {
+        const {apiUrl, owner, repo} = infos[0];
         const tags = await fetchActionTags(apiUrl, owner, repo, ctx);
         const versions: string[] = [];
         const tagByStripped = new Map<string, string>();
@@ -1082,18 +1075,16 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
             if (!result) { delete deps.actions[key]; return; }
 
             const {tag: newTag, commitSha: newCommitSha, date} = result;
-            if (!newCommitSha || newCommitSha === ref || newCommitSha.startsWith(ref) || ref.startsWith(newCommitSha)) {
+            if (!newCommitSha || newCommitSha.startsWith(ref) || ref.startsWith(newCommitSha)) {
               delete deps.actions[key]; return;
             }
 
             let oldTagName = commitShaToTag.get(ref);
             if (!oldTagName) {
               for (const [sha, name] of commitShaToTag) {
-                if (!sha.startsWith(ref)) {
-                  continue;
-                }
-
-                oldTagName = name; break;
+                if (!sha.startsWith(ref)) continue;
+                oldTagName = name;
+                break;
               }
             }
             dep.old = ref;
@@ -1138,15 +1129,13 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
     fetchTasks.push((async () => {
       const depsByImage = new Map<string, Array<DockerDepInfo>>();
       for (const info of dockerDepInfos) {
-        let list = depsByImage.get(info.fullImage);
-        if (!list) depsByImage.set(info.fullImage, list = []);
-        list.push(info);
+        pushTo(depsByImage, info.fullImage, info);
       }
 
       await pMap(depsByImage.entries(), async ([fullImage, infos]) => {
         let data: Record<string, any>;
         try {
-          const [fetchedData] = await fetchDockerInfo(fullImage, "docker", ctx);
+          const [fetchedData] = await fetchDockerInfo(fullImage, ctx);
           data = fetchedData;
         } catch {
           for (const info of infos) delete deps.docker[info.key];
@@ -1235,19 +1224,17 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
     if (deps.actions) {
       for (const [key, dep] of Object.entries(deps.actions)) {
         const [relPath, name] = key.split(fieldSep);
-        let list = actionsUpdatesByRelPath.get(relPath);
-        if (!list) actionsUpdatesByRelPath.set(relPath, list = []);
-        list.push({name, oldRef: dep.old, newRef: dep.new});
+        pushTo(actionsUpdatesByRelPath, relPath, {name, oldRef: dep.old, newRef: dep.new});
       }
     }
 
     const dockerUpdatesByRelPath = new Map<string, Deps>();
     if (deps.docker) {
       for (const [key, dep] of Object.entries(deps.docker)) {
-        const [relPath] = key.split(fieldSep);
-        let map = dockerUpdatesByRelPath.get(relPath);
-        if (!map) dockerUpdatesByRelPath.set(relPath, map = {});
-        map[key] = dep;
+        const relPath = key.split(fieldSep)[0];
+        let group = dockerUpdatesByRelPath.get(relPath);
+        if (!group) dockerUpdatesByRelPath.set(relPath, group = {});
+        group[key] = dep;
       }
     }
 
@@ -1255,10 +1242,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
     if (deps.make) {
       for (const info of makeDepInfos) {
         if (!info.newSpec || !deps.make[info.key]) continue;
-        const relPath = info.key.split(fieldSep)[0];
-        let list = makeUpdatesByRelPath.get(relPath);
-        if (!list) makeUpdatesByRelPath.set(relPath, list = []);
-        list.push({oldSpec: info.oldSpec, newSpec: info.newSpec});
+        pushTo(makeUpdatesByRelPath, info.key.split(fieldSep)[0], {oldSpec: info.oldSpec, newSpec: info.newSpec});
       }
     }
 

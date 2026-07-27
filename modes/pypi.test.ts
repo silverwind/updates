@@ -71,8 +71,8 @@ test("fetchPypiInfo happy path", async () => {
     fetchTimeout,
     doFetch: () => Promise.resolve({ok: true, json: () => Promise.resolve(mockData)}),
   } as unknown as ModeContext;
-  const result = await fetchPypiInfo("requests", "dependencies", ctx);
-  expect(result).toEqual([mockData, "dependencies", null, "requests"]);
+  const result = await fetchPypiInfo("requests", ctx);
+  expect(result).toEqual([mockData, null]);
 });
 
 test("fetchPypiInfo fetch failure throws", async () => {
@@ -81,7 +81,7 @@ test("fetchPypiInfo fetch failure throws", async () => {
     fetchTimeout,
     doFetch: () => Promise.resolve({ok: false, status: 404, statusText: "Not Found"}),
   } as unknown as ModeContext;
-  await expect(fetchPypiInfo("nonexistent", "dependencies", ctx)).rejects.toThrow("404");
+  await expect(fetchPypiInfo("nonexistent", ctx)).rejects.toThrow("404");
 });
 
 test("fetchPypiInfo null response throws", async () => {
@@ -90,7 +90,7 @@ test("fetchPypiInfo null response throws", async () => {
     fetchTimeout,
     doFetch: () => Promise.resolve(undefined),
   } as unknown as ModeContext;
-  await expect(fetchPypiInfo("nonexistent", "dependencies", ctx)).rejects.toThrow("Unable to fetch");
+  await expect(fetchPypiInfo("nonexistent", ctx)).rejects.toThrow("Unable to fetch");
 });
 
 test("operator without space", () => {

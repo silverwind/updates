@@ -10,10 +10,9 @@ import {gzip, constants} from "node:zlib";
 import {promisify} from "node:util";
 import type {Server} from "node:http";
 import {satisfies} from "./utils/semver.ts";
-import {npmTypes} from "./utils/utils.ts";
+import {npmTypes, forgeDirs} from "./utils/utils.ts";
 import {updates} from "./api.ts";
 import {parseCliArgs, resolveConfig} from "./cli.ts";
-import {forgeDirs} from "./modes/actions.ts";
 import {resolutionsBasePackage} from "./modes/npm.ts";
 import type {UpdatesOptions} from "./api.ts";
 

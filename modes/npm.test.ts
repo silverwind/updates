@@ -81,10 +81,9 @@ test("fetchJsrInfo happy path", async () => {
     fetchTimeout,
     doFetch: () => Promise.resolve({ok: true, json: () => Promise.resolve(jsrData)}),
   } as unknown as ModeContext;
-  const [data, type, registry, name] = await fetchJsrInfo("@std/semver", "dependencies", ctx);
-  expect(type).toBe("dependencies");
+  const [data, registry] = await fetchJsrInfo("@std/semver", ctx);
   expect(registry).toBe("https://jsr.io");
-  expect(name).toBe("@std/semver");
+  expect(data.name).toBe("@std/semver");
   expect(data["dist-tags"].latest).toBe("1.0.0");
   expect(Object.keys(data.versions)).toEqual(["1.0.0", "0.9.0"]);
   expect(data.time["1.0.0"]).toBe("2025-01-01T00:00:00Z");
@@ -92,7 +91,7 @@ test("fetchJsrInfo happy path", async () => {
 
 test("fetchJsrInfo invalid package name throws", async () => {
   const ctx = {} as unknown as ModeContext;
-  await expect(fetchJsrInfo("noscopepkg", "dependencies", ctx)).rejects.toThrow("Invalid JSR package name");
+  await expect(fetchJsrInfo("noscopepkg", ctx)).rejects.toThrow("Invalid JSR package name");
 });
 
 test("fetchJsrInfo fetch failure throws", async () => {
@@ -101,7 +100,7 @@ test("fetchJsrInfo fetch failure throws", async () => {
     fetchTimeout,
     doFetch: () => Promise.resolve({ok: false, status: 404, statusText: "Not Found"}),
   } as unknown as ModeContext;
-  await expect(fetchJsrInfo("@std/semver", "dependencies", ctx)).rejects.toThrow("404");
+  await expect(fetchJsrInfo("@std/semver", ctx)).rejects.toThrow("404");
 });
 
 // fetchNpmInfo
@@ -115,8 +114,7 @@ test("fetchNpmInfo resolutions key keeps scope", async () => {
       return Promise.resolve({ok: true, text: () => Promise.resolve("{}"), headers: new Headers()});
     },
   } as unknown as ModeContext;
-  const [, , , name] = await fetchNpmInfo("@babel/core", "resolutions", {}, {}, ctx);
-  expect(name).toBe("@babel/core");
+  await fetchNpmInfo("@babel/core", "resolutions", {}, {}, ctx);
   // the scope must survive: fetch @babel/core, never the unscoped `core`
   expect(fetchedUrl.endsWith("/@babel%2fcore")).toBe(true);
 });

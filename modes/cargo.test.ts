@@ -88,10 +88,9 @@ test("fetchCratesIoInfo happy path", async () => {
     fetchTimeout,
     doFetch: () => Promise.resolve({ok: true, json: () => Promise.resolve(responseData)}),
   } as unknown as ModeContext;
-  const [data, type, registry, name] = await fetchCratesIoInfo("serde", "dependencies", ctx);
-  expect(type).toBe("dependencies");
+  const [data, registry] = await fetchCratesIoInfo("serde", ctx);
   expect(registry).toBeNull();
-  expect(name).toBe("serde");
+  expect(data.name).toBe("serde");
   expect(data["dist-tags"].latest).toBe("1.0.200");
   expect(Object.keys(data.versions)).toEqual(["1.0.200", "1.0.100", "1.0.0"]);
   expect(data.time["1.0.200"]).toBe("2025-01-15T12:00:00Z");
@@ -109,7 +108,7 @@ test("fetchCratesIoInfo filters yanked versions", async () => {
     fetchTimeout,
     doFetch: () => Promise.resolve({ok: true, json: () => Promise.resolve(responseData)}),
   } as unknown as ModeContext;
-  const [data] = await fetchCratesIoInfo("serde-yanked", "dependencies", ctx);
+  const [data] = await fetchCratesIoInfo("serde-yanked", ctx);
   expect(Object.keys(data.versions)).toEqual(["1.0.0"]);
   expect(data["dist-tags"].latest).toBe("1.0.0");
 });
@@ -120,7 +119,7 @@ test("fetchCratesIoInfo fetch failure throws", async () => {
     fetchTimeout,
     doFetch: () => Promise.resolve({ok: false, status: 404, statusText: "Not Found"}),
   } as unknown as ModeContext;
-  await expect(fetchCratesIoInfo("nonexistent", "dependencies", ctx)).rejects.toThrow("404");
+  await expect(fetchCratesIoInfo("nonexistent", ctx)).rejects.toThrow("404");
 });
 
 test("fetchCratesIoInfo invalid JSON throws", async () => {
@@ -130,7 +129,7 @@ test("fetchCratesIoInfo invalid JSON throws", async () => {
     noCache: true,
     doFetch: () => Promise.resolve({ok: true, text: () => Promise.resolve("{not json"), headers: new Headers()}),
   } as unknown as ModeContext;
-  await expect(fetchCratesIoInfo("serde-bad-json", "dependencies", ctx)).rejects.toThrow("Invalid JSON");
+  await expect(fetchCratesIoInfo("serde-bad-json", ctx)).rejects.toThrow("Invalid JSON");
 });
 
 test("fetchCratesIoInfo empty versions", async () => {
@@ -139,7 +138,7 @@ test("fetchCratesIoInfo empty versions", async () => {
     fetchTimeout,
     doFetch: () => Promise.resolve({ok: true, json: () => Promise.resolve({versions: []})}),
   } as unknown as ModeContext;
-  const [data] = await fetchCratesIoInfo("serde-empty", "dependencies", ctx);
+  const [data] = await fetchCratesIoInfo("serde-empty", ctx);
   expect(data.versions).toEqual({});
   expect(data.time).toEqual({});
   expect(data["dist-tags"].latest).toBe("");
