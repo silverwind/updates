@@ -3,6 +3,7 @@ import {mkdtempSync, rmSync, mkdirSync, writeFileSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
 import {prewarmOrigins} from "./prewarm.ts";
+import {forgeDirs} from "./utils.ts";
 
 const created: Array<string> = [];
 
@@ -68,10 +69,10 @@ test("docker-compose.yml triggers hub.docker.com", () => {
   expect(prewarmOrigins(makeDir({"docker-compose.yml": ""}), {})).toEqual(["https://hub.docker.com/"]);
 });
 
-test(".github/workflows dir triggers github + hub.docker.com", () => {
+test.each(forgeDirs)("%s/workflows dir triggers github + hub.docker.com", (forgeDir) => {
   const dir = mkdtempSync(join(tmpdir(), "updates-prewarm-"));
   created.push(dir);
-  mkdirSync(join(dir, ".github", "workflows"), {recursive: true});
+  mkdirSync(join(dir, forgeDir, "workflows"), {recursive: true});
   expect(prewarmOrigins(dir, {})).toEqual(expect.arrayContaining([
     "https://api.github.com/",
     "https://hub.docker.com/",

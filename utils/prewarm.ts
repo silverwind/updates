@@ -1,6 +1,7 @@
 import {readFileSync, existsSync} from "node:fs";
 import {join} from "node:path";
 import {dockerExactFileNames} from "../modes/docker.ts";
+import {forgeDirs} from "./utils.ts";
 import {parseIni} from "./rc.ts";
 
 function npmrcRegistry(dir: string): string | undefined {
@@ -41,7 +42,9 @@ export function prewarmOrigins(dir: string, args: Record<string, unknown>): stri
   if (has("Cargo.toml")) add(resolveOrigin(args.cargoapi, "https://crates.io/"));
   if (has("go.mod", "go.work")) add(resolveOrigin(args.goproxy, "https://proxy.golang.org/"));
   if (has(...dockerExactFileNames)) add(dockerOrigin);
-  if (has(".github/workflows")) {
+  // Bare forge dir, matching resolveFiles' auto-discovery: workflows also live
+  // outside `workflows/` as `<forge>/**/action.yml`.
+  if (has(...forgeDirs)) {
     add(forgeOrigin);
     add(dockerOrigin);
   }

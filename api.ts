@@ -65,10 +65,12 @@ const modeByFileName: Record<string, string> = {
 
 const defaultModes = new Set(["npm", "pypi", "go", "cargo", "actions", "docker", "make"]);
 
-// A workspace manifest supersedes the plain manifest in the same directory
-const supersededByWorkspace: Record<string, string> = {
-  "go.work": "go.mod",
-  "pnpm-workspace.yaml": "package.json",
+// Manifests that declare a workspace for their mode, and the plain manifest
+// each supersedes in the same directory. Cargo is absent: it has no dedicated
+// workspace filename, so it is detected by parsing Cargo.toml's content.
+const workspaceManifests: Record<string, {mode: string, supersedes: string}> = {
+  "go.work": {mode: "go", supersedes: "go.mod"},
+  "pnpm-workspace.yaml": {mode: "npm", supersedes: "package.json"},
 };
 
 const apiUrl = (val: unknown, dflt: string | (() => string)) => typeof val === "string" ? normalizeUrl(val) : (typeof dflt === "function" ? dflt() : dflt);
@@ -106,6 +108,8 @@ function setDepAge(dep: Dep, date: string): void {
     dep.age = timerel(date, {noAffix: true});
   }
 }
+
+const depKey = (depType: string, typePrefix: string, name: string) => `${depType}${typePrefix}${fieldSep}${name}`;
 
 function countDeps(deps: DepsByMode): number {
   let num = 0;
@@ -196,8 +200,9 @@ function resolveFiles(filesArg: Set<string> | false): Set<string> {
   }
 
   for (const file of Array.from(resolvedFiles)) {
-    const superseded = supersededByWorkspace[basename(file)];
-    if (superseded) resolvedFiles.delete(join(dirname(file), superseded));
+    const filename = basename(file);
+    if (!Object.hasOwn(workspaceManifests, filename)) continue;
+    resolvedFiles.delete(join(dirname(file), workspaceManifests[filename].supersedes));
   }
 
   return resolvedFiles;
@@ -384,7 +389,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
   const toRelPath = (absPath: string) => absPath.replace(`${cwdStr}/`, "").replace(`${cwdStr}\\`, "");
 
   const addDep = (mode: string, depType: string, typePrefix: string, name: string, old: string, oldOrig: string) => {
-    deps[mode][`${depType}${typePrefix}${fieldSep}${name}`] = {old, oldOrig} as Dep;
+    deps[mode][depKey(depType, typePrefix, name)] = {old, oldOrig} as Dep;
   };
 
   // Classify one npm dependency value: jsr specifier, semver range, local
@@ -397,7 +402,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
     } else if (isLocalDep(value)) {
       addDep("npm", depType, typePrefix, name, "0.0.0", value);
     } else {
-      maybeUrlDeps[`${depType}${typePrefix}${fieldSep}${name}`] = {old: value} as Dep;
+      maybeUrlDeps[depKey(depType, typePrefix, name)] = {old: value} as Dep;
     }
   };
 
@@ -507,8 +512,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
   const parsedCargoToml = new Map<string, Record<string, any>>();
   for (const file of files) {
     const filename = basename(file);
-    // Cargo has no dedicated workspace filename, so it alone needs the content parsed.
-    if (supersededByWorkspace[filename]) workspaceModes.add(modeByFileName[filename]);
+    if (Object.hasOwn(workspaceManifests, filename)) workspaceModes.add(workspaceManifests[filename].mode);
     else if (filename === "Cargo.toml") {
       const content = fileContents.get(file);
       if (!content) continue;
@@ -1030,13 +1034,9 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
           if (tag.commitSha) commitShaToTag.set(tag.commitSha, tag.name);
         }
 
-        const dateCache = new Map<string, string>();
-        async function getDate(commitSha: string): Promise<string> {
-          if (dateCache.has(commitSha)) return dateCache.get(commitSha)!;
-          const date = await fetchActionTagDate(apiUrl, owner, repo, commitSha, ctx);
-          dateCache.set(commitSha, date);
-          return date;
-        }
+        // Caches the promise, so the several infos of one repo resolving to the
+        // same commit share a single request instead of racing their own.
+        const getDate = memoizeAsync((commitSha: string) => fetchActionTagDate(apiUrl, owner, repo, commitSha, ctx));
 
         // Cooldown-aware selection: when cooldown is active, pick the highest
         // version, fetch its commit date, and if it's too new, exclude it and
@@ -1231,10 +1231,10 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
     const dockerUpdatesByRelPath = new Map<string, Deps>();
     if (deps.docker) {
       for (const [key, dep] of Object.entries(deps.docker)) {
-        const relPath = key.split(fieldSep)[0];
-        let group = dockerUpdatesByRelPath.get(relPath);
-        if (!group) dockerUpdatesByRelPath.set(relPath, group = {});
-        group[key] = dep;
+        const [relPath] = key.split(fieldSep);
+        let map = dockerUpdatesByRelPath.get(relPath);
+        if (!map) dockerUpdatesByRelPath.set(relPath, map = {});
+        map[key] = dep;
       }
     }
 
