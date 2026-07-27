@@ -3,7 +3,7 @@ import {mkdtempSync, rmSync, mkdirSync, writeFileSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
 import {prewarmOrigins} from "./prewarm.ts";
-import {forgeDirs} from "./utils.ts";
+import {forgeDirs, modeByFileName} from "./utils.ts";
 
 const created: Array<string> = [];
 
@@ -24,6 +24,12 @@ afterAll(() => {
 
 test("empty dir returns no origins", () => {
   expect(prewarmOrigins(makeDir(), {})).toEqual([]);
+});
+
+// prewarmOrigins keys off filenames rather than modes, so a manifest added to
+// modeByFileName without a matching branch here would silently never prewarm.
+test.each(Object.keys(modeByFileName))("%s is prewarmed", (filename) => {
+  expect(prewarmOrigins(makeDir({[filename]: ""}), {})).not.toEqual([]);
 });
 
 test("package.json triggers npm + jsr + github", () => {

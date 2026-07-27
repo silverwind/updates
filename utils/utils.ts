@@ -55,6 +55,18 @@ export const nonPackageEngines = [
 // Forge config directories holding workflow files, in discovery order.
 export const forgeDirs = [".github", ".gitea", ".forgejo"] as const;
 
+// Manifest filenames that select a mode. Also drives which registry origins get
+// a socket pre-warmed, so a new entry must be handled in prewarmOrigins too —
+// utils/prewarm.test.ts fails if one is missed.
+export const modeByFileName: Record<string, string> = {
+  "pnpm-workspace.yaml": "npm",
+  "package.json": "npm",
+  "pyproject.toml": "pypi",
+  "go.work": "go",
+  "go.mod": "go",
+  "Cargo.toml": "cargo",
+};
+
 export const uvTypes = [
   "project.dependencies",
   "project.optional-dependencies",

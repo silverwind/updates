@@ -6,7 +6,7 @@ import {readFile} from "node:fs/promises";
 import {parseToml} from "./utils/toml.ts";
 import {valid, validRange} from "./utils/semver.ts";
 import {timerel} from "timerel";
-import {npmTypes, uvTypes, goTypes, cargoTypes, parseUvDependencies, nonPackageEngines, parseDuration, parsePositiveInt, matchesAny, getProperty, memoizeAsync, timestamp, forgeDirs, pMap, pushTo, tryOrNull} from "./utils/utils.ts";
+import {npmTypes, uvTypes, goTypes, cargoTypes, parseUvDependencies, nonPackageEngines, parseDuration, parsePositiveInt, matchesAny, getProperty, memoizeAsync, timestamp, forgeDirs, modeByFileName, pMap, pushTo, tryOrNull} from "./utils/utils.ts";
 import {
   type Dep, type Deps, type DepsByMode, type Output, type ModeContext,
   type PackageRepository, type PackageInfo,
@@ -53,15 +53,6 @@ import {fetchCratesIoInfo, updateCargoToml, updateCargoRange, parseCargoLock, fi
 import {baseType, filterDepsForMember, resolveWorkspaceMembers, parsePnpmWorkspace, type WorkspaceMember} from "./utils/workspace.ts";
 
 export type {Config, Override, Dep, Deps, DepsByMode, Output};
-
-const modeByFileName: Record<string, string> = {
-  "pnpm-workspace.yaml": "npm",
-  "package.json": "npm",
-  "pyproject.toml": "pypi",
-  "go.work": "go",
-  "go.mod": "go",
-  "Cargo.toml": "cargo",
-};
 
 const defaultModes = new Set(["npm", "pypi", "go", "cargo", "actions", "docker", "make"]);
 
