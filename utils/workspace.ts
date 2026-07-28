@@ -11,7 +11,8 @@ export type WorkspaceMember = {
 };
 
 export function baseType(type: string): string {
-  return type.split("|")[0];
+  const idx = type.indexOf("|");
+  return idx === -1 ? type : type.slice(0, idx);
 }
 
 export function filterDepsForMember(allDeps: Deps, memberPath: string): Deps {

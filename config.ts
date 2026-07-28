@@ -128,18 +128,12 @@ export const options: ParseArgsOptionsConfig = {
   "version": {short: "v", type: "boolean"},
 };
 
-function globToRegex(glob: string, insensitive: boolean): RegExp {
-  return new RegExp(`^${esc(glob).replaceAll("\\*", ".*")}$`, insensitive ? "i" : "");
-}
-
-function argToRegex(arg: string | RegExp, cli: boolean, insensitive: boolean): RegExp {
-  if (cli && typeof arg === "string") {
-    return /^\/.+\/$/.test(arg) ? new RegExp(arg.slice(1, -1)) : globToRegex(arg, insensitive);
-  } else {
-    const re = arg instanceof RegExp ? arg : globToRegex(arg, insensitive);
-    // strip g/y: these matchers are only used with .test(), where a stateful lastIndex flakes
-    return /[gy]/.test(re.flags) ? new RegExp(re.source, re.flags.replace(/[gy]/g, "")) : re;
-  }
+// A string pattern is a case-insensitive glob; a RegExp is taken as authored.
+// CLI `/regex/` strings are already RegExp objects by the time they arrive here.
+function patternToRegex(pattern: string | RegExp): RegExp {
+  if (!(pattern instanceof RegExp)) return new RegExp(`^${esc(pattern).replaceAll("\\*", ".*")}$`, "i");
+  // strip g/y: these matchers are only used with .test(), where a stateful lastIndex flakes
+  return /[gy]/.test(pattern.flags) ? new RegExp(pattern.source, pattern.flags.replace(/[gy]/g, "")) : pattern;
 }
 
 export function parseMixedArg(arg: Arg): boolean | Set<string> {
@@ -164,7 +158,7 @@ export function getOptionKey(name: string): string {
 }
 
 export function patternsToRegexSet(patterns: Array<string | RegExp>): Set<RegExp> {
-  return new Set(patterns.map(p => argToRegex(p, false, true)));
+  return new Set(patterns.map(patternToRegex));
 }
 
 export function parseArgList(arg: Arg): Array<string> {

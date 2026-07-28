@@ -107,23 +107,19 @@ function getAuthAndRegistry(name: string, registry: string): AuthAndRegistry {
   const cached = authCache.get(cacheKey);
   if (cached) return cached;
 
-  const fallback = (): AuthAndRegistry => ({auth: getRegistryAuthToken(registry, npmrcConfig), registry});
-  let result: AuthAndRegistry;
-  if (!name.startsWith("@")) {
-    result = fallback();
-  } else {
+  // A scope with its own registry and credentials wins, everything else falls
+  // back to the default registry's auth.
+  let result: AuthAndRegistry | undefined;
+  if (scope) {
     const url = normalizeUrl(registryUrl(scope, npmrcConfig));
     if (url !== registry) {
       try {
-        const newAuth = getRegistryAuthToken(url, npmrcConfig);
-        result = newAuth?.token ? {auth: newAuth, registry: url} : fallback();
-      } catch {
-        result = fallback();
-      }
-    } else {
-      result = fallback();
+        const scopedAuth = getRegistryAuthToken(url, npmrcConfig);
+        if (scopedAuth?.token) result = {auth: scopedAuth, registry: url};
+      } catch {}
     }
   }
+  result ??= {auth: getRegistryAuthToken(registry, npmrcConfig), registry};
 
   authCache.set(cacheKey, result);
   return result;

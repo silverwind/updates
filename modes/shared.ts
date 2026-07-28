@@ -282,7 +282,7 @@ export function coerceToVersion(rangeOrVersion: string): string {
 
 export function findVersion(data: any, versions: Array<string>, {range, semvers, usePre, useRel, useGreatest, pinnedRange, cooldownDays, now, getVersionDate}: FindVersionOpts): string | null {
   const oldVersion = coerceToVersion(range);
-  if (!oldVersion) return oldVersion;
+  if (!oldVersion) return null;
 
   const effectiveUsePre = isRangePrerelease(range) || usePre;
   const effectiveSemvers = effectiveUsePre ? withPrereleaseVariants(semvers) : semvers;
@@ -360,45 +360,25 @@ export function findNewVersion(data: any, {mode, range, useGreatest, useRel, use
     // Use full original version for prerelease detection (range is shortened for Go)
     const originalOldVersion = data.old || range;
 
-    // Check cross-major upgrade
-    const crossVersion = coerceToVersion(data.new);
-    if (crossVersion && !isGoPseudoVersion(data.new) && !skipPrerelease(data.new)) {
-      const d = diff(oldVersion, crossVersion);
-      if (d && semvers.has(d) && isAllowedVersionTransition(originalOldVersion, data.new, transitionOpts) &&
-          passesCooldown(data.Time, cooldownDays, now) &&
-          (!pinnedRange || satisfies(crossVersion, pinnedRange))) {
-        return data.new;
-      }
-    }
+    // A candidate is taken only if it is a real, allowed upgrade under the active
+    // semver, transition, cooldown and pin constraints.
+    const accepts = (candidate: string, time: string | undefined): boolean => {
+      const coerced = coerceToVersion(candidate);
+      if (!coerced || isGoPseudoVersion(candidate) || skipPrerelease(candidate)) return false;
+      const d = diff(oldVersion, coerced);
+      if (!d || !semvers.has(d)) return false;
+      if (!isAllowedVersionTransition(originalOldVersion, candidate, transitionOpts)) return false;
+      if (!passesCooldown(time, cooldownDays, now)) return false;
+      return !pinnedRange || satisfies(coerced, pinnedRange);
+    };
 
-    // Fall back to same-major upgrade
-    const sameVersion = coerceToVersion(data.sameMajorNew);
-    if (sameVersion && !isGoPseudoVersion(data.sameMajorNew) && !skipPrerelease(data.sameMajorNew)) {
-      const d = diff(oldVersion, sameVersion);
-      if (d && semvers.has(d) && isAllowedVersionTransition(originalOldVersion, data.sameMajorNew, transitionOpts) &&
-          passesCooldown(data.sameMajorTime, cooldownDays, now) &&
-          (!pinnedRange || satisfies(sameVersion, pinnedRange))) {
-        data.Time = data.sameMajorTime;
-        delete data.newPath;
-        return data.sameMajorNew;
-      }
+    // Cross-major upgrade, else fall back to same-major.
+    if (accepts(data.new, data.Time)) return data.new;
+    if (accepts(data.sameMajorNew, data.sameMajorTime)) {
+      data.Time = data.sameMajorTime;
+      delete data.newPath;
+      return data.sameMajorNew;
     }
-
-    // If cooldown gated the resolved versions, fall back to a proxy walk to
-    // find an older eligible version. Otherwise no upgrade is available.
-    if (cooldownDays && now && data.olderEligible && !skipPrerelease(data.olderEligible.version)) {
-      const v = coerceToVersion(data.olderEligible.version);
-      if (v) {
-        const d = diff(oldVersion, v);
-        if (d && semvers.has(d) && isAllowedVersionTransition(originalOldVersion, data.olderEligible.version, transitionOpts) &&
-            (!pinnedRange || satisfies(v, pinnedRange))) {
-          data.Time = data.olderEligible.time;
-          delete data.newPath;
-          return data.olderEligible.version;
-        }
-      }
-    }
-
     return null;
   }
   const version = findVersion(data, versions, {range, semvers, usePre, useRel, useGreatest, pinnedRange, cooldownDays, now, getVersionDate});
@@ -688,10 +668,13 @@ export function getSubDir(url: string): string {
   }
 }
 
+// pypi project_urls keys holding a repository link, in preference order
+const pypiRepoKeys = ["repository", "Repository", "repo", "Repo", "source", "Source", "source code", "Source code", "Source Code", "homepage", "Homepage"];
+
 export function getInfoUrl({repository, homepage, info}: {repository?: PackageRepository, homepage?: string, info?: Record<string, any>}, registry: string | null, name: string): string {
   if (info) { // pypi
     const urls = info.project_urls;
-    for (const key of ["repository", "Repository", "repo", "Repo", "source", "Source", "source code", "Source code", "Source Code", "homepage", "Homepage"]) {
+    for (const key of pypiRepoKeys) {
       if (!urls?.[key]) continue;
       repository = urls[key];
       break;

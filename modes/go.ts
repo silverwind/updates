@@ -65,10 +65,22 @@ export function goModulePathForVersion(modulePath: string, version: string): str
 
 type ReplaceMatch = {origModule: string, targetModule: string, targetVersion: string};
 
+// Line-scanning regexes, hoisted out of the per-line loops in parseGoMod/parseGoWork.
+const requireBlockRe = /^require\s*\(/;
+const replaceBlockRe = /^replace\s*\(/;
+const toolBlockRe = /^tool\s*\(/;
+const useBlockRe = /^use\s*\(/;
+const replaceLineRe = /^replace\s+/;
+const requireEntryRe = /^(\S+)\s+(v\S+)/;
+const requireLineRe = /^require\s+(\S+)\s+(v\S+)/;
+const toolLineRe = /^tool\s+(\S+)/;
+const useLineRe = /^use\s+(\S+)/;
+const firstWordRe = /^(\S+)/;
+const replaceInBlockRe = /^(\S+)(?:\s+v\S+)?\s+=>\s+(\S+)\s+(v\S+)/;
+const replaceDirectiveRe = /^replace\s+(\S+)(?:\s+v\S+)?\s+=>\s+(\S+)\s+(v\S+)/;
+
 function parseReplaceDirective(trimmed: string, inBlock: boolean): ReplaceMatch | null {
-  const match = inBlock ?
-    /^(\S+)(?:\s+v\S+)?\s+=>\s+(\S+)\s+(v\S+)/.exec(trimmed) :
-    /^replace\s+(\S+)(?:\s+v\S+)?\s+=>\s+(\S+)\s+(v\S+)/.exec(trimmed);
+  const match = (inBlock ? replaceInBlockRe : replaceDirectiveRe).exec(trimmed);
   if (!match) return null;
   const [, origModule, targetModule, targetVersion] = match;
   if (targetModule.startsWith("./") || targetModule.startsWith("/") || targetModule.startsWith("../")) return null;
@@ -149,23 +161,23 @@ export function parseGoMod(content: string): {deps: Record<string, string>, indi
 
   for (const line of lines) {
     const trimmed = line.trim();
-    if (/^require\s*\(/.test(trimmed)) { inRequire = true; continue; }
-    if (/^replace\s*\(/.test(trimmed)) { inReplace = true; continue; }
-    if (/^tool\s*\(/.test(trimmed)) { inTool = true; continue; }
+    if (requireBlockRe.test(trimmed)) { inRequire = true; continue; }
+    if (replaceBlockRe.test(trimmed)) { inReplace = true; continue; }
+    if (toolBlockRe.test(trimmed)) { inTool = true; continue; }
     if (trimmed === ")") { inRequire = false; inReplace = false; inTool = false; continue; }
     if (trimmed.startsWith("//")) continue; // full-line comments are not dependencies
 
     if (inTool) {
-      if (trimmed && !trimmed.startsWith("//")) toolPaths.push(trimmed);
+      if (trimmed) toolPaths.push(trimmed);
       continue;
     }
 
-    const toolMatch = /^tool\s+(\S+)/.exec(trimmed);
+    const toolMatch = toolLineRe.exec(trimmed);
     if (toolMatch) { toolPaths.push(toolMatch[1]); continue; }
 
     const isIndirect = trimmed.includes("// indirect");
 
-    if (inReplace || /^replace\s+/.test(trimmed)) {
+    if (inReplace || replaceLineRe.test(trimmed)) {
       const parsed = parseReplaceDirective(trimmed, inReplace);
       if (parsed) {
         replace[parsed.targetModule] = parsed.targetVersion;
@@ -174,10 +186,7 @@ export function parseGoMod(content: string): {deps: Record<string, string>, indi
       continue;
     }
 
-    const match = inRequire ?
-      /^(\S+)\s+(v\S+)/.exec(trimmed) :
-      /^require\s+(\S+)\s+(v\S+)/.exec(trimmed);
-
+    const match = (inRequire ? requireEntryRe : requireLineRe).exec(trimmed);
     if (match) {
       (isIndirect ? indirect : deps)[match[1]] = match[2];
     }
@@ -351,20 +360,20 @@ export function parseGoWork(content: string): {use: string[], replace: Record<st
 
   for (const line of lines) {
     const trimmed = line.trim();
-    if (/^use\s*\(/.test(trimmed)) { inUse = true; continue; }
-    if (/^replace\s*\(/.test(trimmed)) { inReplace = true; continue; }
+    if (useBlockRe.test(trimmed)) { inUse = true; continue; }
+    if (replaceBlockRe.test(trimmed)) { inReplace = true; continue; }
     if (trimmed === ")") { inUse = false; inReplace = false; continue; }
 
     if (inUse) {
-      const useEntry = /^(\S+)/.exec(trimmed);
+      const useEntry = firstWordRe.exec(trimmed);
       if (useEntry && !trimmed.startsWith("//")) use.push(useEntry[1]);
       continue;
     }
 
-    const useMatch = /^use\s+(\S+)/.exec(trimmed);
+    const useMatch = useLineRe.exec(trimmed);
     if (useMatch) { use.push(useMatch[1]); continue; }
 
-    if (inReplace || /^replace\s+/.test(trimmed)) {
+    if (inReplace || replaceLineRe.test(trimmed)) {
       const parsed = parseReplaceDirective(trimmed, inReplace);
       if (parsed) replace[parsed.targetModule] = parsed.targetVersion;
     }

@@ -56,6 +56,15 @@ export type {Config, Override, Dep, Deps, DepsByMode, Output};
 
 const defaultModes = new Set(["npm", "pypi", "go", "cargo", "actions", "docker", "make"]);
 
+// One read-only Set per precision, shared by every dependency instead of built
+// per name. Sharing the identity also lets findVersion's prerelease-variant
+// cache hit across packages rather than recomputing a variant set per package.
+const semversByPrecision = {
+  patch: new Set(["patch"]),
+  minor: new Set(["patch", "minor"]),
+  major: new Set(["patch", "minor", "major"]),
+};
+
 // Manifests that declare a workspace for their mode, and the plain manifest
 // each supersedes in the same directory. Cargo is absent: it has no dedicated
 // workspace filename, so it is detected by parsing Cargo.toml's content.
@@ -65,6 +74,9 @@ const workspaceManifests: Record<string, {mode: string, supersedes: string}> = {
 };
 
 const apiUrl = (val: unknown, dflt: string | (() => string)) => typeof val === "string" ? normalizeUrl(val) : (typeof dflt === "function" ? dflt() : dflt);
+
+// Splits a jsr specifier into its `npm:@jsr/pkg@` / `jsr:@scope/pkg@` prefix and version.
+const jsrSpecifierRe = /^(npm:@jsr\/[^@]+@|jsr:@[^@]+@)(.+)$/;
 
 function findUpSync(filenames: string[], dir: string): Map<string, string> {
   const found = new Map<string, string>();
@@ -143,15 +155,10 @@ function resolveFiles(filesArg: Set<string> | false): Set<string> {
       if (stat.isFile()) {
         resolvedFiles.add(resolve(file));
       } else if (stat.isDirectory()) {
-        for (const filename of Object.keys(modeByFileName)) {
-          const f = join(file, filename);
-          let stat: Stats | null = null;
-          try { stat = lstatSync(f); } catch {}
-          if (stat?.isFile()) resolvedFiles.add(resolve(f));
-        }
         try {
           for (const entry of readdirSync(file, {withFileTypes: true})) {
-            if (entry.isFile() && (isDockerFileName(entry.name) || isMakeFileName(entry.name))) {
+            if (!entry.isFile()) continue;
+            if (Object.hasOwn(modeByFileName, entry.name) || isDockerFileName(entry.name) || isMakeFileName(entry.name)) {
               resolvedFiles.add(resolve(join(file, entry.name)));
             }
           }
@@ -350,7 +357,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
         if (o.cooldownDays !== undefined) cooldownOverride = o.cooldownDays;
       }
 
-      const semvers = new Set<string>(usePatch ? ["patch"] : useMinor ? ["patch", "minor"] : ["patch", "minor", "major"]);
+      const semvers = usePatch ? semversByPrecision.patch : useMinor ? semversByPrecision.minor : semversByPrecision.major;
 
       entry = {useGreatest, usePre, useRel, semvers, allowDowngrade: allowDown, cooldownOverride};
       versionOptsCache.set(name, entry);
@@ -416,11 +423,9 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
   const goModFiles: GoModFileInfo[] = [];
   let goWorkData: {file: string, content: string} | null = null;
 
+  // Both stay empty unless the mode's workspace manifest is among the files.
   const cargoMemberFiles: WorkspaceMember[] = [];
-  let cargoWorkspaceActive = false;
-
   const pnpmMemberFiles: WorkspaceMember[] = [];
-  let pnpmWorkspaceActive = false;
 
   type ActionDepInfo = ActionRef & {
     key: string, apiUrl: string, filePin: Record<string, string>, fileCooldownDays: number,
@@ -515,6 +520,29 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
       } catch {}
     }
   }
+
+  // Register a non-workspace manifest and return the type prefix its deps use.
+  // The first manifest of a mode keeps the "." memberPath (empty prefix) to preserve
+  // the single-manifest output shape and seeds the mode-level default context; later
+  // ones are disambiguated by their relative path so deps from distinct files never
+  // collide.
+  const addPlainFile = (mode: string, file: string, content: string, projectDir: string, modeConfig: Config, pin: Record<string, string>): string => {
+    const modeFiles = plainFiles[mode] ??= [];
+    const isFirstOfMode = !modeFiles.length && !workspaceModes.has(mode);
+    const memberPath = isFirstOfMode ? "." : toRelPath(file);
+    modeFiles.push({absPath: resolve(file), content, memberPath, projectDir, modeConfig, pin, modeCooldownDays: cooldownDaysFor(modeConfig.cooldown)});
+    if (isFirstOfMode) modeConfigs[mode] = {modeConfig, projectDir, pin};
+    return isFirstOfMode ? "" : `|${memberPath}`;
+  };
+
+  // Run a manifest parser, attributing a syntax error to its file.
+  const parseFile = (file: string, parse: () => Record<string, any>): Record<string, any> => {
+    try {
+      return parse();
+    } catch (err) {
+      throw new Error(`Error parsing ${file}: ${(err as Error).message}`);
+    }
+  };
 
   for (const file of files) {
     if (isWorkflowFile(file)) {
@@ -685,27 +713,17 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
       };
 
       if (isWorkspace) {
-        cargoWorkspaceActive = true;
         modeConfigs[mode] = {modeConfig, projectDir: workspaceDir, pin};
         collectCargoDeps(cargoParsed, "");
         cargoMemberFiles.push({absPath: resolve(file), content: cargoContent, memberPath: "."});
         for (const member of members) {
           cargoMemberFiles.push(member);
-          try {
-            collectCargoDeps(parseToml(member.content), `|${member.memberPath}`);
-          } catch (err) {
-            throw new Error(`Error parsing ${member.absPath}: ${(err as Error).message}`);
-          }
+          collectCargoDeps(parseFile(member.absPath, () => parseToml(member.content)), `|${member.memberPath}`);
         }
       } else {
         // Track each non-workspace Cargo.toml per file so several of them never
-        // overwrite each other; first keeps the "." memberPath (empty prefix).
-        const modeFiles = plainFiles[mode] ??= [];
-        const isFirstOfMode = !modeFiles.length && !workspaceModes.has(mode);
-        const memberPath = isFirstOfMode ? "." : toRelPath(file);
-        modeFiles.push({absPath: resolve(file), content: cargoContent, memberPath, projectDir: workspaceDir, modeConfig, pin, modeCooldownDays: cooldownDaysFor(modeConfig.cooldown)});
-        if (isFirstOfMode) modeConfigs[mode] = {modeConfig, projectDir: workspaceDir, pin};
-        collectCargoDeps(cargoParsed, memberPath === "." ? "" : `|${memberPath}`);
+        // overwrite each other.
+        collectCargoDeps(cargoParsed, addPlainFile(mode, file, cargoContent, workspaceDir, modeConfig, pin));
       }
 
       continue;
@@ -715,7 +733,6 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
       deps[mode] ??= {};
       const workspaceDir = dirname(resolve(file));
       const wsContent = fileContents.get(file)!;
-      pnpmWorkspaceActive = true;
       const packagePatterns = parsePnpmWorkspace(wsContent);
       const rootPkgPath = join(workspaceDir, "package.json");
 
@@ -747,23 +764,13 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
       };
 
       if (rootContent !== null) {
-        let rootPkg: Record<string, any>;
-        try {
-          rootPkg = JSON.parse(rootContent);
-        } catch (err) {
-          throw new Error(`Error parsing ${rootPkgPath}: ${(err as Error).message}`);
-        }
+        const rootPkg = parseFile(rootPkgPath, () => JSON.parse(rootContent));
         pnpmMemberFiles.push({absPath: resolve(rootPkgPath), content: rootContent, memberPath: "."});
         collectNpmDeps(rootPkg, "");
       }
 
       for (const member of members) {
-        let memberPkg: Record<string, any>;
-        try {
-          memberPkg = JSON.parse(member.content);
-        } catch (err) {
-          throw new Error(`Error parsing ${member.absPath}: ${(err as Error).message}`);
-        }
+        const memberPkg = parseFile(member.absPath, () => JSON.parse(member.content));
         pnpmMemberFiles.push(member);
         collectNpmDeps(memberPkg, `|${member.memberPath}`);
       }
@@ -778,28 +785,15 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
 
     const dependencyTypes = resolveDepTypes(mode, modeConfig);
 
-    // First manifest of the mode keeps the "." memberPath (empty typePrefix) to
-    // preserve the single-manifest output shape; further ones are disambiguated
-    // by their relative path so deps from distinct files never collide.
-    const modeFiles = plainFiles[mode] ??= [];
-    const isFirstOfMode = !modeFiles.length && !workspaceModes.has(mode);
-    const memberPath = isFirstOfMode ? "." : toRelPath(file);
-    const typePrefix = memberPath === "." ? "" : `|${memberPath}`;
     const content = fileContents.get(file)!;
-    modeFiles.push({absPath: resolve(file), content, memberPath, projectDir, modeConfig, pin, modeCooldownDays: cooldownDaysFor(modeConfig.cooldown)});
+    const typePrefix = addPlainFile(mode, file, content, projectDir, modeConfig, pin);
 
-    let pkg: Record<string, any> = {};
-    try {
-      if (mode === "npm") {
-        pkg = JSON.parse(content);
-      } else if (mode === "pypi") {
-        pkg = parseToml(content);
-      } else if (mode === "go") {
-        pkg = parseGoMod(content);
-      }
-    } catch (err) {
-      throw new Error(`Error parsing ${file}: ${(err as Error).message}`);
-    }
+    const pkg = parseFile(file, () => {
+      if (mode === "npm") return JSON.parse(content);
+      if (mode === "pypi") return parseToml(content);
+      if (mode === "go") return parseGoMod(content);
+      return {};
+    });
 
     for (const depType of dependencyTypes) {
       let obj: Record<string, string> | Array<string> | string;
@@ -835,10 +829,6 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
         }
       }
     }
-
-    // Only the first manifest seeds the mode-level default context (used for the
-    // empty-suffix deps); later manifests carry their own context via plainFiles.
-    if (isFirstOfMode) modeConfigs[mode] = {modeConfig, projectDir, pin};
   }
 
   if (!countDeps(deps) && !Object.keys(maybeUrlDeps).length) {
@@ -864,8 +854,8 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
       }
       const defaultCtx = {modeConfig: defaultModeConfig, projectDir: defaultProjectDir, pin: defaultPin, modeCooldownDays: defaultCooldownDays};
       const ctxForType = (type: string) => {
-        const suffix = type.slice(baseType(type).length);
-        return (suffix && ctxBySuffix.get(suffix)) || defaultCtx;
+        const barIdx = type.indexOf("|");
+        return (barIdx !== -1 && ctxBySuffix.get(type.slice(barIdx))) || defaultCtx;
       };
       const npmFollowUps = new Map<string, {name: string, promise: Promise<{repository?: PackageRepository, homepage?: string, date?: string}>}>();
       // Safety net for deps that bypass findNewVersion (URL tarballs, JSR
@@ -874,19 +864,20 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
       const dropIfTooNew = (modeDeps: Deps) => {
         for (const [k, {date}] of Object.entries(modeDeps)) {
           if (!date) continue;
-          const {modeCooldownDays} = ctxForType(k.split(fieldSep)[0]);
+          const [type, name] = k.split(fieldSep);
+          const {modeCooldownDays} = ctxForType(type);
           if (!modeCooldownDays && !overridesHaveCooldown) continue;
-          const [, name] = k.split(fieldSep);
           const cd = getVersionOpts(name).cooldownOverride ?? modeCooldownDays;
           if (cd && !passesCooldown(date, cd, now)) delete modeDeps[k];
         }
       };
 
-      await pMap(Object.keys(deps[mode]), async (key) => {
+      const modeDeps = deps[mode];
+      await pMap(Object.keys(modeDeps), async (key) => {
         const [type, name] = key.split(fieldSep);
         const baseT = baseType(type);
         const {modeConfig, projectDir, pin, modeCooldownDays} = ctxForType(type);
-        const dep = deps[mode][key];
+        const dep = modeDeps[key];
         let info: PackageInfo | null = null;
         if (mode === "npm") {
           const {oldOrig} = dep;
@@ -896,7 +887,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
             try {
               info = await fetchNpmInfo(name, baseT, modeConfig, argsForNpm, ctx);
             } catch {
-              delete deps[mode][key];
+              delete modeDeps[key];
               return;
             }
           } else {
@@ -925,7 +916,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
         }, {allowDowngrade: allowDown, matchesAny, isGoPseudoVersion});
 
         let newRange = "";
-        if (["go", "pypi"].includes(mode) && newVersion) {
+        if ((mode === "go" || mode === "pypi") && newVersion) {
           newRange = newVersion;
         } else if (mode === "cargo" && newVersion && oldOrig) {
           newRange = updateCargoRange(oldOrig, newVersion);
@@ -933,7 +924,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
           if (oldOrig && isLocalDep(oldOrig)) {
             newRange = String(getNpmrc()["save-exact"]) === "true" ? newVersion : `^${newVersion}`;
           } else if (oldOrig && isJsr(oldOrig)) {
-            const match = /^(npm:@jsr\/[^@]+@|jsr:@[^@]+@)(.+)$/.exec(oldOrig);
+            const match = jsrSpecifierRe.exec(oldOrig);
             if (match) newRange = `${match[1]}${newVersion}`;
             else if (oldOrig.startsWith("jsr:")) newRange = `jsr:${newVersion}`;
           } else {
@@ -942,7 +933,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
         }
 
         if (!newVersion || newVersion === oldRange || oldOrig && (oldOrig === newRange)) {
-          delete deps[mode][key];
+          delete modeDeps[key];
           return;
         }
 
@@ -973,31 +964,29 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
 
       await Promise.all(Array.from(npmFollowUps, async ([key, {name, promise}]) => {
         const followUp = await promise;
-        const dep = deps[mode][key];
+        const dep = modeDeps[key];
         if (!dep) return;
         dep.info = getInfoUrl({repository: followUp.repository, homepage: followUp.homepage}, null, name);
         if (followUp.date) setDepAge(dep, followUp.date);
       }));
 
       if (mode === "npm" && Object.keys(maybeUrlDeps).length) {
-        const results = (await pMap(Object.entries(maybeUrlDeps), ([key, dep]) => {
-          return checkUrlDep(key, dep, ctx);
-        }, {concurrency})).filter(r => r !== null);
+        const results = (await pMap(Object.entries(maybeUrlDeps), ([key, dep]) =>
+          checkUrlDep(key, dep, ctx), {concurrency})).filter(r => r !== null);
 
-        for (const res of results) {
-          const {key, newRange, user, repo, oldRef, newRef, newDate} = res;
-          deps[mode][key] = {
+        for (const {key, newRange, user, repo, oldRef, newRef, newDate} of results) {
+          const dep: Dep = modeDeps[key] = {
             old: maybeUrlDeps[key].old,
             new: newRange,
             oldPrint: npmHashRe.test(oldRef) ? oldRef.substring(0, 7) : oldRef,
             newPrint: npmHashRe.test(newRef) ? newRef.substring(0, 7) : newRef,
             info: `https://github.com/${user}/${repo}`,
           };
-          if (newDate) setDepAge(deps[mode][key], newDate);
+          if (newDate) setDepAge(dep, newDate);
         }
       }
 
-      dropIfTooNew(deps[mode]);
+      dropIfTooNew(modeDeps);
     })());
   }
 
@@ -1059,7 +1048,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
             const {usePre, useRel, cooldownOverride} = getVersionOpts(actionName);
             const actionCooldownDays = cooldownOverride ?? fileCooldownDays;
             const result = await pickVersion({
-              range: "0.0.0", semvers: new Set(["patch", "minor", "major"]), usePre, useRel,
+              range: "0.0.0", semvers: semversByPrecision.major, usePre, useRel,
               useGreatest: true, pinnedRange: actionPin,
               cooldownDays: actionCooldownDays || undefined, now: actionCooldownDays ? now : undefined,
             });
@@ -1305,10 +1294,11 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
           rewriteGoImports(goMod.projectDir, majorVersionRewrites, write);
         }
       } else if (mode === "cargo") {
-        if (cargoWorkspaceActive) updateMembers(mode, cargoMemberFiles, updateCargoToml);
+        // The member lists stay empty unless a workspace manifest was seen.
+        updateMembers(mode, cargoMemberFiles, updateCargoToml);
         updateMembers(mode, plainFiles.cargo ?? [], updateCargoToml);
       } else if (mode === "npm") {
-        if (pnpmWorkspaceActive) updateMembers(mode, pnpmMemberFiles, updatePackageJson);
+        updateMembers(mode, pnpmMemberFiles, updatePackageJson);
         updateMembers(mode, plainFiles.npm ?? [], updatePackageJson);
       } else {
         updateMembers(mode, plainFiles[mode] ?? [], updatePyprojectToml);

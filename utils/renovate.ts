@@ -69,13 +69,21 @@ function isSimpleRule(rule: RenovatePackageRule): boolean {
   return Object.keys(rule).every(key => !key.startsWith("match") || key === "matchPackageNames");
 }
 
+// Candidates are read concurrently rather than one await at a time — the common
+// case is a directory holding none of them, and `find` still honors the priority
+// order of configFileNames.
 async function readFirstExisting(rootDir: string): Promise<{path: string, text: string} | undefined> {
-  for (const name of configFileNames) {
+  const reads = await Promise.all(configFileNames.map(async name => {
     const path = join(rootDir, ...name.split("/"));
     try {
       return {path, text: await readFile(path, "utf8")};
-    } catch {}
-  }
+    } catch {
+      return null;
+    }
+  }));
+  const found = reads.find(read => read !== null);
+  if (found) return found;
+
   try {
     const pkgPath = join(rootDir, "package.json");
     const pkg = JSON.parse(await readFile(pkgPath, "utf8"));

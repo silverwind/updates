@@ -5,6 +5,9 @@
 type TomlValue = string | number | boolean | Array<TomlValue> | TomlObject;
 type TomlObject = {[key: string]: TomlValue};
 
+const arrayTableRe = /^\[\[([^\]]+)\]\]$/;
+const tableRe = /^\[([^[\]]+)\]$/;
+
 export function parseToml(input: string): TomlObject {
   const root: TomlObject = {};
   let current = root;
@@ -16,7 +19,7 @@ export function parseToml(input: string): TomlObject {
     if (!line) continue;
 
     // Array of tables: [[name]]
-    const arrayTableMatch = /^\[\[([^\]]+)\]\]$/.exec(line);
+    const arrayTableMatch = arrayTableRe.exec(line);
     if (arrayTableMatch) {
       let target: TomlObject = root;
       const keys = splitDottedKey(arrayTableMatch[1]);
@@ -38,7 +41,7 @@ export function parseToml(input: string): TomlObject {
     }
 
     // Table header
-    const tableMatch = /^\[([^[\]]+)\]$/.exec(line);
+    const tableMatch = tableRe.exec(line);
     if (tableMatch) {
       current = descend(root, splitDottedKey(tableMatch[1]));
       continue;

@@ -25,11 +25,13 @@ export function highlightDiff(a: string, b: string, colorFn: (str: string) => st
   return diff ? a.substring(0, i) + colorFn(diff) : a;
 }
 
+const uvSpecRe = /^([^<>=~!]+)(?:==|>=?|<=?|~=)([0-9.a-z]+)$/;
+
 // https://peps.python.org/pep-0508/
 export function parseUvDependencies(specs: Array<string>) {
   const ret: Array<{name: string, version: string}> = [];
   for (const spec of specs) {
-    const match = /^([^<>=~!]+)(?:==|>=?|<=?|~=)([0-9.a-z]+)$/.exec(spec.replaceAll(/\s+/g, ""));
+    const match = uvSpecRe.exec(spec.replaceAll(/\s+/g, ""));
     if (!match) continue;
     const name = match[1].replace(/\[.*?\]$/, "");
     if (name) ret.push({name, version: match[2]});
@@ -188,9 +190,11 @@ export async function tryOrNull<T>(promise: Promise<T>): Promise<T | null> {
   }
 }
 
-// RegExp.escape needs Node 24; fall back to a manual escape on Node 22.
-export const esc = (str: string) =>
-  RegExp.escape ? RegExp.escape(str) : str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+// RegExp.escape needs Node 24; fall back to a manual escape on Node 22. The
+// feature check runs once, not on every call.
+export const esc: (str: string) => string = RegExp.escape ?
+  (str) => RegExp.escape(str) :
+  (str) => str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 export async function walkUp<T>(startDir: string, probe: (dir: string) => Promise<T | null>): Promise<T | null> {
   let dir = startDir;
