@@ -36,6 +36,11 @@ test("parseDockerImageRef strips docker:// prefix", () => {
   expect(parseDockerImageRef("docker://node:18")).toEqual({registry: null, namespace: "library", repo: "node", tag: "18", fullImage: "node"});
 });
 
+test("parseDockerImageRef treats docker.io as Docker Hub", () => {
+  expect(parseDockerImageRef("docker.io/library/node:18")).toEqual({registry: null, namespace: "library", repo: "node", tag: "18", fullImage: "docker.io/library/node"});
+  expect(parseDockerImageRef("index.docker.io/myorg/myapp:1.0.0")).toEqual({registry: null, namespace: "myorg", repo: "myapp", tag: "1.0.0", fullImage: "index.docker.io/myorg/myapp"});
+});
+
 test("parseDockerImageRef returns null for digest", () => {
   expect(parseDockerImageRef("node@sha256:abc123")).toBeNull();
 });
@@ -184,7 +189,7 @@ test("findDockerVersion finds upgrade with same suffix", () => {
     "18-alpine": "2024-01-01",
   };
   const result = findDockerVersion(tagMap, "18", new Set(["patch", "minor", "major"]));
-  expect(result).toEqual({newTag: "20", hubTag: "20", date: "2024-06-01"});
+  expect(result).toEqual({newTag: "20", date: "2024-06-01"});
 });
 
 test("findDockerVersion returns null when no upgrade", () => {
@@ -199,7 +204,7 @@ test("findDockerVersion filters by suffix", () => {
     "20-alpine": "2024-06-01",
   };
   const result = findDockerVersion(tagMap, "18-alpine", new Set(["patch", "minor", "major"]));
-  expect(result).toEqual({newTag: "20-alpine", hubTag: "20-alpine", date: "2024-06-01"});
+  expect(result).toEqual({newTag: "20-alpine", date: "2024-06-01"});
 });
 
 test("findDockerVersion returns null for invalid tag", () => {
@@ -213,21 +218,29 @@ test("findDockerVersion handles partial version tags", () => {
     "20.11": "2024-06-01",
     "20.11.1": "2024-06-15",
   };
-  // Tags "20", "20.11", "20.11.1" all coerce; highest coerced (20.11.1) wins
+  // Tags "20", "20.11", "20.11.1" all coerce; highest coerced (20.11.1) wins, written back
+  // at the authored precision because Hub publishes "20" too
   const result = findDockerVersion(tagMap, "18", new Set(["patch", "minor", "major"]));
-  expect(result).toEqual({newTag: "20", hubTag: "20.11.1", date: "2024-06-15"});
+  expect(result).toEqual({newTag: "20", date: "2024-06-15"});
+  // without a "20" tag the real tag is written, never a synthesized one that would 404
+  expect(findDockerVersion({"18": "2024-01-01", "20.11.1": "2024-06-15"}, "18", new Set(["patch", "minor", "major"])))
+    .toEqual({newTag: "20.11.1", date: "2024-06-15"});
 });
 
-test("findDockerVersion ignores lower-precision tags from another scheme", () => {
+test("findDockerVersion ignores tags from another versioning scheme", () => {
   const tagMap: Record<string, string> = {
+    "3": "2026-06-16",
     "3.24": "2026-06-16",
     "3.24.1": "2026-06-16",
     "20260127": "2026-01-28",
   };
   const semvers = new Set(["patch", "minor", "major"]);
-  expect(findDockerVersion(tagMap, "3.24", semvers)).toBeNull();
+  expect(findDockerVersion(tagMap, "3.24", semvers)).toBeNull(); // fewer fields
+  expect(findDockerVersion(tagMap, "3", semvers)).toBeNull(); // same fields, date magnitude
   // same scheme as the authored tag, so date snapshots still upgrade among themselves
-  expect(findDockerVersion(tagMap, "20251224", semvers)).toEqual({newTag: "20260127", hubTag: "20260127", date: "2026-01-28"});
+  expect(findDockerVersion(tagMap, "20251224", semvers)).toEqual({newTag: "20260127", date: "2026-01-28"});
+  // a real major bump that grows a digit is not a scheme change
+  expect(findDockerVersion({"9": "2020-01-01", "10": "2020-06-01"}, "9", semvers)).toEqual({newTag: "10", date: "2020-06-01"});
 });
 
 test("findDockerVersion respects pinnedRange and blocks out-of-range upgrade", () => {
@@ -247,7 +260,7 @@ test("findDockerVersion respects pinnedRange and allows in-range upgrade", () =>
     "9.7": "2024-12-01",
   };
   const result = findDockerVersion(tagMap, "8.0.0", new Set(["patch", "minor", "major"]), undefined, undefined, "8.0");
-  expect(result).toEqual({newTag: "8.0.41", hubTag: "8.0.41", date: "2024-06-01"});
+  expect(result).toEqual({newTag: "8.0.41", date: "2024-06-01"});
 });
 
 // updateDockerfile
@@ -255,6 +268,20 @@ test("updateDockerfile replaces FROM image tag", () => {
   const content = "FROM node:18\nRUN echo hello\n";
   const deps = {[`docker${fieldSep}node`]: {old: "18", new: "20"}};
   expect(updateDockerfile(content, deps)).toBe("FROM node:20\nRUN echo hello\n");
+});
+
+test("updateDockerfile leaves digest-pinned and suffixed occurrences alone", () => {
+  // the extractor skips digest-pinned refs, so rewriting the tag here would leave the file
+  // claiming a version the untouched digest contradicts
+  const digest = `@sha256:${"a".repeat(64)}`;
+  const content = `FROM node:18 AS build\nFROM node:18${digest}\nFROM node:18+build\n`;
+  const deps = {[`docker${fieldSep}node`]: {old: "18", new: "20"}};
+  expect(updateDockerfile(content, deps)).toBe(`FROM node:20 AS build\nFROM node:18${digest}\nFROM node:18+build\n`);
+});
+
+test("updateDockerfile replaces lowercase FROM", () => {
+  const deps = {[`docker${fieldSep}node`]: {old: "18", new: "20"}};
+  expect(updateDockerfile("from node:18\n", deps)).toBe("from node:20\n");
 });
 
 test("updateDockerfile replaces FROM with platform", () => {

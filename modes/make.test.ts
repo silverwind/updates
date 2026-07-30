@@ -288,9 +288,9 @@ test("fetchMakeDockerInfo returns null when the new tag's digest cannot be resol
   expect(await fetchMakeDockerInfo(image, ctx, defaultOpts)).toBeNull();
 });
 
-test("fetchMakeDockerInfo re-resolves the digest via the real Hub tag when only 3-part tags are published", async () => {
-  // Authored tag is 2-part (`v0.12`), so newTag is precision-reduced to `v0.13`, but Hub only
-  // publishes the 3-part `v0.13.0` — the digest lookup must use the real Hub tag, not newTag.
+test("fetchMakeDockerInfo writes the real Hub tag when only 3-part tags are published", async () => {
+  // Authored tag is 2-part (`v0.12`) but Hub only publishes the 3-part `v0.13.0`, so the
+  // precision-reduced `v0.13` would 404 — write the real tag and pin its own digest.
   const ctx = {
     dockerApiUrl: "https://hub.docker.com", fetchTimeout, noCache: true,
     doFetch: (url: string) => {
@@ -305,7 +305,7 @@ test("fetchMakeDockerInfo re-resolves the digest via the real Hub tag when only 
   } as unknown as ModeContext;
   const image = parseMakeImageValue(`docker.io/koalaman/shellcheck:v0.12@${digestA}`)!;
   expect(await fetchMakeDockerInfo(image, ctx, defaultOpts)).toEqual({
-    newTag: "v0.13",
+    newTag: "v0.13.0",
     newDigest: digestB,
     date: "2025-06-01T00:00:00Z",
     info: "https://hub.docker.com/r/koalaman/shellcheck",

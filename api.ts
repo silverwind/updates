@@ -12,7 +12,7 @@ import {
   type PackageRepository, type PackageInfo,
   fieldSep, normalizeUrl, fetchTimeout, goProbeTimeout, maxSockets,
   doFetch, findVersion, findNewVersion, coerceToVersion, getInfoUrl, getGithubTokens,
-  passesCooldown, stripv, hashRe as npmHashRe,
+  passesCooldown, stripv, hashRe, isVersionLikeRef,
 } from "./modes/shared.ts";
 import {flushCacheWrites} from "./utils/fetchCache.ts";
 import {loadConfig, configMixedToRegexes, patternsToRegexSet} from "./config.ts";
@@ -836,7 +836,13 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
   }
 
   const fetchTasks: Array<Promise<void>> = [];
-  const argsForNpm = {registry: config.registry};
+  // The abbreviated npm packument carries no publish dates, so cooldown needs the full one,
+  // which is roughly twice the size. Decided once per run because the doc is cached by URL
+  // and shared across every dep that reads it, but only from npm's own cooldown sources.
+  const npmNeedsDates = Boolean(cooldownDaysFor(modeConfigs.npm?.modeConfig.cooldown)) ||
+    (plainFiles.npm ?? []).some(entry => entry.modeCooldownDays) ||
+    Object.keys(deps.npm ?? {}).some(key => getVersionOpts(key.split(fieldSep)[1]).cooldownOverride);
+  const argsForNpm = {registry: config.registry, needsDates: npmNeedsDates};
 
   for (const [mode, modeConfigEntry] of Object.entries(modeConfigs)) {
     const hasDeps = deps[mode] && Object.keys(deps[mode]).length > 0;
@@ -978,8 +984,8 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
           const dep: Dep = modeDeps[key] = {
             old: maybeUrlDeps[key].old,
             new: newRange,
-            oldPrint: npmHashRe.test(oldRef) ? oldRef.substring(0, 7) : oldRef,
-            newPrint: npmHashRe.test(newRef) ? newRef.substring(0, 7) : newRef,
+            oldPrint: hashRe.test(oldRef) ? oldRef.substring(0, 7) : oldRef,
+            newPrint: hashRe.test(newRef) ? newRef.substring(0, 7) : newRef,
             info: `https://github.com/${user}/${repo}`,
           };
           if (newDate) setDepAge(dep, newDate);
@@ -1044,49 +1050,49 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
           const infoUrl = `https://${host || "github.com"}/${owner}/${repo}`;
           const actionPin = globalPin[actionName] ?? filePin[actionName];
 
+          // A sha resolves to the tag that carries it, which is the version to compare
+          // against; without one every candidate looks like an upgrade, including an older
+          // commit. A branch ref or foreign tag scheme coerces to a version but must keep
+          // its text, otherwise the pin is replaced by an unrelated release tag.
+          let oldRef = ref;
           if (isHash) {
-            const {usePre, useRel, cooldownOverride} = getVersionOpts(actionName);
-            const actionCooldownDays = cooldownOverride ?? fileCooldownDays;
-            const result = await pickVersion({
-              range: "0.0.0", semvers: semversByPrecision.major, usePre, useRel,
-              useGreatest: true, pinnedRange: actionPin,
-              cooldownDays: actionCooldownDays || undefined, now: actionCooldownDays ? now : undefined,
-            });
-            if (!result) { delete deps.actions[key]; return; }
+            // abbreviated pins need a prefix scan, the map is keyed by full sha
+            oldRef = commitShaToTag.get(ref) ?? "";
+            if (!oldRef) {
+              for (const [sha, name] of commitShaToTag) {
+                if (!sha.startsWith(ref)) continue;
+                oldRef = name;
+                break;
+              }
+            }
+          } else if (!isVersionLikeRef(ref)) {
+            oldRef = "";
+          }
+          const oldVersion = oldRef ? coerceToVersion(stripv(oldRef)) : "";
+          if (!oldVersion) { delete deps.actions[key]; return; }
 
-            const {tag: newTag, commitSha: newCommitSha, date} = result;
+          const {usePre, useRel, semvers, cooldownOverride} = getVersionOpts(actionName);
+          const actionCooldownDays = cooldownOverride ?? fileCooldownDays;
+          const result = await pickVersion({
+            range: oldVersion, semvers, usePre, useRel,
+            useGreatest: true, pinnedRange: actionPin,
+            cooldownDays: actionCooldownDays || undefined, now: actionCooldownDays ? now : undefined,
+          });
+          if (!result) { delete deps.actions[key]; return; }
+          const {tag: newTag, commitSha: newCommitSha, date} = result;
+
+          if (isHash) {
             if (!newCommitSha || newCommitSha.startsWith(ref) || ref.startsWith(newCommitSha)) {
               delete deps.actions[key]; return;
             }
 
-            let oldTagName = commitShaToTag.get(ref);
-            if (!oldTagName) {
-              for (const [sha, name] of commitShaToTag) {
-                if (!sha.startsWith(ref)) continue;
-                oldTagName = name;
-                break;
-              }
-            }
             dep.old = ref;
             dep.new = newCommitSha.substring(0, ref.length);
-            dep.oldPrint = oldTagName || ref.substring(0, 7);
+            dep.oldPrint = oldRef; // the tag the pinned sha resolved to
             dep.newPrint = newTag;
             dep.info = infoUrl;
             if (date) setDepAge(dep, date);
           } else {
-            const coerced = coerceToVersion(stripv(ref));
-            if (!coerced) { delete deps.actions[key]; return; }
-
-            const {usePre, useRel, semvers, cooldownOverride} = getVersionOpts(actionName);
-            const actionCooldownDays = cooldownOverride ?? fileCooldownDays;
-            const result = await pickVersion({
-              range: coerced, semvers, usePre, useRel,
-              useGreatest: true, pinnedRange: actionPin,
-              cooldownDays: actionCooldownDays || undefined, now: actionCooldownDays ? now : undefined,
-            });
-            if (!result) { delete deps.actions[key]; return; }
-
-            const {tag: newTag, commitSha: newCommitSha, date} = result;
             const formatted = formatActionVersion(newTag, ref);
             if (formatted === ref) { delete deps.actions[key]; return; }
 
@@ -1200,11 +1206,13 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
     // Group action and docker deps by their containing workflow/dockerfile so
     // each file is rewritten once. buildOutput() (called after this block)
     // mutates dep shape and must run after writes.
-    const actionsUpdatesByRelPath = new Map<string, Array<{name: string, oldRef: string, newRef: string}>>();
+    const actionsUpdatesByRelPath = new Map<string, Array<{name: string, oldRef: string, newRef: string, newComment?: string}>>();
     if (deps.actions) {
       for (const [key, dep] of Object.entries(deps.actions)) {
         const [relPath, name] = key.split(fieldSep);
-        pushTo(actionsUpdatesByRelPath, relPath, {name, oldRef: dep.old, newRef: dep.new});
+        // Sha pins keep the resolved tag in a trailing comment, which has to move along.
+        const newComment = hashRe.test(dep.old) ? dep.newPrint : undefined;
+        pushTo(actionsUpdatesByRelPath, relPath, {name, oldRef: dep.old, newRef: dep.new, newComment});
       }
     }
 

@@ -482,7 +482,7 @@ test("latest", async ({expect = globalExpect}: any = {}) => {
           },
           "eslint-plugin-storybook": {
             "info": "https://github.com/storybookjs/storybook/tree/HEAD/code/lib/eslint-plugin",
-            "new": "0.0.0-pr-32455-sha-2828decf",
+            "new": "10.0.0-beta.6",
             "old": "10.0.0-beta.5",
           },
           "gulp-sourcemaps": {
@@ -519,11 +519,6 @@ test("latest", async ({expect = globalExpect}: any = {}) => {
             "info": "https://github.com/styled-components/styled-components",
             "new": "5.0.0-rc.2",
             "old": "2.5.0-1",
-          },
-          "svgstore": {
-            "info": "https://github.com/svgstore/svgstore",
-            "new": "^2.0.3",
-            "old": "^3.0.0",
           },
           "updates": {
             "info": "https://github.com/silverwind/updates",
@@ -733,11 +728,6 @@ test("prerelease", async ({expect = globalExpect}: any = {}) => {
             "new": "5.0.0-regexrehydrate",
             "old": "2.5.0-1",
           },
-          "svgstore": {
-            "info": "https://github.com/svgstore/svgstore",
-            "new": "^3.0.0-2",
-            "old": "^3.0.0",
-          },
           "updates": {
             "info": "https://github.com/silverwind/updates",
             "new": "537ccb7",
@@ -847,11 +837,6 @@ test("release", async ({expect = globalExpect}: any = {}) => {
             "new": "4.4.1",
             "old": "2.5.0-1",
           },
-          "svgstore": {
-            "info": "https://github.com/svgstore/svgstore",
-            "new": "^2.0.3",
-            "old": "^3.0.0",
-          },
           "updates": {
             "info": "https://github.com/silverwind/updates",
             "new": "537ccb7",
@@ -912,8 +897,8 @@ test("patch", async ({expect = globalExpect}: any = {}) => {
       "npm": {
         "dependencies": {
           "eslint-plugin-storybook": {
-            "info": "",
-            "new": "10.0.0",
+            "info": "https://github.com/storybookjs/storybook/tree/HEAD/code/lib/eslint-plugin",
+            "new": "10.0.0-beta.6",
             "old": "10.0.0-beta.5",
           },
           "gulp-sourcemaps": {
@@ -922,19 +907,14 @@ test("patch", async ({expect = globalExpect}: any = {}) => {
             "old": "2.0.0",
           },
           "html-webpack-plugin": {
-            "info": "",
-            "new": "4.0.0",
+            "info": "https://github.com/jantimon/html-webpack-plugin",
+            "new": "4.0.0-beta.11",
             "old": "4.0.0-alpha.2",
           },
           "noty": {
             "info": "https://github.com/needim/noty",
             "new": "3.1.4",
             "old": "3.1.0",
-          },
-          "styled-components": {
-            "info": "",
-            "new": "2.5.0",
-            "old": "2.5.0-1",
           },
           "updates": {
             "info": "https://github.com/silverwind/updates",
@@ -1187,7 +1167,7 @@ test("preup 2", async ({expect = globalExpect}: any = {}) => {
         "dependencies": {
           "eslint-plugin-storybook": {
             "info": "https://github.com/storybookjs/storybook/tree/HEAD/code/lib/eslint-plugin",
-            "new": "0.0.0-pr-32455-sha-2828decf",
+            "new": "10.0.0-beta.6",
             "old": "10.0.0-beta.5",
           },
         },
@@ -2145,7 +2125,7 @@ test("repeated multi-value flag survives swallowed flag recovery", async ({expec
   // include `react` survived (without the fix the cleared array drops it and every
   // outdated dep returns); the prerelease new version confirms `-p` still applied.
   expect(Object.keys(results.npm.dependencies)).toEqual(["react"]);
-  expect(results.npm.dependencies.react.new).toBe("0.0.0-experimental-d1e35c703-20221110");
+  expect(results.npm.dependencies.react.new).toBe("18.3.0-next-d1e35c703-20221110");
 
   // `-i react -i -p -i gulp-sourcemaps`: the swallowed `-p` is NOT the last value;
   // recovery must drop that specific bogus value, keeping both real includes.
@@ -2153,7 +2133,7 @@ test("repeated multi-value flag survives swallowed flag recovery", async ({expec
   const keys = Object.keys(nonLast.npm.dependencies);
   expect(keys).toContain("react");
   expect(keys).toContain("gulp-sourcemaps");
-  expect(nonLast.npm.dependencies.react.new).toBe("0.0.0-experimental-d1e35c703-20221110");
+  expect(nonLast.npm.dependencies.react.new).toBe("18.3.0-next-d1e35c703-20221110");
 });
 
 test("text output keeps same dep at different versions across sections", async ({expect = globalExpect}: any = {}) => {

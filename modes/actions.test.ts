@@ -8,7 +8,7 @@ import {
   fetchActionTagDate,
   resolveWorkflowFiles,
 } from "./actions.ts";
-import {type ModeContext, fetchTimeout} from "./shared.ts";
+import {type ModeContext, fetchTimeout, hashRe, isVersionLikeRef} from "./shared.ts";
 
 // parseActionRef
 test("parseActionRef standard ref", () => {
@@ -152,6 +152,31 @@ test("updateWorkflowFile multiple replacements", () => {
     {name: "actions/setup-node", oldRef: "v3", newRef: "v4"},
   ]);
   expect(result).toBe("    uses: actions/checkout@v4\n    uses: actions/setup-node@v4\n");
+});
+
+test("updateWorkflowFile moves the version comment along with the sha", () => {
+  const content = "    uses: actions/checkout@11bd719 # v4.2.2\n    uses: actions/checkout@11bd719\n";
+  const result = updateWorkflowFile(content, [
+    {name: "actions/checkout", oldRef: "11bd719", newRef: "3d3c42e", newComment: "v7.0.1"},
+  ]);
+  expect(result).toBe("    uses: actions/checkout@3d3c42e # v7.0.1\n    uses: actions/checkout@3d3c42e\n");
+});
+
+// isVersionLikeRef
+test("isVersionLikeRef separates versions from branches and other tag schemes", () => {
+  expect(isVersionLikeRef("v4")).toBe(true);
+  expect(isVersionLikeRef("4.1.2")).toBe(true);
+  expect(isVersionLikeRef("v1.2.3-rc.1")).toBe(true);
+  expect(isVersionLikeRef("release/v1")).toBe(false);
+  expect(isVersionLikeRef("codeql-bundle-v2.20.3")).toBe(false);
+  expect(isVersionLikeRef("main")).toBe(false);
+});
+
+// hashRe
+test("hashRe accepts short shas but not all-numeric tags", () => {
+  expect(hashRe.test("3d3c42")).toBe(true);
+  expect(hashRe.test("11bd71901bbe5b1630ceea73d27597364c9af683")).toBe(true);
+  expect(hashRe.test("20240115")).toBe(false);
 });
 
 // fetchActionTagDate

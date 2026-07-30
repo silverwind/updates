@@ -114,7 +114,7 @@ A `cooldown` of `0` in an override disables a global cooldown for the matched de
 
 ### Renovate config
 
-If a [Renovate](https://docs.renovatebot.com/) config is found, `ignoreDeps` and simple `packageRules` are inherited as `exclude`/`pin`. `minimumReleaseAge` is *not* inherited as `cooldown` by default — opt in via:
+If a [Renovate](https://docs.renovatebot.com/) config is found, `ignoreDeps` and simple `packageRules` are inherited as `include`/`exclude`/`pin`. A rule that disables only negated matchers, like `"matchPackageNames": ["!/^@types/"]`, becomes an `include` since it leaves just those packages enabled. `minimumReleaseAge` is *not* inherited as `cooldown` by default — opt in via:
 
 ```ts
 export default {

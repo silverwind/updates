@@ -31,11 +31,37 @@ export function resolveGoProxy(): string {
 
 export function parseGoNoProxy(): Array<string> {
   const value = env.GONOPROXY || env.GOPRIVATE || "";
-  return value.split(",").map(s => s.trim()).filter(Boolean);
+  return value.split(",").map(s => s.trim().replace(/\/+$/, "")).filter(Boolean);
+}
+
+// Go matches these with path.Match, so `*` and `?` stay within a path element and `[…]`
+// is a class. A match on any prefix element covers the whole subtree.
+const goPatternCache = new Map<string, RegExp>();
+
+function goPatternToRegex(pattern: string): RegExp {
+  let cached = goPatternCache.get(pattern);
+  if (cached) return cached;
+  let body = "";
+  for (let idx = 0; idx < pattern.length; idx++) {
+    const char = pattern[idx];
+    if (char === "*") {
+      body += "[^/]*";
+    } else if (char === "?") {
+      body += "[^/]";
+    } else if (char === "[" && pattern.includes("]", idx + 1)) {
+      const end = pattern.indexOf("]", idx + 1);
+      body += `[${pattern.slice(idx + 1, end).replace(/\\/g, "\\\\")}]`;
+      idx = end;
+    } else {
+      body += esc(char); // an unterminated `[` lands here too, as a literal
+    }
+  }
+  goPatternCache.set(pattern, cached = new RegExp(`^${body}(?:/.*)?$`));
+  return cached;
 }
 
 export function isGoNoProxy(modulePath: string, goNoProxy: Array<string>): boolean {
-  return goNoProxy.some(pattern => modulePath === pattern || modulePath.startsWith(`${pattern}/`));
+  return goNoProxy.some(pattern => goPatternToRegex(pattern).test(modulePath));
 }
 
 export function encodeGoModulePath(modulePath: string): string {
@@ -43,27 +69,33 @@ export function encodeGoModulePath(modulePath: string): string {
 }
 
 const goMajorSuffixRe = /\/v(\d+)$/;
+// gopkg.in encodes the major as `.vN` on the last element instead of a `/vN` element.
+const gopkgMajorSuffixRe = /^gopkg\.in\/.*?\.v(\d+)$/;
 
 export function extractGoMajor(name: string): number {
-  const match = goMajorSuffixRe.exec(name);
+  const match = gopkgMajorSuffixRe.exec(name) ?? goMajorSuffixRe.exec(name);
   return match ? Number.parseInt(match[1]) : 1;
 }
 
 export function buildGoModulePath(name: string, major: number): string {
+  if (name.startsWith("gopkg.in/")) {
+    // gopkg.in has no unsuffixed form, v1 is `.v1`
+    return `${name.replace(/\.v\d+$/, "")}.v${major}`;
+  }
   const base = name.replace(goMajorSuffixRe, "");
   return major <= 1 ? base : `${base}/v${major}`;
 }
 
 // Module path adjusted for a target version's major suffix: .../v2 -> .../v3 on a
-// major bump, unchanged for same-major, v0/v1, and +incompatible versions.
+// major bump, unchanged for same-major and +incompatible versions.
 export function goModulePathForVersion(modulePath: string, version: string): string {
   if (version.includes("+incompatible")) return modulePath;
   const newMajor = Number.parseInt(stripv(version).split(".")[0]);
-  if (Number.isNaN(newMajor) || newMajor <= 1 || newMajor === extractGoMajor(modulePath)) return modulePath;
+  if (Number.isNaN(newMajor) || newMajor === extractGoMajor(modulePath)) return modulePath;
   return buildGoModulePath(modulePath, newMajor);
 }
 
-type ReplaceMatch = {origModule: string, targetModule: string, targetVersion: string};
+type ReplaceMatch = {origModule: string, origVersion: string, targetModule: string, targetVersion: string};
 
 // Line-scanning regexes, hoisted out of the per-line loops in parseGoMod/parseGoWork.
 const requireBlockRe = /^require\s*\(/;
@@ -76,15 +108,20 @@ const requireLineRe = /^require\s+(\S+)\s+(v\S+)/;
 const toolLineRe = /^tool\s+(\S+)/;
 const useLineRe = /^use\s+(\S+)/;
 const firstWordRe = /^(\S+)/;
-const replaceInBlockRe = /^(\S+)(?:\s+v\S+)?\s+=>\s+(\S+)\s+(v\S+)/;
-const replaceDirectiveRe = /^replace\s+(\S+)(?:\s+v\S+)?\s+=>\s+(\S+)\s+(v\S+)/;
+const replaceInBlockRe = /^(\S+)(?:\s+(v\S+))?\s+=>\s+(\S+)(?:\s+(v\S+))?/;
+const replaceDirectiveRe = /^replace\s+(\S+)(?:\s+(v\S+))?\s+=>\s+(\S+)(?:\s+(v\S+))?/;
+
+// Local paths carry no version, so they have to parse too — the caller needs to know the
+// module is replaced even when there is nothing to update on the right-hand side.
+function isLocalReplaceTarget(target: string): boolean {
+  return target.startsWith("./") || target.startsWith("/") || target.startsWith("../");
+}
 
 function parseReplaceDirective(trimmed: string, inBlock: boolean): ReplaceMatch | null {
   const match = (inBlock ? replaceInBlockRe : replaceDirectiveRe).exec(trimmed);
   if (!match) return null;
-  const [, origModule, targetModule, targetVersion] = match;
-  if (targetModule.startsWith("./") || targetModule.startsWith("/") || targetModule.startsWith("../")) return null;
-  return {origModule, targetModule, targetVersion};
+  const [, origModule, origVersion, targetModule, targetVersion] = match;
+  return {origModule, origVersion: origVersion ?? "", targetModule, targetVersion: targetVersion ?? ""};
 }
 
 function shouldSkipMajorProbe(name: string, type: string, currentVersion: string): boolean {
@@ -180,8 +217,12 @@ export function parseGoMod(content: string): {deps: Record<string, string>, indi
     if (inReplace || replaceLineRe.test(trimmed)) {
       const parsed = parseReplaceDirective(trimmed, inReplace);
       if (parsed) {
-        replace[parsed.targetModule] = parsed.targetVersion;
-        replacedModules.add(parsed.origModule);
+        if (parsed.targetVersion && !isLocalReplaceTarget(parsed.targetModule)) {
+          replace[parsed.targetModule] = parsed.targetVersion;
+        }
+        // A replace pinned to one version leaves the require version live and updatable;
+        // an unversioned or local one takes over, making the require version inert.
+        if (!parsed.origVersion) replacedModules.add(parsed.origModule);
       }
       continue;
     }
@@ -285,19 +326,6 @@ export async function fetchGoProxyInfo(name: string, type: string, currentVersio
   return buildGoPackageInfo(name, currentVersion, probeResult, latestVersion, latestTime);
 }
 
-export function removeGoReplace(content: string, name: string): string {
-  // No replace directives means there is nothing to strip; skip the regex scans below.
-  if (!content.includes("replace")) return content;
-  const e = esc(name);
-  // Remove single-line: replace <name> [version] => <replacement> [version]
-  content = content.replace(new RegExp(`^replace\\s+${e}(\\s+v\\S+)?\\s+=>\\s+\\S+(\\s+v\\S+)?\\s*\\n`, "gm"), "");
-  // Remove entry from replace block
-  content = content.replace(new RegExp(`^\\s+${e}(\\s+v\\S+)?\\s+=>\\s+\\S+(\\s+v\\S+)?\\s*\\n`, "gm"), "");
-  // Remove empty replace blocks
-  content = content.replace(/^replace\s*\(\s*\)\s*\n/gm, "");
-  return content;
-}
-
 export function updateGoMod(pkgStr: string, deps: Deps): [string, Record<string, string>] {
   let newPkgStr = pkgStr;
   const majorVersionRewrites: Record<string, string> = {};
@@ -330,7 +358,6 @@ export function updateGoMod(pkgStr: string, deps: Deps): [string, Record<string,
     } else {
       newPkgStr = newPkgStr.replace(new RegExp(`(${esc(name)}) +v${esc(oldValue)}`, "g"), `$1 v${newValue}`);
     }
-    if (depType !== "tool") newPkgStr = removeGoReplace(newPkgStr, name);
   }
   return [newPkgStr, majorVersionRewrites];
 }
@@ -375,7 +402,9 @@ export function parseGoWork(content: string): {use: string[], replace: Record<st
 
     if (inReplace || replaceLineRe.test(trimmed)) {
       const parsed = parseReplaceDirective(trimmed, inReplace);
-      if (parsed) replace[parsed.targetModule] = parsed.targetVersion;
+      if (parsed?.targetVersion && !isLocalReplaceTarget(parsed.targetModule)) {
+        replace[parsed.targetModule] = parsed.targetVersion;
+      }
     }
   }
 

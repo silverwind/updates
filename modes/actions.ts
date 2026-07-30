@@ -63,11 +63,17 @@ export function formatActionVersion(newFullVersion: string, oldRef: string): str
   return formatVersionPrecision(newParsed?.version ?? stripv(newFullVersion), oldRef);
 }
 
-export function updateWorkflowFile(content: string, actionDeps: Array<{name: string, oldRef: string, newRef: string}>): string {
+export function updateWorkflowFile(content: string, actionDeps: Array<{name: string, oldRef: string, newRef: string, newComment?: string}>): string {
   let newContent = content;
-  for (const {name, oldRef, newRef} of actionDeps) {
-    const re = new RegExp(`(uses:\\s*['"]?(?:https?:\\/\\/)?)${esc(name)}@${esc(oldRef)}(?![\\w.-])`, "g");
-    newContent = newContent.replace(re, `$1${name}@${newRef}`);
+  for (const {name, oldRef, newRef, newComment} of actionDeps) {
+    const uses = `(uses:\\s*['"]?(?:https?:\\/\\/)?)${esc(name)}@${esc(oldRef)}(?![\\w.-])`;
+    // A sha pin carries its readable version in a trailing comment. Rewriting the sha alone
+    // leaves that comment naming the old version, so the file misreports what it pins. Run
+    // first, so the pass below only sees occurrences without a comment.
+    if (newComment) {
+      newContent = newContent.replace(new RegExp(`${uses}([ \\t]*#[ \\t]*)v?\\d\\S*`, "g"), `$1${name}@${newRef}$2${newComment}`);
+    }
+    newContent = newContent.replace(new RegExp(uses, "g"), `$1${name}@${newRef}`);
   }
   return newContent;
 }

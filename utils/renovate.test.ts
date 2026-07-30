@@ -67,6 +67,15 @@ test("packageRules disabled → exclude", async () => {
   expect(await loadRenovateConfig(dir)).toEqual({exclude: ["foo", "bar"]});
 });
 
+test("packageRules disabled with negated matchers → include", async () => {
+  const dir = makeDir();
+  // renovate disables everything except @types, which is an allow-list, not a no-op exclude
+  writeFileSync(join(dir, "renovate.json"), JSON.stringify({
+    packageRules: [{matchPackageNames: ["!/^@types/"], enabled: false}],
+  }));
+  expect(await loadRenovateConfig(dir)).toEqual({include: [/^@types/]});
+});
+
 test("packageRules allowedVersions → pin", async () => {
   const dir = makeDir();
   writeFileSync(join(dir, "renovate.json"), JSON.stringify({

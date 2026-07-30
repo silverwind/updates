@@ -111,6 +111,17 @@ function isGlob(name: string): boolean {
   return /[*?[\]{}!()|+]/.test(name);
 }
 
+// Renovate matchers negate with a leading `!`, which inverts what the rule applies to.
+function splitNegated(names: Array<string>): {positive: Array<string>, negated: Array<string>} {
+  const positive: Array<string> = [];
+  const negated: Array<string> = [];
+  for (const name of names) {
+    if (name.startsWith("!") && name.length > 1) negated.push(name.substring(1));
+    else positive.push(name);
+  }
+  return {positive, negated};
+}
+
 export type RenovateImportOptions = {
   /** Import minimumReleaseAge as cooldown. Off by default. */
   cooldown?: boolean;
@@ -124,6 +135,7 @@ function normalize(raw: RenovateConfig, opts: RenovateImportOptions): Partial<Co
     if (days !== undefined && days > 0) out.cooldown = days;
   }
 
+  const include: Array<string | RegExp> = [];
   const exclude: Array<string | RegExp> = [];
   const pin: Record<string, string> = {};
 
@@ -137,18 +149,26 @@ function normalize(raw: RenovateConfig, opts: RenovateImportOptions): Partial<Co
     for (const rule of raw.packageRules) {
       if (!rule || typeof rule !== "object" || !isSimpleRule(rule)) continue;
       const names = rule.matchPackageNames!.filter((n): n is string => typeof n === "string" && Boolean(n));
+      const {positive, negated} = splitNegated(names);
       if (rule.enabled === false) {
-        for (const name of names) exclude.push(toMatcher(name));
+        if (positive.length) {
+          // negations only narrow what the rule disables, so the positives carry it
+          for (const name of positive) exclude.push(toMatcher(name));
+        } else {
+          // all-negated disables everything but these, which is an include list
+          for (const name of negated) include.push(toMatcher(name));
+        }
       }
       if (typeof rule.allowedVersions === "string" && validRange(rule.allowedVersions)) {
         // pin is keyed by literal package name; regex and glob matchers can't be honored, so skip them
-        for (const name of names) {
+        for (const name of positive) {
           if (!isGlob(name) && typeof toMatcher(name) === "string") pin[name] = rule.allowedVersions;
         }
       }
     }
   }
 
+  if (include.length) out.include = include;
   if (exclude.length) out.exclude = exclude;
   if (Object.keys(pin).length) out.pin = pin;
 

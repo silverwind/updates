@@ -44,6 +44,13 @@ test("updateVersionRange", () => {
   expect(updateVersionRange("^5.0.0", "6.0.0-beta.1", "^5")).toBe("^6.0.0-beta.1");
   expect(updateVersionRange("~1.2.0", "1.3.0-rc.1", "~1.2")).toBe("~1.3.0-rc.1");
   expect(updateVersionRange(">=5.0.0", "6.0.0-beta.1", ">=5")).toBe(">=6.0.0-beta.1");
+  // a strict bound must admit the new version, never land on it
+  expect(updateVersionRange("<2.0.0", "2.5.0", undefined)).toBe("<3.0.0");
+  expect(updateVersionRange("<2.1.3", "2.5.0", undefined)).toBe("<2.5.1");
+  expect(updateVersionRange("< 2.0", "2.5.0", undefined)).toBe("< 2.6");
+  expect(updateVersionRange("<2", "2.5.0", undefined)).toBe("<3");
+  // a strict lower bound already admits it, so it stays as authored
+  expect(updateVersionRange(">1.9.0", "2.5.0", undefined)).toBe(">1.9.0");
 });
 
 test("normalizeRange", () => {
@@ -117,6 +124,22 @@ test("fetchNpmInfo resolutions key keeps scope", async () => {
   await fetchNpmInfo("@babel/core", "resolutions", {}, {}, ctx);
   // the scope must survive: fetch @babel/core, never the unscoped `core`
   expect(fetchedUrl.endsWith("/@babel%2fcore")).toBe(true);
+});
+
+test("fetchNpmInfo requests the full doc only when dates are needed", async () => {
+  // the abbreviated doc omits the `time` map, which would make cooldown a silent no-op
+  const accepts: Array<string | undefined> = [];
+  const ctx = {
+    fetchTimeout,
+    noCache: true,
+    doFetch: (_url: string, opts: any) => {
+      accepts.push(opts?.headers?.accept);
+      return Promise.resolve({ok: true, text: () => Promise.resolve("{}"), headers: new Headers()});
+    },
+  } as unknown as ModeContext;
+  await fetchNpmInfo("abbreviated", "dependencies", {}, {}, ctx);
+  await fetchNpmInfo("full", "dependencies", {}, {needsDates: true}, ctx);
+  expect(accepts).toEqual(["application/vnd.npm.install-v1+json", undefined]);
 });
 
 // getLatestCommit

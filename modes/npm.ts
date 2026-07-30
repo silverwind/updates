@@ -1,4 +1,5 @@
 import {env} from "node:process";
+import {parse} from "../utils/semver.ts";
 import rc from "../utils/rc.ts";
 import {getCache, setCache} from "../utils/fetchCache.ts";
 import {
@@ -159,7 +160,10 @@ export async function fetchNpmInfo(name: string, type: string, config: Config, a
   let dataPromise = npmDataCache.get(url);
   if (!dataPromise) {
     const opts = getFetchOpts(auth?.type, auth?.token);
-    opts.headers = {...opts.headers as Record<string, string>, "accept": "application/vnd.npm.install-v1+json"};
+    // The abbreviated doc is a fraction of the size but omits the `time` map that cooldown reads.
+    if (!args.needsDates) {
+      opts.headers = {...opts.headers as Record<string, string>, "accept": "application/vnd.npm.install-v1+json"};
+    }
     dataPromise = (async () => {
       try {
         const result = await fetchWithEtag(url, ctx, opts, reduceNpmDoc);
@@ -202,9 +206,11 @@ export async function fetchNpmVersionInfo(name: string, version: string, config:
         const match = /(\d{13})/.exec(tmp);
         if (match) date = new Date(Number(match[1])).toISOString();
       }
+      const fullUrl = npmPackageUrl(registry, name);
+      // With a cooldown active the package doc was already fetched in full, dates included.
+      if (!date) date = (await npmDataCache.get(fullUrl))?.time?.[version] || "";
       if (!date) {
         // _npmOperationalInternal is absent on some registries, fetch full metadata
-        const fullUrl = npmPackageUrl(registry, name);
         let fullPromise = npmFullDataCache.get(fullUrl);
         if (!fullPromise) {
           fullPromise = (async () => {
@@ -324,7 +330,35 @@ export function updatePackageJson(pkgStr: string, deps: Deps): string {
   });
 }
 
+// An exclusive upper bound rewritten onto the new version excludes the very version being
+// installed, so `<2.0.0` has to clear it rather than land on it. Mirrors renovate's npm
+// range handling. Returns null when the range is not an exclusive upper bound.
+function updateUpperBound(oldRange: string, newVersion: string): string | null {
+  const match = /^(<\s*)(\d+(?:\.\d+){0,2})$/.exec(oldRange);
+  if (!match) return null;
+  const [, operator, oldDigits] = match;
+
+  const {major, minor, patch} = parse(newVersion)!;
+  const parts = oldDigits.split(".").length;
+  let bound: string;
+  if (parts === 1) {
+    bound = `${major + 1}`;
+  } else if (parts === 2) {
+    bound = `${major}.${minor + 1}`;
+  } else if (oldDigits.endsWith(".0.0")) {
+    bound = `${major + 1}.0.0`;
+  } else {
+    bound = `${major}.${minor}.${patch + 1}`;
+  }
+  return `${operator}${bound}`;
+}
+
 export function updateVersionRange(oldRange: string, newVersion: string, oldOrig: string | undefined): string {
+  const authored = oldOrig || oldRange;
+  if (/^>\s*\d/.test(authored)) return oldRange; // an exclusive lower bound already admits it
+  const upperBound = updateUpperBound(authored, newVersion);
+  if (upperBound) return upperBound;
+
   const newRange = oldRange.replace(npmVersionRePre, newVersion);
   if (!oldOrig || oldOrig === oldRange) return newRange;
 

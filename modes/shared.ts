@@ -1,5 +1,5 @@
 import {env} from "node:process";
-import {parse, coerce, compareMain, compareParsed, diff, diffParsed, gt, gte, lt, satisfies, valid} from "../utils/semver.ts";
+import {parse, coerce, compareParsed, diff, diffParsed, gt, gte, lt, satisfies, valid} from "../utils/semver.ts";
 import {getCache, setCache} from "../utils/fetchCache.ts";
 import pkg from "../package.json" with {type: "json"};
 
@@ -228,6 +228,9 @@ export function isRangePrerelease(range: string): boolean {
   return /[0-9]+\.[0-9]+\.[0-9]+-.+/.test(range);
 }
 
+// Pulls the authored version out of a range, prerelease included.
+const rangeVersionRe = /\d+\.\d+\.\d+(?:-[a-zA-Z0-9_.-]+)?/;
+
 // Build the prerelease-augmented copy of a semvers set without mutating the
 // input — getVersionOpts() caches its sets per-package, so mutating in place
 // silently leaks state across packages. Cached by input Set so repeated calls
@@ -243,6 +246,13 @@ function withPrereleaseVariants(semvers: Set<string>): Set<string> {
   if (semvers.has("major")) out.add("premajor");
   prereleaseVariantsCache.set(semvers, out);
   return out;
+}
+
+// Prerelease candidates are in play when the authored version already is one or --pre is set,
+// and classifying against an uncoerced prerelease yields `pre*` diffs the raw set lacks.
+function prereleaseOpts(range: string, usePre: boolean, semvers: Set<string>): {effectiveUsePre: boolean, effectiveSemvers: Set<string>} {
+  const effectiveUsePre = isRangePrerelease(range) || usePre;
+  return {effectiveUsePre, effectiveSemvers: effectiveUsePre ? withPrereleaseVariants(semvers) : semvers};
 }
 
 type DowngradeOpts = {
@@ -284,26 +294,37 @@ export function findVersion(data: any, versions: Array<string>, {range, semvers,
   const oldVersion = coerceToVersion(range);
   if (!oldVersion) return null;
 
-  const effectiveUsePre = isRangePrerelease(range) || usePre;
-  const effectiveSemvers = effectiveUsePre ? withPrereleaseVariants(semvers) : semvers;
+  // Rank and classify against the authored version with its prerelease intact.
+  // coerceToVersion() drops it, which would sort a prerelease pin above its own
+  // release and, when nothing is picked, report that unpublished release as the
+  // update. coerceToVersion always yields a 3-part number, so the fallback parses.
+  const oldParsed = parse(rangeVersionRe.exec(range)?.[0] ?? "") ?? parse(oldVersion)!;
+
+  const {effectiveUsePre, effectiveSemvers} = prereleaseOpts(range, usePre, semvers);
 
   const time = data?.time;
   const hasTime = Boolean(time);
   const useGreatestPath = useGreatest || !hasTime;
   const cooldownActive = Boolean(cooldownDays && now);
+  // Two cases deliberately move down: a pin the authored version already violates has to
+  // be free to move down into it, and --release leaves a prerelease train for the newest
+  // real release even when that is lower (isAllowedVersionTransition vets it afterwards).
+  const allowsDowngrade = (Boolean(pinnedRange) && !satisfies(oldParsed.version, pinnedRange!)) ||
+    (useRel && oldParsed.prerelease.length > 0);
 
   let greatestDate = 0;
   let picked = false;
-  let newVersion = oldVersion;
-  // coerceToVersion always returns a 3-part numeric string, so parse cannot fail.
-  let newVersionParsed = parse(oldVersion)!;
+  let newVersionParsed = oldParsed;
 
   for (const version of versions) {
     const parsed = parse(version);
     if (!parsed?.version || parsed.prerelease.length && (!effectiveUsePre || useRel)) continue;
-    const candidateVersion = parsed.version;
 
-    if (pinnedRange && !satisfies(candidateVersion, pinnedRange)) continue;
+    // Candidates only ever move forward, matching renovate's release filter. Cheaper than
+    // the range check below, so it runs first and rejects most of them.
+    if (!allowsDowngrade && compareParsed(parsed, oldParsed) <= 0) continue;
+
+    if (pinnedRange && !satisfies(parsed.version, pinnedRange)) continue;
 
     // Resolve date string at most once — reused below by greatestDate path.
     let dateStr: string | undefined;
@@ -312,30 +333,24 @@ export function findVersion(data: any, versions: Array<string>, {range, semvers,
       if (!passesCooldown(dateStr, cooldownDays, now)) continue;
     }
 
-    const d = diffParsed(newVersionParsed, parsed);
+    // Always classified against the authored version, never against a candidate
+    // picked earlier, so a chain of small steps cannot add up past the semvers gate.
+    const d = diffParsed(oldParsed, parsed);
     if (!d || !effectiveSemvers.has(d)) continue;
 
     // some registries like github don't have data.time available, fall back to greatest on them
     if (useGreatestPath) {
-      // seed (oldVersion) is a coerced release; accept any candidate whose main is >= it so prerelease ranges still upgrade.
-      // once a real candidate is picked, compare with full precedence so the highest prerelease wins and a release is not demoted.
-      const better = picked ? compareParsed(parsed, newVersionParsed) > 0 : compareMain(parsed, newVersionParsed) >= 0;
-      if (better || (pinnedRange && !satisfies(newVersion, pinnedRange))) {
-        newVersion = candidateVersion;
-        newVersionParsed = parsed;
-        picked = true;
-      }
+      if (picked && compareParsed(parsed, newVersionParsed) <= 0) continue;
     } else {
       const dateMs = Date.parse(dateStr ?? time[version]);
-      if (dateMs >= 0 && dateMs > greatestDate) {
-        newVersion = candidateVersion;
-        newVersionParsed = parsed;
-        greatestDate = dateMs;
-      }
+      if (!(dateMs >= 0 && dateMs > greatestDate)) continue;
+      greatestDate = dateMs;
     }
+    newVersionParsed = parsed;
+    picked = true;
   }
 
-  return newVersion || null;
+  return newVersionParsed.version;
 }
 
 export function findNewVersion(data: any, {mode, range, useGreatest, useRel, usePre, semvers, pinnedRange, cooldownDays, now}: FindNewVersionOpts, {allowDowngrade, matchesAny, isGoPseudoVersion}: {allowDowngrade: Set<RegExp> | boolean, matchesAny: (str: string, set: Set<RegExp> | boolean) => boolean, isGoPseudoVersion: (version: string) => boolean}): string | null {
@@ -354,7 +369,7 @@ export function findNewVersion(data: any, {mode, range, useGreatest, useRel, use
   } else if (mode === "go") {
     const oldVersion = coerceToVersion(range);
     if (!oldVersion) return null;
-    const effectiveUsePre = usePre || isRangePrerelease(range);
+    const {effectiveUsePre, effectiveSemvers} = prereleaseOpts(range, usePre, semvers);
     const skipPrerelease = (v: string) => isVersionPrerelease(v) && (!effectiveUsePre || useRel);
     const transitionOpts = {useRel, allowDowngrade, name: data.name, matchesAny};
     // Use full original version for prerelease detection (range is shortened for Go)
@@ -365,8 +380,10 @@ export function findNewVersion(data: any, {mode, range, useGreatest, useRel, use
     const accepts = (candidate: string, time: string | undefined): boolean => {
       const coerced = coerceToVersion(candidate);
       if (!coerced || isGoPseudoVersion(candidate) || skipPrerelease(candidate)) return false;
-      const d = diff(oldVersion, coerced);
-      if (!d || !semvers.has(d)) return false;
+      // Classify against the authored version first: coercing strips the prerelease, so
+      // a `-rc.1` or pseudo-version pin would compare equal to its own release and stall.
+      const d = diff(originalOldVersion, candidate) ?? diff(oldVersion, coerced);
+      if (!d || !effectiveSemvers.has(d)) return false;
       if (!isAllowedVersionTransition(originalOldVersion, candidate, transitionOpts)) return false;
       if (!passesCooldown(time, cooldownDays, now)) return false;
       return !pinnedRange || satisfies(coerced, pinnedRange);
@@ -582,7 +599,15 @@ export function resolvePackageJsonUrl(url: string): string {
   }
 }
 
-export const hashRe = /^[0-9a-f]{7,}$/i;
+// Requires a hex letter so an all-numeric tag like `20240115` is read as a version rather
+// than a commit, and accepts 6 characters, which git and renovate both treat as a short sha.
+export const hashRe = /^(?=.*[a-f])[0-9a-f]{6,}$/i;
+
+// A ref that names a version, as opposed to a branch (`release/v1`) or another tag scheme
+// (`codeql-bundle-v2.20.3`). Those must keep their text, never be replaced by a version tag.
+export function isVersionLikeRef(ref: string): boolean {
+  return /^v?\d+(?:\.\d+)*(?:[-+][\w.-]+)?$/.test(ref);
+}
 
 export type TagEntry = {
   name: string,
@@ -648,12 +673,21 @@ export function throwFetchError(res: Response | undefined, url: string, name: st
   throw new Error(`Unable to fetch ${name} from ${source}`);
 }
 
-// A candidate with fewer numeric fields than the authored version belongs to a different
-// versioning scheme, like alpine's `20260127` snapshot tags sitting next to `3.24`, and
-// coerces so high that it wins every comparison. More fields stay allowed so a short
-// authored version can still upgrade off a registry that only publishes full versions.
-export function hasCompatiblePrecision(candidate: string, oldVersion: string): boolean {
-  return stripv(candidate).split(".").length >= stripv(oldVersion).split(".").length;
+// Renovate caps date-like versions at this in its doNotUpgradeFromAlpineStableToEdge preset.
+const dateVersionMin = 20000000;
+const isDateVersion = (fields: Array<string>) => Number(fields[0]) >= dateVersionMin;
+
+// Whether a candidate is versioned the same way as the authored version. Alpine publishes
+// `20260127` snapshot tags next to its `3.24` releases, and those coerce so high they win
+// every comparison, so both the field count and the magnitude have to line up.
+export function isSameVersionScheme(candidate: string, oldVersion: string): boolean {
+  const candidateFields = stripv(candidate).split(".");
+  const oldFields = stripv(oldVersion).split(".");
+  // More fields stay allowed so a short authored version can still upgrade off a registry
+  // that only publishes full versions; fewer means another scheme.
+  if (candidateFields.length < oldFields.length) return false;
+  // A YYYYMMDD snapshot outranks every real release, so only ever reach one from another.
+  return !isDateVersion(candidateFields) || isDateVersion(oldFields);
 }
 
 export function formatVersionPrecision(newVersion: string, oldVersion: string, suffix = ""): string {

@@ -1,5 +1,5 @@
 import {coerce, diff, gt, satisfies} from "../utils/semver.ts";
-import {type Deps, type ModeContext, type PackageInfo, fieldSep, fetchWithEtag, hasCompatiblePrecision, passesCooldown, stripv, formatVersionPrecision, maxTagPages} from "./shared.ts";
+import {type Deps, type ModeContext, type PackageInfo, fieldSep, fetchWithEtag, isSameVersionScheme, passesCooldown, stripv, formatVersionPrecision, maxTagPages} from "./shared.ts";
 import {esc} from "../utils/utils.ts";
 
 export type DockerImageRef = {
@@ -15,15 +15,20 @@ export type DockerImageRef = {
 const dockerTagRe = /^(v?\d+(?:\.\d+){0,2})(-.+)?$/;
 
 // Extraction regexes
-export const dockerfileFromRe = /^\s*FROM\s+(?:--platform=\S+\s+)?(\S+)/gm;
+// Dockerfile instructions are case-insensitive
+export const dockerfileFromRe = /^\s*FROM\s+(?:--platform=\S+\s+)?(\S+)/gim;
 export const composeImageRe = /^\s*image:\s*['"]?([^\s'"#]+)['"]?/gm;
 // Matches shorthand `container: image:tag` (not object form with `{`)
 export const workflowContainerRe = /^\s*container:\s*['"]?([^\s'"#{}]+:[^\s'"#{}:]+)['"]?\s*$/gm;
 // Matches `uses: docker://image:tag`
 export const workflowDockerUsesRe = /^\s*(?:-\s*)?uses:\s*['"]?docker:\/\/([^'"#\s]+)['"]?/gm;
 
+// docker.io and index.docker.io are Docker Hub itself, not a third-party registry.
+const hubRegistryRe = /^(?:index\.)?docker\.io$/;
+
 function parseImageParts(imagePart: string): {registry: string | null, namespace: string, repo: string} {
   const parts = imagePart.split("/");
+  if (parts.length > 1 && hubRegistryRe.test(parts[0])) parts.shift();
   if (parts.length === 1) {
     return {registry: null, namespace: "library", repo: parts[0]};
   } else if (parts.length === 2 && !parts[0].includes(".") && !parts[0].includes(":")) {
@@ -159,7 +164,7 @@ export function findDockerVersion(
   cooldownDays?: number,
   now?: number,
   pinnedRange?: string,
-): {newTag: string, hubTag: string, date: string} | null {
+): {newTag: string, date: string} | null {
   const oldParsed = parseDockerTag(oldTag);
   if (!oldParsed) return null;
 
@@ -173,7 +178,7 @@ export function findDockerVersion(
   for (const [tagName, lastUpdated] of Object.entries(tagMap)) {
     const parsed = parseDockerTag(tagName);
     if (!parsed || parsed.suffix !== oldParsed.suffix) continue;
-    if (!hasCompatiblePrecision(parsed.version, oldParsed.version)) continue;
+    if (!isSameVersionScheme(parsed.version, oldParsed.version)) continue;
 
     const coerced = coerce(stripv(parsed.version))?.version;
     if (!coerced) continue;
@@ -202,12 +207,18 @@ export function findDockerVersion(
   }
 
   if (!bestTag || bestVersion === oldCoerced) return null;
-  const newTag = formatDockerVersion(bestVersion, oldTag);
+  // The precision-matched tag is synthesized, so keep the real Hub tag when the registry
+  // does not publish it — writing a tag that does not exist breaks the build.
+  const formatted = formatDockerVersion(bestVersion, oldTag);
+  const newTag = formatted in tagMap ? formatted : bestTag;
   if (newTag === oldTag) return null;
-  // `newTag` is precision-matched to the authored tag for the rewrite; `hubTag` is the real
-  // Hub tag, needed to resolve the digest when Hub only publishes higher-precision tags.
-  return {newTag, hubTag: bestTag, date: bestDate};
+  return {newTag, date: bestDate};
 }
+
+// Ends a tag match. Excludes `@` and `+` on top of tag characters so a digest-pinned or
+// build-suffixed occurrence, which the extractor skips, is never rewritten to a bare tag
+// the digest then contradicts.
+const tagEnd = "(?![\\w.@+-])";
 
 function replaceImageRefs(content: string, deps: Deps, patterns: Array<(name: string, tag: string) => RegExp>): string {
   let newContent = content;
@@ -223,20 +234,20 @@ function replaceImageRefs(content: string, deps: Deps, patterns: Array<(name: st
 
 export function updateDockerfile(content: string, deps: Deps): string {
   return replaceImageRefs(content, deps, [
-    (name, tag) => new RegExp(`(FROM\\s+(?:--platform=\\S+\\s+)?)${name}:${tag}(?![\\w.-])`, "g"),
+    (name, tag) => new RegExp(`(FROM\\s+(?:--platform=\\S+\\s+)?)${name}:${tag}${tagEnd}`, "gi"),
   ]);
 }
 
 export function updateComposeFile(content: string, deps: Deps): string {
   return replaceImageRefs(content, deps, [
-    (name, tag) => new RegExp(`(image:\\s*['"]?)${name}:${tag}(?![\\w.-])`, "g"),
+    (name, tag) => new RegExp(`(image:\\s*['"]?)${name}:${tag}${tagEnd}`, "g"),
   ]);
 }
 
 export function updateWorkflowDockerImages(content: string, deps: Deps): string {
   return replaceImageRefs(content, deps, [
-    (name, tag) => new RegExp(`((?:container|image):\\s*['"]?)${name}:${tag}(?![\\w.-])`, "g"),
-    (name, tag) => new RegExp(`(uses:\\s*['"]?docker://)${name}:${tag}(?![\\w.-])`, "g"),
+    (name, tag) => new RegExp(`((?:container|image):\\s*['"]?)${name}:${tag}${tagEnd}`, "g"),
+    (name, tag) => new RegExp(`(uses:\\s*['"]?docker://)${name}:${tag}${tagEnd}`, "g"),
   ]);
 }
 

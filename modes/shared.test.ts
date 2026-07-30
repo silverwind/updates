@@ -341,7 +341,9 @@ test("findVersion greatest mode picks highest prerelease regardless of order", (
   } as const;
   expect(findVersion({}, ["2.0.0-rc.2", "2.0.0-rc.1"], opts)).toBe("2.0.0-rc.2");
   expect(findVersion({}, ["2.0.0-rc.1", "2.0.0-rc.2"], opts)).toBe("2.0.0-rc.2");
-  expect(findVersion({}, ["1.0.0-beta.10", "1.0.0-beta.5", "1.0.0-beta.3"], opts)).toBe("1.0.0-beta.10");
+  expect(findVersion({}, ["1.0.0-beta.10", "1.0.0-beta.5", "1.0.0-beta.3"], {...opts, range: "1.0.0-beta.1"})).toBe("1.0.0-beta.10");
+  // a prerelease below the authored release is a downgrade, not an upgrade
+  expect(findVersion({}, ["1.0.0-beta.10", "1.0.0-beta.5"], opts)).toBe("1.0.0");
   // a release must win over a same-main prerelease
   expect(findVersion({}, ["2.0.0-rc.1", "2.0.0"], opts)).toBe("2.0.0");
   expect(findVersion({}, ["2.0.0", "2.0.0-rc.1"], opts)).toBe("2.0.0");
@@ -364,6 +366,24 @@ test("findVersion time-based mode picks most recent", () => {
     useGreatest: false,
   });
   expect(result).toBe("1.1.0");
+  // a lower version published later is a downgrade, not the most recent upgrade
+  expect(findVersion(data, ["1.1.0", "1.2.0", "1.3.0"], {
+    range: "1.2.0",
+    semvers: new Set(["major", "minor", "patch"]),
+    usePre: false,
+    useRel: false,
+    useGreatest: false,
+  })).toBe("1.3.0");
+});
+
+test("findVersion never reports an unpublished release for a prerelease range", () => {
+  // every candidate filtered out must leave the authored version untouched, not the
+  // release it is a prerelease of
+  const data = {versions: {"2.0.0-rc.1": {}, "2.0.0-rc.2": {}}, time: {"2.0.0-rc.1": "2025-01-01T00:00:00Z", "2.0.0-rc.2": "2025-01-02T00:00:00Z"}};
+  const versions = ["2.0.0-rc.1", "2.0.0-rc.2"];
+  const opts = {range: "^2.0.0-rc.1", usePre: false, useRel: false, useGreatest: false} as const;
+  expect(findVersion(data, versions, {...opts, semvers: new Set(["patch"])})).toBe("2.0.0-rc.2");
+  expect(findVersion(data, versions, {...opts, semvers: new Set(["patch"]), cooldownDays: 3650, now: Date.parse("2025-01-03T00:00:00Z")})).toBe("2.0.0-rc.1");
 });
 
 test("findVersion respects semver filter", () => {
@@ -735,6 +755,24 @@ test("findNewVersion go mode same-major fallback", () => {
     semvers: new Set(["patch", "minor"]),
   }, defaultOpts);
   expect(result).toBe("1.5.0");
+});
+
+test("findNewVersion go mode moves a prerelease or pseudo-version pin to its release", () => {
+  // coercing the pin away would compare 0.4.2-0.2023… against 0.4.2 as equal and stall
+  const pseudo = "0.4.2-0.20230802210424-5b0b94c5c0d3";
+  const data = {name: "github.com/foo/bar", old: pseudo, new: "0.4.2", Time: "2025-03-01"};
+  expect(findNewVersion(data, {
+    mode: "go", range: pseudo,
+    useGreatest: false, useRel: false, usePre: false,
+    semvers: new Set(["patch", "minor", "major"]),
+  }, defaultOpts)).toBe("0.4.2");
+
+  const rc = {name: "github.com/foo/bar", old: "1.5.0-rc.1", new: "1.5.0", Time: "2025-03-01"};
+  expect(findNewVersion(rc, {
+    mode: "go", range: "1.5.0-rc.1",
+    useGreatest: false, useRel: false, usePre: false,
+    semvers: new Set(["patch", "minor", "major"]),
+  }, defaultOpts)).toBe("1.5.0");
 });
 
 test("findNewVersion go mode honors pinnedRange on cross-major target", () => {

@@ -37,7 +37,7 @@ function compareIdentifiers(a: string | number, b: string | number): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
-export function compareMain(a: SemVer, b: SemVer): number {
+function compareMain(a: SemVer, b: SemVer): number {
   return (a.major - b.major) || (a.minor - b.minor) || (a.patch - b.patch);
 }
 

@@ -12,7 +12,6 @@ import {
   parseGoWork,
   shortenGoModule,
   shortenGoVersion,
-  removeGoReplace,
   getGoInfoUrl,
   updateGoMod,
   probeMajorVersions,
@@ -67,6 +66,11 @@ test("isGoNoProxy", () => {
   expect(isGoNoProxy("github.com/private/sub", ["github.com/private"])).toBe(true);
   expect(isGoNoProxy("github.com/public", ["github.com/private"])).toBe(false);
   expect(isGoNoProxy("anything", [])).toBe(false);
+  // go matches these with path.Match, so globs stay inside one path element
+  expect(isGoNoProxy("github.com/mycorp/secret", ["github.com/mycorp/*"])).toBe(true);
+  expect(isGoNoProxy("github.com/mycorp/secret/sub", ["github.com/mycorp/*"])).toBe(true);
+  expect(isGoNoProxy("git.corp.example.com/a/b", ["*.corp.example.com"])).toBe(true);
+  expect(isGoNoProxy("github.com/other/x", ["github.com/mycorp/*"])).toBe(false);
 });
 
 test("encodeGoModulePath", () => {
@@ -79,6 +83,7 @@ test("extractGoMajor", () => {
   expect(extractGoMajor("github.com/foo/bar")).toBe(1);
   expect(extractGoMajor("github.com/foo/bar/v2")).toBe(2);
   expect(extractGoMajor("github.com/foo/bar/v15")).toBe(15);
+  expect(extractGoMajor("gopkg.in/yaml.v2")).toBe(2);
 });
 
 test("buildGoModulePath", () => {
@@ -86,6 +91,9 @@ test("buildGoModulePath", () => {
   expect(buildGoModulePath("github.com/foo/bar/v2", 1)).toBe("github.com/foo/bar");
   expect(buildGoModulePath("github.com/foo/bar", 2)).toBe("github.com/foo/bar/v2");
   expect(buildGoModulePath("github.com/foo/bar", 1)).toBe("github.com/foo/bar");
+  // gopkg.in encodes the major on the last element and has no unsuffixed form
+  expect(buildGoModulePath("gopkg.in/yaml.v2", 3)).toBe("gopkg.in/yaml.v3");
+  expect(buildGoModulePath("gopkg.in/yaml.v2", 1)).toBe("gopkg.in/yaml.v1");
 });
 
 test("goModulePathForVersion", () => {
@@ -95,6 +103,8 @@ test("goModulePathForVersion", () => {
   expect(goModulePathForVersion("github.com/foo/bar", "1.4.0")).toBe("github.com/foo/bar");
   expect(goModulePathForVersion("github.com/foo/bar", "3.0.0+incompatible")).toBe("github.com/foo/bar");
   expect(goModulePathForVersion("github.com/foo/bar/v2", "garbage")).toBe("github.com/foo/bar/v2"); // non-numeric major → unchanged
+  expect(goModulePathForVersion("gopkg.in/yaml.v2", "3.0.1")).toBe("gopkg.in/yaml.v3");
+  expect(goModulePathForVersion("github.com/foo/bar/v2", "1.5.0")).toBe("github.com/foo/bar"); // major downgrade drops the suffix
 });
 
 test("isGoPseudoVersion", () => {
@@ -150,6 +160,41 @@ test("parseGoMod replace block syntax", () => {
   expect(result.replace).toEqual({"github.com/fork/mod": "v2.0.0"});
 });
 
+test("parseGoMod local replace takes the require out of play", () => {
+  // the local checkout is what builds, so the require version is inert; leaving it in deps
+  // meant an update bumped it and stripped the replace, silently un-forking the dependency
+  const content = [
+    "module example.com/mod",
+    "",
+    "require github.com/foo/bar v1.2.3",
+    "",
+    "replace github.com/foo/bar => ../local/bar",
+  ].join("\n");
+  const result = parseGoMod(content);
+  expect(result.deps).toEqual({});
+  expect(result.replace).toEqual({});
+});
+
+test("parseGoMod version-specific replace leaves the require updatable", () => {
+  // the replace only redirects v1.0.0, so the required v1.2.3 is live
+  const content = [
+    "module example.com/mod",
+    "",
+    "require github.com/foo/bar v1.2.3",
+    "",
+    "replace github.com/foo/bar v1.0.0 => github.com/fork/bar v1.0.1",
+  ].join("\n");
+  const result = parseGoMod(content);
+  expect(result.deps).toEqual({"github.com/foo/bar": "v1.2.3"});
+  expect(result.replace).toEqual({"github.com/fork/bar": "v1.0.1"});
+});
+
+test("updateGoMod keeps replace directives", () => {
+  const content = "module example.com/mod\n\nrequire github.com/foo/bar v1.2.3\n\nreplace github.com/foo/bar v1.0.0 => github.com/fork/bar v1.0.1\n";
+  const [result] = updateGoMod(content, {[`deps${fieldSep}github.com/foo/bar`]: {old: "1.2.3", new: "1.3.0"}});
+  expect(result).toBe("module example.com/mod\n\nrequire github.com/foo/bar v1.3.0\n\nreplace github.com/foo/bar v1.0.0 => github.com/fork/bar v1.0.1\n");
+});
+
 test("parseGoMod empty tool block", () => {
   const content = [
     "module example.com/mod",
@@ -174,24 +219,6 @@ test("shortenGoModule", () => {
 test("shortenGoVersion", () => {
   expect(shortenGoVersion("v0.0.0-20221128193559-754e69321358")).toBe("v0.0.0-2022112");
   expect(shortenGoVersion("v1.2.3")).toBe("v1.2.3");
-});
-
-test("removeGoReplace single-line", () => {
-  const content = "module example.com/mod\n\nreplace github.com/old => github.com/new v1.0.0\n\nrequire foo v1.0.0\n";
-  const result = removeGoReplace(content, "github.com/old");
-  expect(result).toBe("module example.com/mod\n\nrequire foo v1.0.0\n");
-});
-
-test("removeGoReplace block entry", () => {
-  const content = "replace (\n\tgithub.com/old => github.com/new v1.0.0\n)\n";
-  const result = removeGoReplace(content, "github.com/old");
-  expect(result).toBe("");
-});
-
-test("removeGoReplace empty block cleanup", () => {
-  const content = "replace (\n)\n";
-  const result = removeGoReplace(content, "github.com/anything");
-  expect(result).toBe("");
 });
 
 test("getGoInfoUrl", () => {
