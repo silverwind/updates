@@ -5,7 +5,7 @@ import {getCache, setCache} from "../utils/fetchCache.ts";
 import {
   type Config, type CheckResult, type Dep, type Deps, type ModeContext, type PackageInfo, type PackageRepository,
   normalizeUrl, getFetchOpts, fieldSep, fetchForge, selectTag, fetchWithEtag, fetchImmutable,
-  coerceToVersion, hashRe, fetchActionTags, throwFetchError, fetchWithRetry, defaultApiUrls,
+  coerceToVersion, hashRe, fetchActionTags, throwFetchError, fetchWithRetry, defaultApiUrls, parseCommitDate,
 } from "./shared.ts";
 
 export type Npmrc = {
@@ -433,7 +433,7 @@ export async function checkUrlDep(key: string, dep: Dep, ctx: ModeContext): Prom
     const {hash, commit} = await getLatestCommit(user, repo, ctx);
     if (!hash) return null;
 
-    const newDate = commit?.committer?.date ?? commit?.author?.date;
+    const newDate = parseCommitDate(commit);
     const newRef = hash.substring(0, oldRef.length);
     if (oldRef.toLowerCase() !== newRef.toLowerCase()) {
       return {key, newRange: replaceRef(newRef), user, repo, oldRef, newRef, newDate};

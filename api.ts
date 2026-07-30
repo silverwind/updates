@@ -1090,20 +1090,17 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
             dep.new = newCommitSha.substring(0, ref.length);
             dep.oldPrint = oldRef; // the tag the pinned sha resolved to
             dep.newPrint = newTag;
-            dep.info = infoUrl;
-            if (date) setDepAge(dep, date);
           } else {
             const formatted = formatActionVersion(newTag, ref);
             if (formatted === ref) { delete deps.actions[key]; return; }
 
             dep.new = entryByName.has(formatted) ? formatted : newTag;
-            dep.info = infoUrl;
-            if (newCommitSha && date) setDepAge(dep, date);
-            else if (newCommitSha) {
-              const fetched = await getDate(newCommitSha);
-              if (fetched) setDepAge(dep, fetched);
-            }
           }
+          dep.info = infoUrl;
+
+          // Only a cooldown run has fetched the date already, otherwise it takes a request.
+          const newDate = date || (newCommitSha ? await getDate(newCommitSha) : "");
+          if (newDate) setDepAge(dep, newDate);
         }, {concurrency});
       }, {concurrency});
 

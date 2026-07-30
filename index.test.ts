@@ -1832,6 +1832,7 @@ test("actions hash-pinned", async ({expect = globalExpect}: any = {}) => {
   const actionsDeps = output.results.actions[ciKey!];
   expect(actionsDeps["actions/checkout"].old).toBe("4.2.0");
   expect(actionsDeps["actions/checkout"].new).toBe("10.0.1");
+  expect(actionsDeps["actions/checkout"].age).toBeTruthy();
 });
 
 test("actions hash-pinned update", async ({expect = globalExpect}: any = {}) => {

@@ -631,6 +631,12 @@ export type TagEntry = {
   commitSha: string,
 };
 
+// GitHub puts the dates at the top level of a commit, Gitea nests them under `commit`.
+export function parseCommitDate(data: any): string {
+  const commit = data?.commit ?? data;
+  return commit?.committer?.date || commit?.author?.date || "";
+}
+
 export function parseTags(data: Array<any>): Array<TagEntry> {
   return data.map((tag: any) => ({name: tag.name, commitSha: tag.commit?.sha || ""}));
 }

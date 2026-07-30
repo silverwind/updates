@@ -1,7 +1,7 @@
 import {resolve, join} from "node:path";
 import {readdirSync} from "node:fs";
 import {parse} from "../utils/semver.ts";
-import {type CheckResult, type ModeContext, type TagEntry, stripv, hashRe, fetchForge, fetchActionTags, formatVersionPrecision, githubApiUrl} from "./shared.ts";
+import {type CheckResult, type ModeContext, type TagEntry, stripv, hashRe, fetchForge, fetchActionTags, formatVersionPrecision, githubApiUrl, parseCommitDate} from "./shared.ts";
 import {getCache, setCache} from "../utils/fetchCache.ts";
 import {esc, forgeDirs} from "../utils/utils.ts";
 
@@ -51,8 +51,7 @@ export async function fetchActionTagDate(apiUrl: string, owner: string, repo: st
   try {
     const res = await fetchForge(url, ctx);
     if (!res.ok) return "";
-    const data = await res.json();
-    const date = data?.committer?.date || data?.author?.date || "";
+    const date = parseCommitDate(await res.json());
     if (date && !ctx.noCache) setCache(url, "immutable", date);
     return date;
   } catch {

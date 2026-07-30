@@ -195,6 +195,15 @@ test("fetchActionTagDate falls back to author date", async () => {
   expect(await fetchActionTagDate("https://api.github.com", "actions", "checkout", "abc123", ctx)).toBe("2024-12-01T00:00:00Z");
 });
 
+test("fetchActionTagDate reads the gitea shape", async () => {
+  const ctx = {
+    fetchTimeout,
+    noCache: true,
+    doFetch: () => Promise.resolve({ok: true, json: () => Promise.resolve({commit: {committer: {date: "2025-02-01T00:00:00Z"}, author: {date: "2025-01-15T00:00:00Z"}}})}),
+  } as unknown as ModeContext;
+  expect(await fetchActionTagDate("https://gitea.com/api/v1", "actions", "checkout", "abc123", ctx)).toBe("2025-02-01T00:00:00Z");
+});
+
 test("fetchActionTagDate returns empty on failure", async () => {
   const ctx = {
     fetchTimeout,
