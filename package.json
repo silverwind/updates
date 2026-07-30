@@ -1,6 +1,6 @@
 {
   "name": "updates",
-  "version": "17.19.2",
+  "version": "17.20.0",
   "description": "CLI dependency update tool for npm, uv, cargo, go, actions, docker and make",
   "author": "silverwind",
   "repository": "silverwind/updates",
@@ -35,7 +35,7 @@
   "files": [
     "dist"
   ],
-  "packageManager": "pnpm@11.17.0",
+  "packageManager": "pnpm@11.18.0",
   "engines": {
     "node": ">=22",
     "bun": "*"
@@ -47,7 +47,7 @@
     "eslint": "10.8.0",
     "eslint-config-silverwind": "143.0.0",
     "jest-extended": "7.0.0",
-    "timerel": "5.8.7",
+    "timerel": "5.8.8",
     "tsdown": "0.22.14",
     "tsdown-config-silverwind": "4.0.3",
     "typescript": "6.0.3",
