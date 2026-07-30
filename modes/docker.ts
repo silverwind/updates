@@ -1,5 +1,5 @@
 import {coerce, diff, gt, satisfies} from "../utils/semver.ts";
-import {type Deps, type ModeContext, type PackageInfo, fieldSep, fetchWithEtag, passesCooldown, stripv, formatVersionPrecision, maxTagPages} from "./shared.ts";
+import {type Deps, type ModeContext, type PackageInfo, fieldSep, fetchWithEtag, hasCompatiblePrecision, passesCooldown, stripv, formatVersionPrecision, maxTagPages} from "./shared.ts";
 import {esc} from "../utils/utils.ts";
 
 export type DockerImageRef = {
@@ -173,6 +173,7 @@ export function findDockerVersion(
   for (const [tagName, lastUpdated] of Object.entries(tagMap)) {
     const parsed = parseDockerTag(tagName);
     if (!parsed || parsed.suffix !== oldParsed.suffix) continue;
+    if (!hasCompatiblePrecision(parsed.version, oldParsed.version)) continue;
 
     const coerced = coerce(stripv(parsed.version))?.version;
     if (!coerced) continue;

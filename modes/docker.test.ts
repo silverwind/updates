@@ -218,6 +218,18 @@ test("findDockerVersion handles partial version tags", () => {
   expect(result).toEqual({newTag: "20", hubTag: "20.11.1", date: "2024-06-15"});
 });
 
+test("findDockerVersion ignores lower-precision tags from another scheme", () => {
+  const tagMap: Record<string, string> = {
+    "3.24": "2026-06-16",
+    "3.24.1": "2026-06-16",
+    "20260127": "2026-01-28",
+  };
+  const semvers = new Set(["patch", "minor", "major"]);
+  expect(findDockerVersion(tagMap, "3.24", semvers)).toBeNull();
+  // same scheme as the authored tag, so date snapshots still upgrade among themselves
+  expect(findDockerVersion(tagMap, "20251224", semvers)).toEqual({newTag: "20260127", hubTag: "20260127", date: "2026-01-28"});
+});
+
 test("findDockerVersion respects pinnedRange and blocks out-of-range upgrade", () => {
   const tagMap: Record<string, string> = {
     "8.0": "2024-01-01",

@@ -648,6 +648,14 @@ export function throwFetchError(res: Response | undefined, url: string, name: st
   throw new Error(`Unable to fetch ${name} from ${source}`);
 }
 
+// A candidate with fewer numeric fields than the authored version belongs to a different
+// versioning scheme, like alpine's `20260127` snapshot tags sitting next to `3.24`, and
+// coerces so high that it wins every comparison. More fields stay allowed so a short
+// authored version can still upgrade off a registry that only publishes full versions.
+export function hasCompatiblePrecision(candidate: string, oldVersion: string): boolean {
+  return stripv(candidate).split(".").length >= stripv(oldVersion).split(".").length;
+}
+
 export function formatVersionPrecision(newVersion: string, oldVersion: string, suffix = ""): string {
   const hadV = oldVersion.startsWith("v");
   const bare = stripv(newVersion);
