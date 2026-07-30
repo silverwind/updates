@@ -12,7 +12,7 @@ import {
   type PackageRepository, type PackageInfo,
   fieldSep, normalizeUrl, fetchTimeout, goProbeTimeout, maxSockets,
   doFetch, findVersion, findNewVersion, coerceToVersion, getInfoUrl, getGithubTokens,
-  passesCooldown, stripv, hashRe, isVersionLikeRef,
+  passesCooldown, stripv, hashRe, isVersionLikeRef, defaultApiUrls,
 } from "./modes/shared.ts";
 import {flushCacheWrites} from "./utils/fetchCache.ts";
 import {loadConfig, configMixedToRegexes, patternsToRegexSet} from "./config.ts";
@@ -268,12 +268,12 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
 
   const concurrency = config.sockets ?? maxSockets;
   const userTimeout = config.timeout ?? 0;
-  const forgeApiUrl = apiUrl(opts.forgeapi, "https://api.github.com");
-  const pypiApiUrl = apiUrl(opts.pypiapi, "https://pypi.org");
-  const jsrApiUrl = apiUrl(opts.jsrapi, "https://jsr.io");
+  const forgeApiUrl = apiUrl(opts.forgeapi, defaultApiUrls.forgeapi);
+  const pypiApiUrl = apiUrl(opts.pypiapi, defaultApiUrls.pypiapi);
+  const jsrApiUrl = apiUrl(opts.jsrapi, defaultApiUrls.jsrapi);
   const goProxyUrl = apiUrl(opts.goproxy, resolveGoProxy);
-  const cratesIoUrl = apiUrl(opts.cargoapi, "https://crates.io");
-  const dockerApiUrl = apiUrl(opts.dockerapi, "https://hub.docker.com");
+  const cratesIoUrl = apiUrl(opts.cargoapi, defaultApiUrls.cargoapi);
+  const dockerApiUrl = apiUrl(opts.dockerapi, defaultApiUrls.dockerapi);
   const goNoProxy = parseGoNoProxy();
 
   const useVerboseColor = config.color || (!config.noColor && stderr.isTTY);

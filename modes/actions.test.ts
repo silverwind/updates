@@ -44,16 +44,13 @@ test("parseActionRef empty ref returns null", () => {
 });
 
 // getForgeApiBaseUrl
-test("getForgeApiBaseUrl null host passes through forgeApiUrl", () => {
-  expect(getForgeApiBaseUrl(null, "https://api.github.com")).toBe("https://api.github.com");
+test("getForgeApiBaseUrl falls back to the configured forge without a host", () => {
+  expect(getForgeApiBaseUrl(null, "https://gitea.example.com/api/v1")).toBe("https://gitea.example.com/api/v1");
 });
 
-test("getForgeApiBaseUrl github.com", () => {
-  expect(getForgeApiBaseUrl("github.com", "anything")).toBe("https://api.github.com");
-});
-
-test("getForgeApiBaseUrl custom host", () => {
-  expect(getForgeApiBaseUrl("gitea.example.com", "anything")).toBe("https://gitea.example.com/api/v1");
+test("getForgeApiBaseUrl lets a host in the ref win over the configured forge", () => {
+  expect(getForgeApiBaseUrl("github.com", "https://gitea.example.com/api/v1")).toBe("https://api.github.com");
+  expect(getForgeApiBaseUrl("gitea.example.com", "https://api.github.com")).toBe("https://gitea.example.com/api/v1");
 });
 
 // formatActionVersion

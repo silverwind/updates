@@ -2,7 +2,7 @@ import {env} from "node:process";
 import {join, dirname} from "node:path";
 import {readFileSync, globSync} from "node:fs";
 import {
-  type Deps, type ModeContext, type PackageInfo, fieldSep, stripv, getSubDir, normalizeUrl, fetchWithRetry,
+  type Deps, type ModeContext, type PackageInfo, fieldSep, stripv, getSubDir, normalizeUrl, fetchWithRetry, defaultApiUrls,
 } from "./shared.ts";
 import {esc} from "../utils/utils.ts";
 
@@ -19,14 +19,14 @@ function getExecFile() {
 }
 
 export function resolveGoProxy(): string {
-  const proxyEnv = env.GOPROXY || "https://proxy.golang.org,direct";
+  const proxyEnv = env.GOPROXY || `${defaultApiUrls.goproxy},direct`;
   for (const entry of proxyEnv.split(/[,|]/)) {
     const trimmed = entry.trim();
     if (trimmed && trimmed !== "direct" && trimmed !== "off") {
       return normalizeUrl(trimmed);
     }
   }
-  return "https://proxy.golang.org";
+  return defaultApiUrls.goproxy;
 }
 
 export function parseGoNoProxy(): Array<string> {

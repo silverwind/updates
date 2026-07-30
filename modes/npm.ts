@@ -5,7 +5,7 @@ import {getCache, setCache} from "../utils/fetchCache.ts";
 import {
   type Config, type CheckResult, type Dep, type Deps, type ModeContext, type PackageInfo, type PackageRepository,
   normalizeUrl, getFetchOpts, fieldSep, fetchForge, selectTag, fetchWithEtag, fetchImmutable,
-  coerceToVersion, hashRe, fetchActionTags, throwFetchError, fetchWithRetry,
+  coerceToVersion, hashRe, fetchActionTags, throwFetchError, fetchWithRetry, defaultApiUrls,
 } from "./shared.ts";
 
 export type Npmrc = {
@@ -45,7 +45,7 @@ export function resolutionsBasePackage(name: string): string {
   return segments ? segments[segments.length - 1] : name;
 }
 
-const defaultRegistry = "https://registry.npmjs.org";
+const defaultRegistry = defaultApiUrls.registry;
 let npmrc: Npmrc | null = null;
 const authCache = new Map<string, AuthAndRegistry>();
 

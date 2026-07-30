@@ -101,6 +101,23 @@ export const maxSockets = 25;
 // Cap pagination so a repo with hundreds of tag pages doesn't fan out hundreds
 // of concurrent requests. Shared by the forge tag and Docker Hub tag walks.
 export const maxTagPages = 10;
+
+// GitHub serves its API from a hostname of its own, unlike Gitea and Forgejo which serve
+// /api/v1 from the forge host itself. Also the default forge, hence forgeapi below.
+export const githubApiUrl = "https://api.github.com";
+
+// Default endpoint per API override flag, no trailing slash. The single source for the URLs
+// requests are built from and for the origins prewarming opens sockets to, so the two cannot
+// name different hosts.
+export const defaultApiUrls = {
+  registry: "https://registry.npmjs.org",
+  jsrapi: "https://jsr.io",
+  forgeapi: githubApiUrl,
+  pypiapi: "https://pypi.org",
+  cargoapi: "https://crates.io",
+  dockerapi: "https://hub.docker.com",
+  goproxy: "https://proxy.golang.org",
+} as const;
 const fetchRetries = 2;
 
 export const stripv = (str: string): string => str[0] === "v" ? str.substring(1) : str;

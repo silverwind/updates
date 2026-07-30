@@ -1,7 +1,7 @@
 import {resolve, join} from "node:path";
 import {readdirSync} from "node:fs";
 import {parse} from "../utils/semver.ts";
-import {type CheckResult, type ModeContext, type TagEntry, stripv, hashRe, fetchForge, fetchActionTags, formatVersionPrecision} from "./shared.ts";
+import {type CheckResult, type ModeContext, type TagEntry, stripv, hashRe, fetchForge, fetchActionTags, formatVersionPrecision, githubApiUrl} from "./shared.ts";
 import {getCache, setCache} from "../utils/fetchCache.ts";
 import {esc, forgeDirs} from "../utils/utils.ts";
 
@@ -33,10 +33,12 @@ export function parseActionRef(uses: string): ActionRef | null {
   return {host, owner: segments[0], repo: segments[1], ref, name, isHash: hashRe.test(ref)};
 }
 
+// A host spelled out in the ref wins over the configured forge, so `https://gitea.com/o/r@v1`
+// resolves against gitea.com even when the run defaults to GitHub. A bare `o/r@v1` has no host
+// to go on and follows the default.
 export function getForgeApiBaseUrl(host: string | null, forgeApiUrl: string): string {
   if (!host) return forgeApiUrl;
-  if (host === "github.com") return "https://api.github.com";
-  return `https://${host}/api/v1`;
+  return host === "github.com" ? githubApiUrl : `https://${host}/api/v1`;
 }
 
 export async function fetchActionTagDate(apiUrl: string, owner: string, repo: string, commitSha: string, ctx: ModeContext): Promise<string> {

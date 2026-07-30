@@ -26,9 +26,9 @@ test("empty dir returns no origins", () => {
   expect(prewarmOrigins(makeDir(), {})).toEqual([]);
 });
 
-// prewarmOrigins keys off filenames rather than modes, so a manifest added to
-// modeByFileName without a matching branch here would silently never prewarm.
-test.each(Object.keys(modeByFileName))("%s is prewarmed", (filename) => {
+// A mode gaining a manifest, or a new mode entirely, must reach apisByMode or it silently
+// never prewarms. modeByFileName covers the exact-name modes, the rest match by predicate.
+test.each([...Object.keys(modeByFileName), "Dockerfile", "Makefile", "tools.mk"])("%s is prewarmed", (filename) => {
   expect(prewarmOrigins(makeDir({[filename]: ""}), {})).not.toEqual([]);
 });
 
@@ -77,6 +77,14 @@ test.each(["docker-compose.yml", "compose.yaml", "compose.prod.yaml", "docker-st
   "%s triggers hub.docker.com", (filename) => {
     expect(prewarmOrigins(makeDir({[filename]: ""}), {})).toEqual(["https://hub.docker.com/"]);
   });
+
+// make resolves `go install` tool versions and docker image tags, so it needs both
+test.each(["Makefile", "makefile", "GNUmakefile", "tools.mk"])("%s triggers proxy.golang.org + hub.docker.com", (filename) => {
+  expect(prewarmOrigins(makeDir({[filename]: ""}), {})).toEqual(expect.arrayContaining([
+    "https://proxy.golang.org/",
+    "https://hub.docker.com/",
+  ]));
+});
 
 test.each(forgeDirs)("%s/workflows dir triggers github + hub.docker.com", (forgeDir) => {
   const dir = mkdtempSync(join(tmpdir(), "updates-prewarm-"));

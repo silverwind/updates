@@ -324,8 +324,8 @@ const defaultPresetTimeout = 10000;
 async function presetHeaders(url: string, etag?: string): Promise<Record<string, string>> {
   let hostname = "";
   try { hostname = new URL(url).hostname; } catch {}
-  const {getForgeTokens, getFetchOpts} = await import("../modes/shared.ts");
-  const [token] = hostname ? await getForgeTokens(hostname, "https://api.github.com") : [];
+  const {getForgeTokens, getFetchOpts, githubApiUrl} = await import("../modes/shared.ts");
+  const [token] = hostname ? await getForgeTokens(hostname, githubApiUrl) : [];
   const headers = {...getFetchOpts("Bearer", token).headers} as Record<string, string>;
   if (etag) headers["if-none-match"] = etag;
   return headers;

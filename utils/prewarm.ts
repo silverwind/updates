@@ -1,7 +1,9 @@
-import {readFileSync, readdirSync, type Dirent} from "node:fs";
+import {readFileSync, readdirSync} from "node:fs";
 import {join} from "node:path";
 import {isDockerFileName} from "../modes/docker.ts";
-import {forgeDirs} from "./utils.ts";
+import {isMakeFileName} from "../modes/make.ts";
+import {defaultApiUrls} from "../modes/shared.ts";
+import {forgeDirs, modeByFileName} from "./utils.ts";
 import {parseIni} from "./rc.ts";
 
 function npmrcRegistry(dir: string): string | undefined {
@@ -12,48 +14,64 @@ function npmrcRegistry(dir: string): string | undefined {
   }
 }
 
-// The override's origin when set (so tests and custom registries warm the host
-// actually contacted), the default otherwise, null when unparsable.
-function resolveOrigin(override: unknown, defaultOrigin: string): string | null {
-  if (typeof override !== "string" || !override) return defaultOrigin;
+// The origin of the override when set (so tests and custom registries warm the host actually
+// contacted), of the default otherwise, null when unparsable.
+function resolveOrigin(override: unknown, defaultUrl: string): string | null {
   try {
-    return `${new URL(override).origin}/`;
+    return `${new URL(typeof override === "string" && override ? override : defaultUrl).origin}/`;
   } catch {
     return null;
   }
+}
+
+// Which APIs each mode contacts, named by their override flag so the URLs live in
+// defaultApiUrls alone. Keyed by mode rather than by filename, so giving a mode another
+// manifest or another API has one place to update — prewarm.test.ts fails on a missing mode.
+const apisByMode: Record<string, Array<keyof typeof defaultApiUrls>> = {
+  npm: ["registry", "jsrapi", "forgeapi"],
+  pypi: ["pypiapi"],
+  cargo: ["cargoapi"],
+  go: ["goproxy"],
+  docker: ["dockerapi"],
+  actions: ["forgeapi", "dockerapi"], // workflows carry action refs and docker images
+  make: ["goproxy", "dockerapi"], // Makefiles carry `go install` tools and docker images
+};
+
+// The mode that claims a file, mirroring resolveFiles so prewarming cannot warm a different
+// set of origins than the run goes on to contact.
+function modeForFile(filename: string): string | undefined {
+  if (modeByFileName[filename]) return modeByFileName[filename];
+  if (isDockerFileName(filename)) return "docker";
+  if (isMakeFileName(filename)) return "make";
+  return undefined;
 }
 
 // Detect which registry origins should have a TLS keep-alive socket pre-warmed
 // based on files present in `dir`, honoring the API override flags in `args`.
 // Registry overrides from the config file are not seen here: it loads later.
 export function prewarmOrigins(dir: string, args: Record<string, unknown>): string[] {
-  let entries: Array<Dirent> = [];
+  const modes = new Set<string>();
   try {
-    entries = readdirSync(dir, {withFileTypes: true});
+    for (const entry of readdirSync(dir, {withFileTypes: true})) {
+      if (entry.isFile()) {
+        const mode = modeForFile(entry.name);
+        if (mode) modes.add(mode);
+      } else if (entry.isDirectory() && forgeDirs.some(forgeDir => forgeDir === entry.name)) {
+        // Bare forge dir, matching resolveFiles' auto-discovery: workflows also live
+        // outside `workflows/` as `<forge>/**/action.yml`.
+        modes.add("actions");
+      }
+    }
   } catch {}
-  const names = new Set(entries.map(entry => entry.name));
-  const has = (...candidates: string[]) => candidates.some(name => names.has(name));
+
   const origins = new Set<string>();
-  const add = (origin: string | null) => { if (origin) origins.add(origin); };
-  const forgeOrigin = resolveOrigin(args.forgeapi, "https://api.github.com/");
-  const dockerOrigin = resolveOrigin(args.dockerapi, "https://hub.docker.com/");
-  if (has("package.json", "pnpm-workspace.yaml")) {
-    const registry = typeof args.registry === "string" ? args.registry : npmrcRegistry(dir);
-    add(resolveOrigin(registry, "https://registry.npmjs.org/"));
-    add(resolveOrigin(args.jsrapi, "https://jsr.io/"));
-    add(forgeOrigin);
-  }
-  if (has("pyproject.toml")) add(resolveOrigin(args.pypiapi, "https://pypi.org/"));
-  if (has("Cargo.toml")) add(resolveOrigin(args.cargoapi, "https://crates.io/"));
-  if (has("go.mod", "go.work")) add(resolveOrigin(args.goproxy, "https://proxy.golang.org/"));
-  // Keyed off the predicate, not a name list, so every file resolveFiles would scan prewarms
-  // too — `Dockerfile.dev`, `docker-stack.yml`, `compose.prod.yaml`.
-  if (entries.some(entry => entry.isFile() && isDockerFileName(entry.name))) add(dockerOrigin);
-  // Bare forge dir, matching resolveFiles' auto-discovery: workflows also live
-  // outside `workflows/` as `<forge>/**/action.yml`.
-  if (has(...forgeDirs)) {
-    add(forgeOrigin);
-    add(dockerOrigin);
+  for (const mode of modes) {
+    for (const api of apisByMode[mode] ?? []) {
+      // the npm registry is the only one that can also come from a file
+      const override = api === "registry" && typeof args.registry !== "string" ? npmrcRegistry(dir) : args[api];
+      const origin = resolveOrigin(override, defaultApiUrls[api]);
+      if (origin) origins.add(origin);
+    }
   }
   return Array.from(origins);
 }
