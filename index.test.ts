@@ -2096,7 +2096,8 @@ test("docker directory discovery", async ({expect = globalExpect}: any = {}) => 
   expect(stderr).toEqual("");
   const output = JSON.parse(stdout);
   expect(output.results.docker).toBeDefined();
-  const keys = Object.keys(output.results.docker);
+  // keys carry the platform separator, and the bare name needs one to tell it from docker-compose
+  const keys = Object.keys(output.results.docker).map(k => k.replace(/\\/g, "/"));
   expect(keys.some(k => k.endsWith("Dockerfile"))).toBe(true);
   expect(keys.some(k => k.endsWith("Dockerfile.dev"))).toBe(true);
   expect(keys.some(k => k.endsWith("docker-compose.yaml"))).toBe(true);
