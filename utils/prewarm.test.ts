@@ -71,9 +71,12 @@ test("Dockerfile triggers hub.docker.com", () => {
   expect(prewarmOrigins(makeDir({"Dockerfile": ""}), {})).toEqual(["https://hub.docker.com/"]);
 });
 
-test("docker-compose.yml triggers hub.docker.com", () => {
-  expect(prewarmOrigins(makeDir({"docker-compose.yml": ""}), {})).toEqual(["https://hub.docker.com/"]);
-});
+// Matched by pattern rather than an exact name, so they used to be discovered without ever
+// prewarming the origin they then contacted.
+test.each(["docker-compose.yml", "compose.yaml", "compose.prod.yaml", "docker-stack.yml", "Dockerfile.dev"])(
+  "%s triggers hub.docker.com", (filename) => {
+    expect(prewarmOrigins(makeDir({[filename]: ""}), {})).toEqual(["https://hub.docker.com/"]);
+  });
 
 test.each(forgeDirs)("%s/workflows dir triggers github + hub.docker.com", (forgeDir) => {
   const dir = mkdtempSync(join(tmpdir(), "updates-prewarm-"));

@@ -1,6 +1,6 @@
-import {readFileSync, existsSync} from "node:fs";
+import {readFileSync, readdirSync, type Dirent} from "node:fs";
 import {join} from "node:path";
-import {dockerExactFileNames} from "../modes/docker.ts";
+import {isDockerFileName} from "../modes/docker.ts";
 import {forgeDirs} from "./utils.ts";
 import {parseIni} from "./rc.ts";
 
@@ -27,7 +27,12 @@ function resolveOrigin(override: unknown, defaultOrigin: string): string | null 
 // based on files present in `dir`, honoring the API override flags in `args`.
 // Registry overrides from the config file are not seen here: it loads later.
 export function prewarmOrigins(dir: string, args: Record<string, unknown>): string[] {
-  const has = (...names: string[]) => names.some(name => existsSync(join(dir, name)));
+  let entries: Array<Dirent> = [];
+  try {
+    entries = readdirSync(dir, {withFileTypes: true});
+  } catch {}
+  const names = new Set(entries.map(entry => entry.name));
+  const has = (...candidates: string[]) => candidates.some(name => names.has(name));
   const origins = new Set<string>();
   const add = (origin: string | null) => { if (origin) origins.add(origin); };
   const forgeOrigin = resolveOrigin(args.forgeapi, "https://api.github.com/");
@@ -41,7 +46,9 @@ export function prewarmOrigins(dir: string, args: Record<string, unknown>): stri
   if (has("pyproject.toml")) add(resolveOrigin(args.pypiapi, "https://pypi.org/"));
   if (has("Cargo.toml")) add(resolveOrigin(args.cargoapi, "https://crates.io/"));
   if (has("go.mod", "go.work")) add(resolveOrigin(args.goproxy, "https://proxy.golang.org/"));
-  if (has(...dockerExactFileNames)) add(dockerOrigin);
+  // Keyed off the predicate, not a name list, so every file resolveFiles would scan prewarms
+  // too — `Dockerfile.dev`, `docker-stack.yml`, `compose.prod.yaml`.
+  if (entries.some(entry => entry.isFile() && isDockerFileName(entry.name))) add(dockerOrigin);
   // Bare forge dir, matching resolveFiles' auto-discovery: workflows also live
   // outside `workflows/` as `<forge>/**/action.yml`.
   if (has(...forgeDirs)) {
