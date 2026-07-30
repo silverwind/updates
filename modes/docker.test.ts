@@ -3,6 +3,7 @@ import {
   parseDockerTag,
   formatDockerVersion,
   isComposeFile,
+  dockerExactFileNames,
   isDockerfile,
   isDockerFileName,
   getDockerInfoUrl,
@@ -116,11 +117,20 @@ test("isComposeFile matches compose files", () => {
   expect(isComposeFile("docker-compose.yml")).toBe(true);
   expect(isComposeFile("docker-compose.yaml")).toBe(true);
   expect(isComposeFile("docker-stack.yml")).toBe(true);
+  expect(isComposeFile("compose.yaml")).toBe(true);
+  expect(isComposeFile("compose.prod.yaml")).toBe(true);
 });
 
 test("isComposeFile rejects non-compose files", () => {
   expect(isComposeFile("Dockerfile")).toBe(false);
   expect(isComposeFile("random.yml")).toBe(false);
+  expect(isComposeFile("compose.json")).toBe(false);
+});
+
+test("dockerExactFileNames stay within isDockerFileName", () => {
+  // findUpSync needs literal names, but api.ts routes them by predicate afterwards
+  expect(dockerExactFileNames.every(isDockerFileName)).toBe(true);
+  expect(dockerExactFileNames).toContain("compose.yaml");
 });
 
 // isDockerfile

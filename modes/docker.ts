@@ -251,15 +251,19 @@ export function updateWorkflowDockerImages(content: string, deps: Deps): string 
   ]);
 }
 
-// Exact filenames for auto-discovery via findUpSync
+// Exact filenames for auto-discovery via findUpSync, which cannot glob. Deliberately
+// narrower than isDockerFileName, which every entry must still satisfy.
 export const dockerExactFileNames = [
   "Dockerfile",
+  "compose.yml",
+  "compose.yaml",
   "docker-compose.yml",
   "docker-compose.yaml",
 ];
 
 export function isComposeFile(filename: string): boolean {
-  return /^docker-.+\.ya?ml$/.test(filename);
+  // `compose` is the canonical Compose Spec name; `docker-` also covers swarm stack files
+  return /^(?:docker-|compose).*\.ya?ml$/.test(filename);
 }
 
 export function isDockerfile(filename: string): boolean {

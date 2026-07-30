@@ -2097,11 +2097,11 @@ test("docker directory discovery", async ({expect = globalExpect}: any = {}) => 
   const output = JSON.parse(stdout);
   expect(output.results.docker).toBeDefined();
   const keys = Object.keys(output.results.docker);
-  // Should discover Dockerfile, Dockerfile.dev, docker-compose.yaml, docker-stack.yml
   expect(keys.some(k => k.endsWith("Dockerfile"))).toBe(true);
   expect(keys.some(k => k.endsWith("Dockerfile.dev"))).toBe(true);
   expect(keys.some(k => k.endsWith("docker-compose.yaml"))).toBe(true);
   expect(keys.some(k => k.endsWith("docker-stack.yml"))).toBe(true);
+  expect(keys.some(k => k.endsWith("/compose.yaml"))).toBe(true);
 });
 
 test("fetch error includes URL and no stack trace", async ({expect = globalExpect}: any = {}) => {
