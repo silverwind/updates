@@ -17,6 +17,7 @@ import {
   composeImageRe,
   fetchDockerHubTags,
   fetchDockerInfo,
+  dockerImageNames,
 } from "./docker.ts";
 import {type ModeContext, fetchTimeout, fieldSep} from "./shared.ts";
 
@@ -63,6 +64,15 @@ test("parseDockerImageRef tag with suffix", () => {
 test("parseDockerImageRef full semver with suffix", () => {
   const result = parseDockerImageRef("node:18.19.1-bookworm");
   expect(result).toEqual({registry: null, namespace: "library", repo: "node", tag: "18.19.1-bookworm", fullImage: "node"});
+});
+
+test("dockerImageNames", () => {
+  const hub = ["mysql", "library/mysql", "docker.io/mysql", "docker.io/library/mysql"];
+  expect(dockerImageNames("mysql")).toEqual(hub);
+  expect(dockerImageNames("docker.io/mysql")).toEqual(["docker.io/mysql", ...hub.filter(n => n !== "docker.io/mysql")]);
+  expect(dockerImageNames("index.docker.io/library/mysql")).toEqual(["index.docker.io/library/mysql", ...hub]);
+  expect(dockerImageNames("grafana/grafana")).toEqual(["grafana/grafana", "docker.io/grafana/grafana"]);
+  expect(dockerImageNames("ghcr.io/foo/bar")).toEqual(["ghcr.io/foo/bar"]);
 });
 
 // parseDockerTag

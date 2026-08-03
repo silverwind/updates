@@ -1424,6 +1424,33 @@ test("make mode bumps docker image tags and re-resolves digests in Makefiles", a
   expect(updated).toContain("TEST_MYSQL_HOST ?= mysql:3306");
 });
 
+test("docker image names match with and without the docker.io prefix", async ({expect = globalExpect}: any = {}) => {
+  const makeDir = join(testDir, "test-docker-io-prefix");
+  mkdirSync(makeDir, {recursive: true});
+  const makePath = join(makeDir, "Makefile");
+  await writeFile(makePath, [
+    "PREFIXED := docker.io/koalaman/shellcheck:v0.11.0",
+    "PLAIN := koalaman/shellcheck:v0.11.0",
+    "",
+  ].join("\n"));
+
+  // a pin written without the registry must hold both spellings
+  await updates({files: [makePath], dockerapi: dockerUrl, update: true, color: false, noCache: true, pin: {"koalaman/shellcheck": "0.11.x"}});
+  expect(await readFile(makePath, "utf8")).toBe([
+    "PREFIXED := docker.io/koalaman/shellcheck:v0.11.0",
+    "PLAIN := koalaman/shellcheck:v0.11.0",
+    "",
+  ].join("\n"));
+
+  // and so must one written with it
+  await updates({files: [makePath], dockerapi: dockerUrl, update: true, color: false, noCache: true, exclude: ["docker.io/koalaman/shellcheck"]});
+  expect(await readFile(makePath, "utf8")).toBe([
+    "PREFIXED := docker.io/koalaman/shellcheck:v0.11.0",
+    "PLAIN := koalaman/shellcheck:v0.11.0",
+    "",
+  ].join("\n"));
+});
+
 test("go prerelease with -p per-package", async ({expect = globalExpect}: any = {}) => {
   // With per-package --prerelease, Go prerelease versions should be offered for that package
   expect(await makeTest(`-j -f ${goPreFile} -p github.com/example/prerelpkg`)()).toMatchInlineSnapshot(`

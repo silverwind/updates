@@ -38,6 +38,15 @@ function parseImageParts(imagePart: string): {registry: string | null, namespace
   }
 }
 
+// Hub images are addressable with or without the `docker.io/` registry and `library/`
+// namespace, so a user-supplied name in any of those spellings matches the image.
+export function dockerImageNames(image: string): Array<string> {
+  const {registry, namespace, repo} = parseImageParts(image);
+  if (registry) return [image];
+  const paths = namespace === "library" ? [repo, `library/${repo}`] : [`${namespace}/${repo}`];
+  return [...new Set([image, ...paths, ...paths.map(path => `docker.io/${path}`)])];
+}
+
 export function parseDockerImageRef(ref: string): DockerImageRef | null {
   ref = ref.replace(/^docker:\/\//, "");
 
