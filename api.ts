@@ -35,7 +35,7 @@ import {
 } from "./modes/actions.ts";
 import {
   type DockerImageRef,
-  parseDockerTag, extractDockerRefs,
+  parseDockerTag, extractDockerRefs, dockerImageNames,
   getExtractionRegex, isDockerfile, isDockerFileName, dockerExactFileNames,
   fetchDockerInfo, findDockerVersion, getDockerInfoUrl,
   updateDockerfile, updateComposeFile, updateWorkflowDockerImages,
@@ -126,16 +126,28 @@ function logVerbose(message: string): void {
   console.error(`${timestamp()} ${message}`);
 }
 
-function canInclude(name: string, mode: string, include: Set<RegExp>, exclude: Set<RegExp>, depType: string): boolean {
+// The spellings a dep answers to, so include/exclude patterns, overrides and pin keys
+// all match on the same set regardless of which one the manifest happens to use.
+function depNames(name: string, kind: string): Array<string> {
+  if (kind === "go") return [name, shortenGoModule(name)];
+  if (kind === "docker") return dockerImageNames(name);
+  return [name];
+}
+
+const pinFor = (pin: Record<string, string>, names: Array<string>) => names.map(name => pin[name]).find(Boolean);
+
+// `kind` selects the name spellings and defaults to `mode`. Make manifests hold both go
+// and docker deps, so those call sites pass it rather than claiming to be another mode.
+function canInclude(name: string, mode: string, include: Set<RegExp>, exclude: Set<RegExp>, depType: string, kind: string = mode): boolean {
   if (depType === "engines" && nonPackageEngines.includes(name)) return false;
   if (mode === "pypi" && name === "python") return false;
   if (!include.size && !exclude.size) return true;
-  const baseName = mode === "go" ? shortenGoModule(name) : name;
+  const names = depNames(name, kind);
   for (const re of exclude) {
-    if (re.test(name) || re.test(baseName)) return false;
+    if (names.some(n => re.test(n))) return false;
   }
   for (const re of include) {
-    if (re.test(name) || re.test(baseName)) return true;
+    if (names.some(n => re.test(n))) return true;
   }
   return !include.size;
 }
@@ -320,9 +332,9 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
     patch: o.patch, minor: o.minor, allowDowngrade: o.allowDowngrade,
     cooldownDays: o.cooldown !== undefined ? parseDuration(String(o.cooldown)) : undefined,
   }));
-  const overrideMatches = (o: CompiledOverride, name: string): boolean => {
-    if (o.include && !matchesAny(name, o.include)) return false;
-    return !o.exclude || !matchesAny(name, o.exclude);
+  const overrideMatches = (o: CompiledOverride, names: Array<string>): boolean => {
+    if (o.include && names.every(n => !matchesAny(n, o.include!))) return false;
+    return !o.exclude || names.every(n => !matchesAny(n, o.exclude!));
   };
   const overridesHaveCooldown = compiledOverrides.some(o => o.cooldownDays);
 
@@ -335,19 +347,21 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
   // every matching override in order so the last matching one wins. cooldown is
   // returned as an override (undefined = no override) since its base differs per
   // mode. patch wins over minor, matching the global precedence.
-  function getVersionOpts(name: string) {
+  function getVersionOpts(name: string, names?: Array<string>) {
     let entry = versionOptsCache.get(name);
     if (!entry) {
-      let useGreatest = matchesAny(name, greatest);
-      let usePre = matchesAny(name, prerelease);
-      let useRel = matchesAny(name, release);
-      let usePatch = matchesAny(name, patch);
-      let useMinor = matchesAny(name, minor);
-      let allowDown = matchesAny(name, allowDowngrade);
+      const allNames = names ?? [name];
+      const anyMatches = (set: Set<RegExp> | boolean) => allNames.some(n => matchesAny(n, set));
+      let useGreatest = anyMatches(greatest);
+      let usePre = anyMatches(prerelease);
+      let useRel = anyMatches(release);
+      let usePatch = anyMatches(patch);
+      let useMinor = anyMatches(minor);
+      let allowDown = anyMatches(allowDowngrade);
       let cooldownOverride: number | undefined;
 
       for (const o of compiledOverrides) {
-        if (!overrideMatches(o, name)) continue;
+        if (!overrideMatches(o, allNames)) continue;
         if (o.greatest !== undefined) useGreatest = o.greatest;
         if (o.prerelease !== undefined) usePre = o.prerelease;
         if (o.release !== undefined) useRel = o.release;
@@ -599,14 +613,14 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
       deps.make ??= {};
       const makeShared = {projectDir: dirname(file), filePin: filters.pin, fileCooldownDays: filters.cooldownDays};
       for (const {installPath, version} of parseMakeGoInstalls(content)) {
-        if (!canInclude(installPath, "make", filters.include, filters.exclude, "make")) continue;
+        if (!canInclude(installPath, "make", filters.include, filters.exclude, "make", "go")) continue;
         const key = `${relPath}${fieldSep}${installPath}`;
         if (deps.make[key]) continue;
         deps.make[key] = {old: stripv(version), oldOrig: version} as Dep;
         makeDepInfos.push({kind: "go", key, name: installPath, oldSpec: `${installPath}@${version}`, installPath, version, ...makeShared});
       }
       for (const image of parseMakeDockerImages(content)) {
-        if (!canInclude(image.writtenImage, "make", filters.include, filters.exclude, "make")) continue;
+        if (!canInclude(image.writtenImage, "make", filters.include, filters.exclude, "make", "docker")) continue;
         const key = `${relPath}${fieldSep}${image.writtenImage}`;
         if (deps.make[key]) continue;
         const parsed = parseDockerTag(image.ref.tag);
@@ -1125,11 +1139,12 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
           return;
         }
 
+        const names = depNames(fullImage, "docker");
         for (const info of infos) {
           const dep = deps.docker[info.key];
           const oldTag = dep.oldOrig || dep.old;
-          const {semvers, cooldownOverride} = getVersionOpts(info.fullImage);
-          const pinnedRange = globalPin[info.fullImage] ?? info.filePin[info.fullImage];
+          const {semvers, cooldownOverride} = getVersionOpts(fullImage, names);
+          const pinnedRange = pinFor(globalPin, names) ?? pinFor(info.filePin, names);
           const dockerCooldownDays = cooldownOverride ?? info.fileCooldownDays;
           const result = findDockerVersion(
             data.tags, oldTag, semvers,
@@ -1151,8 +1166,9 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
   if (makeDepInfos.length) {
     fetchTasks.push((async () => {
       await pMap(makeDepInfos, async (info) => {
-        const {useGreatest, usePre, useRel, semvers, allowDowngrade: allowDown, cooldownOverride} = getVersionOpts(info.name);
-        const pinnedRange = globalPin[info.name] ?? info.filePin[info.name];
+        const names = depNames(info.name, info.kind);
+        const {useGreatest, usePre, useRel, semvers, allowDowngrade: allowDown, cooldownOverride} = getVersionOpts(info.name, names);
+        const pinnedRange = pinFor(globalPin, names) ?? pinFor(info.filePin, names);
         const makeCooldownDays = cooldownOverride ?? info.fileCooldownDays;
         const opts = {
           semvers, useGreatest, usePre, useRel, allowDowngrade: allowDown, pinnedRange,
