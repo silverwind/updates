@@ -956,52 +956,14 @@ test("patch", async ({expect = globalExpect}: any = {}) => {
 });
 
 // Also covers preup: don't upgrade stable to prerelease (3.1.0 -> 3.1.4, not 3.2.0-beta from latest dist-tag).
-test("include", async ({expect = globalExpect}: any = {}) => {
-  expect(await makeTest("-j -i noty")()).toMatchInlineSnapshot(`
-    {
-      "npm": {
-        "dependencies": {
-          "noty": {
-            "info": "https://github.com/needim/noty",
-            "new": "3.1.4",
-            "old": "3.1.0",
-          },
-        },
-      },
-    }
-  `);
-});
-
-test("cooldown duration", async ({expect = globalExpect}: any = {}) => {
-  expect(await makeTest("-j -i noty -C 12h")()).toMatchInlineSnapshot(`
-    {
-      "npm": {
-        "dependencies": {
-          "noty": {
-            "info": "https://github.com/needim/noty",
-            "new": "3.1.4",
-            "old": "3.1.0",
-          },
-        },
-      },
-    }
-  `);
-});
-
-test("include 2", async ({expect = globalExpect}: any = {}) => {
-  expect(await makeTest("-j -i /^noty/")()).toMatchInlineSnapshot(`
-    {
-      "npm": {
-        "dependencies": {
-          "noty": {
-            "info": "https://github.com/needim/noty",
-            "new": "3.1.4",
-            "old": "3.1.0",
-          },
-        },
-      },
-    }
-  `);
+test.each([
+  ["include", "-j -i noty"],
+  ["cooldown duration", "-j -i noty -C 12h"],
+  ["include 2", "-j -i /^noty/"],
+])("%s", async (_name, args, {expect = globalExpect}: any = {}) => {
+  expect(await makeTest(args)()).toEqual({
+    npm: {dependencies: {noty: {info: "https://github.com/needim/noty", new: "3.1.4", old: "3.1.0"}}},
+  });
 });
 
 test("packageManager", async ({expect = globalExpect}: any = {}) => {
@@ -1209,6 +1171,18 @@ test("negative timeout is rejected", async ({expect = globalExpect}: any = {}) =
 
 test("invalid -T exits with an error", async ({expect = globalExpect}: any = {}) => {
   await expect(execFileAsync(execPath, [script, "-T", "-5", ...apiArgs(), "-f", testFile])).rejects.toThrow();
+});
+
+test("color flags reach the config", async ({expect = globalExpect}: any = {}) => {
+  for (const [argv, expected] of [
+    [["-n"], {color: false, noColor: true}],
+    [["-c"], {color: true, noColor: false}],
+    [["-c", "-n"], {color: false, noColor: true}],
+  ] as const) {
+    const {args, positionals} = parseCliArgs([...argv]);
+    const config = await resolveConfig(args, positionals);
+    expect({color: config.color, noColor: config.noColor}).toEqual(expected);
+  }
 });
 
 test("cargo", async ({expect = globalExpect}: any = {}) => {
@@ -2295,14 +2269,14 @@ test("api greatest", async ({expect = globalExpect}: any = {}) => {
   expect(output.results.npm.dependencies["gulp-sourcemaps"].new).toBe("2.6.5");
 });
 
-test("api greatest array", async ({expect = globalExpect}: any = {}) => {
-  const output = await updates(apiOpts({include: ["gulp-sourcemaps", "noty"], greatest: ["gulp-sourcemaps"]}));
-  expect(output.results.npm.dependencies["gulp-sourcemaps"].new).toBe("2.6.5");
-  expect(output.results.npm.dependencies.noty.new).toBe("3.1.4");
-});
-
-test("api greatest regex", async ({expect = globalExpect}: any = {}) => {
-  const output = await updates(apiOpts({include: ["gulp-sourcemaps", "noty"], greatest: [/^gulp/]}));
+// each selector targets gulp-sourcemaps only, so noty keeps its default resolution
+test.each([
+  ["api greatest array", {greatest: ["gulp-sourcemaps"]}],
+  ["api greatest regex", {greatest: [/^gulp/]}],
+  ["api overrides target a package", {overrides: [{include: ["gulp-sourcemaps"], greatest: true}]}],
+  ["api overrides exclude within a rule", {overrides: [{exclude: ["noty"], greatest: true}]}],
+])("%s", async (_name, overrides, {expect = globalExpect}: any = {}) => {
+  const output = await updates(apiOpts({include: ["gulp-sourcemaps", "noty"], ...overrides}));
   expect(output.results.npm.dependencies["gulp-sourcemaps"].new).toBe("2.6.5");
   expect(output.results.npm.dependencies.noty.new).toBe("3.1.4");
 });
@@ -2317,27 +2291,10 @@ test("api minor", async ({expect = globalExpect}: any = {}) => {
   expect(output.results.npm.dependencies["gulp-sourcemaps"].new).toBe("2.6.5");
 });
 
-test("api cooldown string", async ({expect = globalExpect}: any = {}) => {
-  const output = await updates(apiOpts({include: ["updates"], cooldown: "999999d"}));
-  expect(output.message).toBe("All dependencies are up to date.");
-});
-
-test("api overrides target a package", async ({expect = globalExpect}: any = {}) => {
-  const output = await updates(apiOpts({include: ["gulp-sourcemaps", "noty"], overrides: [{include: ["gulp-sourcemaps"], greatest: true}]}));
-  expect(output.results.npm.dependencies["gulp-sourcemaps"].new).toBe("2.6.5");
-  expect(output.results.npm.dependencies.noty.new).toBe("3.1.4");
-});
-
 test("api overrides per-package cooldown", async ({expect = globalExpect}: any = {}) => {
   const output = await updates(apiOpts({include: ["noty", "updates"], cooldown: "999999d", overrides: [{include: ["noty"], cooldown: 0}]}));
   expect(output.results.npm.dependencies.noty.new).toBe("3.1.4");
   expect(output.results.npm.dependencies.updates).toBeUndefined();
-});
-
-test("api overrides exclude within a rule", async ({expect = globalExpect}: any = {}) => {
-  const output = await updates(apiOpts({include: ["gulp-sourcemaps", "noty"], overrides: [{exclude: ["noty"], greatest: true}]}));
-  expect(output.results.npm.dependencies["gulp-sourcemaps"].new).toBe("2.6.5");
-  expect(output.results.npm.dependencies.noty.new).toBe("3.1.4");
 });
 
 test("api overrides last match wins", async ({expect = globalExpect}: any = {}) => {

@@ -98,102 +98,61 @@ test("npmrc legacy _auth", () => {
 
 // --- parseEnvVars ---
 
-test("basic env var", () => {
-  const original = process.env.testrc_option;
-  process.env.testrc_option = "42";
+// Each case uses its own prefix so the vars cannot collide across tests.
+function withEnv(vars: Record<string, string>, fn: () => void) {
+  const originals = Object.keys(vars).map(key => [key, process.env[key]] as const);
+  Object.assign(process.env, vars);
   try {
-    expect(parseEnvVars("testrc_")).toEqual({option: "42"});
+    fn();
   } finally {
-    if (original === undefined) delete process.env.testrc_option;
-    else process.env.testrc_option = original;
+    for (const [key, value] of originals) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
   }
+}
+
+test("basic env var", () => {
+  withEnv({testrc_option: "42"}, () => {
+    expect(parseEnvVars("testrc_")).toEqual({option: "42"});
+  });
 });
 
 test("nested env vars with __", () => {
-  const keys = [
-    "testrc2_someOpt__a",
-    "testrc2_someOpt__z",
-  ];
-  const originals = keys.map(k => process.env[k]);
-  process.env.testrc2_someOpt__a = "42";
-  process.env.testrc2_someOpt__z = "99";
-  try {
+  withEnv({testrc2_someOpt__a: "42", testrc2_someOpt__z: "99"}, () => {
     const result = parseEnvVars("testrc2_");
     expect(result.someOpt.a).toBe("42");
     expect(result.someOpt.z).toBe("99");
-  } finally {
-    for (const [i, k] of keys.entries()) {
-      if (originals[i] === undefined) delete process.env[k];
-      else process.env[k] = originals[i];
-    }
-  }
+  });
 });
 
 test("deeply nested env vars", () => {
-  const key = "testrc3_a__b__c";
-  const original = process.env[key];
-  process.env[key] = "deep";
-  try {
-    const result = parseEnvVars("testrc3_");
-    expect(result.a.b.c).toBe("deep");
-  } finally {
-    if (original === undefined) delete process.env[key];
-    else process.env[key] = original;
-  }
+  withEnv({testrc3_a__b__c: "deep"}, () => {
+    expect(parseEnvVars("testrc3_").a.b.c).toBe("deep");
+  });
 });
 
 test("case-insensitive prefix matching", () => {
-  const key = "TESTRC4_upperCase";
-  const original = process.env[key];
-  process.env[key] = "187";
-  try {
-    const result = parseEnvVars("testrc4_");
-    expect(result.upperCase).toBe("187");
-  } finally {
-    if (original === undefined) delete process.env[key];
-    else process.env[key] = original;
-  }
+  withEnv({TESTRC4_upperCase: "187"}, () => {
+    expect(parseEnvVars("testrc4_").upperCase).toBe("187");
+  });
 });
 
 test("scalar value not overridden by deeper key", () => {
-  const keys = ["testrc5_opt__a", "testrc5_opt__a__b"];
-  const originals = keys.map(k => process.env[k]);
-  process.env.testrc5_opt__a = "42";
-  process.env.testrc5_opt__a__b = "186";
-  try {
-    const result = parseEnvVars("testrc5_");
+  withEnv({testrc5_opt__a: "42", testrc5_opt__a__b: "186"}, () => {
     // Once opt.a is set as scalar, opt.a.b cannot override it
-    expect(result.opt.a).toBe("42");
-  } finally {
-    for (const [i, k] of keys.entries()) {
-      if (originals[i] === undefined) delete process.env[k];
-      else process.env[k] = originals[i];
-    }
-  }
+    expect(parseEnvVars("testrc5_").opt.a).toBe("42");
+  });
 });
 
 test("trailing __ segments are filtered", () => {
-  const key = "testrc6_w__w__";
-  const original = process.env[key];
-  process.env[key] = "18629";
-  try {
-    const result = parseEnvVars("testrc6_");
-    expect(result.w.w).toBe("18629");
-  } finally {
-    if (original === undefined) delete process.env[key];
-    else process.env[key] = original;
-  }
+  withEnv({testrc6_w__w__: "18629"}, () => {
+    expect(parseEnvVars("testrc6_").w.w).toBe("18629");
+  });
 });
 
 test("leading __ segments are filtered", () => {
-  const key = "testrc7___z__i__";
-  const original = process.env[key];
-  process.env[key] = "9999";
-  try {
-    const result = parseEnvVars("testrc7_");
-    expect(result.z.i).toBe("9999");
-  } finally {
-    if (original === undefined) delete process.env[key];
-    else process.env[key] = original;
-  }
+  withEnv({testrc7___z__i__: "9999"}, () => {
+    expect(parseEnvVars("testrc7_").z.i).toBe("9999");
+  });
 });

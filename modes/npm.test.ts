@@ -156,21 +156,11 @@ test("getLatestCommit happy path", async () => {
   expect(result.commit.committer.date).toBe("2025-01-01");
 });
 
-test("getLatestCommit fetch failure returns empty", async () => {
-  const ctx = {
-    forgeApiUrl: "https://api.github.com",
-    fetchTimeout,
-    doFetch: () => Promise.resolve({ok: false}),
-  } as unknown as ModeContext;
-  expect(await getLatestCommit("user", "repo", ctx)).toEqual({hash: "", commit: {}});
-});
-
-test("getLatestCommit fetch throws returns empty", async () => {
-  const ctx = {
-    forgeApiUrl: "https://api.github.com",
-    fetchTimeout,
-    doFetch: () => Promise.reject(new Error("network error")),
-  } as unknown as ModeContext;
+test.each([
+  ["fetch failure", () => Promise.resolve({ok: false})],
+  ["fetch throws", () => Promise.reject(new Error("network error"))],
+])("getLatestCommit %s returns empty", async (_name, doFetch) => {
+  const ctx = {forgeApiUrl: "https://api.github.com", fetchTimeout, doFetch} as unknown as ModeContext;
   expect(await getLatestCommit("user", "repo", ctx)).toEqual({hash: "", commit: {}});
 });
 

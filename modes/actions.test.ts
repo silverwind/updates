@@ -177,49 +177,21 @@ test("hashRe accepts short shas but not all-numeric tags", () => {
 });
 
 // fetchActionTagDate
-test("fetchActionTagDate returns committer date", async () => {
-  const ctx = {
-    fetchTimeout,
-    noCache: true,
-    doFetch: () => Promise.resolve({ok: true, json: () => Promise.resolve({committer: {date: "2025-01-01T00:00:00Z"}, author: {date: "2024-12-01T00:00:00Z"}})}),
-  } as unknown as ModeContext;
-  expect(await fetchActionTagDate("https://api.github.com", "actions", "checkout", "abc123", ctx)).toBe("2025-01-01T00:00:00Z");
-});
-
-test("fetchActionTagDate falls back to author date", async () => {
-  const ctx = {
-    fetchTimeout,
-    noCache: true,
-    doFetch: () => Promise.resolve({ok: true, json: () => Promise.resolve({author: {date: "2024-12-01T00:00:00Z"}})}),
-  } as unknown as ModeContext;
-  expect(await fetchActionTagDate("https://api.github.com", "actions", "checkout", "abc123", ctx)).toBe("2024-12-01T00:00:00Z");
-});
-
-test("fetchActionTagDate reads the gitea shape", async () => {
-  const ctx = {
-    fetchTimeout,
-    noCache: true,
-    doFetch: () => Promise.resolve({ok: true, json: () => Promise.resolve({commit: {committer: {date: "2025-02-01T00:00:00Z"}, author: {date: "2025-01-15T00:00:00Z"}}})}),
-  } as unknown as ModeContext;
-  expect(await fetchActionTagDate("https://gitea.com/api/v1", "actions", "checkout", "abc123", ctx)).toBe("2025-02-01T00:00:00Z");
-});
-
-test("fetchActionTagDate returns empty on failure", async () => {
-  const ctx = {
-    fetchTimeout,
-    noCache: true,
-    doFetch: () => Promise.resolve({ok: false}),
-  } as unknown as ModeContext;
-  expect(await fetchActionTagDate("https://api.github.com", "actions", "checkout", "abc123", ctx)).toBe("");
-});
-
-test("fetchActionTagDate returns empty on throw", async () => {
-  const ctx = {
-    fetchTimeout,
-    noCache: true,
-    doFetch: () => Promise.reject(new Error("network error")),
-  } as unknown as ModeContext;
-  expect(await fetchActionTagDate("https://api.github.com", "actions", "checkout", "abc123", ctx)).toBe("");
+test.each([
+  ["returns committer date", "https://api.github.com",
+    () => Promise.resolve({ok: true, json: () => Promise.resolve({committer: {date: "2025-01-01T00:00:00Z"}, author: {date: "2024-12-01T00:00:00Z"}})}),
+    "2025-01-01T00:00:00Z"],
+  ["falls back to author date", "https://api.github.com",
+    () => Promise.resolve({ok: true, json: () => Promise.resolve({author: {date: "2024-12-01T00:00:00Z"}})}),
+    "2024-12-01T00:00:00Z"],
+  ["reads the gitea shape", "https://gitea.com/api/v1",
+    () => Promise.resolve({ok: true, json: () => Promise.resolve({commit: {committer: {date: "2025-02-01T00:00:00Z"}, author: {date: "2025-01-15T00:00:00Z"}}})}),
+    "2025-02-01T00:00:00Z"],
+  ["returns empty on failure", "https://api.github.com", () => Promise.resolve({ok: false}), ""],
+  ["returns empty on throw", "https://api.github.com", () => Promise.reject(new Error("network error")), ""],
+])("fetchActionTagDate %s", async (_name, apiUrl, doFetch, expected) => {
+  const ctx = {fetchTimeout, noCache: true, doFetch} as unknown as ModeContext;
+  expect(await fetchActionTagDate(apiUrl, "actions", "checkout", "abc123", ctx)).toBe(expected);
 });
 
 // resolveWorkflowFiles

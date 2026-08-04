@@ -24,125 +24,36 @@ import {
   fetchTimeout,
   type ModeContext,
 } from "./shared.ts";
-import {esc, matchesAny} from "../utils/utils.ts";
+import {esc} from "../utils/utils.ts";
 import {flushCacheWrites} from "../utils/fetchCache.ts";
 
-const defaultOpts = {
-  allowDowngrade: false as any,
-  matchesAny,
-  isGoPseudoVersion: () => false,
-};
+const defaultOpts = {allowDowngrade: false as any};
 
-test("pin downgrade with abbreviated metadata (no time field)", () => {
-  // Simulate abbreviated npm metadata: has versions and dist-tags but no time
-  const data = {
-    name: "typescript",
-    "dist-tags": {latest: "6.0.2"},
-    versions: {
-      "5.9.2": {},
-      "5.9.3": {},
-      "6.0.0": {},
-      "6.0.1": {},
-      "6.0.2": {},
-    },
-  };
+// npm-mode findNewVersion reads `data` without mutating it, so rows may share fixtures.
+const npmOpts = {mode: "npm", useGreatest: false, useRel: false, usePre: false, semvers: new Set(["patch", "minor", "major"]), ...defaultOpts};
 
-  const result = findNewVersion(data, {
-    mode: "npm",
-    range: "6.0.2",
-    useGreatest: false,
-    useRel: false,
-    usePre: false,
-    semvers: new Set(["patch", "minor", "major"]),
-    pinnedRange: "^5.9.3",
-  }, defaultOpts);
+// Abbreviated npm metadata: has versions and dist-tags but no time
+const tsAbbrev = {name: "typescript", "dist-tags": {latest: "6.0.2"}, versions: {"5.9.2": {}, "5.9.3": {}, "6.0.0": {}, "6.0.1": {}, "6.0.2": {}}};
+const tsFull = {...tsAbbrev, time: {
+  "5.9.2": "2025-01-01T00:00:00Z",
+  "5.9.3": "2025-02-01T00:00:00Z",
+  "6.0.0": "2025-03-01T00:00:00Z",
+  "6.0.1": "2025-04-01T00:00:00Z",
+  "6.0.2": "2025-05-01T00:00:00Z",
+}};
 
-  expect(result).toBe("5.9.3");
-});
-
-test("pin downgrade with full metadata (has time field)", () => {
-  const data = {
-    name: "typescript",
-    "dist-tags": {latest: "6.0.2"},
-    versions: {
-      "5.9.2": {},
-      "5.9.3": {},
-      "6.0.0": {},
-      "6.0.1": {},
-      "6.0.2": {},
-    },
-    time: {
-      "5.9.2": "2025-01-01T00:00:00Z",
-      "5.9.3": "2025-02-01T00:00:00Z",
-      "6.0.0": "2025-03-01T00:00:00Z",
-      "6.0.1": "2025-04-01T00:00:00Z",
-      "6.0.2": "2025-05-01T00:00:00Z",
-    },
-  };
-
-  const result = findNewVersion(data, {
-    mode: "npm",
-    range: "6.0.2",
-    useGreatest: false,
-    useRel: false,
-    usePre: false,
-    semvers: new Set(["patch", "minor", "major"]),
-    pinnedRange: "^5.9.3",
-  }, defaultOpts);
-
-  expect(result).toBe("5.9.3");
-});
-
-test("pin selects greatest within range when no time data", () => {
-  const data = {
-    name: "typescript",
-    "dist-tags": {latest: "6.0.2"},
-    versions: {
-      "5.9.2": {},
-      "5.9.3": {},
-      "5.9.4": {},
-      "5.9.5": {},
-      "6.0.2": {},
-    },
-  };
-
-  const result = findNewVersion(data, {
-    mode: "npm",
-    range: "6.0.2",
-    useGreatest: false,
-    useRel: false,
-    usePre: false,
-    semvers: new Set(["patch", "minor", "major"]),
-    pinnedRange: "^5.9.3",
-  }, defaultOpts);
-
-  expect(result).toBe("5.9.5");
-});
-
-test("pin with no downgrade returns null without allow-downgrade", () => {
-  const data = {
-    name: "react",
-    "dist-tags": {latest: "19.0.0"},
-    versions: {
-      "18.2.0": {},
-      "18.3.0": {},
-      "18.3.1": {},
-      "19.0.0": {},
-    },
-  };
-
-  const result = findNewVersion(data, {
-    mode: "npm",
-    range: "18.2.0",
-    useGreatest: false,
-    useRel: false,
-    usePre: false,
-    semvers: new Set(["patch", "minor", "major"]),
-    pinnedRange: "^18.0.0",
-  }, defaultOpts);
-
-  // Should offer upgrade within pinned range (18.2.0 -> 18.3.1)
-  expect(result).toBe("18.3.1");
+test.each([
+  ["pin downgrade with abbreviated metadata (no time field)", tsAbbrev, {range: "6.0.2", pinnedRange: "^5.9.3"}, "5.9.3"],
+  ["pin downgrade with full metadata (has time field)", tsFull, {range: "6.0.2", pinnedRange: "^5.9.3"}, "5.9.3"],
+  ["pin selects greatest within range when no time data",
+    {name: "typescript", "dist-tags": {latest: "6.0.2"}, versions: {"5.9.2": {}, "5.9.3": {}, "5.9.4": {}, "5.9.5": {}, "6.0.2": {}}},
+    {range: "6.0.2", pinnedRange: "^5.9.3"}, "5.9.5"],
+  // offers the upgrade within the pinned range (18.2.0 -> 18.3.1) rather than the 19.0.0 latest
+  ["pin with no downgrade returns null without allow-downgrade",
+    {name: "react", "dist-tags": {latest: "19.0.0"}, versions: {"18.2.0": {}, "18.3.0": {}, "18.3.1": {}, "19.0.0": {}}},
+    {range: "18.2.0", pinnedRange: "^18.0.0"}, "18.3.1"],
+])("%s", (_name, data, opts, expected) => {
+  expect(findNewVersion(data, {...npmOpts, ...opts})).toBe(expected);
 });
 
 test("stripv removes leading v", () => {
@@ -194,32 +105,32 @@ test("isRangePrerelease detects prerelease in range", () => {
 });
 
 test("isAllowedVersionTransition pre to higher release", () => {
-  const opts = {useRel: false, allowDowngrade: false as any, name: "pkg", matchesAny};
+  const opts = {useRel: false, allowDowngrade: false as any, name: "pkg"};
   expect(isAllowedVersionTransition("1.0.0-alpha", "2.0.0", opts)).toBe(true);
 });
 
 test("isAllowedVersionTransition pre to lower release without --release", () => {
-  const opts = {useRel: false, allowDowngrade: false as any, name: "pkg", matchesAny};
+  const opts = {useRel: false, allowDowngrade: false as any, name: "pkg"};
   expect(isAllowedVersionTransition("2.0.0-alpha", "1.0.0", opts)).toBe(false);
 });
 
 test("isAllowedVersionTransition pre to lower release with useRel", () => {
-  const opts = {useRel: true, allowDowngrade: false as any, name: "pkg", matchesAny};
+  const opts = {useRel: true, allowDowngrade: false as any, name: "pkg"};
   expect(isAllowedVersionTransition("2.0.0-alpha", "1.0.0", opts)).toBe(true);
 });
 
 test("isAllowedVersionTransition release to lower release without allowDowngrade", () => {
-  const opts = {useRel: false, allowDowngrade: false as any, name: "pkg", matchesAny};
+  const opts = {useRel: false, allowDowngrade: false as any, name: "pkg"};
   expect(isAllowedVersionTransition("2.0.0", "1.0.0", opts)).toBe(false);
 });
 
 test("isAllowedVersionTransition release to lower release with allowDowngrade", () => {
-  const opts = {useRel: false, allowDowngrade: true as any, name: "pkg", matchesAny};
+  const opts = {useRel: false, allowDowngrade: true as any, name: "pkg"};
   expect(isAllowedVersionTransition("2.0.0", "1.0.0", opts)).toBe(true);
 });
 
 test("isAllowedVersionTransition same or higher release", () => {
-  const opts = {useRel: false, allowDowngrade: false as any, name: "pkg", matchesAny};
+  const opts = {useRel: false, allowDowngrade: false as any, name: "pkg"};
   expect(isAllowedVersionTransition("1.0.0", "1.0.0", opts)).toBe(true);
   expect(isAllowedVersionTransition("1.0.0", "2.0.0", opts)).toBe(true);
 });
@@ -467,28 +378,6 @@ test("findVersion cooldown returns no upgrade when all candidates too new", () =
   expect(result).toBe("1.0.0");
 });
 
-test("findNewVersion npm cooldown picks older eligible version", () => {
-  const now = Date.parse("2026-04-25T00:00:00Z");
-  const data = {
-    name: "pkg",
-    "dist-tags": {latest: "1.3.0"},
-    versions: {"1.0.0": {}, "1.1.0": {}, "1.2.0": {}, "1.3.0": {}},
-    time: {
-      "1.0.0": "2026-01-01T00:00:00Z",
-      "1.1.0": "2026-04-10T00:00:00Z",
-      "1.2.0": "2026-04-22T00:00:00Z",
-      "1.3.0": "2026-04-24T00:00:00Z",
-    },
-  };
-  const result = findNewVersion(data, {
-    mode: "npm", range: "1.0.0",
-    semvers: new Set(["major", "minor", "patch"]),
-    usePre: false, useRel: false, useGreatest: false,
-    cooldownDays: 5, now,
-  }, {allowDowngrade: false, matchesAny, isGoPseudoVersion: () => false});
-  expect(result).toBe("1.1.0");
-});
-
 test("getInfoUrl string repository URL", () => {
   const result = getInfoUrl({repository: "https://github.com/user/repo"}, null, "pkg");
   expect(result).toBe("https://github.com/user/repo");
@@ -518,203 +407,53 @@ test("getInfoUrl pypi info with project_urls", () => {
   expect(result).toBe("https://github.com/user/repo");
 });
 
-test("findNewVersion wildcard range returns null", () => {
-  const data = {
-    name: "pkg",
-    "dist-tags": {latest: "2.0.0"},
-    versions: {"1.0.0": {}, "2.0.0": {}},
-  };
-  const result = findNewVersion(data, {
-    mode: "npm",
-    range: "*",
-    useGreatest: false,
-    useRel: false,
-    usePre: false,
-    semvers: new Set(["patch", "minor", "major"]),
-  }, defaultOpts);
-  expect(result).toBeNull();
+const twoVersions = {name: "pkg", "dist-tags": {latest: "2.0.0"}, versions: {"1.0.0": {}, "2.0.0": {}}};
+const threeVersions = {
+  name: "pkg",
+  "dist-tags": {latest: "2.0.0"},
+  versions: {"1.0.0": {}, "1.1.0": {}, "2.0.0": {}},
+  time: {"1.0.0": "2025-01-01", "1.1.0": "2025-02-01", "2.0.0": "2025-03-01"},
+};
+const preLatest = (latest: string) => ({
+  name: "pkg",
+  "dist-tags": {latest},
+  versions: {"1.0.0": {}, "1.1.0": {}, [latest]: {}},
+  time: {"1.0.0": "2025-01-01", "1.1.0": "2025-02-01", [latest]: "2025-03-01"},
 });
 
-test("findNewVersion or-chain range returns null", () => {
-  const data = {
-    name: "pkg",
-    "dist-tags": {latest: "2.0.0"},
-    versions: {"1.0.0": {}, "2.0.0": {}},
-  };
-  const result = findNewVersion(data, {
-    mode: "npm",
-    range: "^1.0.0 || ^2.0.0",
-    useGreatest: false,
-    useRel: false,
-    usePre: false,
-    semvers: new Set(["patch", "minor", "major"]),
-  }, defaultOpts);
-  expect(result).toBeNull();
-});
-
-test("findNewVersion useGreatest returns version directly", () => {
-  const data = {
-    name: "pkg",
-    "dist-tags": {latest: "2.0.0"},
-    versions: {"1.0.0": {}, "1.1.0": {}, "2.0.0": {}},
-    time: {"1.0.0": "2025-01-01", "1.1.0": "2025-02-01", "2.0.0": "2025-03-01"},
-  };
-  const result = findNewVersion(data, {
-    mode: "npm",
-    range: "1.0.0",
-    useGreatest: true,
-    useRel: false,
-    usePre: false,
-    semvers: new Set(["patch", "minor", "major"]),
-  }, defaultOpts);
-  expect(result).toBe("2.0.0");
-});
-
-test("findNewVersion npm latest dist-tag", () => {
-  const data = {
-    name: "pkg",
-    "dist-tags": {latest: "2.0.0"},
-    versions: {"1.0.0": {}, "1.1.0": {}, "2.0.0": {}},
-    time: {"1.0.0": "2025-01-01", "1.1.0": "2025-02-01", "2.0.0": "2025-03-01"},
-  };
-  const result = findNewVersion(data, {
-    mode: "npm",
-    range: "1.0.0",
-    useGreatest: false,
-    useRel: false,
-    usePre: false,
-    semvers: new Set(["patch", "minor", "major"]),
-  }, defaultOpts);
-  expect(result).toBe("2.0.0");
-});
-
-test("findNewVersion prerelease with usePre", () => {
-  const data = {
-    name: "pkg",
-    "dist-tags": {latest: "1.1.0"},
-    versions: {"1.0.0": {}, "1.1.0": {}, "2.0.0-beta.1": {}},
-    time: {"1.0.0": "2025-01-01", "1.1.0": "2025-02-01", "2.0.0-beta.1": "2025-03-01"},
-  };
-  const result = findNewVersion(data, {
-    mode: "npm",
-    range: "1.0.0",
-    useGreatest: false,
-    useRel: false,
-    usePre: true,
-    semvers: new Set(["patch", "minor", "major"]),
-  }, defaultOpts);
-  expect(result).toBe("2.0.0-beta.1");
-});
-
-test("findNewVersion pre-to-release transition", () => {
-  const data = {
-    name: "pkg",
-    "dist-tags": {latest: "1.1.0"},
-    versions: {"1.0.0-alpha": {}, "1.1.0": {}},
-    time: {"1.0.0-alpha": "2025-01-01", "1.1.0": "2025-02-01"},
-  };
-  const result = findNewVersion(data, {
-    mode: "npm",
-    range: "1.0.0-alpha",
-    useGreatest: false,
-    useRel: false,
-    usePre: false,
-    semvers: new Set(["patch", "minor", "major"]),
-  }, defaultOpts);
-  expect(result).toBe("1.1.0");
-});
-
-test("findNewVersion latestTag blocked by semver filter", () => {
-  const data = {
-    name: "pkg",
-    "dist-tags": {latest: "2.0.0"},
-    versions: {"1.0.0": {}, "1.0.1": {}, "2.0.0": {}},
-    time: {"1.0.0": "2025-01-01", "1.0.1": "2025-02-01", "2.0.0": "2025-03-01"},
-  };
-  const result = findNewVersion(data, {
-    mode: "npm",
-    range: "1.0.0",
-    useGreatest: false,
-    useRel: false,
-    usePre: false,
-    semvers: new Set(["patch"]),
-  }, defaultOpts);
-  expect(result).toBe("1.0.1");
-});
-
-test("findNewVersion useRel with prerelease latest", () => {
-  const data = {
-    name: "pkg",
-    "dist-tags": {latest: "2.0.0-rc.1"},
-    versions: {"1.0.0": {}, "1.1.0": {}, "2.0.0-rc.1": {}},
-    time: {"1.0.0": "2025-01-01", "1.1.0": "2025-02-01", "2.0.0-rc.1": "2025-03-01"},
-  };
-  const result = findNewVersion(data, {
-    mode: "npm",
-    range: "1.0.0",
-    useGreatest: false,
-    useRel: true,
-    usePre: false,
-    semvers: new Set(["patch", "minor", "major"]),
-  }, defaultOpts);
-  expect(result).toBe("1.1.0");
-});
-
-test("findNewVersion latestTag is prerelease, no usePre", () => {
-  const data = {
-    name: "pkg",
-    "dist-tags": {latest: "2.0.0-beta.1"},
-    versions: {"1.0.0": {}, "1.1.0": {}, "2.0.0-beta.1": {}},
-    time: {"1.0.0": "2025-01-01", "1.1.0": "2025-02-01", "2.0.0-beta.1": "2025-03-01"},
-  };
-  const result = findNewVersion(data, {
-    mode: "npm",
-    range: "1.0.0",
-    useGreatest: false,
-    useRel: false,
-    usePre: false,
-    semvers: new Set(["patch", "minor", "major"]),
-  }, defaultOpts);
-  expect(result).toBe("1.1.0");
-});
-
-test("findNewVersion pinnedRange excludes latestTag", () => {
-  const data = {
-    name: "pkg",
-    "dist-tags": {latest: "2.0.0"},
-    versions: {"1.0.0": {}, "1.1.0": {}, "2.0.0": {}},
-    time: {"1.0.0": "2025-01-01", "1.1.0": "2025-02-01", "2.0.0": "2025-03-01"},
-  };
-  const result = findNewVersion(data, {
-    mode: "npm",
-    range: "1.0.0",
-    useGreatest: false,
-    useRel: false,
-    usePre: false,
-    semvers: new Set(["patch", "minor", "major"]),
-    pinnedRange: "^1.0.0",
-  }, defaultOpts);
-  expect(result).toBe("1.1.0");
-});
-
-test("findNewVersion falls back to in-range upgrade when latest dist-tag is a lower release", () => {
-  // Abbreviated metadata (no time field) so findVersion picks the greatest
-  // in-range candidate. latest dist-tag (1.9.9) is below the installed 2.0.0,
-  // so the downgrade guard must not discard the valid 2.0.1 upgrade.
-  const data = {
-    name: "pkg",
-    "dist-tags": {latest: "1.9.9"},
-    versions: {"1.9.9": {}, "2.0.0": {}, "2.0.1": {}},
-  };
-  const result = findNewVersion(data, {
-    mode: "npm",
-    range: "2.0.0",
-    useGreatest: false,
-    useRel: false,
-    usePre: false,
-    semvers: new Set(["patch", "minor", "major"]),
-  }, defaultOpts);
-  expect(result).toBe("2.0.1");
+test.each([
+  ["wildcard range returns null", twoVersions, {range: "*"}, null],
+  ["or-chain range returns null", twoVersions, {range: "^1.0.0 || ^2.0.0"}, null],
+  ["useGreatest returns version directly", threeVersions, {range: "1.0.0", useGreatest: true}, "2.0.0"],
+  ["npm latest dist-tag", threeVersions, {range: "1.0.0"}, "2.0.0"],
+  ["pinnedRange excludes latestTag", threeVersions, {range: "1.0.0", pinnedRange: "^1.0.0"}, "1.1.0"],
+  ["prerelease with usePre",
+    {name: "pkg", "dist-tags": {latest: "1.1.0"}, versions: {"1.0.0": {}, "1.1.0": {}, "2.0.0-beta.1": {}},
+      time: {"1.0.0": "2025-01-01", "1.1.0": "2025-02-01", "2.0.0-beta.1": "2025-03-01"}},
+    {range: "1.0.0", usePre: true}, "2.0.0-beta.1"],
+  ["pre-to-release transition",
+    {name: "pkg", "dist-tags": {latest: "1.1.0"}, versions: {"1.0.0-alpha": {}, "1.1.0": {}},
+      time: {"1.0.0-alpha": "2025-01-01", "1.1.0": "2025-02-01"}},
+    {range: "1.0.0-alpha"}, "1.1.0"],
+  ["latestTag blocked by semver filter",
+    {name: "pkg", "dist-tags": {latest: "2.0.0"}, versions: {"1.0.0": {}, "1.0.1": {}, "2.0.0": {}},
+      time: {"1.0.0": "2025-01-01", "1.0.1": "2025-02-01", "2.0.0": "2025-03-01"}},
+    {range: "1.0.0", semvers: new Set(["patch"])}, "1.0.1"],
+  ["useRel with prerelease latest", preLatest("2.0.0-rc.1"), {range: "1.0.0", useRel: true}, "1.1.0"],
+  ["latestTag is prerelease, no usePre", preLatest("2.0.0-beta.1"), {range: "1.0.0"}, "1.1.0"],
+  // Abbreviated metadata (no time field) so findVersion picks the greatest in-range candidate.
+  // latest dist-tag (1.9.9) is below the installed 2.0.0, so the downgrade guard must not
+  // discard the valid 2.0.1 upgrade.
+  ["falls back to in-range upgrade when latest dist-tag is a lower release",
+    {name: "pkg", "dist-tags": {latest: "1.9.9"}, versions: {"1.9.9": {}, "2.0.0": {}, "2.0.1": {}}},
+    {range: "2.0.0"}, "2.0.1"],
+  ["npm cooldown picks older eligible version",
+    {name: "pkg", "dist-tags": {latest: "1.3.0"}, versions: {"1.0.0": {}, "1.1.0": {}, "1.2.0": {}, "1.3.0": {}},
+      time: {"1.0.0": "2026-01-01T00:00:00Z", "1.1.0": "2026-04-10T00:00:00Z",
+        "1.2.0": "2026-04-22T00:00:00Z", "1.3.0": "2026-04-24T00:00:00Z"}},
+    {range: "1.0.0", cooldownDays: 5, now: Date.parse("2026-04-25T00:00:00Z")}, "1.1.0"],
+])("findNewVersion %s", (_name, data, opts, expected) => {
+  expect(findNewVersion(data, {...npmOpts, ...opts})).toBe(expected);
 });
 
 test("findNewVersion go mode cross-major upgrade", () => {
@@ -733,7 +472,8 @@ test("findNewVersion go mode cross-major upgrade", () => {
     useRel: false,
     usePre: false,
     semvers: new Set(["patch", "minor", "major"]),
-  }, defaultOpts);
+    ...defaultOpts,
+  });
   expect(result).toBe("3.0.0");
 });
 
@@ -753,7 +493,8 @@ test("findNewVersion go mode same-major fallback", () => {
     useRel: false,
     usePre: false,
     semvers: new Set(["patch", "minor"]),
-  }, defaultOpts);
+    ...defaultOpts,
+  });
   expect(result).toBe("1.5.0");
 });
 
@@ -765,14 +506,16 @@ test("findNewVersion go mode moves a prerelease or pseudo-version pin to its rel
     mode: "go", range: pseudo,
     useGreatest: false, useRel: false, usePre: false,
     semvers: new Set(["patch", "minor", "major"]),
-  }, defaultOpts)).toBe("0.4.2");
+    ...defaultOpts,
+  })).toBe("0.4.2");
 
   const rc = {name: "github.com/foo/bar", old: "1.5.0-rc.1", new: "1.5.0", Time: "2025-03-01"};
   expect(findNewVersion(rc, {
     mode: "go", range: "1.5.0-rc.1",
     useGreatest: false, useRel: false, usePre: false,
     semvers: new Set(["patch", "minor", "major"]),
-  }, defaultOpts)).toBe("1.5.0");
+    ...defaultOpts,
+  })).toBe("1.5.0");
 });
 
 test("findNewVersion go mode honors pinnedRange on cross-major target", () => {
@@ -781,7 +524,8 @@ test("findNewVersion go mode honors pinnedRange on cross-major target", () => {
     mode: "go", range: "1.0.0",
     useGreatest: false, useRel: false, usePre: false,
     semvers: new Set(["major"]), pinnedRange: "<2.0.0",
-  }, defaultOpts);
+    ...defaultOpts,
+  });
   expect(result).toBe(null);
 });
 
@@ -796,7 +540,8 @@ test("findNewVersion go mode honors pinnedRange on same-major fallback", () => {
     mode: "go", range: "1.0.0",
     useGreatest: false, useRel: false, usePre: false,
     semvers: new Set(["patch", "minor"]), pinnedRange: "<1.5.0",
-  }, defaultOpts);
+    ...defaultOpts,
+  });
   expect(result).toBe(null);
 });
 
@@ -811,7 +556,8 @@ test("findNewVersion go mode allows pinnedRange-matching version", () => {
     mode: "go", range: "1.0.0",
     useGreatest: false, useRel: false, usePre: false,
     semvers: new Set(["patch", "minor"]), pinnedRange: "<1.5.0",
-  }, defaultOpts);
+    ...defaultOpts,
+  });
   expect(result).toBe("1.4.0");
 });
 

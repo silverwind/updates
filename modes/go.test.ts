@@ -336,95 +336,31 @@ test("probeMajorVersions stops at first gap in exponential search", async () => 
 });
 
 // parseGoWork
-test("parseGoWork block use", () => {
-  const content = [
-    "go 1.24",
-    "",
-    "use (",
-    "\t./app",
-    "\t./lib",
-    ")",
-  ].join("\n");
-  const result = parseGoWork(content);
-  expect(result.use).toEqual(["./app", "./lib"]);
-  expect(result.replace).toEqual({});
-});
-
-test("parseGoWork single-line use", () => {
-  const content = "go 1.24\n\nuse ./mymod\n";
-  const result = parseGoWork(content);
-  expect(result.use).toEqual(["./mymod"]);
-});
-
-test("parseGoWork with replace", () => {
-  const content = [
-    "go 1.24",
-    "",
-    "use ./app",
-    "",
-    "replace github.com/old/mod => github.com/new/mod v1.0.0",
-  ].join("\n");
-  const result = parseGoWork(content);
-  expect(result.use).toEqual(["./app"]);
-  expect(result.replace).toEqual({"github.com/new/mod": "v1.0.0"});
-});
-
-test("parseGoWork skips local path replace", () => {
-  const content = [
-    "go 1.24",
-    "",
-    "use (",
-    "\t./app",
-    "\t./lib",
-    ")",
-    "",
-    "replace github.com/foo/bar => ../local/bar",
-  ].join("\n");
-  const result = parseGoWork(content);
-  expect(result.use).toEqual(["./app", "./lib"]);
-  expect(result.replace).toEqual({});
-});
-
-test("parseGoWork use with inline comment", () => {
-  const content = [
-    "go 1.24",
-    "",
-    "use (",
-    "\t./app // main application",
-    "\t./lib",
-    ")",
-  ].join("\n");
-  const result = parseGoWork(content);
-  expect(result.use).toEqual(["./app", "./lib"]);
-});
-
-test("parseGoWork with toolchain ignored", () => {
-  const content = [
-    "go 1.24",
-    "toolchain go1.24.2",
-    "",
-    "use ./app",
-  ].join("\n");
-  const result = parseGoWork(content);
-  expect(result.use).toEqual(["./app"]);
-});
-
-test("parseGoWork replace block syntax", () => {
-  const content = [
-    "go 1.24",
-    "",
-    "use ./app",
-    "",
-    "replace (",
-    "\tgithub.com/old/a => github.com/new/a v1.0.0",
-    "\tgithub.com/old/b v1.2.0 => github.com/new/b v2.0.0",
-    ")",
-  ].join("\n");
-  const result = parseGoWork(content);
-  expect(result.replace).toEqual({
-    "github.com/new/a": "v1.0.0",
-    "github.com/new/b": "v2.0.0",
-  });
+test.each([
+  ["block use",
+    ["go 1.24", "", "use (", "\t./app", "\t./lib", ")"],
+    {use: ["./app", "./lib"], replace: {}}],
+  ["single-line use",
+    ["go 1.24", "", "use ./mymod", ""],
+    {use: ["./mymod"], replace: {}}],
+  ["with replace",
+    ["go 1.24", "", "use ./app", "", "replace github.com/old/mod => github.com/new/mod v1.0.0"],
+    {use: ["./app"], replace: {"github.com/new/mod": "v1.0.0"}}],
+  ["skips local path replace",
+    ["go 1.24", "", "use (", "\t./app", "\t./lib", ")", "", "replace github.com/foo/bar => ../local/bar"],
+    {use: ["./app", "./lib"], replace: {}}],
+  ["use with inline comment",
+    ["go 1.24", "", "use (", "\t./app // main application", "\t./lib", ")"],
+    {use: ["./app", "./lib"], replace: {}}],
+  ["with toolchain ignored",
+    ["go 1.24", "toolchain go1.24.2", "", "use ./app"],
+    {use: ["./app"], replace: {}}],
+  ["replace block syntax",
+    ["go 1.24", "", "use ./app", "", "replace (", "\tgithub.com/old/a => github.com/new/a v1.0.0",
+      "\tgithub.com/old/b v1.2.0 => github.com/new/b v2.0.0", ")"],
+    {use: ["./app"], replace: {"github.com/new/a": "v1.0.0", "github.com/new/b": "v2.0.0"}}],
+])("parseGoWork %s", (_name, lines, expected) => {
+  expect(parseGoWork(lines.join("\n"))).toEqual(expected);
 });
 
 // rewriteGoImports

@@ -75,22 +75,12 @@ test("fetchPypiInfo happy path", async () => {
   expect(result).toEqual([mockData, null]);
 });
 
-test("fetchPypiInfo fetch failure throws", async () => {
-  const ctx = {
-    pypiApiUrl: "https://pypi.org",
-    fetchTimeout,
-    doFetch: () => Promise.resolve({ok: false, status: 404, statusText: "Not Found"}),
-  } as unknown as ModeContext;
-  await expect(fetchPypiInfo("nonexistent", ctx)).rejects.toThrow("404");
-});
-
-test("fetchPypiInfo null response throws", async () => {
-  const ctx = {
-    pypiApiUrl: "https://pypi.org",
-    fetchTimeout,
-    doFetch: () => Promise.resolve(undefined),
-  } as unknown as ModeContext;
-  await expect(fetchPypiInfo("nonexistent", ctx)).rejects.toThrow("Unable to fetch");
+test.each([
+  ["fetch failure", () => Promise.resolve({ok: false, status: 404, statusText: "Not Found"}), "404"],
+  ["null response", () => Promise.resolve(undefined), "Unable to fetch"],
+])("fetchPypiInfo %s throws", async (_name, doFetch, message) => {
+  const ctx = {pypiApiUrl: "https://pypi.org", fetchTimeout, doFetch} as unknown as ModeContext;
+  await expect(fetchPypiInfo("nonexistent", ctx)).rejects.toThrow(message);
 });
 
 test("operator without space", () => {
