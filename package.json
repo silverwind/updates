@@ -46,7 +46,6 @@
     "@vitest/coverage-v8": "4.1.10",
     "eslint": "10.8.0",
     "eslint-config-silverwind": "143.0.0",
-    "jest-extended": "7.0.0",
     "timerel": "5.8.8",
     "tsdown": "0.22.14",
     "tsdown-config-silverwind": "4.0.3",
@@ -55,6 +54,6 @@
     "updates-config-silverwind": "4.0.4",
     "versions": "15.1.4",
     "vitest": "4.1.10",
-    "vitest-config-silverwind": "11.4.0"
+    "vitest-config-silverwind": "11.5.0"
   }
 }

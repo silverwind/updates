@@ -23,9 +23,6 @@ importers:
       eslint-config-silverwind:
         specifier: 143.0.0
         version: 143.0.0(eslint@10.8.0(supports-color@7.2.0))(supports-color@7.2.0)(typescript@6.0.3)
-      jest-extended:
-        specifier: 7.0.0
-        version: 7.0.0(typescript@6.0.3)
       timerel:
         specifier: 5.8.8
         version: 5.8.8
@@ -51,8 +48,8 @@ importers:
         specifier: 4.1.10
         version: 4.1.10(@types/node@26.1.2)(@vitest/coverage-v8@4.1.10)(vite@8.1.5(@types/node@26.1.2))
       vitest-config-silverwind:
-        specifier: 11.4.0
-        version: 11.4.0(@vitest/coverage-v8@4.1.10)(typescript@6.0.3)(vite@8.1.5(@types/node@26.1.2))(vitest@4.1.10)
+        specifier: 11.5.0
+        version: 11.5.0(@vitest/coverage-v8@4.1.10)(typescript@6.0.3)(vite@8.1.5(@types/node@26.1.2))(vitest@4.1.10)
 
 packages:
 
@@ -1506,8 +1503,8 @@ packages:
       yaml:
         optional: true
 
-  vitest-config-silverwind@11.4.0:
-    resolution: {integrity: sha512-1ZmAnnJyPaJKOERICn+tgJc2gMhxv1aAFtDiUVK/+cmfJUxzLsPiOu3wYG/Y0fNd2DVZVRDbVHBJshN/GM5p1Q==}
+  vitest-config-silverwind@11.5.0:
+    resolution: {integrity: sha512-4a/fLss/2KXb8v2rHpbeUdGVEFQJ7cbuEViCtGt6HthEQUd/AcZRS+Xz+2QI8cOA59AAbwSV2qrxWOKOVwGcRg==}
     engines: {node: '>=20'}
     peerDependencies:
       '@vitest/coverage-v8': '*'
@@ -2790,7 +2787,7 @@ snapshots:
       '@types/node': 26.1.2
       fsevents: 2.3.3
 
-  vitest-config-silverwind@11.4.0(@vitest/coverage-v8@4.1.10)(typescript@6.0.3)(vite@8.1.5(@types/node@26.1.2))(vitest@4.1.10):
+  vitest-config-silverwind@11.5.0(@vitest/coverage-v8@4.1.10)(typescript@6.0.3)(vite@8.1.5(@types/node@26.1.2))(vitest@4.1.10):
     dependencies:
       '@vitest/coverage-v8': 4.1.10(vitest@4.1.10)
       jest-extended: 7.0.0(typescript@6.0.3)
