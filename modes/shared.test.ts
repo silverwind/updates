@@ -1,3 +1,4 @@
+import {Buffer} from "node:buffer";
 import {
   findNewVersion,
   stripv,
@@ -17,6 +18,7 @@ import {
   getInfoUrl,
   packageVersion,
   getForgeTokens,
+  parseExtraheaders,
   fetchForge,
   fetchActionTags,
   fetchWithEtag,
@@ -595,6 +597,20 @@ test("getForgeTokens", async () => {
     if (saved === undefined) delete process.env.UPDATES_FORGE_TOKENS;
     else process.env.UPDATES_FORGE_TOKENS = saved;
   }
+});
+
+test("parseExtraheaders reads a CI token per host", () => {
+  const enc = (token: string) => Buffer.from(`x-access-token:${token}`).toString("base64");
+  const tokens = parseExtraheaders([
+    `http.https://github.com/.extraheader AUTHORIZATION: basic ${enc("gh-tok")}`,
+    `http.https://gitea.example.com:8443/.extraheader AUTHORIZATION: basic ${enc("gitea-tok")}`,
+    "http.https://other.example.com/.extraheader AUTHORIZATION: bearer not-basic",
+  ].join("\n"));
+  expect(tokens.get("github.com")).toEqual("gh-tok");
+  // a ported instance is its own endpoint, and only `basic` carries the base64 credential
+  expect(tokens.get("gitea.example.com:8443")).toEqual("gitea-tok");
+  expect(tokens.has("gitea.example.com")).toEqual(false);
+  expect(tokens.has("other.example.com")).toEqual(false);
 });
 
 test("fetchForge only sends github credentials to github hosts", async () => {

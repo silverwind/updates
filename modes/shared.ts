@@ -1,3 +1,4 @@
+import {Buffer} from "node:buffer";
 import {env} from "node:process";
 import {parse, coerce, compareParsed, diff, diffParsed, gt, gte, lt, satisfies, valid} from "../utils/semver.ts";
 import {getCache, setCache} from "../utils/fetchCache.ts";
@@ -574,6 +575,38 @@ export function getGithubTokens(): Promise<string[]> {
   })();
 }
 
+const reExtraheader = /^http\.(\S+)\/\.extraheader AUTHORIZATION:\s*basic\s+(\S+)$/i;
+
+// actions/checkout and its Gitea and Forgejo forks leave the job token in git config as
+// `http.<origin>/.extraheader`, base64 of `x-access-token:<token>`, keyed by GITHUB_SERVER_URL.
+export function parseExtraheaders(config: string): Map<string, string> {
+  const tokens = new Map<string, string>();
+  for (const line of config.split(/\r?\n/)) {
+    const match = reExtraheader.exec(line);
+    if (!match) continue;
+    const host = urlHost(match[1]);
+    const decoded = Buffer.from(match[2], "base64").toString("utf8");
+    const token = decoded.slice(decoded.indexOf(":") + 1);
+    if (host && token && !tokens.has(host)) tokens.set(host, token); // first wins, as git resolves it
+  }
+  return tokens;
+}
+
+// Read once, one subprocess serves every host in a run. `--local` would miss it, the
+// credentials file arrives via includeIf.
+let extraheaderTokensPromise: Promise<Map<string, string>> | undefined;
+function getExtraheaderTokens(): Promise<Map<string, string>> {
+  return extraheaderTokensPromise ??= (async () => {
+    try {
+      const execFile = await getExecFile();
+      const {stdout} = await execFile("git", ["config", "--get-regexp", "^http\\..*\\.extraheader$"], {encoding: "utf8", timeout: 5000});
+      return parseExtraheaders(stdout);
+    } catch {
+      return new Map();
+    }
+  })();
+}
+
 const workingTokenCache = new Map<string, string>();
 
 // GitHub credentials (env tokens and `gh auth token`) are only ever sent to
@@ -586,9 +619,16 @@ export async function getForgeTokens(host: string, forgeApiUrl: string): Promise
   const hostToken = pairToken(host);
   if (hostToken) return [hostToken];
 
-  const forgeApiHost = urlHost(forgeApiUrl);
-  const isGithubHost = host === "api.github.com" || host === "github.com" || host === forgeApiHost;
-  return isGithubHost ? getGithubTokens() : [];
+  // credentials are keyed by forge host, and GitHub alone serves its API from another hostname
+  const forgeHost = host === "api.github.com" ? "github.com" : host;
+  const isGithubHost = forgeHost === "github.com" || host === urlHost(forgeApiUrl);
+
+  const [tokens, headers] = await Promise.all([
+    isGithubHost ? getGithubTokens() : [],
+    getExtraheaderTokens(),
+  ]);
+  const header = headers.get(forgeHost);
+  return Array.from(new Set(header ? [...tokens, header] : tokens));
 }
 
 export async function fetchForge(url: string, ctx: ModeContext, extraHeaders?: Record<string, string>): Promise<Response> {
