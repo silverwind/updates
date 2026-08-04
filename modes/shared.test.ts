@@ -614,8 +614,10 @@ test("parseExtraheaders reads a CI token per host", () => {
 });
 
 test("fetchForge only sends github credentials to github hosts", async () => {
-  // Inject a github token deterministically (CI has none). `getGithubTokens`
-  // reads env per call, so plain mutation works under both vitest and bun.
+  // Inject a github token deterministically. `getGithubTokens` reads env per call, so plain
+  // mutation works under both vitest and bun. The forge host is unique to this test because
+  // workingTokenCache is module-level: on a CI runner an earlier fetch caches the extraheader
+  // credential under api.github.com and would short-circuit the injected token.
   const tokenEnv = ["UPDATES_GITHUB_API_TOKEN", "GITHUB_API_TOKEN", "GH_TOKEN", "GITHUB_TOKEN", "HOMEBREW_GITHUB_API_TOKEN"];
   const saved = Object.fromEntries(tokenEnv.map(name => [name, process.env[name]]));
   for (const name of tokenEnv) delete process.env[name];
@@ -626,18 +628,20 @@ test("fetchForge only sends github credentials to github hosts", async () => {
     const authByHost: Record<string, string | undefined> = {};
     const ctx = {
       fetchTimeout,
-      forgeApiUrl: "https://api.github.com",
+      forgeApiUrl: "https://forge.regression.test",
       doFetch: (url: string, opts: RequestInit) => {
         authByHost[new URL(url).hostname] = (opts.headers as Record<string, string>)?.Authorization;
         return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve([]), headers: new Headers()});
       },
     } as unknown as ModeContext;
 
-    await fetchForge("https://api.github.com/repos/o/r/tags", ctx);
+    await fetchForge("https://forge.regression.test/repos/o/r/tags", ctx);
     await fetchForge("https://attacker.example/api/v1/repos/o/r/tags", ctx);
 
-    expect(authByHost["api.github.com"]).toBe("Bearer ghp_regression_secret");
+    expect(authByHost["forge.regression.test"]).toBe("Bearer ghp_regression_secret");
     expect(authByHost["attacker.example"]).toBeUndefined();
+    // GitHub's own API hostname still resolves the github credentials
+    expect(await getForgeTokens("api.github.com", "https://api.github.com")).toContain("ghp_regression_secret");
   } finally {
     for (const [name, value] of Object.entries(saved)) {
       if (value === undefined) delete process.env[name];
