@@ -35,16 +35,13 @@ const scenarios: Scenario[] = [
   {name: "docker", fixture: "docker", modes: "docker"},
 ];
 
-function median(nums: number[]): number {
+function stats(nums: number[]): {median: number, p95: number} {
   const sorted = nums.toSorted((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-}
-
-function percentile(nums: number[], p: number): number {
-  const sorted = nums.toSorted((a, b) => a - b);
-  const idx = Math.min(sorted.length - 1, Math.ceil((p / 100) * sorted.length) - 1);
-  return sorted[Math.max(0, idx)];
+  return {
+    median: sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2,
+    p95: sorted[Math.min(sorted.length - 1, Math.ceil(0.95 * sorted.length) - 1)],
+  };
 }
 
 async function runOnce(scenario: Scenario, url: string, cacheDir: string): Promise<number> {
@@ -95,8 +92,8 @@ async function benchScenario(scenario: Scenario, url: string, iters: number): Pr
     const warm: number[] = [];
     for (let iter = 0; iter < iters; iter++) warm.push(await runOnce(scenario, url, cacheDir));
     return [
-      {scenario: scenario.name, mode: "cold", median: median(cold), p95: percentile(cold, 95), runs: cold},
-      {scenario: scenario.name, mode: "warm", median: median(warm), p95: percentile(warm, 95), runs: warm},
+      {scenario: scenario.name, mode: "cold", ...stats(cold), runs: cold},
+      {scenario: scenario.name, mode: "warm", ...stats(warm), runs: warm},
     ];
   } finally {
     rmSync(cacheDir, {recursive: true, force: true});

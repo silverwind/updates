@@ -14,21 +14,24 @@ export function parseJsonish(text: string): unknown {
   const n = text.length;
   let pendingComma = -1; // index in `out` of a comma that becomes trailing if the next token closes a container
 
+  // Skip the comment starting at index j, returning the index just past it. Trailing
+  // whitespace is left in place so it keeps separating the tokens around the comment.
+  function skipComment(j: number): number {
+    if (text[j + 1] === "/") {
+      j += 2;
+      while (j < n && text[j] !== "\n") j++;
+      return j;
+    }
+    j += 2;
+    while (j < n && (text[j] !== "*" || text[j + 1] !== "/")) j++;
+    return j + 2;
+  }
+
   // Skip whitespace and comments starting at index j, returning the next significant index.
   function skipTrivia(j: number): number {
     while (j < n) {
       if (/\s/.test(text[j])) { j++; continue; }
-      if (text[j] === "/" && text[j + 1] === "/") {
-        j += 2;
-        while (j < n && text[j] !== "\n") j++;
-        continue;
-      }
-      if (text[j] === "/" && text[j + 1] === "*") {
-        j += 2;
-        while (j < n && (text[j] !== "*" || text[j + 1] !== "/")) j++;
-        j += 2;
-        continue;
-      }
+      if (text[j] === "/" && (text[j + 1] === "/" || text[j + 1] === "*")) { j = skipComment(j); continue; }
       break;
     }
     return j;
@@ -78,16 +81,8 @@ export function parseJsonish(text: string): unknown {
       continue;
     }
 
-    if (ch === "/" && i + 1 < n && text[i + 1] === "/") {
-      i += 2;
-      while (i < n && text[i] !== "\n") i++;
-      continue;
-    }
-
-    if (ch === "/" && i + 1 < n && text[i + 1] === "*") {
-      i += 2;
-      while (i < n && (text[i] !== "*" || text[i + 1] !== "/")) i++;
-      i += 2;
+    if (ch === "/" && (text[i + 1] === "/" || text[i + 1] === "*")) {
+      i = skipComment(i);
       continue;
     }
 

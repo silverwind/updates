@@ -4,7 +4,7 @@ import {access} from "node:fs/promises";
 import type {ParseArgsOptionsConfig} from "node:util";
 import {validRange} from "./utils/semver.ts";
 import {commaSeparatedToArray, esc, walkUp, memoizeAsync} from "./utils/utils.ts";
-import type {PresetFetchOptions} from "./utils/renovate.ts";
+import type {PresetFetchOptions, RenovateImportOptions} from "./utils/renovate.ts";
 
 export type Config = {
   /** Array of dependencies to include */
@@ -60,12 +60,7 @@ export type Config = {
   /** Per-package option overrides, matched by name; last matching override wins */
   overrides?: Array<Override>;
   /** Opt-in to inheriting select fields from other tools' configs */
-  inherit?: {
-    renovate?: {
-      /** Inherit minimumReleaseAge as cooldown. Off by default. */
-      cooldown?: boolean;
-    };
-  };
+  inherit?: {renovate?: RenovateImportOptions};
 };
 
 /** Options applied to dependencies whose name matches an override's patterns. */
@@ -163,7 +158,7 @@ export function patternsToRegexSet(patterns: Array<string | RegExp>): Set<RegExp
 
 export function parseArgList(arg: Arg): Array<string> {
   if (Array.isArray(arg)) {
-    return arg.filter(v => typeof v === "string").flatMap(item => commaSeparatedToArray(item));
+    return arg.filter(v => typeof v === "string").flatMap(commaSeparatedToArray);
   }
   return [];
 }
@@ -188,7 +183,7 @@ export function configMixedToRegexes(val: boolean | Array<string | RegExp> | und
   return patternsToRegexSet(val);
 }
 
-type FoundConfig = {configDir: string, filename: string, default: Config};
+type FoundConfig = {configDir: string, default: Config};
 
 // Try to load any updates.config.* in dir. Returns the first that imports
 // successfully. If none imports but at least one parsed-and-failed, throws
@@ -206,7 +201,7 @@ async function tryLoadInDir(dir: string): Promise<FoundConfig | null> {
     }
     try {
       const mod = await import(pathToFileURL(fullPath).href);
-      return {configDir: dir, filename, default: mod.default ?? {}};
+      return {configDir: dir, default: mod.default ?? {}};
     } catch (err: any) {
       return new Error(`Unable to parse config file ${filename}: ${err?.message ?? err}`);
     }

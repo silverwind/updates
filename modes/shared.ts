@@ -1,6 +1,7 @@
 import {env} from "node:process";
 import {parse, coerce, compareParsed, diff, diffParsed, gt, gte, lt, satisfies, valid} from "../utils/semver.ts";
 import {getCache, setCache} from "../utils/fetchCache.ts";
+import {matchesAny} from "../utils/utils.ts";
 import pkg from "../package.json" with {type: "json"};
 
 export type {Config} from "../config.ts";
@@ -52,15 +53,10 @@ export type FindVersionOpts = {
   pinnedRange?: string,
 } & CooldownOpts;
 
-export type FindNewVersionOpts = {
+export type FindNewVersionOpts = FindVersionOpts & {
   mode: string,
-  range: string,
-  usePre: boolean,
-  useRel: boolean,
-  useGreatest: boolean,
-  semvers: Set<string>,
-  pinnedRange?: string,
-} & CooldownOpts;
+  allowDowngrade: Set<RegExp> | boolean,
+};
 
 // Returns true if the given ISO date is at least cooldownDays old (inclusive)
 // relative to `now`. Missing date or inactive cooldown returns true.
@@ -236,6 +232,24 @@ export async function fetchImmutable(
   return readAndCache(url, res, ctx, reduce, "immutable");
 }
 
+// Share one in-flight/completed promise per key so concurrent lookups for the
+// same resource issue a single request. A rejected promise is evicted so the
+// next caller retries rather than inheriting the failure forever.
+export function dedupe<T>(cache: Map<string, Promise<T>>, key: string, fn: () => Promise<T>): Promise<T> {
+  let promise = cache.get(key);
+  if (!promise) {
+    cache.set(key, promise = (async () => {
+      try {
+        return await fn();
+      } catch (err) {
+        cache.delete(key);
+        throw err;
+      }
+    })());
+  }
+  return promise;
+}
+
 export function isVersionPrerelease(version: string): boolean {
   return (parse(version)?.prerelease.length ?? 0) > 0;
 }
@@ -276,13 +290,12 @@ type DowngradeOpts = {
   useRel: boolean,
   allowDowngrade: Set<RegExp> | boolean,
   name: string,
-  matchesAny: (str: string, set: Set<RegExp> | boolean) => boolean,
 };
 
 // Check if a version transition should be allowed. Prevents:
 // - Pre-release to lower release (unless --release)
 // - Release to lower release (unless --allow-downgrade)
-export function isAllowedVersionTransition(oldVersion: string, newVersion: string, {useRel, allowDowngrade, name, matchesAny}: DowngradeOpts): boolean {
+export function isAllowedVersionTransition(oldVersion: string, newVersion: string, {useRel, allowDowngrade, name}: DowngradeOpts): boolean {
   const oldCoerced = coerceToVersion(oldVersion);
   const newCoerced = coerceToVersion(newVersion);
   if (!oldCoerced || !newCoerced) return true;
@@ -370,7 +383,12 @@ export function findVersion(data: any, versions: Array<string>, {range, semvers,
   return newVersionParsed.version;
 }
 
-export function findNewVersion(data: any, {mode, range, useGreatest, useRel, usePre, semvers, pinnedRange, cooldownDays, now}: FindNewVersionOpts, {allowDowngrade, matchesAny, isGoPseudoVersion}: {allowDowngrade: Set<RegExp> | boolean, matchesAny: (str: string, set: Set<RegExp> | boolean) => boolean, isGoPseudoVersion: (version: string) => boolean}): string | null {
+// TODO: maybe include pseudo-versions with --prerelease
+export function isGoPseudoVersion(version: string): boolean {
+  return /\d{14}-[0-9a-f]{12}$/.test(version);
+}
+
+export function findNewVersion(data: any, {mode, range, useGreatest, useRel, usePre, semvers, pinnedRange, cooldownDays, now, allowDowngrade}: FindNewVersionOpts): string | null {
   if (range === "*") return null; // ignore wildcard
   if (range.includes("||")) return null; // ignore or-chains
   if (/\d\s/.test(range)) return null; // ignore compound ranges (">=1 <2", "1 - 2")
@@ -388,7 +406,7 @@ export function findNewVersion(data: any, {mode, range, useGreatest, useRel, use
     if (!oldVersion) return null;
     const {effectiveUsePre, effectiveSemvers} = prereleaseOpts(range, usePre, semvers);
     const skipPrerelease = (v: string) => isVersionPrerelease(v) && (!effectiveUsePre || useRel);
-    const transitionOpts = {useRel, allowDowngrade, name: data.name, matchesAny};
+    const transitionOpts = {useRel, allowDowngrade, name: data.name};
     // Use full original version for prerelease detection (range is shortened for Go)
     const originalOldVersion = data.old || range;
 
@@ -436,7 +454,7 @@ export function findNewVersion(data: any, {mode, range, useGreatest, useRel, use
     const oldVersion = coerceToVersion(range);
     const oldIsPre = isRangePrerelease(range);
     const newIsPre = isVersionPrerelease(version);
-    const transitionOpts = {useRel, allowDowngrade, name: data.name, matchesAny};
+    const transitionOpts = {useRel, allowDowngrade, name: data.name};
 
     // update to new prerelease
     if (!useRel && usePre || (oldIsPre && newIsPre)) {
@@ -505,6 +523,18 @@ if (env.UPDATES_FORGE_TOKENS) {
   }
 }
 
+let execFilePromise: ReturnType<typeof loadExecFile> | undefined;
+async function loadExecFile() {
+  const [{execFile}, {promisify}] = await Promise.all([
+    import("node:child_process"),
+    import("node:util"),
+  ]);
+  return promisify(execFile);
+}
+export function getExecFile() {
+  return execFilePromise ??= loadExecFile();
+}
+
 const githubTokenEnvNames = ["UPDATES_GITHUB_API_TOKEN", "GITHUB_API_TOKEN", "GH_TOKEN", "GITHUB_TOKEN", "HOMEBREW_GITHUB_API_TOKEN"];
 
 function envGithubTokens(): string[] {
@@ -524,11 +554,8 @@ export function getGithubTokens(): Promise<string[]> {
   if (tokens.length) return Promise.resolve(tokens);
   return githubTokensPromise ??= (async () => {
     try {
-      const [{execFile: execFileCb}, {promisify}] = await Promise.all([
-        import("node:child_process"),
-        import("node:util"),
-      ]);
-      const {stdout} = await promisify(execFileCb)("gh", ["auth", "token"], {encoding: "utf8", timeout: 5000});
+      const execFile = await getExecFile();
+      const {stdout} = await execFile("gh", ["auth", "token"], {encoding: "utf8", timeout: 5000});
       const token = stdout.trim();
       return token ? [token] : [];
     } catch {
@@ -641,22 +668,30 @@ export function parseTags(data: Array<any>): Array<TagEntry> {
   return data.map((tag: any) => ({name: tag.name, commitSha: tag.commit?.sha || ""}));
 }
 
-// GitHub strips the Link header on 304 responses, so cache it alongside the body.
-async function fetchTagsPage(url: string, ctx: ModeContext): Promise<{tags: Array<TagEntry>, link: string} | null> {
+// Fetch a forge URL with ETag revalidation, returning the cached body verbatim on 304 and
+// otherwise the string `reduce` distills the response into, which is what gets cached.
+// `reduce` takes the Response so each caller picks its own read method.
+export async function fetchForgeEtag(url: string, ctx: ModeContext, reduce: (res: Response) => Promise<string>): Promise<string | null> {
   const cached = ctx.noCache ? null : await getCache(url);
   const res = await fetchForge(url, ctx, cached ? {"if-none-match": cached.etag} : undefined);
-  if (res?.status === 304 && cached) {
-    try {
-      const parsed = JSON.parse(cached.body);
-      return {tags: parsed.tags || [], link: parsed.link || ""};
-    } catch { return null; }
-  }
+  if (res?.status === 304 && cached) return cached.body;
   if (!res?.ok) return null;
-  const tags = parseTags(await res.json());
-  const link = res.headers.get("link") || "";
+  const body = await reduce(res);
   const etag = res.headers.get("etag");
-  if (etag && !ctx.noCache) setCache(url, etag, JSON.stringify({link, tags}));
-  return {tags, link};
+  if (etag && !ctx.noCache) setCache(url, etag, body);
+  return body;
+}
+
+// GitHub strips the Link header on 304 responses, so cache it alongside the body.
+async function fetchTagsPage(url: string, ctx: ModeContext): Promise<{tags: Array<TagEntry>, link: string} | null> {
+  const body = await fetchForgeEtag(url, ctx, async res => JSON.stringify({
+    link: res.headers.get("link") || "", tags: parseTags(await res.json()),
+  }));
+  if (!body) return null;
+  try {
+    const parsed = JSON.parse(body);
+    return {tags: parsed.tags || [], link: parsed.link || ""};
+  } catch { return null; }
 }
 
 export async function fetchActionTags(apiUrl: string, owner: string, repo: string, ctx: ModeContext): Promise<Array<TagEntry>> {
@@ -714,15 +749,12 @@ export function isSameVersionScheme(candidate: string, oldVersion: string): bool
 }
 
 export function formatVersionPrecision(newVersion: string, oldVersion: string, suffix = ""): string {
-  const hadV = oldVersion.startsWith("v");
   const bare = stripv(newVersion);
   const numParts = stripv(oldVersion).split(".").length;
   const newParts = bare.split(".");
-  let formatted: string;
-  if (numParts === 1) formatted = newParts[0];
-  else if (numParts === 2) formatted = `${newParts[0]}.${newParts[1] || "0"}`;
-  else formatted = bare;
-  return `${hadV ? "v" : ""}${formatted}${suffix}`;
+  // A shorter authored version keeps its precision, padding missing fields with 0.
+  const formatted = numParts >= 3 ? bare : Array.from({length: numParts}, (_, idx) => newParts[idx] || "0").join(".");
+  return `${oldVersion.startsWith("v") ? "v" : ""}${formatted}${suffix}`;
 }
 
 export function getSubDir(url: string): string {

@@ -43,7 +43,7 @@ npx updates -u && npm i
 |`-P, --patch [<dep,...>]`|Consider only up to semver-patch|
 |`-m, --minor [<dep,...>]`|Consider only up to semver-minor|
 |`-d, --allow-downgrade [<dep,...>]`|Allow version downgrades when using latest version|
-|`-s, --sockets <num>`|Maximum number of parallel HTTP sockets opened. Default: 96|
+|`-s, --sockets <num>`|Maximum number of parallel HTTP sockets opened. Default: 25|
 |`-T, --timeout <ms>`|Network request timeout in ms (go probes use half). Default: 5000|
 |`-r, --registry <url>`|Override npm registry URL|
 |`-I, --indirect`|Include indirect Go dependencies|
@@ -51,6 +51,7 @@ npx updates -u && npm i
 |`-U, --error-on-unchanged`|Exit with code 0 when updates are available and 2 when not|
 |`-j, --json`|Output a JSON object|
 |`-x, --no-cache`|Disable HTTP cache|
+|`-c, --color`|Force color output|
 |`-n, --no-color`|Disable color output|
 |`-v, --version`|Print the version|
 |`-V, --verbose`|Print verbose output to stderr|

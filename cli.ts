@@ -91,8 +91,7 @@ export async function resolveConfig(
     timeout: cliTimeout ?? fetchTimeout,
   });
 
-  const config: UpdatesOptions = {...fileConfig};
-  config.pin = undefined;
+  const config: UpdatesOptions = {...fileConfig, pin: undefined};
   if (args.json) config.json = true;
   if (args.verbose) config.verbose = true;
   if (args["no-cache"]) config.noCache = true;
@@ -100,6 +99,9 @@ export async function resolveConfig(
   if (args.indirect) config.indirect = true;
   if (args["error-on-outdated"]) config.errorOnOutdated = true;
   if (args["error-on-unchanged"]) config.errorOnUnchanged = true;
+  // each color flag clears the other so a CLI flag beats both file values, -n applied last so it wins
+  if (args.color) {config.color = true; config.noColor = false;}
+  if (args["no-color"]) {config.color = false; config.noColor = true;}
   if (cliTimeout !== undefined) config.timeout = cliTimeout;
   if (typeof args.sockets === "string") config.sockets = Number(args.sockets) || undefined;
   if (typeof args.registry === "string") config.registry = args.registry;

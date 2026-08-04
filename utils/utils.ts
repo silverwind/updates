@@ -107,14 +107,9 @@ export function commaSeparatedToArray(str: string): Array<string> {
 }
 
 export function timestamp(): string {
-  const d = new Date();
-  const mo = String(d.getMonth() + 1).padStart(2, "0");
-  const da = String(d.getDate()).padStart(2, "0");
-  const h = String(d.getHours()).padStart(2, "0");
-  const mi = String(d.getMinutes()).padStart(2, "0");
-  const s = String(d.getSeconds()).padStart(2, "0");
-  const ms = String(d.getMilliseconds()).padStart(3, "0");
-  return `${d.getFullYear()}-${mo}-${da} ${h}:${mi}:${s}.${ms}`;
+  const now = new Date();
+  // Shifting by the offset makes the UTC fields of toISOString read as local time.
+  return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().replace("T", " ").slice(0, -1);
 }
 
 export function textTable(rows: Array<Array<string>>, ansiLen: (str: string) => number, hsep = " "): string {

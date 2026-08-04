@@ -175,55 +175,26 @@ function upperBound(major: number, minor: number, patch: number): string {
   return `${major}.${minor}.${patch}-0`;
 }
 
-function expandTilde(range: string): string {
-  // ~1.2.3 := >=1.2.3 <1.3.0-0
-  // ~1.2   := >=1.2.0 <1.3.0-0
-  // ~1     := >=1.0.0 <2.0.0-0
-  // Trailing wildcard segments (e.g. ~1.x, ~1.2.x) are consumed and treated as omitted.
-  return range.replace(/~\s*v?(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:\.[xX*])*((?:-[a-zA-Z0-9._-]+)?)/g, (_, major, minor, patch, pre) => {
-    const M = Number(major);
-    if (minor === undefined) {
-      return `>=${M}.0.0 <${upperBound(M + 1, 0, 0)}`;
-    }
-    const m = Number(minor);
-    const p = patch !== undefined ? Number(patch) : 0;
-    const preSuffix = pre || "";
-    return `>=${M}.${m}.${p}${preSuffix} <${upperBound(M, m + 1, 0)}`;
-  });
-}
-
-function expandCaret(range: string): string {
-  // ^1.2.3 := >=1.2.3 <2.0.0-0
-  // ^0.2.3 := >=0.2.3 <0.3.0-0
-  // ^0.0.3 := >=0.0.3 <0.0.4-0
-  // ^0.0   := >=0.0.0 <0.1.0-0
-  // ^0     := >=0.0.0 <1.0.0-0
-  // Trailing wildcard segments (e.g. ^1.x, ^1.2.x) are consumed and treated as omitted.
-  return range.replace(/\^\s*v?(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:\.[xX*])*((?:-[a-zA-Z0-9._-]+)?)/g, (_, major, minor, patch, pre) => {
-    const M = Number(major);
-    const preSuffix = pre || "";
-    if (minor === undefined) {
-      // ^1 -> >=1.0.0 <2.0.0-0
-      return `>=${M}.0.0 <${upperBound(M + 1, 0, 0)}`;
-    }
-    const m = Number(minor);
-    if (patch === undefined) {
-      if (M === 0) {
-        // ^0.2 -> >=0.2.0 <0.3.0-0
-        return `>=${M}.${m}.0 <${upperBound(M, m + 1, 0)}`;
-      }
-      return `>=${M}.${m}.0 <${upperBound(M + 1, 0, 0)}`;
-    }
-    const p = Number(patch);
-    if (M === 0) {
-      if (m === 0) {
-        // ^0.0.3 -> >=0.0.3 <0.0.4-0
-        return `>=${M}.${m}.${p}${preSuffix} <${upperBound(M, m, p + 1)}`;
-      }
-      // ^0.2.3 -> >=0.2.3 <0.3.0-0
-      return `>=${M}.${m}.${p}${preSuffix} <${upperBound(M, m + 1, 0)}`;
-    }
-    return `>=${M}.${m}.${p}${preSuffix} <${upperBound(M + 1, 0, 0)}`;
+// ~1.2.3 := >=1.2.3 <1.3.0-0    ^1.2.3 := >=1.2.3 <2.0.0-0
+// ~1.2   := >=1.2.0 <1.3.0-0    ^0.2.3 := >=0.2.3 <0.3.0-0
+// ~1     := >=1.0.0 <2.0.0-0    ^0.0.3 := >=0.0.3 <0.0.4-0
+//                               ^0.0   := >=0.0.0 <0.1.0-0
+//                               ^0     := >=0.0.0 <1.0.0-0
+// Trailing wildcard segments (e.g. ~1.x, ^1.2.x) are consumed and treated as omitted.
+function expandTildeCaret(range: string): string {
+  return range.replace(/([~^])\s*v?(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:\.[xX*])*((?:-[a-zA-Z0-9._-]+)?)/g, (_, op, rawMajor, rawMinor, rawPatch, rawPre) => {
+    const major = Number(rawMajor);
+    const minor = rawMinor !== undefined ? Number(rawMinor) : 0;
+    const patch = rawPatch !== undefined ? Number(rawPatch) : 0;
+    // The prerelease is kept only when the segment it belongs to was given: ~ needs a minor, ^ a patch.
+    const pre = (op === "~" ? rawMinor : rawPatch) !== undefined ? rawPre : "";
+    let upper: string;
+    if (rawMinor === undefined) upper = upperBound(major + 1, 0, 0);
+    else if (op === "~") upper = upperBound(major, minor + 1, 0);
+    else if (major !== 0) upper = upperBound(major + 1, 0, 0);
+    else if (rawPatch !== undefined && minor === 0) upper = upperBound(0, 0, patch + 1);
+    else upper = upperBound(0, minor + 1, 0);
+    return `>=${major}.${minor}.${patch}${pre} <${upper}`;
   });
 }
 
@@ -327,10 +298,9 @@ function parseRange(range: string): Array<Array<Comparator>> | null {
       continue;
     }
 
-    // Expand in order: hyphen -> caret -> tilde -> x-range
+    // Expand in order: hyphen -> caret/tilde -> x-range
     group = expandHyphen(group);
-    group = expandCaret(group);
-    group = expandTilde(group);
+    group = expandTildeCaret(group);
     group = expandXRanges(group);
 
     // Merge operators with their following version (handle spaces like ">= 3.1").

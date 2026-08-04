@@ -1,10 +1,10 @@
 import {env} from "node:process";
 import {parse} from "../utils/semver.ts";
 import rc from "../utils/rc.ts";
-import {getCache, setCache} from "../utils/fetchCache.ts";
+import {tryOrNull} from "../utils/utils.ts";
 import {
   type Config, type CheckResult, type Dep, type Deps, type ModeContext, type PackageInfo, type PackageRepository,
-  normalizeUrl, getFetchOpts, fieldSep, fetchForge, selectTag, fetchWithEtag, fetchImmutable,
+  normalizeUrl, getFetchOpts, fieldSep, fetchForgeEtag, selectTag, fetchWithEtag, fetchImmutable, dedupe,
   coerceToVersion, hashRe, fetchActionTags, throwFetchError, fetchWithRetry, defaultApiUrls, parseCommitDate,
 } from "./shared.ts";
 
@@ -157,26 +157,17 @@ export async function fetchNpmInfo(name: string, type: string, config: Config, a
   const packageName = type === "resolutions" ? resolutionsBasePackage(name) : name;
   const url = npmPackageUrl(registry, packageName);
 
-  let dataPromise = npmDataCache.get(url);
-  if (!dataPromise) {
+  const data = await dedupe(npmDataCache, url, async () => {
     const opts = getFetchOpts(auth?.type, auth?.token);
     // The abbreviated doc is a fraction of the size but omits the `time` map that cooldown reads.
     if (!args.needsDates) {
       opts.headers = {...opts.headers as Record<string, string>, "accept": "application/vnd.npm.install-v1+json"};
     }
-    dataPromise = (async () => {
-      try {
-        const result = await fetchWithEtag(url, ctx, opts, reduceNpmDoc);
-        if (!("body" in result)) throwFetchError(result.res, url, name, registry);
-        return JSON.parse(result.body);
-      } catch (err) {
-        npmDataCache.delete(url);
-        throw err;
-      }
-    })();
-    npmDataCache.set(url, dataPromise);
-  }
-  return [await dataPromise, registry];
+    const result = await fetchWithEtag(url, ctx, opts, reduceNpmDoc);
+    if (!("body" in result)) throwFetchError(result.res, url, name, registry);
+    return JSON.parse(result.body);
+  });
+  return [data, registry];
 }
 
 export type NpmVersionInfo = {repository?: PackageRepository, homepage?: string, date?: string};
@@ -185,10 +176,7 @@ export async function fetchNpmVersionInfo(name: string, version: string, config:
   const {auth, registry} = resolveNpmRegistry(name, config, args);
   const url = npmPackageUrl(registry, name, version);
 
-  const cached = npmVersionInfoCache.get(url);
-  if (cached) return cached;
-
-  const promise = (async (): Promise<NpmVersionInfo> => {
+  return dedupe(npmVersionInfoCache, url, async (): Promise<NpmVersionInfo> => {
     try {
       const fetchOpts = getFetchOpts(auth?.type, auth?.token);
       // Per-version npm metadata is immutable — cache forever.
@@ -211,29 +199,17 @@ export async function fetchNpmVersionInfo(name: string, version: string, config:
       if (!date) date = (await npmDataCache.get(fullUrl))?.time?.[version] || "";
       if (!date) {
         // _npmOperationalInternal is absent on some registries, fetch full metadata
-        let fullPromise = npmFullDataCache.get(fullUrl);
-        if (!fullPromise) {
-          fullPromise = (async () => {
-            try {
-              const res = await fetchWithRetry(ctx, fullUrl, fetchOpts);
-              return res?.ok ? await res.json() : null;
-            } catch {
-              npmFullDataCache.delete(fullUrl);
-              return null;
-            }
-          })();
-          npmFullDataCache.set(fullUrl, fullPromise);
-        }
-        const fullData = await fullPromise;
+        const fullData = await tryOrNull(dedupe(npmFullDataCache, fullUrl, async () => {
+          const res = await fetchWithRetry(ctx, fullUrl, fetchOpts);
+          return res?.ok ? await res.json() : null;
+        }));
         date = fullData?.time?.[version] || "";
       }
       return {repository: data.repository, homepage: data.homepage, date};
     } catch {
       return {};
     }
-  })();
-  npmVersionInfoCache.set(url, promise);
-  return promise;
+  });
 }
 
 export function isJsr(value: string): boolean {
@@ -244,42 +220,35 @@ export function isLocalDep(value: string): boolean {
   return value.startsWith("link:") || value.startsWith("file:");
 }
 
+// Both spellings carrying their own scope, name and version, anchored so they need no prefix check.
+const jsrRefRes = [
+  /^npm:@jsr\/([^_]+)__([^@]+)@(.+)$/, // npm:@jsr/std__semver@1.0.5
+  /^jsr:@([^/]+)\/([^@]+)@(.+)$/, // jsr:@std/semver@1.0.5
+];
+const jsrScopedNameRe = /^@([^/]+)\/(.+)$/;
+
 // - "npm:@jsr/std__semver@1.0.5" -> { scope: "std", name: "semver", version: "1.0.5" }
 // - "jsr:@std/semver@1.0.5" -> { scope: "std", name: "semver", version: "1.0.5" }
 // - "jsr:1.0.5" (when package name is known) -> { scope: null, name: null, version: "1.0.5" }
 export function parseJsrDependency(value: string, packageName?: string): {scope: string | null, name: string | null, version: string} {
-  if (value.startsWith("npm:@jsr/")) {
-    // npm:@jsr/std__semver@1.0.5
-    const match = /^npm:@jsr\/([^_]+)__([^@]+)@(.+)$/.exec(value);
-    if (match) {
-      return {scope: match[1], name: match[2], version: match[3]};
-    }
-  } else if (value.startsWith("jsr:@")) {
-    // jsr:@std/semver@1.0.5
-    const match = /^jsr:@([^/]+)\/([^@]+)@(.+)$/.exec(value);
-    if (match) {
-      return {scope: match[1], name: match[2], version: match[3]};
-    }
-  } else if (value.startsWith("jsr:")) {
-    // jsr:1.0.5
-    const version = value.substring(4);
-    if (packageName?.startsWith("@")) {
-      const match = /^@([^/]+)\/(.+)$/.exec(packageName);
-      if (match) {
-        return {scope: match[1], name: match[2], version};
-      }
-    }
+  for (const re of jsrRefRes) {
+    const match = re.exec(value);
+    if (match) return {scope: match[1], name: match[2], version: match[3]};
+  }
+  // A bare `jsr:1.0.5` takes scope and name from the dependency key instead. `jsr:@` is
+  // excluded so a scoped ref without a version is not read as one.
+  if (value.startsWith("jsr:") && !value.startsWith("jsr:@")) {
+    const match = jsrScopedNameRe.exec(packageName ?? "");
+    if (match) return {scope: match[1], name: match[2], version: value.substring(4)};
   }
   return {scope: null, name: null, version: ""};
 }
 
 export async function fetchJsrInfo(packageName: string, ctx: ModeContext): Promise<PackageInfo> {
-  const match = /^@([^/]+)\/(.+)$/.exec(packageName);
-  if (!match) {
+  if (!jsrScopedNameRe.test(packageName)) {
     throw new Error(`Invalid JSR package name: ${packageName}`);
   }
-  const [, scope, name] = match;
-  const url = `${ctx.jsrApiUrl}/@${scope}/${name}/meta.json`;
+  const url = `${ctx.jsrApiUrl}/${packageName}/meta.json`;
 
   const result = await fetchWithEtag(url, ctx, {
     headers: {"accept-encoding": "gzip, deflate, br"},
@@ -287,29 +256,17 @@ export async function fetchJsrInfo(packageName: string, ctx: ModeContext): Promi
     latest: data.latest,
     versions: Object.fromEntries(Object.entries(data.versions ?? {}).map(([version, meta]) => [version, {createdAt: (meta as Record<string, any>)?.createdAt}])),
   }));
-  if ("body" in result) {
-    const data = JSON.parse(result.body);
-    // Transform JSR format to match npm-like format for compatibility
-    const versions: Record<string, any> = {};
-    const time: Record<string, string> = {};
-    for (const [version, metadata] of Object.entries((data.versions ?? {}) as Record<string, any>)) {
-      versions[version] = {
-        version,
-        time: metadata.createdAt,
-      };
-      time[version] = metadata.createdAt;
-    }
-    const transformedData = {
-      name: packageName,
-      "dist-tags": {
-        latest: data.latest,
-      },
-      versions,
-      time,
-    };
-    return [transformedData, ctx.jsrApiUrl];
+  if (!("body" in result)) throwFetchError(result.res, url, packageName, "JSR");
+
+  const data = JSON.parse(result.body);
+  // Transform JSR format to match npm-like format for compatibility
+  const versions: Record<string, any> = {};
+  const time: Record<string, string> = {};
+  for (const [version, metadata] of Object.entries((data.versions ?? {}) as Record<string, any>)) {
+    versions[version] = {version, time: metadata.createdAt};
+    time[version] = metadata.createdAt;
   }
-  throwFetchError(result.res, url, packageName, "JSR");
+  return [{name: packageName, "dist-tags": {latest: data.latest}, versions, time}, ctx.jsrApiUrl];
 }
 
 export function updatePackageJson(pkgStr: string, deps: Deps): string {
@@ -392,20 +349,12 @@ type CommitInfo = {
 export async function getLatestCommit(user: string, repo: string, ctx: ModeContext): Promise<CommitInfo> {
   const url = `${ctx.forgeApiUrl}/repos/${user}/${repo}/commits`;
   try {
-    const cached = ctx.noCache ? null : await getCache(url);
-    const res = await fetchForge(url, ctx, cached ? {"if-none-match": cached.etag} : undefined);
-    let body: string;
-    if (res?.status === 304 && cached) {
-      body = cached.body;
-    } else if (res?.ok) {
-      // Only the newest commit's date-bearing fields are read; drop the rest before caching.
+    // Only the newest commit's date-bearing fields are read; drop the rest before caching.
+    const body = await fetchForgeEtag(url, ctx, async res => {
       const {sha, commit} = JSON.parse(await res.text())[0];
-      body = JSON.stringify([{sha, commit: {committer: commit?.committer, author: commit?.author}}]);
-      const etag = res.headers.get("etag");
-      if (etag && !ctx.noCache) setCache(url, etag, body);
-    } else {
-      return {hash: "", commit: {}};
-    }
+      return JSON.stringify([{sha, commit: {committer: commit?.committer, author: commit?.author}}]);
+    });
+    if (!body) return {hash: "", commit: {}};
     const {sha: hash, commit} = JSON.parse(body)[0];
     return {hash, commit};
   } catch {

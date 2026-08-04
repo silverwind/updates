@@ -13,10 +13,7 @@ export function parseIni(content: string): Record<string, string> {
     const eqIndex = trimmed.indexOf("=");
     if (eqIndex === -1) continue;
     let value = trimmed.slice(eqIndex + 1).trim();
-    const isQuoted = value.length >= 2 && ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'")));
-    if (isQuoted) {
-      value = value.slice(1, -1);
-    }
+    if (/^(["']).*\1$/s.test(value)) value = value.slice(1, -1);
     result[trimmed.slice(0, eqIndex).trim()] = value;
   }
   return result;

@@ -1,10 +1,10 @@
 import {type ModeContext, stripv, formatVersionPrecision, findNewVersion} from "./shared.ts";
-import {encodeGoModulePath, goModulePathForVersion, fetchGoProxyInfo, getGoInfoUrl, isGoPseudoVersion} from "./go.ts";
+import {encodeGoModulePath, goModulePathForVersion, fetchGoProxyInfo, getGoInfoUrl} from "./go.ts";
 import {
   type DockerImageRef,
   parseDockerImageRef, fetchDockerInfo, findDockerVersion, getDockerInfoUrl, fetchDockerTagDigest,
 } from "./docker.ts";
-import {esc, matchesAny} from "../utils/utils.ts";
+import {esc} from "../utils/utils.ts";
 
 export const makeExactFileNames = ["Makefile", "makefile", "GNUmakefile"];
 
@@ -95,18 +95,12 @@ export function moduleRootFromMajor(installPath: string): string | null {
   return match ? installPath.slice(0, match.index + match[0].length) : null;
 }
 
-function prefixCandidates(installPath: string): Array<string> {
-  const parts = installPath.split("/");
-  const candidates: Array<string> = [];
-  for (let count = parts.length; count >= 2; count--) candidates.push(parts.slice(0, count).join("/"));
-  return candidates;
-}
-
 export async function resolveGoModuleRoot(installPath: string, ctx: ModeContext): Promise<string | null> {
   const heuristic = moduleRootFromMajor(installPath);
   if (heuristic) return heuristic;
-  const candidates = prefixCandidates(installPath);
-  const resolved = await Promise.all(candidates.map(async candidate => {
+  const parts = installPath.split("/");
+  const resolved = await Promise.all(Array.from({length: parts.length - 1}, async (_, idx) => {
+    const candidate = parts.slice(0, parts.length - idx).join("/");
     try {
       const res = await ctx.doFetch(`${ctx.goProxyUrl}/${encodeGoModulePath(candidate)}/@latest`, {signal: AbortSignal.timeout(ctx.goProbeTimeout)});
       return res.ok ? candidate : null;
@@ -143,11 +137,7 @@ export async function fetchMakeInfo(installPath: string, version: string, goCwd:
 
   // Route through the same selection as the go mode so downgrades, pseudo-versions,
   // prereleases, pins and cooldowns are handled identically.
-  const newVersion = findNewVersion(data, {
-    mode: "go", range: stripv(version), semvers: opts.semvers,
-    useGreatest: opts.useGreatest, usePre: opts.usePre, useRel: opts.useRel,
-    pinnedRange: opts.pinnedRange, cooldownDays: opts.cooldownDays, now: opts.now,
-  }, {allowDowngrade: opts.allowDowngrade, matchesAny, isGoPseudoVersion});
+  const newVersion = findNewVersion(data, {...opts, mode: "go", range: stripv(version)});
   if (!newVersion) return null;
 
   const newModulePath = data.newPath ?? goModulePathForVersion(modulePath, newVersion);

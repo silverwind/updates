@@ -7,14 +7,12 @@ import {packageVersion, fetchTimeout, maxSockets} from "./modes/shared.ts";
 import {highlightDiff, textTable} from "./utils/utils.ts";
 import {shortenGoModule} from "./modes/go.ts";
 import {prewarmOrigins} from "./utils/prewarm.ts";
-import type {Output, UpdatesOptions} from "./api.ts";
+import type {Output} from "./api.ts";
 
 const {args, positionals} = parseCliArgs();
 
-const {startDir} = resolveFileArgs(args, positionals);
-
 if (!args.help && !args.version) {
-  for (const url of prewarmOrigins(startDir, args)) {
+  for (const url of prewarmOrigins(resolveFileArgs(args, positionals).startDir, args)) {
     (async () => { try { await fetch(url, {method: "HEAD"}); } catch {} })();
   }
 }
@@ -24,14 +22,6 @@ let green: (text: string | number) => string = String;
 // Effective json setting (CLI flag or config file), so error output matches the
 // success/message paths even when json comes from the config file rather than -j.
 let jsonOutput = false;
-
-function resolveColor(fileConfig: UpdatesOptions): boolean {
-  if (args["no-color"] === true) return false;
-  if (args.color === true) return true;
-  if (fileConfig.noColor === true) return false;
-  if (fileConfig.color === true) return true;
-  return stdout.isTTY;
-}
 
 async function end(err?: Error | void, exitCode?: number): Promise<void> {
   if (err) {
@@ -43,7 +33,7 @@ async function end(err?: Error | void, exitCode?: number): Promise<void> {
     }
   }
 
-  if (platform === "win32" && Number(versions?.node?.split(".")[0]) >= 23) {
+  if (platform === "win32" && Number(versions.node.split(".")[0]) >= 23) {
     await new Promise(resolve => setTimeout(resolve, 50));
   }
 
@@ -112,7 +102,7 @@ async function main(): Promise<void> {
 
   const config = await resolveConfig(args, positionals);
 
-  const useColor = resolveColor(config);
+  const useColor = !config.noColor && (config.color || stdout.isTTY);
   if (useColor) {
     red = (text: string | number) => styleText("red", String(text));
     green = (text: string | number) => styleText("green", String(text));

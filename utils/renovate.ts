@@ -111,17 +111,6 @@ function isGlob(name: string): boolean {
   return /[*?[\]{}!()|+]/.test(name);
 }
 
-// Renovate matchers negate with a leading `!`, which inverts what the rule applies to.
-function splitNegated(names: Array<string>): {positive: Array<string>, negated: Array<string>} {
-  const positive: Array<string> = [];
-  const negated: Array<string> = [];
-  for (const name of names) {
-    if (name.startsWith("!") && name.length > 1) negated.push(name.substring(1));
-    else positive.push(name);
-  }
-  return {positive, negated};
-}
-
 export type RenovateImportOptions = {
   /** Import minimumReleaseAge as cooldown. Off by default. */
   cooldown?: boolean;
@@ -139,17 +128,16 @@ function normalize(raw: RenovateConfig, opts: RenovateImportOptions): Partial<Co
   const exclude: Array<string | RegExp> = [];
   const pin: Record<string, string> = {};
 
-  if (Array.isArray(raw.ignoreDeps)) {
-    for (const dep of raw.ignoreDeps) {
-      if (typeof dep === "string" && dep) exclude.push(dep);
-    }
-  }
+  if (Array.isArray(raw.ignoreDeps)) exclude.push(...raw.ignoreDeps.filter(dep => typeof dep === "string" && Boolean(dep)));
 
   if (Array.isArray(raw.packageRules)) {
     for (const rule of raw.packageRules) {
       if (!rule || typeof rule !== "object" || !isSimpleRule(rule)) continue;
       const names = rule.matchPackageNames!.filter((n): n is string => typeof n === "string" && Boolean(n));
-      const {positive, negated} = splitNegated(names);
+      // Renovate matchers negate with a leading `!`, which inverts what the rule applies to.
+      const groups = Object.groupBy(names, name => name.startsWith("!") && name.length > 1 ? "negated" : "positive");
+      const positive = groups.positive ?? [];
+      const negated = groups.negated?.map(name => name.substring(1)) ?? [];
       if (rule.enabled === false) {
         if (positive.length) {
           // negations only narrow what the rule disables, so the positives carry it

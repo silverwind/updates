@@ -2,13 +2,15 @@
 // TODO: Use undici once https://github.com/nodejs/node/issues/43187 is resolved
 import dns from "node:dns";
 
-// Honor a requested address family when the cached result has a match; fall back to the first address otherwise.
-function selectAddr(addresses: {address: string, family: number}[], options: any) {
-  if (options.family === 4 || options.family === 6) {
-    const match = addresses.find(a => a.family === options.family);
-    if (match) return match;
+// Hand a lookup result to one waiter, honoring a requested address family when the
+// result has a match and falling back to the first address otherwise.
+function deliver(callback: (...args: any[]) => void, options: any, addresses: {address: string, family: number}[]) {
+  if (options.all) {
+    callback(null, addresses);
+  } else {
+    const addr = addresses.find(({family}) => family === options.family) ?? addresses[0];
+    callback(null, addr.address, addr.family);
   }
-  return addresses[0];
 }
 
 export function enableDnsCache() {
@@ -28,12 +30,7 @@ export function enableDnsCache() {
 
     const cached = dnsCache.get(hostname);
     if (cached) {
-      if (options.all) {
-        callback(null, cached);
-      } else {
-        const addr = selectAddr(cached, options);
-        callback(null, addr.address, addr.family);
-      }
+      deliver(callback, options, cached);
       return;
     }
 
@@ -54,11 +51,8 @@ export function enableDnsCache() {
       for (const {options: opts, callback: cb} of waiters) {
         if (lookupErr) {
           cb(lookupErr);
-        } else if (opts.all) {
-          cb(null, addresses);
         } else {
-          const addr = selectAddr(addresses, opts);
-          cb(null, addr.address, addr.family);
+          deliver(cb, opts, addresses);
         }
       }
     });

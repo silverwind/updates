@@ -57,9 +57,9 @@ export function parseToml(input: string): TomlObject {
     const finalKey = keys[keys.length - 1];
     const mlDelim = multilineStringDelim(rawVal);
 
-    // Multi-line array: gather lines until the outer array's closing "]" (depth-aware), then
+    // Multi-line array or inline table: gather lines until the outer "]"/"}" (depth-aware), then
     // parse the full text with parseValue so nested arrays and inline tables stay intact.
-    if (rawVal.startsWith("[") && !inlineTableClosed(rawVal)) {
+    if ((rawVal.startsWith("[") || rawVal.startsWith("{")) && !inlineTableClosed(rawVal)) {
       let body = rawVal;
       let j = i + 1;
       for (; j < lines.length; j++) {
@@ -68,16 +68,6 @@ export function parseToml(input: string): TomlObject {
       }
       i = j;
       target[finalKey] = parseValue(body);
-    } else if (rawVal.startsWith("{") && !inlineTableClosed(rawVal)) {
-      // Multi-line inline table: gather lines until the table's closing brace.
-      let body = rawVal;
-      let j = i + 1;
-      for (; j < lines.length; j++) {
-        body += `\n${stripComment(lines[j])}`;
-        if (inlineTableClosed(body)) break;
-      }
-      i = j;
-      target[finalKey] = parseInlineTable(body);
     } else if (mlDelim) {
       // Multi-line basic/literal string: gather raw lines up to the closing delimiter, then
       // re-wrap and hand to parseValue so escaping/literal handling stays in one place.
@@ -101,16 +91,6 @@ export function parseToml(input: string): TomlObject {
   return root;
 }
 
-function parseArrayItems(segment: string, items: Array<TomlValue>): void {
-  const trimmed = segment.trim();
-  if (!trimmed) return;
-  for (const part of splitTopLevel(trimmed)) {
-    const clean = part.trim();
-    if (!clean) continue;
-    items.push(parseValue(clean));
-  }
-}
-
 // Returns the opening delimiter if raw starts a multi-line string that does not close on the same line, else "".
 function multilineStringDelim(raw: string): string {
   const delim = raw.slice(0, 3);
@@ -122,7 +102,10 @@ function parseValue(raw: string): TomlValue {
   if (raw.startsWith("[")) {
     const items: Array<TomlValue> = [];
     const closeIdx = lastIndexOfUnquoted(raw, "]");
-    parseArrayItems(raw.slice(1, closeIdx < 0 ? raw.length : closeIdx), items);
+    for (const part of splitTopLevel(raw.slice(1, closeIdx < 0 ? raw.length : closeIdx))) {
+      const clean = part.trim();
+      if (clean) items.push(parseValue(clean));
+    }
     return items;
   }
   if (raw.startsWith("{")) {

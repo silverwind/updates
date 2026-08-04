@@ -3,20 +3,11 @@ import {join, dirname} from "node:path";
 import {readFileSync, globSync} from "node:fs";
 import {
   type Deps, type ModeContext, type PackageInfo, fieldSep, stripv, getSubDir, normalizeUrl, fetchWithRetry, defaultApiUrls,
+  getExecFile, isGoPseudoVersion,
 } from "./shared.ts";
 import {esc} from "../utils/utils.ts";
 
-let execFilePromise: ReturnType<typeof loadExecFile> | undefined;
-async function loadExecFile() {
-  const [{execFile}, {promisify}] = await Promise.all([
-    import("node:child_process"),
-    import("node:util"),
-  ]);
-  return promisify(execFile);
-}
-function getExecFile() {
-  return execFilePromise ??= loadExecFile();
-}
+export {isGoPseudoVersion};
 
 export function resolveGoProxy(): string {
   const proxyEnv = env.GOPROXY || `${defaultApiUrls.goproxy},direct`;
@@ -126,11 +117,6 @@ function parseReplaceDirective(trimmed: string, inBlock: boolean): ReplaceMatch 
 
 function shouldSkipMajorProbe(name: string, type: string, currentVersion: string): boolean {
   return type === "indirect" || name.startsWith("golang.org/x/") || isGoPseudoVersion(currentVersion);
-}
-
-// TODO: maybe include pseudo-versions with --prerelease
-export function isGoPseudoVersion(version: string): boolean {
-  return /\d{14}-[0-9a-f]{12}$/.test(version);
 }
 
 type ProbeResult = {Version: string, Time: string, path: string};

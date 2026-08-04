@@ -1,5 +1,5 @@
 import {coerce, diff, gt, satisfies} from "../utils/semver.ts";
-import {type Deps, type ModeContext, type PackageInfo, fieldSep, fetchWithEtag, isSameVersionScheme, passesCooldown, stripv, formatVersionPrecision, maxTagPages} from "./shared.ts";
+import {type Deps, type ModeContext, type PackageInfo, dedupe, fieldSep, fetchWithEtag, isSameVersionScheme, passesCooldown, stripv, formatVersionPrecision, maxTagPages} from "./shared.ts";
 import {esc} from "../utils/utils.ts";
 
 export type DockerImageRef = {
@@ -96,10 +96,7 @@ const hubTagsByCtx = new WeakMap<ModeContext, Map<string, Promise<Record<string,
 export function fetchDockerHubTags(namespace: string, repo: string, ctx: ModeContext): Promise<Record<string, string>> {
   let byRepo = hubTagsByCtx.get(ctx);
   if (!byRepo) hubTagsByCtx.set(ctx, byRepo = new Map());
-  const key = `${namespace}/${repo}`;
-  let promise = byRepo.get(key);
-  if (!promise) byRepo.set(key, promise = fetchDockerHubTagsUncached(namespace, repo, ctx));
-  return promise;
+  return dedupe(byRepo, `${namespace}/${repo}`, () => fetchDockerHubTagsUncached(namespace, repo, ctx));
 }
 
 async function fetchDockerHubTagsUncached(namespace: string, repo: string, ctx: ModeContext): Promise<Record<string, string>> {
@@ -119,25 +116,18 @@ async function fetchDockerHubTagsUncached(namespace: string, repo: string, ctx: 
   const fetchPage = async (page: number): Promise<any | null> => {
     try {
       const result = await fetchWithEtag(pageUrl(page), ctx, pageOpts, reduceTagsPage);
-      if (!("body" in result)) return null;
-      return JSON.parse(result.body);
+      return "body" in result ? JSON.parse(result.body) : null;
     } catch { return null; }
   };
 
   const firstPage = await fetchPage(1);
   if (!firstPage) return tags;
-  for (const result of firstPage.results || []) {
-    tags[result.name] = result.tag_last_pushed || result.last_updated || "";
-  }
   const totalPages = Math.min(Math.ceil((firstPage.count || 0) / 100), maxTagPages);
-  if (totalPages < 2) return tags;
-
-  const rest = await Promise.all(
+  const rest = totalPages < 2 ? [] : await Promise.all(
     Array.from({length: totalPages - 1}, (_, idx) => fetchPage(idx + 2)),
   );
-  for (const page of rest) {
-    if (!page) continue;
-    for (const result of page.results || []) {
+  for (const page of [firstPage, ...rest]) {
+    for (const result of page?.results || []) {
       tags[result.name] = result.tag_last_pushed || result.last_updated || "";
     }
   }
@@ -284,8 +274,7 @@ export function isDockerFileName(filename: string): boolean {
 }
 
 export function getExtractionRegex(filename: string): RegExp {
-  if (isDockerfile(filename)) return dockerfileFromRe;
-  return composeImageRe;
+  return isDockerfile(filename) ? dockerfileFromRe : composeImageRe;
 }
 
 export function getDockerInfoUrl(ref: DockerImageRef): string {
