@@ -161,7 +161,7 @@ The `updates()` function accepts all [config options](#config-options).
 
 |Variable|Description|
 |:-|:-|
-|`UPDATES_FORGE_TOKENS`|Comma-separated list of `host:token` pairs for authenticating against forge APIs (e.g. `github.com:ghp_xxx,gitea.example.com:tok_xxx`)|
+|`UPDATES_FORGE_TOKENS`|Comma-separated list of `host:token` pairs for authenticating against forge APIs (e.g. `github.com:ghp_xxx,localhost:3500:tok_xxx`). The host must match the URL exactly, port included|
 |`UPDATES_GITHUB_API_TOKEN`|GitHub API token for authenticating forge API requests|
 |`GITHUB_API_TOKEN`|Fallback GitHub API token|
 |`GH_TOKEN`|Fallback GitHub API token|
@@ -171,6 +171,6 @@ The `updates()` function accepts all [config options](#config-options).
 |`GONOPROXY`|Comma-separated list of Go module patterns to fetch directly, bypassing the proxy|
 |`GOPRIVATE`|Fallback for `GONOPROXY` when not set|
 
-Token resolution order for forge APIs: `UPDATES_FORGE_TOKENS` (matched by hostname) > `UPDATES_GITHUB_API_TOKEN` > `GITHUB_API_TOKEN` > `GH_TOKEN` > `GITHUB_TOKEN` > `HOMEBREW_GITHUB_API_TOKEN`. The GitHub token fallback is only sent to GitHub itself; any other forge host (e.g. one referenced in a workflow `uses:`) is authenticated only with a matching `UPDATES_FORGE_TOKENS` entry, and otherwise receives no credentials.
+Token resolution order for forge APIs: `UPDATES_FORGE_TOKENS` (matched by host) > `UPDATES_GITHUB_API_TOKEN` > `GITHUB_API_TOKEN` > `GH_TOKEN` > `GITHUB_TOKEN` > `HOMEBREW_GITHUB_API_TOKEN`. The GitHub token fallback is only sent to GitHub itself; any other forge host (e.g. one referenced in a workflow `uses:`) is authenticated only with a matching `UPDATES_FORGE_TOKENS` entry, and otherwise receives no credentials.
 
 © [silverwind](https://github.com/silverwind), distributed under BSD licence

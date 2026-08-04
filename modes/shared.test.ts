@@ -572,12 +572,29 @@ test("resolvePackageJsonUrl shorthand u/r", () => {
 });
 
 test("getForgeTokens", async () => {
-  // empty hostname (unparseable url) -> no token
+  // empty host (unparseable url) -> no token
   expect(await getForgeTokens("", "https://api.github.com")).toEqual([]);
 
   // foreign forge host without a configured token -> no github fallback
   // (github-host delegation is covered with teeth by the fetchForge test below)
   expect(await getForgeTokens("gitea.example.com", "https://api.github.com")).toEqual([]);
+
+  const forHost = (host: string) => getForgeTokens(host, "https://api.github.com");
+  const saved = process.env.UPDATES_FORGE_TOKENS;
+  process.env.UPDATES_FORGE_TOKENS = "localhost:3500:ported,git.example.com:bare";
+  try {
+    // a port-qualified entry must not be split at the first colon
+    expect(await forHost("localhost:3500")).toEqual(["ported"]);
+    expect(await forHost("git.example.com")).toEqual(["bare"]);
+    // another port on a configured host is a different endpoint, and must not inherit its token
+    expect(await forHost("localhost:9999")).toEqual([]);
+    expect(await forHost("git.example.com:8080")).toEqual([]);
+    // nor may the bare host claim a ported entry, which would hand back `3500:ported`
+    expect(await forHost("localhost")).toEqual([]);
+  } finally {
+    if (saved === undefined) delete process.env.UPDATES_FORGE_TOKENS;
+    else process.env.UPDATES_FORGE_TOKENS = saved;
+  }
 });
 
 test("fetchForge only sends github credentials to github hosts", async () => {

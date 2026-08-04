@@ -310,10 +310,9 @@ const defaultPresetTimeout = 10000;
 // token resolution (UPDATES_FORGE_TOKENS per host, plus GitHub env/`gh` tokens),
 // imported lazily so config loads without presets pull in nothing.
 async function presetHeaders(url: string, etag?: string): Promise<Record<string, string>> {
-  let hostname = "";
-  try { hostname = new URL(url).hostname; } catch {}
-  const {getForgeTokens, getFetchOpts, githubApiUrl} = await import("../modes/shared.ts");
-  const [token] = hostname ? await getForgeTokens(hostname, githubApiUrl) : [];
+  const {getForgeTokens, getFetchOpts, githubApiUrl, urlHost} = await import("../modes/shared.ts");
+  const host = urlHost(url);
+  const [token] = host ? await getForgeTokens(host, githubApiUrl) : [];
   const headers = {...getFetchOpts("Bearer", token).headers} as Record<string, string>;
   if (etag) headers["if-none-match"] = etag;
   return headers;

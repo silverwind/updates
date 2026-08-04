@@ -1,7 +1,7 @@
 import {env} from "node:process";
 import {parse, coerce, compareParsed, diff, diffParsed, gt, gte, lt, satisfies, valid} from "../utils/semver.ts";
 import {getCache, setCache} from "../utils/fetchCache.ts";
-import {matchesAny} from "../utils/utils.ts";
+import {commaSeparatedToArray, matchesAny} from "../utils/utils.ts";
 import pkg from "../package.json" with {type: "json"};
 
 export type {Config} from "../config.ts";
@@ -513,14 +513,24 @@ export function findNewVersion(data: any, {mode, range, useGreatest, useRel, use
   }
 }
 
-const forgeTokensByHost = new Map<string, string>();
-if (env.UPDATES_FORGE_TOKENS) {
-  for (const entry of env.UPDATES_FORGE_TOKENS.split(",")) {
-    const sep = entry.indexOf(":");
-    if (sep > 0) {
-      forgeTokensByHost.set(entry.substring(0, sep), entry.substring(sep + 1));
-    }
+// A forge host includes its port: two instances on one hostname are different endpoints.
+export function urlHost(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return "";
   }
+}
+
+// Entries are `host:token` and the host may carry a port, so the last colon separates the two.
+// Splitting at the first one read `localhost:3500:tok` as host `localhost` with token
+// `3500:tok`, so a token may not itself contain a colon.
+function pairToken(host: string): string | null {
+  for (const entry of commaSeparatedToArray(env.UPDATES_FORGE_TOKENS ?? "")) {
+    const sep = entry.lastIndexOf(":");
+    if (sep > 0 && entry.slice(0, sep) === host) return entry.slice(sep + 1);
+  }
+  return null;
 }
 
 let execFilePromise: ReturnType<typeof loadExecFile> | undefined;
@@ -570,25 +580,23 @@ const workingTokenCache = new Map<string, string>();
 // GitHub itself or to the configured default forge endpoint. A host taken from
 // a workflow `uses:` ref must never receive them — it gets a token only when
 // one is explicitly configured for it via UPDATES_FORGE_TOKENS.
-export async function getForgeTokens(hostname: string, forgeApiUrl: string): Promise<string[]> {
-  if (!hostname) return [];
+export async function getForgeTokens(host: string, forgeApiUrl: string): Promise<string[]> {
+  if (!host) return [];
 
-  const hostToken = forgeTokensByHost.get(hostname);
+  const hostToken = pairToken(host);
   if (hostToken) return [hostToken];
 
-  let forgeApiHost = "";
-  try { forgeApiHost = new URL(forgeApiUrl).hostname; } catch {}
-  const isGithubHost = hostname === "api.github.com" || hostname === "github.com" || hostname === forgeApiHost;
+  const forgeApiHost = urlHost(forgeApiUrl);
+  const isGithubHost = host === "api.github.com" || host === "github.com" || host === forgeApiHost;
   return isGithubHost ? getGithubTokens() : [];
 }
 
 export async function fetchForge(url: string, ctx: ModeContext, extraHeaders?: Record<string, string>): Promise<Response> {
-  let hostname: string;
-  try { hostname = new URL(url).hostname; } catch { hostname = ""; }
+  const host = urlHost(url);
 
   // Resolve tokens before starting the AbortSignal timer so the lazy
   // `gh auth token` probe does not consume the fetch's timeout budget.
-  const tokens = await getForgeTokens(hostname, ctx.forgeApiUrl);
+  const tokens = await getForgeTokens(host, ctx.forgeApiUrl);
 
   const optsFor = (token?: string): RequestInit => {
     const opts = getFetchOpts("Bearer", token);
@@ -598,13 +606,13 @@ export async function fetchForge(url: string, ctx: ModeContext, extraHeaders?: R
 
   if (!tokens.length) return fetchWithRetry(ctx, url, optsFor());
 
-  const cached = hostname ? workingTokenCache.get(hostname) : undefined;
+  const cached = workingTokenCache.get(host);
   if (cached) return fetchWithRetry(ctx, url, optsFor(cached));
 
   for (const token of tokens) {
     const response = await fetchWithRetry(ctx, url, optsFor(token));
     if (response.status !== 401 && response.status !== 403) {
-      if (hostname) workingTokenCache.set(hostname, token);
+      workingTokenCache.set(host, token);
       return response;
     }
   }
