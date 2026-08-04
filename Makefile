@@ -1,5 +1,4 @@
-SOURCE_FILES := index.ts api.ts cli.ts config.ts $(wildcard modes/*.ts utils/*.ts)
-DIST_FILES := dist/index.js dist/api.js dist/api.d.ts dist/shared.js
+SOURCE_FILES := index.ts api.ts cli.ts config.ts $(filter-out %.test.ts,$(wildcard modes/*.ts utils/*.ts))
 
 node_modules: pnpm-lock.yaml
 	pnpm install
@@ -35,11 +34,10 @@ bench: node_modules build
 	node bench/bench.ts
 
 .PHONY: build
-build: node_modules $(DIST_FILES)
+build: node_modules dist/index.js
 
-$(DIST_FILES): $(SOURCE_FILES) pnpm-lock.yaml tsdown.config.ts
+dist/index.js: $(SOURCE_FILES) pnpm-lock.yaml tsdown.config.ts
 	pnpm exec tsdown
-	chmod +x $(DIST_FILES)
 
 .PHONY: update
 update: update-js update-actions
