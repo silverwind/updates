@@ -14,7 +14,11 @@ const noFetch = fetcher(() => null);
 
 const emptyPresets = fetcher(() => "{}");
 
-// Callers must be test.sequential, as a concurrent neighbor would see the swapped console.error.
+// vitest runs a file's tests concurrently, so the console swap below needs test.sequential. Bun
+// runs them in order and has no such property.
+const sequential = "sequential" in test ? test.sequential : test;
+
+// Callers must use `sequential`, as a concurrent neighbor would see the swapped console.error.
 async function withWarnings(fn: () => Promise<void>): Promise<Array<string>> {
   const original = console.error;
   const warnings: Array<string> = [];
@@ -87,7 +91,7 @@ test.each([["3 days", 3], ["1 week", 7], ["12 hours", 0.5]])("minimumReleaseAge 
   expect(await loadRenovateConfig(dir, {cooldown: true})).toEqual({cooldown});
 });
 
-test.sequential.each([
+sequential.each([
   ["packageRules with non-name matchers are skipped", {packageRules: [
     {matchPackageNames: ["foo"], matchUpdateTypes: ["major"], enabled: false},
     {matchManagers: ["npm"], enabled: false},
@@ -137,7 +141,7 @@ test.sequential.each([
   expect(warnings).toEqual(expectedWarnings);
 });
 
-test.sequential("a config shared by several directories is normalized once", async () => {
+sequential("a config shared by several directories is normalized once", async () => {
   const dir = makeDir();
   writeFileSync(join(dir, "renovate.json"), JSON.stringify({
     packageRules: [{matchManagers: ["npm"], enabled: false}],
@@ -314,7 +318,7 @@ async function withFetch(impl: typeof fetch, fn: () => Promise<void>): Promise<v
   }
 }
 
-test.sequential.each([
+sequential.each([
   ["a failed body read", "x", () => Promise.resolve({
     ok: true, status: 200, headers: new Headers(), text: () => Promise.reject(new Error("reset")),
   }), "https://example.com/x: reset"],
@@ -327,7 +331,7 @@ test.sequential.each([
   });
 });
 
-test.sequential("makePresetFetcher returns null on 404, so another candidate file can be tried", async () => {
+sequential("makePresetFetcher returns null on 404, so another candidate file can be tried", async () => {
   const fetchText = makePresetFetcher({noCache: true});
   await withFetch(() => Promise.resolve(new Response(null, {status: 404})), async () => {
     expect(await fetchText("https://example.com/z")).toBe(null);

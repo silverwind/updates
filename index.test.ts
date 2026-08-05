@@ -1337,14 +1337,10 @@ test("auto-discovery finds a Makefile once on a case-insensitive filesystem", as
   mkdirSync(makeDir, {recursive: true});
   await writeFile(join(makeDir, "Makefile"), "UUID_PACKAGE ?= github.com/google/uuid@v1.4.0\n");
 
-  const prevCwd = process.cwd();
-  process.chdir(makeDir);
-  try {
-    const result = await updates({modes: ["make"], goproxy: goProxyUrl, color: false, noCache: true});
-    expect(Object.keys(result.results.make)).toEqual(["Makefile"]);
-  } finally {
-    process.chdir(prevCwd);
-  }
+  // Discovery reads the cwd, so this runs out of process: a chdir here would be seen by every
+  // concurrent sibling, which resolves paths and config against the cwd too.
+  const {stdout} = await execFileAsync(execPath, [script, "-j", "-x", "-M", "make", ...apiArgs()], {cwd: makeDir});
+  expect(Object.keys(JSON.parse(stdout).results.make)).toEqual(["Makefile"]);
 });
 
 test("make mode bumps docker image tags and re-resolves digests in Makefiles", async ({expect = globalExpect}: any = {}) => {

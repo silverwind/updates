@@ -383,7 +383,12 @@ test.each([
   expect(findNewVersion(data, {...goOpts, ...opts})).toBe(expected);
 });
 
-test("getForgeTokens", async () => {
+// UPDATES_FORGE_TOKENS is one process-wide slot, and the two tests below hold a value of their
+// own across awaits, so neither may run while the other does. vitest runs a file's tests
+// concurrently, bun runs them in order and has no such property.
+const sequential = "sequential" in test ? test.sequential : test;
+
+sequential("getForgeTokens", async () => {
   // empty host (unparseable url) -> no token
   expect(await getForgeTokens("", "https://api.github.com")).toEqual([]);
 
@@ -516,7 +521,7 @@ test("every request shares the run's one socket budget", async () => {
   expect(peak).toBe(3);
 });
 
-test("fetchForge classifies rate limits and server faults, fetchActionTags lets them through", async () => {
+sequential("fetchForge classifies rate limits and server faults, fetchActionTags lets them through", async () => {
   const reset = Math.floor(Date.parse("2026-05-01T00:00:00Z") / 1000);
   // keyed by hostname label so each case gets a host of its own, as workingTokenCache is module-level
   const responses: Record<string, Partial<Response>> = {
