@@ -66,7 +66,11 @@ export type Output = ModeOutput & {errors?: Array<DepError>};
 
 export type {Config, Override, Dep, Deps, DepsByMode};
 
-const defaultModes = new Set(["npm", "pypi", "go", "cargo", "actions", "docker", "make"]);
+// Also the order rows print in, as file discovery finds a directory's manifests in readdir order and
+// a walk up in modeByFileName order, which would otherwise print a project's modes either way round.
+// The three that follow match a filename by pattern rather than by name, so the map does not hold them.
+const modeOrder = [...new Set(Object.values(modeByFileName)), "actions", "docker", "make"];
+const defaultModes = new Set(modeOrder);
 
 // One read-only Set per precision, shared by every dependency instead of built
 // per name. Sharing the identity also lets findVersion's prerelease-variant
@@ -239,13 +243,14 @@ const rowId = (mode: string, key: string) => `${mode}${fieldSep}${key.split(fiel
 function buildOutput(deps: DepsByMode): Output {
   const output: Output = {results: {}};
   const rowsPerName = new Map<string, number>();
-  for (const [mode, modeDeps] of Object.entries(deps)) {
+  const modes = Object.entries(deps).sort(([a], [b]) => modeOrder.indexOf(a) - modeOrder.indexOf(b));
+  for (const [mode, modeDeps] of modes) {
     for (const key of Object.keys(modeDeps)) {
       const id = rowId(mode, key);
       rowsPerName.set(id, (rowsPerName.get(id) ?? 0) + 1);
     }
   }
-  for (const [mode, modeDeps] of Object.entries(deps)) {
+  for (const [mode, modeDeps] of modes) {
     for (const [key, props] of Object.entries(modeDeps)) {
       if (typeof props.oldPrint === "string") props.old = props.oldPrint;
       if (typeof props.newPrint === "string") props.new = props.newPrint;
@@ -267,6 +272,12 @@ function buildOutput(deps: DepsByMode): Output {
         `${name}${mode === "actions" ? "@" : ":"}${ref}` : name;
       const r = output.results[mode] ??= {};
       (r[type] ??= {})[label] = props;
+    }
+  }
+  // Names sort within their type, as a reader scans for a name, not for the section it was authored in.
+  for (const modeResults of Object.values(output.results)) {
+    for (const [type, typeDeps] of Object.entries(modeResults)) {
+      modeResults[type] = Object.fromEntries(Object.entries(typeDeps).sort(([a], [b]) => a.localeCompare(b)));
     }
   }
   return output;

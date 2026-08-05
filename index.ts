@@ -164,23 +164,23 @@ function formatOutput(output: Output): string {
   const seen = new Set<string>();
 
   for (const mode of modes) {
-    for (const typeDeps of Object.values(output.results[mode])) {
-      for (const [name, data] of Object.entries(typeDeps)) {
-        // Key on the visible columns (incl. versions) so the same dep at
-        // different versions across dep-sections/workspace members keeps a row
-        // each; only truly identical rows collapse.
-        const id = `${mode}|${name}|${data.old}|${data.new}`;
-        if (seen.has(id)) continue;
-        seen.add(id);
-        arr.push([
-          mode === "go" ? shortenGoModule(name) : name,
-          ...(hasMultipleModes ? [mode] : []),
-          highlightDiff(data.old, data.new, red),
-          highlightDiff(data.new, data.old, green),
-          data.age || "",
-          data.info || "",
-        ]);
-      }
+    // Rows sort across the whole mode, where the JSON keeps its dep-type sections to sort within.
+    const rows = Object.values(output.results[mode]).flatMap(typeDeps => Object.entries(typeDeps));
+    for (const [name, data] of rows.sort(([a], [b]) => a.localeCompare(b))) {
+      // Key on the visible columns (incl. versions) so the same dep at
+      // different versions across dep-sections/workspace members keeps a row
+      // each; only truly identical rows collapse.
+      const id = `${mode}|${name}|${data.old}|${data.new}`;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      arr.push([
+        mode === "go" ? shortenGoModule(name) : name,
+        ...(hasMultipleModes ? [mode] : []),
+        highlightDiff(data.old, data.new, red),
+        highlightDiff(data.new, data.old, green),
+        data.age || "",
+        data.info || "",
+      ]);
     }
   }
 
