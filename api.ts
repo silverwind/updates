@@ -124,7 +124,7 @@ async function prefetchFiles(files: Iterable<string>, concurrency: number): Prom
 function setDepAge(dep: Dep, date: string): void {
   if (date) {
     dep.date = date;
-    dep.age = timerel(date, {noAffix: true});
+    dep.age = timerel(date, {noAffix: true, shortUnits: true});
   }
 }
 
