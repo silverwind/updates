@@ -45,14 +45,14 @@
     "@typescript/native-preview": "7.0.0-dev.20260707.2",
     "@vitest/coverage-v8": "4.1.10",
     "eslint": "10.8.0",
-    "eslint-config-silverwind": "143.1.0",
-    "timerel": "5.8.8",
+    "eslint-config-silverwind": "144.0.0",
+    "timerel": "5.9.0",
     "tsdown": "0.22.14",
     "tsdown-config-silverwind": "4.0.3",
     "typescript": "6.0.3",
     "typescript-config-silverwind": "20.0.3",
     "updates-config-silverwind": "4.0.5",
-    "versions": "15.3.0",
+    "versions": "15.3.1",
     "vitest": "4.1.10",
     "vitest-config-silverwind": "11.5.0"
   }
