@@ -312,10 +312,14 @@ export function pushTo<K, V>(map: Map<K, Array<V>>, key: K, value: V): void {
 
 type MapLike<K, V> = {has: (key: K) => boolean, get: (key: K) => V | undefined, set: (key: K, value: V) => unknown};
 
-// Read through a memo, filling it on first use. `has`, not a truthy get, so a cached null counts.
+// Read through a memo, filling it on first use. `has` settles only the undefined case, so a
+// cached null still counts.
 export function getOrSet<K, V>(map: MapLike<K, V>, key: K, make: () => V): V {
-  if (!map.has(key)) map.set(key, make());
-  return map.get(key)!;
+  const cached = map.get(key);
+  if (cached !== undefined || map.has(key)) return cached!;
+  const value = make();
+  map.set(key, value);
+  return value;
 }
 
 export function memoizeAsync<K, V>(fn: (k: K) => Promise<V>): (k: K) => Promise<V> {

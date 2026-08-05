@@ -275,9 +275,10 @@ function buildOutput(deps: DepsByMode): Output {
     }
   }
   // Names sort within their type, as a reader scans for a name, not for the section it was authored in.
+  // By code unit: localeCompare would load ICU, and order by the machine's locale.
   for (const modeResults of Object.values(output.results)) {
     for (const [type, typeDeps] of Object.entries(modeResults)) {
-      modeResults[type] = Object.fromEntries(Object.entries(typeDeps).sort(([a], [b]) => a.localeCompare(b)));
+      modeResults[type] = Object.fromEntries(Object.entries(typeDeps).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0));
     }
   }
   return output;

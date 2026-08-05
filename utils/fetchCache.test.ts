@@ -12,6 +12,10 @@ test("getCache returns null for unknown URL", async () => {
   expect(await getCache("https://test.example.com/nonexistent-url-12345")).toBeNull();
 });
 
+test("getCache returns null when the key can not be derived", async () => {
+  expect(await getCache(undefined as unknown as string)).toBeNull();
+});
+
 test("setCache and getCache preserve body with newlines", async () => {
   const url = "https://test.example.com/fetchCache-newline-test";
   const body = '{"a":1}\n{"b":2}\n{"c":3}';

@@ -474,14 +474,18 @@ export const semverVersioning: Versioning<SemVer> = {
 
 // Actions are tagged with floating majors and minors (`v3`, `v3.19`) as often as with full
 // versions, and plain semver rejects both. Ported from renovate's github-actions versioning.
+const actionsParseCache = new Map<string, SemVer | null>();
+
 function parseActionsVersion(v: string): SemVer | null {
-  const stripped = v.trim().replace(/^v/i, "");
-  // `major.minor-prerelease` (`2.2-rc.1`) normalizes onto `major.minor.0-prerelease`
-  const parsed = parse(stripped) ?? parse(stripped.replace(/^(\d+\.\d+)(-.+)$/, "$1.0$2"));
-  if (parsed) return parsed;
-  // without the guard, coerce reads a foreign tag scheme like `codeql-bundle-v2.20.3` as a version
-  if (!/^\d/.test(stripped)) return null;
-  return parse(coerce(stripped)?.version ?? "");
+  return getOrSet(actionsParseCache, v, () => {
+    const stripped = v.trim().replace(/^v/i, "");
+    // `major.minor-prerelease` (`2.2-rc.1`) normalizes onto `major.minor.0-prerelease`
+    const parsed = parse(stripped) ?? parse(stripped.replace(/^(\d+\.\d+)(-.+)$/, "$1.0$2"));
+    if (parsed) return parsed;
+    // without the guard, coerce reads a foreign tag scheme like `codeql-bundle-v2.20.3` as a version
+    if (!/^\d/.test(stripped)) return null;
+    return parse(coerce(stripped)?.version ?? "");
+  });
 }
 
 export const githubActionsVersioning: Versioning<SemVer> = {

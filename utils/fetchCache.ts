@@ -1,9 +1,18 @@
 import {createHash} from "node:crypto";
-import {readFile, writeFile, mkdir, rename} from "node:fs/promises";
+import {readFile} from "node:fs";
+import {writeFile, mkdir, rename} from "node:fs/promises";
 import {join} from "node:path";
 import {env, platform, pid} from "node:process";
 import {homedir} from "node:os";
 import {getOrSet} from "./utils.ts";
+
+// The callback API, not fs/promises: a run reads one cache entry per url and a FileHandle costs
+// an extra fstat plus its finalizer registration on every one.
+function readFileUtf8(path: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    readFile(path, "utf8", (err, content) => err ? reject(err) : resolve(content));
+  });
+}
 
 const cacheDir = join(
   platform === "win32" ?
@@ -23,7 +32,7 @@ function cacheKey(url: string): string {
 
 export async function getCache(url: string): Promise<{etag: string, body: string} | null> {
   try {
-    const content = await readFile(join(cacheDir, `${cacheKey(url)}.cache`), "utf8");
+    const content = await readFileUtf8(join(cacheDir, `${cacheKey(url)}.cache`));
     const idx = content.indexOf("\n");
     if (idx === -1) return null;
     const etag = content.substring(0, idx);

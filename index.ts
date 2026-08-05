@@ -166,7 +166,7 @@ function formatOutput(output: Output): string {
   for (const mode of modes) {
     // Rows sort across the whole mode, where the JSON keeps its dep-type sections to sort within.
     const rows = Object.values(output.results[mode]).flatMap(typeDeps => Object.entries(typeDeps));
-    for (const [name, data] of rows.sort(([a], [b]) => a.localeCompare(b))) {
+    for (const [name, data] of rows.sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) {
       // Key on the visible columns (incl. versions) so the same dep at
       // different versions across dep-sections/workspace members keeps a row
       // each; only truly identical rows collapse.
