@@ -299,7 +299,7 @@ async function fetchGoVcsInfo(name: string, type: string, currentVersion: string
   return buildGoPackageInfo(name, currentVersion, probeResult, latest.Version, latest.Time);
 }
 
-const goProxyHeaders = {"accept-encoding": "gzip, deflate, br"};
+export const goProxyHeaders = {"accept-encoding": "gzip, deflate, br"};
 
 type ProxyFetch = (url: string) => Promise<Response>;
 type GoModuleFetch = (doFetch: ProxyFetch, base: string, path: string) => Promise<ProbeResult | null>;

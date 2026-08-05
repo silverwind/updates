@@ -331,6 +331,17 @@ sequential.each([
   });
 });
 
+sequential("makePresetFetcher retries a transient failure rather than failing the run", async () => {
+  const fetchText = makePresetFetcher({noCache: true});
+  let calls = 0;
+  const impl = () => ++calls === 1 ?
+    Promise.reject(Object.assign(new Error("socket"), {code: "ECONNRESET"})) :
+    Promise.resolve(new Response("{}", {status: 200}));
+  await withFetch(impl, async () => {
+    expect(await fetchText("https://example.com/r")).toBe("{}");
+  });
+});
+
 sequential("makePresetFetcher returns null on 404, so another candidate file can be tried", async () => {
   const fetchText = makePresetFetcher({noCache: true});
   await withFetch(() => Promise.resolve(new Response(null, {status: 404})), async () => {

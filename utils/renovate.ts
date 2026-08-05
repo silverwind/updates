@@ -4,6 +4,7 @@ import {parseJsonish} from "./json5.ts";
 import {validRange} from "./semver.ts";
 import {walkUp, memoizeAsync, forgeDirs, getOrSet, patternToRegex} from "./utils.ts";
 import {getCache, setCache} from "./fetchCache.ts";
+import {fetchRetries, isTransientFetchError} from "../modes/shared.ts";
 import type {Config} from "../config.ts";
 
 // Renovate also reads .gitlab, which has no workflow files and so is absent from the actions list.
@@ -440,11 +441,16 @@ export function makePresetFetcher({noCache = false, timeout = defaultPresetTimeo
     const cached = noCache ? null : await getCache(url);
     const headers = await presetHeaders(url, cached?.etag);
     let res: Response;
-    try {
-      res = await fetch(url, {headers, signal: AbortSignal.timeout(timeout)});
-    } catch (err: any) {
-      if (cached) return cached.body;
-      throw new Error(`${url}: ${err.message}`); // offline / connect failure / timeout
+    // This runs before any dependency, so an unretried blip would cost the whole run.
+    for (let attempt = 0; ; attempt++) {
+      try {
+        res = await fetch(url, {headers, signal: AbortSignal.timeout(timeout)});
+        break;
+      } catch (err: any) {
+        if (attempt < fetchRetries && isTransientFetchError(err)) continue;
+        if (cached) return cached.body;
+        throw new Error(`${url}: ${err.message}`); // offline / connect failure / timeout
+      }
     }
     if (res.status === 304 && cached) return cached.body;
     if (res.status === 404) return null; // file is absent, the caller may have another candidate

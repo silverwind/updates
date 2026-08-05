@@ -122,7 +122,7 @@ export const defaultApiUrls = {
   dockerapi: "https://hub.docker.com",
   goproxy: "https://proxy.golang.org",
 } as const;
-const fetchRetries = 2;
+export const fetchRetries = 2;
 
 export const stripv = (str: string): string => str[0] === "v" ? str.substring(1) : str;
 export const normalizeUrl = (url: string) => url.endsWith("/") ? url.slice(0, -1) : url;
@@ -143,7 +143,7 @@ const transientErrorCodes = new Set([
   "UND_ERR_SOCKET", "UND_ERR_CONNECT_TIMEOUT", "UND_ERR_HEADERS_TIMEOUT", "UND_ERR_BODY_TIMEOUT",
 ]);
 
-function isTransientFetchError(err: any): boolean {
+export function isTransientFetchError(err: any): boolean {
   if (err?.name === "TimeoutError" || err?.name === "AbortError") return true;
   // fetch wraps socket/DNS errors as a TypeError with the real error in `cause`.
   const code = err?.code ?? err?.cause?.code;

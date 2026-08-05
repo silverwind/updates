@@ -147,42 +147,41 @@ test("updateMakefile rewrites a docker image tag and digest in place", () => {
 });
 
 // resolveGoModuleRoot
-test("resolveGoModuleRoot uses the /vN heuristic without a lookup", async () => {
+const rootCtx = (doFetch: (url: string) => Promise<any>, goProxyUrl = "https://proxy") =>
+  ({goProxyUrl, fetchTimeout, doFetch}) as unknown as ModeContext;
+const rootHit = (path: string) => (url: string) => Promise.resolve({
+  ok: url.endsWith(`${path}/@latest`), status: 404, json: () => Promise.resolve({Version: "v1.1.4"}),
+} as any);
+
+test("resolveGoModuleRoot takes the /vN heuristic, else the longest prefix that resolves", async () => {
   let fetched = false;
-  const ctx = {goProxyUrl: "https://proxy", goProbeTimeout, doFetch: () => { fetched = true; return Promise.resolve({ok: true} as any); }} as unknown as ModeContext;
+  const ctx = rootCtx(url => { fetched = true; return rootHit("golang.org/x/vuln")(url); });
   expect(await resolveGoModuleRoot("github.com/golangci/golangci-lint/v2/cmd/golangci-lint", ".", ctx, [])).toBe("github.com/golangci/golangci-lint/v2");
   expect(fetched).toBe(false);
-});
-
-test("resolveGoModuleRoot probes prefixes longest-first", async () => {
-  const ctx = {
-    goProxyUrl: "https://proxy", goProbeTimeout,
-    doFetch: (url: string) => Promise.resolve({
-      ok: url.endsWith("golang.org/x/vuln/@latest"), status: 404, json: () => Promise.resolve({Version: "v1.1.4"}),
-    } as any),
-  } as unknown as ModeContext;
   expect(await resolveGoModuleRoot("golang.org/x/vuln/cmd/govulncheck", ".", ctx, [])).toBe("golang.org/x/vuln");
 });
 
 test("resolveGoModuleRoot returns null when nothing resolves and throws when a probe fails", async () => {
   // 404 is the probe's legitimate "not the module root"; a 429, a 5xx or a network failure
   // answers nothing, and dropping the tool on one reads as "up to date".
-  const ctx = (doFetch: () => Promise<any>) => ({goProxyUrl: "https://proxy", goProbeTimeout, doFetch}) as unknown as ModeContext;
-  const missCtx = ctx(() => Promise.resolve({ok: false, status: 404} as any));
-  expect(await resolveGoModuleRoot("golang.org/x/vuln/cmd/govulncheck", ".", missCtx, [])).toBeNull();
-  const rateLimitCtx = ctx(() => Promise.resolve({ok: false, status: 429, statusText: "Too Many Requests"} as any));
-  await expect(resolveGoModuleRoot("golang.org/x/vuln/cmd/govulncheck", ".", rateLimitCtx, [])).rejects.toThrow("429");
-  const errCtx = ctx(() => Promise.reject(new Error("network")));
-  await expect(resolveGoModuleRoot("golang.org/x/vuln/cmd/govulncheck", ".", errCtx, [])).rejects.toThrow("network");
+  const path = "golang.org/x/vuln/cmd/govulncheck";
+  expect(await resolveGoModuleRoot(path, ".", rootCtx(rootHit("nothing")), [])).toBeNull();
+  const rateLimited = rootCtx(() => Promise.resolve({ok: false, status: 429, statusText: "Too Many Requests"} as any));
+  await expect(resolveGoModuleRoot(path, ".", rateLimited, [])).rejects.toThrow("429");
+  await expect(resolveGoModuleRoot(path, ".", rootCtx(() => Promise.reject(new Error("network"))), [])).rejects.toThrow("network");
+  // A cold proxy path is slow, not an answer, so the retry decides the root.
+  let calls = 0;
+  const slow = rootCtx(url => ++calls === 1 ?
+    Promise.reject(Object.assign(new Error("timeout"), {transient: true})) :
+    rootHit(path)(url));
+  expect(await resolveGoModuleRoot(path, ".", slow, [])).toBe(path);
 });
 
 test("resolveGoModuleRoot never builds a proxy URL for off, direct or a GONOPROXY match", async () => {
   // A cwd that does not exist makes the `go list` spawn fail at once, keeping this offline.
   const missingCwd = join(tmpdir(), "updates-no-such-dir");
   let fetched = false;
-  const ctx = (goProxyUrl: string) => ({
-    goProxyUrl, goProbeTimeout, doFetch: () => { fetched = true; return Promise.resolve({ok: true} as any); },
-  }) as unknown as ModeContext;
+  const ctx = (goProxyUrl: string) => rootCtx(() => { fetched = true; return Promise.resolve({ok: true} as any); }, goProxyUrl);
   expect(await resolveGoModuleRoot("golang.org/x/vuln/cmd/govulncheck", missingCwd, ctx("off"), [])).toBeNull();
   expect(await resolveGoModuleRoot("golang.org/x/vuln/cmd/govulncheck", missingCwd, ctx("direct"), [])).toBeNull();
   expect(await resolveGoModuleRoot("git.corp.example/x/cmd/tool", missingCwd, ctx("https://proxy"), ["git.corp.example"])).toBeNull();

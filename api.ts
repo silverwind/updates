@@ -329,7 +329,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
     goProxyChain,
     cratesIoUrl,
     dockerApiUrl,
-    // `--sockets` is one budget for the run: this slot covers the go and make probes, which reach
+    // `--sockets` is one budget for the run: this slot covers the go major probes, which reach
     // doFetch directly rather than through fetchWithRetry.
     doFetch: (url: string, fetchOpts?: RequestInit) => (limit ??= getLimiter(ctx))(async () => {
       if (config.verbose) console.error(`${timestamp()} ${magenta(fetchOpts?.method || "GET")} ${url}`);

@@ -1,7 +1,7 @@
 import {env} from "node:process";
-import {type ModeContext, stripv, formatVersionPrecision, findNewVersion, getExecFile} from "./shared.ts";
+import {type ModeContext, stripv, formatVersionPrecision, findNewVersion, getExecFile, fetchWithRetry} from "./shared.ts";
 import {longestFirstAlternation, tryOrNull} from "../utils/utils.ts";
-import {goModulePathForVersion, fetchGoLatestOnce, fetchGoProxyInfo, getGoInfoUrl, isGoNoProxy} from "./go.ts";
+import {goModulePathForVersion, fetchGoLatestOnce, fetchGoProxyInfo, getGoInfoUrl, isGoNoProxy, goProxyHeaders} from "./go.ts";
 import {
   type DockerImageRef,
   parseDockerImageRef, fetchDockerInfo, findDockerVersion, getDockerInfoUrl, fetchDockerTagDigest,
@@ -103,11 +103,11 @@ async function probeGoModuleRoot(candidate: string, goCwd: string, ctx: ModeCont
   if (useVcs) {
     const execFile = await getExecFile();
     // `go list` exits non-zero for a path that is no module and for an unreachable host alike.
-    return await tryOrNull(execFile("go", ["list", "-m", "-json", `${candidate}@latest`], {timeout: ctx.goProbeTimeout, cwd: goCwd, env})) !== null;
+    return await tryOrNull(execFile("go", ["list", "-m", "-json", `${candidate}@latest`], {timeout: ctx.fetchTimeout, cwd: goCwd, env})) !== null;
   }
-  // fetchGoLatestOnce answers null for the protocol's 404/410 and throws for anything else, so a
-  // 429 or a 5xx surfaces against the tool rather than reading as "not the root" and dropping it.
-  const probeFetch = (url: string) => ctx.doFetch(url, {signal: AbortSignal.timeout(ctx.goProbeTimeout)});
+  // The root decides which module the tool tracks, so this is the lookup itself, sharing its request
+  // through fetchGoLatestOnce and its retries. null is a 404/410, a throw a 429 or 5xx on the tool.
+  const probeFetch = (url: string) => fetchWithRetry(ctx, url, {headers: goProxyHeaders});
   return Boolean(await fetchGoLatestOnce(ctx, probeFetch, ctx.goProxyUrl, candidate));
 }
 
@@ -116,11 +116,19 @@ export async function resolveGoModuleRoot(installPath: string, goCwd: string, ct
   if (heuristic) return heuristic;
   const useVcs = ctx.goProxyUrl === "direct" || isGoNoProxy(installPath, goNoProxy);
   if (!useVcs && ctx.goProxyUrl === "off") return null; // go looks nothing up, so neither does the probe
-  // One at a time: under the VCS branch each probe is a `go list -m` subprocess inside an outer fan.
   const parts = installPath.split("/");
-  for (let length = parts.length; length > 1; length--) {
-    const candidate = parts.slice(0, length).join("/");
-    if (await probeGoModuleRoot(candidate, goCwd, ctx, useVcs)) return candidate;
+  const candidates = Array.from({length: parts.length - 1}, (_, idx) => parts.slice(0, parts.length - idx).join("/"));
+  if (useVcs) { // one at a time: each of these probes is a `go list -m` subprocess inside an outer fan
+    for (const candidate of candidates) {
+      if (await probeGoModuleRoot(candidate, goCwd, ctx, true)) return candidate;
+    }
+    return null;
+  }
+  // All at once, and a failure holds its place: it may hide the root a shorter hit would replace.
+  const probes = await Promise.allSettled(candidates.map(candidate => probeGoModuleRoot(candidate, goCwd, ctx, false)));
+  for (const [idx, probe] of probes.entries()) {
+    if (probe.status === "rejected") throw probe.reason;
+    if (probe.value) return candidates[idx];
   }
   return null;
 }
