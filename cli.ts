@@ -47,7 +47,10 @@ export function parseCliArgs(argv?: Array<string>): {args: Record<string, Arg>, 
   });
 
   const values = result.values as Record<string, Arg>;
+  const consumedPositionals = new Set<number>();
+  let positionalsSeen = 0;
   for (const [index, token] of result.tokens.entries()) {
+    if (token.kind === "positional") positionalsSeen++;
     if (token.kind !== "option" || !token.value?.startsWith("-")) continue;
     const dashes = token.value.startsWith("--") ? 2 : 1;
     const key = getOptionKey(token.value.substring(dashes));
@@ -65,6 +68,8 @@ export function parseCliArgs(argv?: Array<string>): {args: Record<string, Arg>, 
       values[token.name] = true;
     }
     const recovered = next?.kind === "positional" && next.value ? next.value : true;
+    // a recovered positional is that option's value, so it must not stay in the file list too
+    if (typeof recovered === "string") consumedPositionals.add(positionalsSeen);
     if (options[key]?.multiple) {
       const list = (values[key] ??= []) as Array<string | boolean>;
       list.push(recovered);
@@ -74,7 +79,7 @@ export function parseCliArgs(argv?: Array<string>): {args: Record<string, Arg>, 
     }
   }
 
-  return {args: values, positionals: result.positionals};
+  return {args: values, positionals: result.positionals.filter((_val, index) => !consumedPositionals.has(index))};
 }
 
 // Overlay parsed CLI args onto the config file. Shared by the binary and tests.
@@ -91,6 +96,8 @@ export async function resolveConfig(
     timeout: cliTimeout ?? fetchTimeout,
   });
 
+  // `pin` is dropped so it reaches the run as a per-directory pin rather than an authored one:
+  // a renovate-inherited ceiling in the global pin would gain the right to downgrade (api.ts).
   const config: UpdatesOptions = {...fileConfig, pin: undefined};
   if (args.json) config.json = true;
   if (args.verbose) config.verbose = true;
@@ -103,7 +110,7 @@ export async function resolveConfig(
   if (args.color) {config.color = true; config.noColor = false;}
   if (args["no-color"]) {config.color = false; config.noColor = true;}
   if (cliTimeout !== undefined) config.timeout = cliTimeout;
-  if (typeof args.sockets === "string") config.sockets = Number(args.sockets) || undefined;
+  if (typeof args.sockets === "string") config.sockets = parsePositiveInt(args.sockets, "sockets");
   if (typeof args.registry === "string") config.registry = args.registry;
   if (typeof args.cooldown === "string") config.cooldown = Number(args.cooldown) || args.cooldown;
 

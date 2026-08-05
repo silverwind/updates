@@ -1,10 +1,11 @@
-import {type ModeContext, stripv, formatVersionPrecision, findNewVersion} from "./shared.ts";
-import {encodeGoModulePath, goModulePathForVersion, fetchGoProxyInfo, getGoInfoUrl} from "./go.ts";
+import {env} from "node:process";
+import {type ModeContext, stripv, formatVersionPrecision, findNewVersion, getExecFile} from "./shared.ts";
+import {longestFirstAlternation, tryOrNull} from "../utils/utils.ts";
+import {goModulePathForVersion, fetchGoLatestOnce, fetchGoProxyInfo, getGoInfoUrl, isGoNoProxy} from "./go.ts";
 import {
   type DockerImageRef,
   parseDockerImageRef, fetchDockerInfo, findDockerVersion, getDockerInfoUrl, fetchDockerTagDigest,
 } from "./docker.ts";
-import {esc} from "../utils/utils.ts";
 
 export const makeExactFileNames = ["Makefile", "makefile", "GNUmakefile"];
 
@@ -95,20 +96,33 @@ export function moduleRootFromMajor(installPath: string): string | null {
   return match ? installPath.slice(0, match.index + match[0].length) : null;
 }
 
-export async function resolveGoModuleRoot(installPath: string, ctx: ModeContext): Promise<string | null> {
+// Does this path resolve as a module? `direct` and a GONOPROXY match go through the VCS, as
+// fetchGoProxyInfo routes them: neither literal is a URL, so interpolating one builds a nonsense
+// address whose failure would silently drop every tool in the file.
+async function probeGoModuleRoot(candidate: string, goCwd: string, ctx: ModeContext, useVcs: boolean): Promise<boolean> {
+  if (useVcs) {
+    const execFile = await getExecFile();
+    // `go list` exits non-zero for a path that is no module and for an unreachable host alike.
+    return await tryOrNull(execFile("go", ["list", "-m", "-json", `${candidate}@latest`], {timeout: ctx.goProbeTimeout, cwd: goCwd, env})) !== null;
+  }
+  // fetchGoLatestOnce answers null for the protocol's 404/410 and throws for anything else, so a
+  // 429 or a 5xx surfaces against the tool rather than reading as "not the root" and dropping it.
+  const probeFetch = (url: string) => ctx.doFetch(url, {signal: AbortSignal.timeout(ctx.goProbeTimeout)});
+  return Boolean(await fetchGoLatestOnce(ctx, probeFetch, ctx.goProxyUrl, candidate));
+}
+
+export async function resolveGoModuleRoot(installPath: string, goCwd: string, ctx: ModeContext, goNoProxy: Array<string>): Promise<string | null> {
   const heuristic = moduleRootFromMajor(installPath);
   if (heuristic) return heuristic;
+  const useVcs = ctx.goProxyUrl === "direct" || isGoNoProxy(installPath, goNoProxy);
+  if (!useVcs && ctx.goProxyUrl === "off") return null; // go looks nothing up, so neither does the probe
+  // One at a time: under the VCS branch each probe is a `go list -m` subprocess inside an outer fan.
   const parts = installPath.split("/");
-  const resolved = await Promise.all(Array.from({length: parts.length - 1}, async (_, idx) => {
-    const candidate = parts.slice(0, parts.length - idx).join("/");
-    try {
-      const res = await ctx.doFetch(`${ctx.goProxyUrl}/${encodeGoModulePath(candidate)}/@latest`, {signal: AbortSignal.timeout(ctx.goProbeTimeout)});
-      return res.ok ? candidate : null;
-    } catch {
-      return null;
-    }
-  }));
-  return resolved.find(Boolean) ?? null; // candidates are longest-first
+  for (let length = parts.length; length > 1; length--) {
+    const candidate = parts.slice(0, length).join("/");
+    if (await probeGoModuleRoot(candidate, goCwd, ctx, useVcs)) return candidate;
+  }
+  return null;
 }
 
 export type MakeUpdate = {
@@ -125,12 +139,13 @@ export type MakeVersionOpts = {
   useRel: boolean,
   allowDowngrade: Set<RegExp> | boolean,
   pinnedRange?: string,
+  pinNoDowngrade?: boolean,
   cooldownDays?: number,
   now?: number,
 };
 
 export async function fetchMakeInfo(installPath: string, version: string, goCwd: string, ctx: ModeContext, goNoProxy: Array<string>, opts: MakeVersionOpts): Promise<MakeUpdate | null> {
-  const modulePath = await resolveGoModuleRoot(installPath, ctx);
+  const modulePath = await resolveGoModuleRoot(installPath, goCwd, ctx, goNoProxy);
   if (!modulePath) return null;
 
   const [data] = await fetchGoProxyInfo(modulePath, "tool", stripv(version), goCwd, ctx, goNoProxy);
@@ -167,16 +182,13 @@ export async function fetchMakeDockerInfo(image: MakeDockerImage, ctx: ModeConte
 
 export type MakeRewrite = {oldSpec: string, newSpec: string};
 
-// Surgically rewrites each `oldSpec` (the exact `path@version` or `image:tag[@sha256:…]`
-// token as authored) to `newSpec` in place, touching only the matched span. The
-// `^([^#\n]*?)` prefix anchors the match to a line's code portion — it cannot cross a
-// `#`, so occurrences inside full-line or inline comments are never rewritten. Untouched
-// bytes (including CRLF endings) are preserved verbatim.
+// The outer pass hands the inner one each line's code portion alone, so an occurrence inside a
+// comment is never rewritten, while the leading boundary keeps a bare `ns/img:tag` out of a
+// `docker.io/ns/img:tag` elsewhere in the file.
 export function updateMakefile(content: string, rewrites: Array<MakeRewrite>): string {
-  for (const {oldSpec, newSpec} of rewrites) {
-    // Trailing boundary allows whitespace, a directly-attached `#` comment, or EOL.
-    const re = new RegExp(`^([^#\\n]*?)${esc(oldSpec)}(?=[\\s#]|$)`, "gm");
-    content = content.replace(re, `$1${newSpec}`);
-  }
-  return content;
+  const bySpec = new Map(rewrites.map(({oldSpec, newSpec}) => [oldSpec, newSpec]));
+  if (!bySpec.size) return content;
+  const specs = longestFirstAlternation(bySpec.keys());
+  const specRe = new RegExp(`(?<![\\w./@:-])(${specs})(?=[\\s#]|$)`, "g");
+  return content.replace(/^[^#\n]*/gm, code => code.replace(specRe, spec => bySpec.get(spec)!));
 }

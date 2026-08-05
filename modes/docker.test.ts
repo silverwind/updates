@@ -18,52 +18,27 @@ import {
   fetchDockerHubTags,
   fetchDockerInfo,
   dockerImageNames,
+  filterStableTags,
 } from "./docker.ts";
 import {type ModeContext, fetchTimeout, fieldSep} from "./shared.ts";
 
 // parseDockerImageRef
-test("parseDockerImageRef simple library image", () => {
-  expect(parseDockerImageRef("node:18")).toEqual({registry: null, namespace: "library", repo: "node", tag: "18", fullImage: "node"});
-});
-
-test("parseDockerImageRef namespaced image", () => {
-  expect(parseDockerImageRef("myorg/myapp:1.0.0")).toEqual({registry: null, namespace: "myorg", repo: "myapp", tag: "1.0.0", fullImage: "myorg/myapp"});
-});
-
-test("parseDockerImageRef with registry", () => {
-  expect(parseDockerImageRef("ghcr.io/owner/repo:v1.2.3")).toEqual({registry: "ghcr.io", namespace: "owner", repo: "repo", tag: "v1.2.3", fullImage: "ghcr.io/owner/repo"});
-});
-
-test("parseDockerImageRef strips docker:// prefix", () => {
-  expect(parseDockerImageRef("docker://node:18")).toEqual({registry: null, namespace: "library", repo: "node", tag: "18", fullImage: "node"});
-});
-
-test("parseDockerImageRef treats docker.io as Docker Hub", () => {
-  expect(parseDockerImageRef("docker.io/library/node:18")).toEqual({registry: null, namespace: "library", repo: "node", tag: "18", fullImage: "docker.io/library/node"});
-  expect(parseDockerImageRef("index.docker.io/myorg/myapp:1.0.0")).toEqual({registry: null, namespace: "myorg", repo: "myapp", tag: "1.0.0", fullImage: "index.docker.io/myorg/myapp"});
-});
-
-test("parseDockerImageRef returns null for digest", () => {
-  expect(parseDockerImageRef("node@sha256:abc123")).toBeNull();
-});
-
-test("parseDockerImageRef returns null for no tag", () => {
-  expect(parseDockerImageRef("node")).toBeNull();
-});
-
-test("parseDockerImageRef returns null for non-semver tags", () => {
-  expect(parseDockerImageRef("node:latest")).toBeNull();
-  expect(parseDockerImageRef("node:bullseye")).toBeNull();
-});
-
-test("parseDockerImageRef tag with suffix", () => {
-  const result = parseDockerImageRef("node:18-alpine");
-  expect(result).toEqual({registry: null, namespace: "library", repo: "node", tag: "18-alpine", fullImage: "node"});
-});
-
-test("parseDockerImageRef full semver with suffix", () => {
-  const result = parseDockerImageRef("node:18.19.1-bookworm");
-  expect(result).toEqual({registry: null, namespace: "library", repo: "node", tag: "18.19.1-bookworm", fullImage: "node"});
+test.each([
+  ["simple library image", "node:18", {registry: null, namespace: "library", repo: "node", tag: "18", fullImage: "node"}],
+  ["namespaced image", "myorg/myapp:1.0.0", {registry: null, namespace: "myorg", repo: "myapp", tag: "1.0.0", fullImage: "myorg/myapp"}],
+  ["a registry", "ghcr.io/owner/repo:v1.2.3", {registry: "ghcr.io", namespace: "owner", repo: "repo", tag: "v1.2.3", fullImage: "ghcr.io/owner/repo"}],
+  ["a docker:// prefix", "docker://node:18", {registry: null, namespace: "library", repo: "node", tag: "18", fullImage: "node"}],
+  // docker.io and index.docker.io are Docker Hub, so neither counts as a registry
+  ["docker.io", "docker.io/library/node:18", {registry: null, namespace: "library", repo: "node", tag: "18", fullImage: "docker.io/library/node"}],
+  ["index.docker.io", "index.docker.io/myorg/myapp:1.0.0", {registry: null, namespace: "myorg", repo: "myapp", tag: "1.0.0", fullImage: "index.docker.io/myorg/myapp"}],
+  ["a tag with suffix", "node:18-alpine", {registry: null, namespace: "library", repo: "node", tag: "18-alpine", fullImage: "node"}],
+  ["full semver with suffix", "node:18.19.1-bookworm", {registry: null, namespace: "library", repo: "node", tag: "18.19.1-bookworm", fullImage: "node"}],
+  ["a digest", "node@sha256:abc123", null],
+  ["no tag", "node", null],
+  ["a non-semver tag", "node:latest", null],
+  ["a non-semver word tag", "node:bullseye", null],
+])("parseDockerImageRef %s", (_name, ref, expected) => {
+  expect(parseDockerImageRef(ref)).toEqual(expected);
 });
 
 test("dockerImageNames", () => {
@@ -76,65 +51,41 @@ test("dockerImageNames", () => {
 });
 
 // parseDockerTag
-test("parseDockerTag major only", () => {
-  expect(parseDockerTag("18")).toEqual({version: "18", suffix: ""});
+test.each([
+  ["18", {version: "18", suffix: ""}],
+  ["18.19.1", {version: "18.19.1", suffix: ""}],
+  ["18-alpine", {version: "18", suffix: "-alpine"}],
+  ["v1.2.3", {version: "v1.2.3", suffix: ""}],
+  ["latest", null],
+  ["bullseye", null],
+])("parseDockerTag %s", (tag, expected) => {
+  expect(parseDockerTag(tag)).toEqual(expected);
 });
 
-test("parseDockerTag full semver", () => {
-  expect(parseDockerTag("18.19.1")).toEqual({version: "18.19.1", suffix: ""});
+test.each([
+  ["splits the suffix off the tag and puts it back", "20.0.0", "18-alpine", "20-alpine"],
+  ["returns oldTag for an unparseable tag", "2.0.0", "latest", "latest"],
+])("formatDockerVersion %s", (_name, newSemver, oldTag, expected) => {
+  expect(formatDockerVersion(newSemver, oldTag)).toBe(expected);
 });
 
-test("parseDockerTag with suffix", () => {
-  expect(parseDockerTag("18-alpine")).toEqual({version: "18", suffix: "-alpine"});
-});
-
-test("parseDockerTag v-prefix", () => {
-  expect(parseDockerTag("v1.2.3")).toEqual({version: "v1.2.3", suffix: ""});
-});
-
-test("parseDockerTag returns null for non-semver", () => {
-  expect(parseDockerTag("latest")).toBeNull();
-  expect(parseDockerTag("bullseye")).toBeNull();
-});
-
-// formatDockerVersion
-test("formatDockerVersion 1-part precision", () => {
-  expect(formatDockerVersion("20.0.0", "18")).toBe("20");
-});
-
-test("formatDockerVersion 2-part precision", () => {
-  expect(formatDockerVersion("20.0.0", "18.19")).toBe("20.0");
-});
-
-test("formatDockerVersion 3-part precision", () => {
-  expect(formatDockerVersion("20.0.0", "18.19.1")).toBe("20.0.0");
-});
-
-test("formatDockerVersion preserves suffix", () => {
-  expect(formatDockerVersion("20.0.0", "18-alpine")).toBe("20-alpine");
-});
-
-test("formatDockerVersion preserves v-prefix", () => {
-  expect(formatDockerVersion("2.0.0", "v1.2.3")).toBe("v2.0.0");
-});
-
-test("formatDockerVersion returns oldTag for invalid tag", () => {
-  expect(formatDockerVersion("2.0.0", "latest")).toBe("latest");
-});
-
-// isComposeFile
-test("isComposeFile matches compose files", () => {
-  expect(isComposeFile("docker-compose.yml")).toBe(true);
-  expect(isComposeFile("docker-compose.yaml")).toBe(true);
-  expect(isComposeFile("docker-stack.yml")).toBe(true);
-  expect(isComposeFile("compose.yaml")).toBe(true);
-  expect(isComposeFile("compose.prod.yaml")).toBe(true);
-});
-
-test("isComposeFile rejects non-compose files", () => {
-  expect(isComposeFile("Dockerfile")).toBe(false);
-  expect(isComposeFile("random.yml")).toBe(false);
-  expect(isComposeFile("compose.json")).toBe(false);
+test.each([
+  ["docker-compose.yml", true, false],
+  ["docker-compose.yaml", true, false],
+  ["docker-stack.yml", true, false],
+  ["docker-stack.yaml", true, false],
+  ["compose.yaml", true, false],
+  ["compose.prod.yaml", true, false],
+  ["compose.json", false, false],
+  ["Dockerfile", false, true],
+  ["Dockerfile.dev", false, true],
+  ["Dockerfile.prod", false, true],
+  ["Makefile", false, false],
+  ["random.yml", false, false],
+])("docker file predicates on %s", (name, compose, dockerfile) => {
+  expect(isComposeFile(name)).toBe(compose);
+  expect(isDockerfile(name)).toBe(dockerfile);
+  expect(isDockerFileName(name)).toBe(compose || dockerfile);
 });
 
 test("dockerExactFileNames stay within isDockerFileName", () => {
@@ -143,42 +94,13 @@ test("dockerExactFileNames stay within isDockerFileName", () => {
   expect(dockerExactFileNames).toContain("compose.yaml");
 });
 
-// isDockerfile
-test("isDockerfile matches Dockerfiles", () => {
-  expect(isDockerfile("Dockerfile")).toBe(true);
-  expect(isDockerfile("Dockerfile.dev")).toBe(true);
-  expect(isDockerfile("Dockerfile.prod")).toBe(true);
-});
-
-test("isDockerfile rejects non-Dockerfiles", () => {
-  expect(isDockerfile("docker-compose.yml")).toBe(false);
-  expect(isDockerfile("Makefile")).toBe(false);
-});
-
-// isDockerFileName
-test("isDockerFileName matches both types", () => {
-  expect(isDockerFileName("Dockerfile")).toBe(true);
-  expect(isDockerFileName("Dockerfile.dev")).toBe(true);
-  expect(isDockerFileName("docker-compose.yml")).toBe(true);
-  expect(isDockerFileName("docker-stack.yaml")).toBe(true);
-});
-
-test("isDockerFileName rejects unrelated files", () => {
-  expect(isDockerFileName("Makefile")).toBe(false);
-  expect(isDockerFileName("random.yml")).toBe(false);
-});
-
 // getDockerInfoUrl
-test("getDockerInfoUrl library image", () => {
-  expect(getDockerInfoUrl({registry: null, namespace: "library", repo: "node", tag: "18", fullImage: "node"})).toBe("https://hub.docker.com/_/node");
-});
-
-test("getDockerInfoUrl user image", () => {
-  expect(getDockerInfoUrl({registry: null, namespace: "myorg", repo: "myapp", tag: "1.0", fullImage: "myorg/myapp"})).toBe("https://hub.docker.com/r/myorg/myapp");
-});
-
-test("getDockerInfoUrl custom registry returns empty", () => {
-  expect(getDockerInfoUrl({registry: "ghcr.io", namespace: "owner", repo: "repo", tag: "v1", fullImage: "ghcr.io/owner/repo"})).toBe("");
+test.each([
+  ["library image", {registry: null, namespace: "library", repo: "node", tag: "18", fullImage: "node"}, "https://hub.docker.com/_/node"],
+  ["user image", {registry: null, namespace: "myorg", repo: "myapp", tag: "1.0", fullImage: "myorg/myapp"}, "https://hub.docker.com/r/myorg/myapp"],
+  ["custom registry", {registry: "ghcr.io", namespace: "owner", repo: "repo", tag: "v1", fullImage: "ghcr.io/owner/repo"}, ""],
+])("getDockerInfoUrl %s", (_name, ref, expected) => {
+  expect(getDockerInfoUrl(ref)).toBe(expected);
 });
 
 // extractDockerRefs
@@ -218,33 +140,44 @@ test("findDockerVersion returns null when no upgrade", () => {
 });
 
 test("findDockerVersion filters by suffix", () => {
+  const semvers = new Set(["patch", "minor", "major"]);
   const tagMap: Record<string, string> = {
     "18-alpine": "2024-01-01",
     "20": "2024-06-01",
     "20-alpine": "2024-06-01",
   };
-  const result = findDockerVersion(tagMap, "18-alpine", new Set(["patch", "minor", "major"]));
-  expect(result).toEqual({newTag: "20-alpine", date: "2024-06-01"});
+  expect(findDockerVersion(tagMap, "18-alpine", semvers)).toEqual({newTag: "20-alpine", date: "2024-06-01"});
+  expect(findDockerVersion({"18": "2024-01-01", "20-alpine": "2024-06-01"}, "18", semvers)).toBeNull();
+  const suffixed: Record<string, string> = {
+    "1.2.3-alpine3.19": "2024-01-01",
+    "1.3.0-alpine": "2024-06-01",
+    "1.3.0-alpine3.20": "2024-06-01",
+    "1.3.0-alpine3.19": "2024-06-02",
+    "1.3.0-nanoserver-1809": "2024-06-03",
+  };
+  expect(findDockerVersion(suffixed, "1.2.3-alpine3.19", semvers)).toEqual({newTag: "1.3.0-alpine3.19", date: "2024-06-02"});
+  expect(findDockerVersion(suffixed, "1.2.3-nanoserver-1809", semvers)).toEqual({newTag: "1.3.0-nanoserver-1809", date: "2024-06-03"});
 });
 
 test("findDockerVersion returns null for invalid tag", () => {
   expect(findDockerVersion({"20": "2024-01-01"}, "latest", new Set(["patch", "minor", "major"]))).toBeNull();
 });
 
-test("findDockerVersion handles partial version tags", () => {
+test("findDockerVersion keeps the authored precision", () => {
+  const semvers = new Set(["patch", "minor", "major"]);
   const tagMap: Record<string, string> = {
     "18": "2024-01-01",
     "20": "2024-06-01",
-    "20.11": "2024-06-01",
+    "20.11": "2024-06-10",
     "20.11.1": "2024-06-15",
   };
-  // Tags "20", "20.11", "20.11.1" all coerce; highest coerced (20.11.1) wins, written back
-  // at the authored precision because Hub publishes "20" too
-  const result = findDockerVersion(tagMap, "18", new Set(["patch", "minor", "major"]));
-  expect(result).toEqual({newTag: "20", date: "2024-06-15"});
-  // without a "20" tag the real tag is written, never a synthesized one that would 404
-  expect(findDockerVersion({"18": "2024-01-01", "20.11.1": "2024-06-15"}, "18", new Set(["patch", "minor", "major"])))
-    .toEqual({newTag: "20.11.1", date: "2024-06-15"});
+  expect(findDockerVersion(tagMap, "18", semvers)).toEqual({newTag: "20", date: "2024-06-01"});
+  expect(findDockerVersion(tagMap, "18.19", semvers)).toEqual({newTag: "20.11", date: "2024-06-10"});
+  // a floating "18" must not be pinned to "20.11.1" when no same-precision tag was fetched
+  expect(findDockerVersion({"18": "2024-01-01", "20.11.1": "2024-06-15"}, "18", semvers)).toBeNull();
+  // a coerced version that does not spell back to the real tag still writes the real tag
+  expect(findDockerVersion({"24.04": "2024-04-01", "26.04": "2026-04-01"}, "24.04", semvers))
+    .toEqual({newTag: "26.04", date: "2026-04-01"});
 });
 
 test("findDockerVersion ignores tags from another versioning scheme", () => {
@@ -261,6 +194,14 @@ test("findDockerVersion ignores tags from another versioning scheme", () => {
   expect(findDockerVersion(tagMap, "20251224", semvers)).toEqual({newTag: "20260127", date: "2026-01-28"});
   // a real major bump that grows a digit is not a scheme change
   expect(findDockerVersion({"9": "2020-01-01", "10": "2020-06-01"}, "9", semvers)).toEqual({newTag: "10", date: "2020-06-01"});
+});
+
+test("findDockerVersion cooldown needs a timestamp", () => {
+  const semvers = new Set(["patch", "minor", "major"]);
+  const now = Date.parse("2024-07-01");
+  const tagMap: Record<string, string> = {"18": "2024-01-01", "20": "2024-06-25", "19": ""};
+  expect(findDockerVersion(tagMap, "18", semvers, 30, now)).toBeNull();
+  expect(findDockerVersion(tagMap, "18", semvers)).toEqual({newTag: "20", date: "2024-06-25"});
 });
 
 test("findDockerVersion respects pinnedRange and blocks out-of-range upgrade", () => {
@@ -283,11 +224,34 @@ test("findDockerVersion respects pinnedRange and allows in-range upgrade", () =>
   expect(result).toEqual({newTag: "8.0.41", date: "2024-06-01"});
 });
 
-// updateDockerfile
-test("updateDockerfile replaces FROM image tag", () => {
-  const content = "FROM node:18\nRUN echo hello\n";
-  const deps = {[`docker${fieldSep}node`]: {old: "18", new: "20"}};
-  expect(updateDockerfile(content, deps)).toBe("FROM node:20\nRUN echo hello\n");
+test.each([
+  ["updateDockerfile replaces a FROM image tag", updateDockerfile,
+    "FROM node:18\nRUN echo hello\n", "node", {old: "18", new: "20"}, "FROM node:20\nRUN echo hello\n"],
+  ["updateDockerfile replaces a lowercase from", updateDockerfile,
+    "from node:18\n", "node", {old: "18", new: "20"}, "from node:20\n"],
+  ["updateDockerfile replaces a FROM with platform", updateDockerfile,
+    "FROM --platform=linux/amd64 nginx:1.25.3\n", "nginx", {old: "1.25.3", new: "1.27.0"}, "FROM --platform=linux/amd64 nginx:1.27.0\n"],
+  ["updateDockerfile uses oldOrig when present", updateDockerfile,
+    "FROM node:18\n", "node", {old: "18.0.0", new: "20", oldOrig: "18"}, "FROM node:20\n"],
+  ["updateComposeFile replaces an image tag", updateComposeFile,
+    "services:\n  web:\n    image: node:20.11.1\n", "node", {old: "20.11.1", new: "22.0.0"}, "services:\n  web:\n    image: node:22.0.0\n"],
+  ["updateComposeFile replaces a quoted image tag", updateComposeFile,
+    "services:\n  db:\n    image: 'postgres:16.2'\n", "postgres", {old: "16.2", new: "17.0"}, "services:\n  db:\n    image: 'postgres:17.0'\n"],
+  ["updateWorkflowDockerImages replaces a container shorthand", updateWorkflowDockerImages,
+    "jobs:\n  build:\n    container: node:18\n", "node", {old: "18", new: "20"}, "jobs:\n  build:\n    container: node:20\n"],
+  ["updateWorkflowDockerImages replaces a uses docker://", updateWorkflowDockerImages,
+    "steps:\n  - uses: docker://node:18\n", "node", {old: "18", new: "20"}, "steps:\n  - uses: docker://node:20\n"],
+  ["updateDockerfile replaces an uppercase tag", updateDockerfile,
+    "FROM foo/bar:1.0-RC1\n", "foo/bar", {old: "1.0", oldOrig: "1.0-RC1", new: "1.1-RC1"}, "FROM foo/bar:1.1-RC1\n"],
+  ["updateComposeFile replaces an uppercase tag", updateComposeFile,
+    "    image: foo/bar:1.0-RC1\n", "foo/bar", {old: "1.0", oldOrig: "1.0-RC1", new: "1.1-RC1"}, "    image: foo/bar:1.1-RC1\n"],
+  ["updateWorkflowDockerImages replaces an uppercase container tag", updateWorkflowDockerImages,
+    "    container: foo/bar:1.0-RC1\n", "foo/bar", {old: "1.0", oldOrig: "1.0-RC1", new: "1.1-RC1"}, "    container: foo/bar:1.1-RC1\n"],
+  ["updateWorkflowDockerImages replaces an uppercase uses tag", updateWorkflowDockerImages,
+    "      - uses: docker://foo/bar:1.0-RC1\n", "foo/bar", {old: "1.0", oldOrig: "1.0-RC1", new: "1.1-RC1"},
+    "      - uses: docker://foo/bar:1.1-RC1\n"],
+])("%s", (_name, update, content, image, dep, expected) => {
+  expect(update(content, {[`docker${fieldSep}${image}`]: dep})).toBe(expected);
 });
 
 test("updateDockerfile leaves digest-pinned and suffixed occurrences alone", () => {
@@ -299,130 +263,104 @@ test("updateDockerfile leaves digest-pinned and suffixed occurrences alone", () 
   expect(updateDockerfile(content, deps)).toBe(`FROM node:20 AS build\nFROM node:18${digest}\nFROM node:18+build\n`);
 });
 
-test("updateDockerfile replaces lowercase FROM", () => {
-  const deps = {[`docker${fieldSep}node`]: {old: "18", new: "20"}};
-  expect(updateDockerfile("from node:18\n", deps)).toBe("from node:20\n");
-});
-
-test("updateDockerfile replaces FROM with platform", () => {
-  const content = "FROM --platform=linux/amd64 nginx:1.25.3\n";
-  const deps = {[`docker${fieldSep}nginx`]: {old: "1.25.3", new: "1.27.0"}};
-  expect(updateDockerfile(content, deps)).toBe("FROM --platform=linux/amd64 nginx:1.27.0\n");
-});
-
-test("updateDockerfile uses oldOrig when present", () => {
-  const content = "FROM node:18\n";
-  const deps = {[`docker${fieldSep}node`]: {old: "18.0.0", new: "20", oldOrig: "18"}};
-  expect(updateDockerfile(content, deps)).toBe("FROM node:20\n");
-});
-
-// updateComposeFile
-test("updateComposeFile replaces image tag", () => {
-  const content = "services:\n  web:\n    image: node:20.11.1\n";
-  const deps = {[`docker${fieldSep}node`]: {old: "20.11.1", new: "22.0.0"}};
-  expect(updateComposeFile(content, deps)).toBe("services:\n  web:\n    image: node:22.0.0\n");
-});
-
-test("updateComposeFile replaces quoted image tag", () => {
-  const content = "services:\n  db:\n    image: 'postgres:16.2'\n";
-  const deps = {[`docker${fieldSep}postgres`]: {old: "16.2", new: "17.0"}};
-  expect(updateComposeFile(content, deps)).toBe("services:\n  db:\n    image: 'postgres:17.0'\n");
-});
-
-// updateWorkflowDockerImages
-test("updateWorkflowDockerImages replaces container shorthand", () => {
-  const content = "jobs:\n  build:\n    container: node:18\n";
-  const deps = {[`docker${fieldSep}node`]: {old: "18", new: "20"}};
-  expect(updateWorkflowDockerImages(content, deps)).toBe("jobs:\n  build:\n    container: node:20\n");
-});
-
-test("updateWorkflowDockerImages replaces uses docker://", () => {
-  const content = "steps:\n  - uses: docker://node:18\n";
-  const deps = {[`docker${fieldSep}node`]: {old: "18", new: "20"}};
-  expect(updateWorkflowDockerImages(content, deps)).toBe("steps:\n  - uses: docker://node:20\n");
+test("updateDockerfile rewrites one image at several tags without cascading", () => {
+  // one dep's new tag is another dep's old tag, which a per-dep pass would rewrite twice
+  const content = "FROM node:18 AS build\nFROM node:18-alpine\nFROM node:20\n";
+  const deps = {
+    [`docker${fieldSep}node${fieldSep}18`]: {old: "18", new: "20"},
+    [`docker${fieldSep}node${fieldSep}18-alpine`]: {old: "18-alpine", new: "20-alpine"},
+    [`docker${fieldSep}node${fieldSep}20`]: {old: "20", new: "22"},
+  };
+  expect(updateDockerfile(content, deps)).toBe("FROM node:20 AS build\nFROM node:20-alpine\nFROM node:22\n");
 });
 
 // getExtractionRegex
-test("getExtractionRegex returns dockerfileFromRe for Dockerfile", () => {
-  expect(getExtractionRegex("Dockerfile")).toBe(dockerfileFromRe);
-  expect(getExtractionRegex("Dockerfile.dev")).toBe(dockerfileFromRe);
+test.each([
+  ["Dockerfile", dockerfileFromRe],
+  ["Dockerfile.dev", dockerfileFromRe],
+  ["docker-compose.yml", composeImageRe],
+  ["docker-compose.yaml", composeImageRe],
+])("getExtractionRegex %s", (name, expected) => {
+  expect(getExtractionRegex(name)).toBe(expected);
 });
 
-test("getExtractionRegex returns composeImageRe for compose files", () => {
-  expect(getExtractionRegex("docker-compose.yml")).toBe(composeImageRe);
-  expect(getExtractionRegex("docker-compose.yaml")).toBe(composeImageRe);
+const hubCtx = (doFetch: (url: string) => Promise<any>, extra: Record<string, unknown> = {}): ModeContext =>
+  ({dockerApiUrl: "https://hub.docker.com", fetchTimeout, doFetch, ...extra} as unknown as ModeContext);
+const hubBody = (body: any) => () => Promise.resolve({ok: true, json: () => Promise.resolve(body)});
+// Unrouted pages are the end of the listing, which is how the walk terminates.
+const hubPages = (pages: Record<string, any>, seen: Array<string> = []) => (url: string) => {
+  const page = /page=\d+/.exec(url)![0];
+  seen.push(page);
+  return hubBody(pages[page] ?? {count: 0, results: []})();
+};
+
+test.each([
+  ["reads tag_last_pushed", [{name: "18", tag_last_pushed: "2024-01-01"}, {name: "20", tag_last_pushed: "2024-06-01"}],
+    {"18": "2024-01-01", "20": "2024-06-01"}],
+  ["falls back to last_updated", [{name: "18", last_updated: "2024-01-01"}], {"18": "2024-01-01"}],
+])("fetchDockerHubTags %s", async (_name, results, expected) => {
+  const ctx = hubCtx(hubBody({count: results.length, results}));
+  expect(await fetchDockerHubTags("library", "node", ctx)).toEqual(expected);
 });
 
-// fetchDockerHubTags
-test("fetchDockerHubTags single page", async () => {
-  const ctx = {
-    dockerApiUrl: "https://hub.docker.com",
-    fetchTimeout,
-    doFetch: () => Promise.resolve({ok: true, json: () => Promise.resolve({count: 2, results: [{name: "18", tag_last_pushed: "2024-01-01"}, {name: "20", tag_last_pushed: "2024-06-01"}]})}),
-  } as unknown as ModeContext;
-  const tags = await fetchDockerHubTags("library", "node", ctx);
-  expect(tags).toEqual({"18": "2024-01-01", "20": "2024-06-01"});
-});
-
-test("fetchDockerHubTags multi-page", async () => {
-  const pages: Record<string, any> = {
+test("fetchDockerHubTags walks every page", async () => {
+  const ctx = hubCtx(hubPages({
     "page=1": {count: 250, results: [{name: "18", tag_last_pushed: "2024-01-01"}]},
     "page=2": {count: 250, results: [{name: "20", tag_last_pushed: "2024-06-01"}]},
     "page=3": {count: 250, results: [{name: "22", tag_last_pushed: "2025-01-01"}]},
-  };
-  const ctx = {
-    dockerApiUrl: "https://hub.docker.com",
-    fetchTimeout,
-    doFetch: (url: string) => {
-      for (const [key, data] of Object.entries(pages)) {
-        if (url.includes(key)) return Promise.resolve({ok: true, json: () => Promise.resolve(data)});
-      }
-      return Promise.resolve({ok: true, json: () => Promise.resolve({count: 0, results: []})});
-    },
-  } as unknown as ModeContext;
+  }));
+  expect(await fetchDockerHubTags("library", "node", ctx)).toEqual({"18": "2024-01-01", "20": "2024-06-01", "22": "2025-01-01"});
+});
+
+test("fetchDockerHubTags walks past pages older than the authored tag", async () => {
+  // `ordering=last_updated` is a push order, so a backport leaves `20` pages behind the authored `18`
+  const fetched: Array<string> = [];
+  const ctx = hubCtx(hubPages({
+    "page=1": {count: 400, results: [{name: "18", tag_last_pushed: "2026-01-01"}]},
+    "page=2": {count: 400, results: [{name: "17", tag_last_pushed: "2025-06-01"}]},
+    "page=3": {count: 400, results: [{name: "16", tag_last_pushed: "2025-01-01"}]},
+    "page=4": {count: 400, results: [{name: "20", tag_last_pushed: "2024-06-01"}]},
+  }, fetched), {concurrency: 1});
+
   const tags = await fetchDockerHubTags("library", "node", ctx);
-  expect(tags).toEqual({"18": "2024-01-01", "20": "2024-06-01", "22": "2025-01-01"});
+  expect(fetched).toEqual(["page=1", "page=2", "page=3", "page=4"]);
+  expect(findDockerVersion(tags, "18", new Set(["patch", "minor", "major"]))).toEqual({newTag: "20", date: "2024-06-01"});
 });
 
-test("fetchDockerHubTags first page fails", async () => {
-  const ctx = {
-    dockerApiUrl: "https://hub.docker.com",
-    fetchTimeout,
-    doFetch: () => Promise.resolve({ok: false}),
-  } as unknown as ModeContext;
-  expect(await fetchDockerHubTags("library", "node", ctx)).toEqual({});
+test("fetchDockerHubTags reports registry failures instead of no update", async () => {
+  const ctxFor = (res: any) => hubCtx(() => typeof res === "function" ? res() : Promise.resolve(res));
+  expect(await fetchDockerHubTags("library", "node", ctxFor({ok: false, status: 404, statusText: "Not Found"}))).toEqual({});
+  expect(await fetchDockerHubTags("library", "node", ctxFor({ok: false, status: 401, statusText: "Unauthorized"}))).toEqual({});
+  await expect(fetchDockerHubTags("library", "node", ctxFor({ok: false, status: 429, statusText: "Too Many Requests"})))
+    .rejects.toThrow("Received 429 Too Many Requests");
+  await expect(fetchDockerHubTags("library", "node", ctxFor({ok: false, status: 500, statusText: "Internal Server Error"})))
+    .rejects.toThrow("Received 500 Internal Server Error");
+  await expect(fetchDockerHubTags("library", "node", ctxFor(() => Promise.reject(new Error("connect ECONNREFUSED")))))
+    .rejects.toThrow("ECONNREFUSED");
 });
 
-test("fetchDockerHubTags falls back to last_updated", async () => {
-  const ctx = {
-    dockerApiUrl: "https://hub.docker.com",
-    fetchTimeout,
-    doFetch: () => Promise.resolve({ok: true, json: () => Promise.resolve({count: 1, results: [{name: "18", last_updated: "2024-01-01"}]})}),
-  } as unknown as ModeContext;
-  const tags = await fetchDockerHubTags("library", "node", ctx);
-  expect(tags).toEqual({"18": "2024-01-01"});
-});
-
-// fetchDockerInfo
 test("fetchDockerInfo library image", async () => {
-  const ctx = {
-    dockerApiUrl: "https://hub.docker.com",
-    fetchTimeout,
-    doFetch: () => Promise.resolve({ok: true, json: () => Promise.resolve({count: 1, results: [{name: "18", tag_last_pushed: "2024-01-01"}]})}),
-  } as unknown as ModeContext;
+  const ctx = hubCtx(hubBody({count: 1, results: [{name: "18", tag_last_pushed: "2024-01-01"}]}));
   const [data] = await fetchDockerInfo("node", ctx);
   expect(data.name).toBe("node");
   expect(data.tags).toEqual({"18": "2024-01-01"});
 });
 
 test("fetchDockerInfo namespaced image", async () => {
-  const ctx = {
-    dockerApiUrl: "https://hub.docker.com",
-    fetchTimeout,
-    doFetch: () => Promise.resolve({ok: true, json: () => Promise.resolve({count: 0, results: []})}),
-  } as unknown as ModeContext;
-  const [data] = await fetchDockerInfo("myorg/myapp", ctx);
+  const [data] = await fetchDockerInfo("myorg/myapp", hubCtx(hubBody({count: 0, results: []})));
   expect(data.name).toBe("myorg/myapp");
+});
+
+test("filterStableTags drops the ubuntu development series", () => {
+  const tags: Record<string, string> = {
+    "22.04": "2026-08-04", "24.04": "2026-08-04", "26.04": "2026-08-04",
+    "25.04": "2025-10-13", "25.10": "2026-06-19", "26.10": "2026-07-16", "28.04": "2027-11-01",
+    latest: "2026-08-04", devel: "2026-07-16",
+  };
+  const now = Date.UTC(2026, 7, 4);
+  // only released even-year LTS numbers survive, 26.10 is devel and 28.04 has not shipped yet
+  expect(Object.keys(filterStableTags("ubuntu", tags, now))).toEqual(["22.04", "24.04", "26.04", "latest", "devel"]);
+  expect(filterStableTags("node", tags, now)).toBe(tags);
 });
 
 test("fetchDockerInfo non-Docker-Hub registry throws", async () => {

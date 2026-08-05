@@ -1,4 +1,4 @@
-import {valid, parse, coerce, diff, gt, gte, lt, satisfies, validRange} from "./semver.ts";
+import {valid, parse, coerce, diff, gt, satisfies, validRange, parsePep440, comparePep440, diffPep440, pep440Versioning, semverVersioning} from "./semver.ts";
 
 test("valid", () => {
   expect(valid("1.0.0")).toBe("1.0.0");
@@ -85,21 +85,6 @@ test("gt", () => {
   // invalid input
   expect(gt("abc", "1.0.0")).toBe(false);
   expect(gt("1.0.0", "abc")).toBe(false);
-});
-
-test("gte", () => {
-  expect(gte("2.0.0", "1.0.0")).toBe(true);
-  expect(gte("1.0.0", "1.0.0")).toBe(true);
-  expect(gte("1.0.0", "2.0.0")).toBe(false);
-  expect(gte("abc", "1.0.0")).toBe(false);
-});
-
-test("lt", () => {
-  expect(lt("1.0.0", "2.0.0")).toBe(true);
-  expect(lt("2.0.0", "1.0.0")).toBe(false);
-  expect(lt("1.0.0", "1.0.0")).toBe(false);
-  expect(lt("1.0.0-alpha", "1.0.0")).toBe(true);
-  expect(lt("abc", "1.0.0")).toBe(false);
 });
 
 test("satisfies caret ranges", () => {
@@ -275,6 +260,75 @@ test("satisfies tilde with trailing wildcard", () => {
   expect(satisfies("1.2.0", "~1.2.x")).toBe(true);
   expect(satisfies("1.2.9", "~1.2.x")).toBe(true);
   expect(satisfies("1.3.0", "~1.2.x")).toBe(false);
+});
+
+test("parsePep440 normalizes every release form", () => {
+  expect(parsePep440("26.3")).toMatchObject({epoch: 0, release: [26, 3], pre: null, post: null, dev: null, local: null});
+  expect(parsePep440("1!1.0")).toMatchObject({epoch: 1, release: [1, 0]});
+  expect(parsePep440("2.32.0.20250602")).toMatchObject({release: [2, 32, 0, 20250602]});
+  expect(parsePep440("17.04.0")).toMatchObject({release: [17, 4, 0]}); // zero-padded segments are numbers
+  expect(parsePep440("2.9.0.post0")).toMatchObject({post: 0});
+  expect(parsePep440("1.0-1")).toMatchObject({release: [1, 0], post: 1}); // implicit post syntax
+  expect(parsePep440("1.1.0.dev1")).toMatchObject({dev: 1});
+  expect(parsePep440("0.0.1a19")).toMatchObject({pre: ["a", 19]});
+  expect(parsePep440("1.0.0+ubuntu.1")).toMatchObject({local: ["ubuntu", 1]});
+  expect(parsePep440("v1.2.3")).toMatchObject({release: [1, 2, 3]});
+  expect(parsePep440("not_a_version")).toBeNull();
+  for (const [input, letter] of [["1.0alpha", "a"], ["1.0.beta2", "b"], ["1.0c1", "rc"], ["1.0-pre", "rc"], ["1.0_preview3", "rc"], ["1.0RC4", "rc"]] as const) {
+    expect(parsePep440(input)!.pre![0]).toBe(letter);
+  }
+  expect(parsePep440("1.0alpha")!.pre![1]).toBe(0);
+});
+
+test("comparePep440 orders epoch, release, pre, post, dev and local", () => {
+  const cmp = (a: string, b: string) => Math.sign(comparePep440(parsePep440(a)!, parsePep440(b)!));
+  expect(cmp("1.0", "1.0.0")).toBe(0); // trailing zeros are insignificant
+  expect(cmp("1!1.0", "2.0")).toBe(1); // an epoch outranks the release segment
+  expect(cmp("26.3", "26.2")).toBe(1);
+  expect(cmp("2.32.4.20250611", "2.32.0.20250602")).toBe(1);
+  expect(cmp("1.0", "1.0rc1")).toBe(1);
+  expect(cmp("1.0rc1", "1.0b1")).toBe(1);
+  expect(cmp("1.0b1", "1.0a1")).toBe(1);
+  expect(cmp("1.0a10", "1.0a9")).toBe(1);
+  expect(cmp("1.0.post1", "1.0")).toBe(1);
+  expect(cmp("1.0", "1.0.dev1")).toBe(1);
+  expect(cmp("1.0a1", "1.0.dev1")).toBe(1); // a bare dev release precedes every pre-release
+  expect(cmp("1.0.post1.dev1", "1.0")).toBe(1); // but a post-dev release still follows the release
+  expect(cmp("1.0+local", "1.0")).toBe(1);
+  expect(cmp("1.0+1", "1.0+abc")).toBe(1); // numeric local segments sort after alphanumeric ones
+});
+
+test("diffPep440 buckets by release level with a pre prefix for unstable candidates", () => {
+  const d = (a: string, b: string) => diffPep440(parsePep440(a)!, parsePep440(b)!);
+  expect(d("1.0", "1.0.0")).toBe(null);
+  expect(d("1.0", "6.0")).toBe("major");
+  expect(d("3.4.0.20240423", "3.5.0.20250801")).toBe("minor");
+  expect(d("2.32.0.20240622", "2.32.4.20250611")).toBe("patch");
+  // renovate buckets everything below the minor as a patch, so a fourth segment has no level of its own
+  expect(d("3.4.0.20240103", "3.4.0.20240423")).toBe("patch");
+  expect(d("0.0.1a15", "0.0.1a19")).toBe("prerelease");
+  expect(d("1.0", "2.0b1")).toBe("premajor");
+  expect(d("1.0", "1.1.0.dev1")).toBe("preminor");
+  expect(d("1.0rc1", "1.0")).toBe("patch");
+});
+
+test("semverVersioning reads the prerelease off a range's comparator", () => {
+  expect(["^1.0.0-alpha", ">=2.0.0-rc.1"].every(range => semverVersioning.isRangePrerelease(range))).toBe(true);
+  expect(["^1.0.0", "~2.0.0"].some(range => semverVersioning.isRangePrerelease(range))).toBe(false);
+});
+
+test("pep440Versioning classifies prereleases the semver rules miss", () => {
+  for (const version of ["2.0.0b1", "1.0rc1", "0.0.1a19", "1.1.0.dev1"]) {
+    expect(pep440Versioning.isRangePrerelease(version)).toBe(true);
+    expect(pep440Versioning.isPrerelease(pep440Versioning.parse(version)!)).toBe(true);
+  }
+  for (const version of ["6.0", "2026.3.post1", "2.32.4.20250611"]) {
+    expect(pep440Versioning.isRangePrerelease(version)).toBe(false);
+  }
+  expect(pep440Versioning.parseRange(">=2.28.0")!.release).toEqual([2, 28, 0]);
+  // --pin takes a semver range, matched against the first three release segments
+  expect(pep440Versioning.satisfiesRange(pep440Versioning.parse("6.0")!, "^6.0.0")).toBe(true);
+  expect(pep440Versioning.satisfiesRange(pep440Versioning.parse("2.32.4.20250611")!, "^2.33.0")).toBe(false);
 });
 
 test("satisfies operator-prefixed x-ranges", () => {

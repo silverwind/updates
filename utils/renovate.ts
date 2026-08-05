@@ -2,7 +2,7 @@ import {join} from "node:path";
 import {readFile} from "node:fs/promises";
 import {parseJsonish} from "./json5.ts";
 import {validRange} from "./semver.ts";
-import {walkUp, memoizeAsync, forgeDirs} from "./utils.ts";
+import {walkUp, memoizeAsync, forgeDirs, getOrSet, patternToRegex} from "./utils.ts";
 import {getCache, setCache} from "./fetchCache.ts";
 import type {Config} from "../config.ts";
 
@@ -11,10 +11,12 @@ const renovateDirs = [...forgeDirs, ".gitlab"];
 
 const configFileNames = [
   "renovate.json",
+  "renovate.jsonc",
   "renovate.json5",
-  ...renovateDirs.flatMap(dir => [`${dir}/renovate.json`, `${dir}/renovate.json5`]),
+  ...renovateDirs.flatMap(dir => [`${dir}/renovate.json`, `${dir}/renovate.jsonc`, `${dir}/renovate.json5`]),
   ".renovaterc",
   ".renovaterc.json",
+  ".renovaterc.jsonc",
   ".renovaterc.json5",
 ];
 
@@ -44,29 +46,77 @@ function parseRenovateDuration(str: string): number | undefined {
 }
 
 type RenovateConfig = {
-  extends?: Array<string>;
+  extends?: Array<string> | string;
+  enabled?: boolean;
   minimumReleaseAge?: string;
   ignoreDeps?: Array<string>;
   packageRules?: Array<RenovatePackageRule>;
-  presets?: Record<string, RenovateConfig>;
   [key: string]: unknown;
 };
 
 type RenovatePackageRule = {
-  matchPackageNames?: Array<string>;
   enabled?: boolean;
   allowedVersions?: string;
   [key: string]: unknown;
 };
 
-/**
- * A packageRule is "simple" if its only matcher is matchPackageNames. Rules
- * with other matchers (matchUpdateTypes, matchManagers, matchFileNames, etc.)
- * cannot be cleanly mapped to updates' config.
- */
-function isSimpleRule(rule: RenovatePackageRule): boolean {
-  if (!Array.isArray(rule.matchPackageNames) || !rule.matchPackageNames.length) return false;
-  return Object.keys(rule).every(key => !key.startsWith("match") || key === "matchPackageNames");
+type Matcher = string | RegExp;
+
+function warn(message: string): void {
+  console.error(`renovate config: ${message}`);
+}
+
+// Deprecated spellings renovate still migrates into matchPackageNames. A prefix is minimatch
+// `foo{/,}**`, which is updates' `foo*`.
+const packageNameKeys: Record<string, (value: string) => string> = {
+  matchPackageNames: name => name,
+  packageNames: name => name,
+  matchPackagePatterns: pattern => pattern === "*" ? "*" : `/${pattern}/`,
+  packagePatterns: pattern => pattern === "*" ? "*" : `/${pattern}/`,
+  matchPackagePrefixes: prefix => `${prefix}*`,
+  excludePackageNames: name => `!${name}`,
+  excludePackagePatterns: pattern => `!/${pattern}/`,
+  excludePackagePrefixes: prefix => `!${prefix}*`,
+};
+
+// Matchers that migrate to something other than matchPackageNames and lack a match/exclude prefix.
+const legacyMatcherKeys = ["updateTypes", "managers", "datasources", "depTypeList", "paths", "languages", "baseBranchList", "sourceUrlPrefixes"];
+
+// Renovate's `*` matches everything (lib/util/string-match.ts), as does minimatch `**`.
+const catchAllNames = new Set(["*", "**"]);
+
+// The name patterns a packageRule matches on, `[]` when it has no matcher at all (renovate then
+// applies it to every dependency), or the matcher key that cannot be mapped, either because it
+// matches on something else or because its value is not a list of names.
+function ruleNames(rule: RenovatePackageRule): Array<string> | string {
+  const names: Array<string> = [];
+  for (const [key, value] of Object.entries(rule)) {
+    // Object.hasOwn, not `in`: `in` matches inherited keys like __proto__/constructor.
+    const toName = Object.hasOwn(packageNameKeys, key) ? packageNameKeys[key] : undefined;
+    if (!toName) {
+      if (key.startsWith("match") || key.startsWith("exclude") || legacyMatcherKeys.includes(key)) return key;
+      continue;
+    }
+    const list = typeof value === "string" ? [value] : value; // renovate allowString
+    if (!Array.isArray(list)) return key;
+    for (const entry of list) {
+      if (typeof entry !== "string" || !entry) return key;
+      names.push(toName(entry));
+    }
+  }
+  return names;
+}
+
+// Renovate matchers negate with a leading `!`, and a rule applies when one positive and every
+// negative matches.
+function splitNames(names: Array<string>): {positive: Array<string>, negated: Array<string>} {
+  const groups = Object.groupBy(names, name => name.startsWith("!") && name.length > 1 ? "negated" : "positive");
+  return {positive: groups.positive ?? [], negated: groups.negated?.map(name => name.substring(1)) ?? []};
+}
+
+// Renovate compares matchers by value, so two identical /pattern/flags are the same matcher.
+function sameMatcher(a: Matcher, b: Matcher): boolean {
+  return a instanceof RegExp && b instanceof RegExp ? a.source === b.source && a.flags === b.flags : a === b;
 }
 
 // Candidates are read concurrently rather than one await at a time — the common
@@ -116,7 +166,77 @@ export type RenovateImportOptions = {
   cooldown?: boolean;
 };
 
+// Apply the packageRules in order, as renovate does: a matching rule disables or re-enables what it
+// matches and the last match wins. `allowed` becomes non-null once a rule disables everything,
+// turning the remainder into an allow-list. A rule needing an and-not is skipped, not approximated.
+function applyRules(rules: Array<RenovatePackageRule>): {allowed: Array<Matcher> | null, disabled: Array<Matcher>, pin: Record<string, string>} {
+  let allowed: Array<Matcher> | null = null;
+  let disabled: Array<Matcher> = [];
+  const pin: Record<string, string> = {};
+
+  for (const rule of rules) {
+    if (!rule || typeof rule !== "object") continue;
+    const names = ruleNames(rule);
+    if (!Array.isArray(names)) {
+      // only worth naming a rule updates would otherwise have imported something from
+      if (rule.enabled !== undefined || typeof rule.allowedVersions === "string") {
+        warn(`skipping packageRule with unsupported matcher ${names}`);
+      }
+      continue;
+    }
+    const {positive, negated} = splitNames(names);
+
+    if (rule.enabled === false) {
+      if (positive.length && negated.length) {
+        warn(`skipping packageRule mixing matchers and negations: ${names.join(", ")}`);
+      } else if (!names.length || positive.some(name => catchAllNames.has(name))) {
+        allowed = []; // disables everything, until a later rule re-enables names
+      } else if (!positive.length) {
+        if (allowed === null) allowed = negated.map(toMatcher); // all-negated leaves an allow-list
+        else if (allowed.length) warn(`skipping packageRule narrowing an allow-list: ${names.join(", ")}`);
+      } else {
+        for (const name of positive) disabled.push(toMatcher(name));
+      }
+    } else if (rule.enabled === true && (allowed !== null || disabled.length)) {
+      if (!names.length) {
+        allowed = null; // re-enables every dependency
+        disabled = [];
+      } else if (negated.length || !positive.length) {
+        warn(`skipping packageRule re-enabling by negation: ${names.join(", ")}`);
+      } else {
+        for (const name of positive) {
+          const matcher = toMatcher(name);
+          const kept = disabled.filter(entry => !sameMatcher(entry, matcher));
+          // an exclude the name only partly overlaps cannot be punched a hole in
+          if (kept.length === disabled.length && disabled.some(entry => patternToRegex(entry).test(name))) {
+            warn(`packageRule re-enables ${name}, which a wider exclude keeps disabled`);
+          }
+          disabled = kept;
+          allowed?.push(matcher);
+        }
+      }
+    }
+
+    if (typeof rule.allowedVersions === "string" && validRange(rule.allowedVersions)) {
+      // Renovate applies allowedVersions as a ceiling on releases already newer than the current
+      // one, so it never rolls a dependency back, unlike a pin the authored version violates
+      // (findVersion in modes/shared.ts). Only literal names can pin.
+      for (const name of positive) {
+        if (!isGlob(name) && typeof toMatcher(name) === "string") pin[name] = rule.allowedVersions;
+      }
+    }
+  }
+
+  return {allowed, disabled, pin};
+}
+
 function normalize(raw: RenovateConfig, opts: RenovateImportOptions): Partial<Config> {
+  // renovate skips a repository whose config disables it (lib/workers/repository/configured.ts)
+  if (raw.enabled === false) {
+    warn("enabled is false, skipping all dependencies");
+    return {exclude: ["*"]};
+  }
+
   const out: Partial<Config> = {};
 
   if (opts.cooldown && typeof raw.minimumReleaseAge === "string") {
@@ -124,46 +244,25 @@ function normalize(raw: RenovateConfig, opts: RenovateImportOptions): Partial<Co
     if (days !== undefined && days > 0) out.cooldown = days;
   }
 
-  const include: Array<string | RegExp> = [];
-  const exclude: Array<string | RegExp> = [];
-  const pin: Record<string, string> = {};
+  // no `enabled: true` rule clears ignoreDeps, so it stays out of applyRules and merges at the end
+  const ignored: Array<Matcher> = Array.isArray(raw.ignoreDeps) ?
+    raw.ignoreDeps.filter(dep => typeof dep === "string" && Boolean(dep)) : [];
+  const {allowed, disabled, pin} = applyRules(Array.isArray(raw.packageRules) ? raw.packageRules : []);
 
-  if (Array.isArray(raw.ignoreDeps)) exclude.push(...raw.ignoreDeps.filter(dep => typeof dep === "string" && Boolean(dep)));
-
-  if (Array.isArray(raw.packageRules)) {
-    for (const rule of raw.packageRules) {
-      if (!rule || typeof rule !== "object" || !isSimpleRule(rule)) continue;
-      const names = rule.matchPackageNames!.filter((n): n is string => typeof n === "string" && Boolean(n));
-      // Renovate matchers negate with a leading `!`, which inverts what the rule applies to.
-      const groups = Object.groupBy(names, name => name.startsWith("!") && name.length > 1 ? "negated" : "positive");
-      const positive = groups.positive ?? [];
-      const negated = groups.negated?.map(name => name.substring(1)) ?? [];
-      if (rule.enabled === false) {
-        if (positive.length) {
-          // negations only narrow what the rule disables, so the positives carry it
-          for (const name of positive) exclude.push(toMatcher(name));
-        } else {
-          // all-negated disables everything but these, which is an include list
-          for (const name of negated) include.push(toMatcher(name));
-        }
-      }
-      if (typeof rule.allowedVersions === "string" && validRange(rule.allowedVersions)) {
-        // pin is keyed by literal package name; regex and glob matchers can't be honored, so skip them
-        for (const name of positive) {
-          if (!isGlob(name) && typeof toMatcher(name) === "string") pin[name] = rule.allowedVersions;
-        }
-      }
-    }
-  }
-
-  if (include.length) out.include = include;
+  const exclude = [...ignored, ...disabled];
+  if (allowed?.length) out.include = allowed;
+  if (allowed && !allowed.length) exclude.push("*"); // everything disabled, nothing re-enabled
   if (exclude.length) out.exclude = exclude;
-  if (Object.keys(pin).length) out.pin = pin;
+  if (Object.keys(pin).length) {
+    out.pin = pin;
+    out.pinNoDowngrade = true;
+  }
 
   return out;
 }
 
-/** Fetch a preset file as text, or null if missing/unreachable. Injectable for tests. */
+// Fetch a preset file as text, or null if it does not exist. Throws when the host cannot be reached,
+// which renovate also treats as fatal rather than as an empty preset. Injectable for tests.
 export type PresetFetcher = (url: string) => Promise<string | null>;
 
 // Forge presets resolve against a fixed public endpoint (as Renovate does): the
@@ -220,48 +319,53 @@ function parsePreset(preset: string): PresetLocation | null {
 // Repo config files Renovate probes, in order, to locate a preset's source.
 const presetConfigFiles = ["default.json", "default.json5", "renovate.json", "renovate.json5", ".renovaterc.json", ".renovaterc"];
 
-// Candidate paths for an explicit `//subpath` preset, appending .json/.json5 when extensionless.
-function subpathFiles(subpath: string): Array<string> {
-  return /\.json5?$/.test(subpath) ? [subpath] : [`${subpath}.json`, `${subpath}.json5`];
+// Renovate takes .json, .json5 and .jsonc as explicit extensions and appends .json otherwise.
+// .json5 is probed too, as the repo config file list already does.
+function presetFiles(file: string): Array<string> {
+  return /\.json[5c]?$/.test(file) ? [file] : [`${file}.json`, `${file}.json5`];
 }
 
-// A null body (missing/unreachable) or unparseable body is skipped, never fatal.
-function tryParse(body: string | null): RenovateConfig | null {
+// A missing file is null and left to the caller, an unparseable one is fatal as renovate's PRESET_INVALID_JSON.
+function parsePresetBody(body: string | null, url: string): RenovateConfig | null {
   if (body === null) return null;
+  let parsed: unknown;
   try {
-    const parsed = parseJsonish(body);
-    return parsed && typeof parsed === "object" ? parsed as RenovateConfig : null;
+    parsed = parseJsonish(body);
   } catch {
-    return null;
+    throw new Error(`invalid JSON in ${url}`);
   }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error(`invalid preset in ${url}`);
+  return parsed as RenovateConfig;
 }
 
 async function fetchPresetConfig(loc: PresetLocation, fetchText: PresetFetcher): Promise<RenovateConfig | null> {
   // An `http` preset is a full URL to a single file; the whole document is the preset.
-  if (loc.kind === "http") return tryParse(await fetchText(loc.url));
+  if (loc.kind === "http") return parsePresetBody(await fetchText(loc.url), loc.url);
 
   const build = forgeRawUrl[loc.forge];
-  const fetchParsed = async (file: string) => tryParse(await fetchText(build(loc.slug, loc.ref, file)));
-
-  // An explicit `//path` points straight at a file.
-  if (loc.subpath) {
-    for (const file of subpathFiles(loc.subpath)) {
-      const parsed = await fetchParsed(file);
+  const firstExisting = async (files: Array<string>) => {
+    for (const file of files) {
+      const url = build(loc.slug, loc.ref, file);
+      const parsed = parsePresetBody(await fetchText(url), url);
       if (parsed) return parsed;
     }
     return null;
+  };
+
+  // An explicit `//path` points straight at a file.
+  if (loc.subpath) return firstExisting(presetFiles(loc.subpath));
+  if (!loc.name) return firstExisting(presetConfigFiles);
+
+  // A named preset is `file[/key[/subkey]]` inside the repo, so `:npm` is npm.json and `:file/key`
+  // is that key of file.json. There is no `presets` map for forge presets, that is npm-preset only.
+  const [file, ...keys] = loc.name.split("/");
+  let preset = await firstExisting(presetFiles(file));
+  for (const key of keys) {
+    const sub = preset && Object.hasOwn(preset, key) ? preset[key] : undefined;
+    if (!sub || typeof sub !== "object") throw new Error(`no preset ${key} in ${file}`);
+    preset = sub as RenovateConfig;
   }
-  // Otherwise Renovate reads the repo's first existing config file, then selects
-  // the preset out of it: `presets[name]`, or the whole config for the default preset.
-  const name = loc.name ?? "default";
-  for (const file of presetConfigFiles) {
-    const parsed = await fetchParsed(file);
-    if (!parsed) continue;
-    const sub = parsed.presets?.[name];
-    if (sub && typeof sub === "object") return sub;
-    return loc.name ? null : parsed; // named-but-missing → skip; default → whole config
-  }
-  return null;
+  return preset;
 }
 
 // Concatenate arrays (packageRules, ignoreDeps), let scalars from `over` win.
@@ -275,23 +379,30 @@ function mergeRenovate(base: RenovateConfig, over: RenovateConfig): RenovateConf
 }
 
 /**
- * Recursively resolve `extends` presets and merge them ahead of the config's own
- * fields (which take precedence), mirroring Renovate. Fetch failures are skipped
- * so an unreachable preset never blocks a build. `seen` is the current resolution
- * path (cloned per branch) so cycles are caught while diamonds still resolve on
- * each path, matching Renovate's path-scoped recursion.
+ * Recursively resolve `extends` presets and merge them ahead of the config's own fields (which
+ * take precedence), mirroring Renovate. A preset that cannot be resolved is fatal, like
+ * Renovate's CONFIG_VALIDATION, so an unreachable or private preset never silently drops the
+ * restrictions it carries. `seen` is the current resolution path (cloned per branch) so cycles
+ * are caught while diamonds still resolve on each path, matching Renovate's path-scoped recursion.
  */
 async function resolveExtends(
   cfg: RenovateConfig, fetchText: PresetFetcher, seen: Set<string>, depth: number,
 ): Promise<RenovateConfig> {
   let merged: RenovateConfig = {};
-  const presets = Array.isArray(cfg.extends) ? cfg.extends : [];
+  // renovate declares extends as allowString and massages it into an array (lib/config/massage.ts)
+  const presets = typeof cfg.extends === "string" ? [cfg.extends] : Array.isArray(cfg.extends) ? cfg.extends : [];
   for (const preset of presets) {
     if (typeof preset !== "string" || depth >= maxPresetDepth || seen.has(preset)) continue;
     const loc = parsePreset(preset);
     if (!loc) continue;
-    const raw = await fetchPresetConfig(loc, fetchText);
-    if (raw) merged = mergeRenovate(merged, await resolveExtends(raw, fetchText, new Set(seen).add(preset), depth + 1));
+    let raw: RenovateConfig | null;
+    try {
+      raw = await fetchPresetConfig(loc, fetchText);
+    } catch (err: any) {
+      throw new Error(`Unable to resolve renovate preset ${preset}: ${err.message}`);
+    }
+    if (!raw) throw new Error(`Unable to resolve renovate preset ${preset}: not found`);
+    merged = mergeRenovate(merged, await resolveExtends(raw, fetchText, new Set(seen).add(preset), depth + 1));
   }
   const {extends: _extends, ...own} = cfg;
   return mergeRenovate(merged, own);
@@ -319,10 +430,10 @@ async function presetHeaders(url: string, etag?: string): Promise<Record<string,
 }
 
 /**
- * Build the production preset fetcher: ETag-revalidated, honoring `noCache` and
- * `timeout`, sending a host token when one is configured. Any network or body-read
- * failure falls back to the cached copy (or null), so a preset fetch never throws
- * into config loading.
+ * Build the production preset fetcher: ETag-revalidated, honoring `noCache` and `timeout`,
+ * sending a host token when one is configured. Only a 404 is a missing file; a cached copy
+ * answers anything else that goes wrong, and without one the failure is thrown so a preset
+ * outage cannot pass for an empty preset.
  */
 export function makePresetFetcher({noCache = false, timeout = defaultPresetTimeout}: PresetFetchOptions = {}): PresetFetcher {
   return async (url) => {
@@ -331,16 +442,22 @@ export function makePresetFetcher({noCache = false, timeout = defaultPresetTimeo
     let res: Response;
     try {
       res = await fetch(url, {headers, signal: AbortSignal.timeout(timeout)});
-    } catch {
-      return cached?.body ?? null; // offline / connect failure
+    } catch (err: any) {
+      if (cached) return cached.body;
+      throw new Error(`${url}: ${err.message}`); // offline / connect failure / timeout
     }
     if (res.status === 304 && cached) return cached.body;
-    if (!res.ok) return cached?.body ?? null; // server error / rate-limit: prefer cache over dropping
+    if (res.status === 404) return null; // file is absent, the caller may have another candidate
+    if (!res.ok) {
+      if (cached) return cached.body;
+      throw new Error(`${url}: HTTP ${res.status}`); // server error / rate-limit / private repo
+    }
     let body: string;
     try {
       body = await res.text();
-    } catch {
-      return cached?.body ?? null; // mid-stream abort/reset
+    } catch (err: any) {
+      if (cached) return cached.body;
+      throw new Error(`${url}: ${err.message}`); // mid-stream abort/reset
     }
     const etag = res.headers.get("etag");
     if (etag && !noCache) setCache(url, etag, body);
@@ -363,20 +480,17 @@ const findRenovateUp = memoizeAsync((startDir: string) => walkUp(startDir, async
   return {parsed: raw as RenovateConfig, path: found.path};
 }));
 
-// Resolving `extends` is network I/O, so memoize per config-file path: a monorepo
-// whose packages share one renovate config resolves its presets once per process,
-// mirroring findRenovateUp. `opts` (cooldown) is applied per call after the cache.
+// Both keyed by config-file path, as loadRenovateConfig runs once per manifest directory and a
+// monorepo shares one config across them, where resolving `extends` is network I/O and normalizing
+// warns once per rule it cannot import. Callers spread the result rather than mutate it.
 const resolvedExtendsCache = new Map<string, Promise<RenovateConfig>>();
+const normalizedCache = new Map<string, Promise<Partial<Config>>>();
 
 export async function loadRenovateConfig(
   rootDir: string, opts: RenovateImportOptions = {}, fetchText: PresetFetcher = makePresetFetcher(),
 ): Promise<Partial<Config>> {
   const found = await findRenovateUp(rootDir);
   if (!found) return {};
-  let resolved = resolvedExtendsCache.get(found.path);
-  if (!resolved) {
-    resolved = resolveExtends(found.parsed, fetchText, new Set(), 0);
-    resolvedExtendsCache.set(found.path, resolved);
-  }
-  return normalize(await resolved, opts);
+  const resolved = getOrSet(resolvedExtendsCache, found.path, () => resolveExtends(found.parsed, fetchText, new Set(), 0));
+  return getOrSet(normalizedCache, `${opts.cooldown ? 1 : 0}${found.path}`, async () => normalize(await resolved, opts));
 }

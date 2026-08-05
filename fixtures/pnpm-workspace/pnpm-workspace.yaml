@@ -1,2 +1,9 @@
 packages:
   - "packages/*"
+
+catalog:
+  svgstore: "^1.0.0"  # pinned
+
+catalogs:
+  build:
+    typescript: ^4

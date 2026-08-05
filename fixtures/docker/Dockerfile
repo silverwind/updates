@@ -4,3 +4,5 @@ FROM --platform=linux/amd64 postgres:15-alpine
 COPY . /app
 FROM node:18 AS builder
 RUN echo "build"
+FROM node:20 AS tools
+RUN echo "tools"

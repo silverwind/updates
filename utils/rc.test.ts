@@ -1,4 +1,7 @@
-import {parseIni, parseEnvVars} from "./rc.ts";
+import {mkdtempSync, writeFileSync} from "node:fs";
+import {join} from "node:path";
+import {tmpdir} from "node:os";
+import rc, {parseIni, parseEnvVars} from "./rc.ts";
 
 // --- parseIni ---
 
@@ -94,6 +97,13 @@ test("npmrc basic auth with quoted password", () => {
 test("npmrc legacy _auth", () => {
   const result = parseIni("_auth=\"dXNlcjpwYXNz\"");
   expect(result["_auth"]).toBe("dXNlcjpwYXNz");
+});
+
+test("project config is found upwards from the given dir, not the cwd", () => {
+  const dir = mkdtempSync(join(tmpdir(), "updates-rc-"));
+  writeFileSync(join(dir, ".npmrc"), "registry=https://from-manifest-dir.test");
+  expect(rc("npm", {registry: "https://default.test"}, dir).registry).toBe("https://from-manifest-dir.test");
+  expect(rc("npm", {registry: "https://default.test"}).registry).not.toBe("https://from-manifest-dir.test");
 });
 
 // --- parseEnvVars ---

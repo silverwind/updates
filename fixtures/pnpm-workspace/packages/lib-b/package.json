@@ -2,6 +2,7 @@
   "name": "lib-b",
   "version": "0.1.0",
   "dependencies": {
-    "react": "18.0"
+    "react": "18.0",
+    "svgstore": "catalog:"
   }
 }

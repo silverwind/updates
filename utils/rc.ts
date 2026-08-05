@@ -27,8 +27,8 @@ function readConfigFile(filePath: string): Record<string, string> | undefined {
   }
 }
 
-function findUp(filename: string): string | undefined {
-  let dir = cwd();
+function findUp(filename: string, startDir: string): string | undefined {
+  let dir = startDir;
   while (true) {
     const filePath = join(dir, filename);
     try {
@@ -66,7 +66,9 @@ export function parseEnvVars(prefix: string): Record<string, any> {
   return result;
 }
 
-export default function rc(name: string, defaults: Record<string, any> = {}): Record<string, any> {
+// `startDir` is where the project-level file is searched for upwards. A caller holding a manifest
+// path must pass its directory, as npm resolves `.npmrc` as a sibling or parent of the package file.
+export default function rc(name: string, defaults: Record<string, any> = {}, startDir: string = cwd()): Record<string, any> {
   const win = platform === "win32";
   const home = win ? env.USERPROFILE : env.HOME;
 
@@ -94,7 +96,7 @@ export default function rc(name: string, defaults: Record<string, any> = {}): Re
     addConfigFile(join(home, `.${name}rc`));
   }
 
-  addConfigFile(findUp(`.${name}rc`));
+  addConfigFile(findUp(`.${name}rc`, startDir));
 
   const envConfig = parseEnvVars(`${name}_`);
   if (envConfig.config) addConfigFile(envConfig.config);

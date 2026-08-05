@@ -2,6 +2,7 @@ import {readFileSync, readdirSync} from "node:fs";
 import {join} from "node:path";
 import {isDockerFileName} from "../modes/docker.ts";
 import {isMakeFileName} from "../modes/make.ts";
+import {resolveGoProxyChain} from "../modes/go.ts";
 import {defaultApiUrls} from "../modes/shared.ts";
 import {forgeDirs, modeByFileName} from "./utils.ts";
 import {parseIni} from "./rc.ts";
@@ -69,7 +70,9 @@ export function prewarmOrigins(dir: string, args: Record<string, unknown>): stri
     for (const api of apisByMode[mode] ?? []) {
       // the npm registry is the only one that can also come from a file
       const override = api === "registry" && typeof args.registry !== "string" ? npmrcRegistry(dir) : args[api];
-      const origin = resolveOrigin(override, defaultApiUrls[api]);
+      // GOPROXY, not the default, is where go lookups go, and its `off` and `direct` parse as no
+      // URL, so they warm nothing.
+      const origin = resolveOrigin(override, api === "goproxy" ? resolveGoProxyChain()[0].url : defaultApiUrls[api]);
       if (origin) origins.add(origin);
     }
   }

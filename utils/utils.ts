@@ -25,16 +25,80 @@ export function highlightDiff(a: string, b: string, colorFn: (str: string) => st
   return diff ? a.substring(0, i) + colorFn(diff) : a;
 }
 
-const uvSpecRe = /^([^<>=~!]+)(?:==|>=?|<=?|~=)([0-9.a-z]+)$/;
+// Name, optional extras and everything up to the marker, spacing captured for re-serializing.
+const pep508Re = /^(\s*)([A-Za-z0-9][A-Za-z0-9._-]*)(\s*)((?:\[[^\]]*\])?)(\s*)(.*)$/;
+const pep508ParenRe = /^(\s*\()([^)]*)(\)\s*)$/; // `packaging (==20.0.0)`
+// The version is anything non-blank, so a cap or exclusion is recognized even as a wildcard.
+const pep440SpecifierRe = /^(\s*)(===|==|!=|~=|<=|>=|<|>)(\s*)(\S+)(\s*)$/;
+// Only a lower bound states the version the project is on. `<`, `<=`, `!=` and `>` exclude versions,
+// so bumping one would change what the spec allows. Renovate leaves `>` as authored too, which
+// makes a `>`-only requirement unbumpable.
+const lowerBoundOps = new Set(["===", "==", ">=", "~="]);
+// A wildcard (`==1.4.*`) or arbitrary equality on a non-version (`===foo`) has nothing to bump.
+const plainVersionRe = /^v?\d[0-9a-z.!+_-]*$/i;
 
-// https://peps.python.org/pep-0508/
-export function parseUvDependencies(specs: Array<string>) {
-  const ret: Array<{name: string, version: string}> = [];
+export type Pep508Specifier = {lead: string, op: string, sep: string, version: string, trail: string};
+
+export type Pep508 = {
+  name: string;
+  extras: string;
+  /** null when the set does not parse in full, so a writer never rewrites what it did not read. */
+  specifiers: Array<Pep508Specifier> | null;
+  marker: string; // the environment marker with its `;`, verbatim
+  // Verbatim spacing, name, extras and parens, so serializePep508 reproduces an untouched requirement.
+  head: string;
+  open: string;
+  close: string;
+};
+
+function parseSpecifiers(text: string): Array<Pep508Specifier> | null {
+  const specifiers: Array<Pep508Specifier> = [];
+  for (const part of text.split(",")) {
+    const match = pep440SpecifierRe.exec(part);
+    if (!match) return null;
+    const [, lead, op, sep, version, trail] = match;
+    specifiers.push({lead, op, sep, version, trail});
+  }
+  return specifiers;
+}
+
+/** Parse one PEP 508 requirement. https://peps.python.org/pep-0508/ */
+export function parsePep508(text: string): Pep508 | null {
+  const semi = text.indexOf(";");
+  const match = pep508Re.exec(semi === -1 ? text : text.slice(0, semi));
+  if (!match) return null;
+  const [, lead, name, space, extras, gap, set] = match;
+  const paren = pep508ParenRe.exec(set);
+  return {
+    name,
+    extras,
+    specifiers: parseSpecifiers(paren ? paren[2] : set),
+    marker: semi === -1 ? "" : text.slice(semi),
+    head: `${lead}${name}${space}${extras}${gap}`,
+    open: paren?.[1] ?? "",
+    close: paren?.[3] ?? "",
+  };
+}
+
+export function serializePep508({head, open, close, marker}: Pep508, specifiers: Array<Pep508Specifier>): string {
+  const set = specifiers.map(({lead, op, sep, version, trail}) => `${lead}${op}${sep}${version}${trail}`).join(",");
+  return `${head}${open}${set}${close}${marker}`;
+}
+
+// The specifier a requirement's version is read from, and the only one a writer bumps: anchoring
+// elsewhere would move a specifier the reported version never came from.
+export function anchorSpecifier(specifiers: Array<Pep508Specifier>): Pep508Specifier | undefined {
+  return specifiers.find(({op, version}) => lowerBoundOps.has(op) && plainVersionRe.test(version));
+}
+
+export function parseUvDependencies(specs: Array<unknown>) {
+  const ret: Array<{name: string, version: string, spec: string}> = [];
   for (const spec of specs) {
-    const match = uvSpecRe.exec(spec.replaceAll(/\s+/g, ""));
-    if (!match) continue;
-    const name = match[1].replace(/\[.*?\]$/, "");
-    if (name) ret.push({name, version: match[2]});
+    if (typeof spec !== "string") continue; // PEP 735 `{include-group = "..."}` and other tables
+    const parsed = parsePep508(spec);
+    if (!parsed?.specifiers) continue;
+    const anchor = anchorSpecifier(parsed.specifiers);
+    if (anchor) ret.push({name: parsed.name, version: anchor.version, spec});
   }
   return ret;
 }
@@ -71,10 +135,8 @@ export const modeByFileName: Record<string, string> = {
 
 export const uvTypes = [
   "project.dependencies",
-  "project.optional-dependencies",
-  "dependency-groups.dev",
-  "dependency-groups.lint",
-  "dependency-groups.test",
+  "project.optional-dependencies.*",
+  "dependency-groups.*",
 ];
 
 export const goTypes = [
@@ -91,15 +153,37 @@ export const cargoTypes = [
   "workspace.dependencies",
 ];
 
+// Target names are arbitrary (`cfg(unix)`, `x86_64-pc-windows-msvc`), so these need a manifest.
+export const cargoTargetTypes = [
+  "target.*.dependencies",
+  "target.*.dev-dependencies",
+  "target.*.build-dependencies",
+];
+
+// Resolve dep type paths against a parsed manifest, so `*` segments take group and target names
+// from the document. Each path comes back with the table it resolved to, so a key that legally
+// contains a dot (`[project.optional-dependencies."extra.one"]`) is never re-split and lost.
+export function expandDepTypes(types: Array<string>, doc: Record<string, any>): Array<[string, any]> {
+  const ret: Array<[string, any]> = [];
+  const walk = (segments: Array<string>, index: number, path: string, value: any) => {
+    if (index === segments.length) {
+      if (value !== undefined) ret.push([path, value]);
+      return;
+    }
+    if (!value || typeof value !== "object") return;
+    const segment = segments[index];
+    const keys = segment !== "*" ? [segment] : Array.isArray(value) ? [] : Object.keys(value);
+    for (const key of keys) walk(segments, index + 1, path ? `${path}.${key}` : key, value[key]);
+  };
+  for (const type of types) walk(type.split("."), 0, "", doc);
+  return ret;
+}
+
 export function matchesAny(str: string, set: Set<RegExp> | boolean): boolean {
   if (set === true) return true;
   if (!(set instanceof Set)) return false;
   for (const re of set) if (re.test(str)) return true;
   return false;
-}
-
-export function getProperty(obj: Record<string, any>, path: string): Record<string, any> {
-  return path.split(".").reduce((acc: Record<string, any>, prop: string) => acc?.[prop] ?? null, obj);
 }
 
 export function commaSeparatedToArray(str: string): Array<string> {
@@ -191,6 +275,20 @@ export const esc: (str: string) => string = RegExp.escape ?
   (str) => RegExp.escape(str) :
   (str) => str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+// Longest first, so a key that is a prefix of another cannot shadow it. One alternation also
+// keeps a rewrite to a single pass, where per-key passes would re-match what a key just wrote.
+export function longestFirstAlternation(keys: Iterable<string>): string {
+  return Array.from(keys).sort((a, b) => b.length - a.length).map(esc).join("|");
+}
+
+// A string pattern is a case-insensitive glob, a RegExp is taken as authored. CLI `/regex/` strings
+// are already RegExp objects by the time they arrive here.
+export function patternToRegex(pattern: string | RegExp): RegExp {
+  if (!(pattern instanceof RegExp)) return new RegExp(`^${esc(pattern).replaceAll("\\*", ".*")}$`, "i");
+  // strip g/y: these matchers are only used with .test(), where a stateful lastIndex flakes
+  return /[gy]/.test(pattern.flags) ? new RegExp(pattern.source, pattern.flags.replace(/[gy]/g, "")) : pattern;
+}
+
 export async function walkUp<T>(startDir: string, probe: (dir: string) => Promise<T | null>): Promise<T | null> {
   let dir = startDir;
   while (true) {
@@ -212,14 +310,15 @@ export function pushTo<K, V>(map: Map<K, Array<V>>, key: K, value: V): void {
   }
 }
 
+type MapLike<K, V> = {has: (key: K) => boolean, get: (key: K) => V | undefined, set: (key: K, value: V) => unknown};
+
+// Read through a memo, filling it on first use. `has`, not a truthy get, so a cached null counts.
+export function getOrSet<K, V>(map: MapLike<K, V>, key: K, make: () => V): V {
+  if (!map.has(key)) map.set(key, make());
+  return map.get(key)!;
+}
+
 export function memoizeAsync<K, V>(fn: (k: K) => Promise<V>): (k: K) => Promise<V> {
   const cache = new Map<K, Promise<V>>();
-  return (k) => {
-    let p = cache.get(k);
-    if (!p) {
-      p = fn(k);
-      cache.set(k, p);
-    }
-    return p;
-  };
+  return (k) => getOrSet(cache, k, () => fn(k));
 }

@@ -10,8 +10,22 @@ const fixturesDir = fileURLToPath(new URL("../fixtures/renovate/", import.meta.u
 // Adapt a synchronous URL→body resolver into a PresetFetcher, keeping mocks terse.
 const fetcher = (fn: (url: string) => string | null): PresetFetcher => (url) => Promise.resolve(fn(url));
 
-// Default preset fetcher for tests: resolves nothing, so no network is hit.
 const noFetch = fetcher(() => null);
+
+const emptyPresets = fetcher(() => "{}");
+
+// Callers must be test.sequential, as a concurrent neighbor would see the swapped console.error.
+async function withWarnings(fn: () => Promise<void>): Promise<Array<string>> {
+  const original = console.error;
+  const warnings: Array<string> = [];
+  console.error = (message: string) => { warnings.push(message); };
+  try {
+    await fn();
+  } finally {
+    console.error = original;
+  }
+  return warnings;
+}
 
 const created: Array<string> = [];
 
@@ -25,108 +39,128 @@ afterAll(() => {
   for (const d of created) rmSync(d, {recursive: true, force: true});
 });
 
-test("no config returns empty", async () => {
-  expect(await loadRenovateConfig(makeDir())).toEqual({});
-});
-
-test("minimumReleaseAge skipped without opt-in", async () => {
-  const dir = makeDir();
-  writeFileSync(join(dir, "renovate.json"), JSON.stringify({minimumReleaseAge: "3 days"}));
-  expect(await loadRenovateConfig(dir)).toEqual({});
-});
-
-test("minimumReleaseAge → cooldown (days)", async () => {
-  const dir = makeDir();
-  writeFileSync(join(dir, "renovate.json"), JSON.stringify({minimumReleaseAge: "3 days"}));
-  expect(await loadRenovateConfig(dir, {cooldown: true})).toEqual({cooldown: 3});
-});
-
-test("minimumReleaseAge weeks", async () => {
-  const dir = makeDir();
-  writeFileSync(join(dir, "renovate.json"), JSON.stringify({minimumReleaseAge: "1 week"}));
-  expect(await loadRenovateConfig(dir, {cooldown: true})).toEqual({cooldown: 7});
-});
-
-test("minimumReleaseAge hours", async () => {
-  const dir = makeDir();
-  writeFileSync(join(dir, "renovate.json"), JSON.stringify({minimumReleaseAge: "12 hours"}));
-  expect(await loadRenovateConfig(dir, {cooldown: true})).toEqual({cooldown: 0.5});
-});
-
-test("ignoreDeps → exclude", async () => {
-  const dir = makeDir();
-  writeFileSync(join(dir, "renovate.json"), JSON.stringify({ignoreDeps: ["foo", "bar"]}));
-  expect(await loadRenovateConfig(dir)).toEqual({exclude: ["foo", "bar"]});
-});
-
-test("packageRules disabled → exclude", async () => {
-  const dir = makeDir();
-  writeFileSync(join(dir, "renovate.json"), JSON.stringify({
-    packageRules: [{matchPackageNames: ["foo", "bar"], enabled: false}],
-  }));
-  expect(await loadRenovateConfig(dir)).toEqual({exclude: ["foo", "bar"]});
-});
-
-test("packageRules disabled with negated matchers → include", async () => {
-  const dir = makeDir();
+test.each([
+  ["no config at all", null, null, {}],
+  ["minimumReleaseAge, which needs --cooldown to opt in", "renovate.json", {minimumReleaseAge: "3 days"}, {}],
+  ["ignoreDeps", "renovate.json", {ignoreDeps: ["foo", "bar"]}, {exclude: ["foo", "bar"]}],
+  ["a disabled packageRule", "renovate.json",
+    {packageRules: [{matchPackageNames: ["foo", "bar"], enabled: false}]}, {exclude: ["foo", "bar"]}],
   // renovate disables everything except @types, which is an allow-list, not a no-op exclude
-  writeFileSync(join(dir, "renovate.json"), JSON.stringify({
-    packageRules: [{matchPackageNames: ["!/^@types/"], enabled: false}],
-  }));
-  expect(await loadRenovateConfig(dir)).toEqual({include: [/^@types/]});
-});
-
-test("packageRules allowedVersions → pin", async () => {
-  const dir = makeDir();
-  writeFileSync(join(dir, "renovate.json"), JSON.stringify({
-    packageRules: [{matchPackageNames: ["react"], allowedVersions: "^18.0.0"}],
-  }));
-  expect(await loadRenovateConfig(dir)).toEqual({pin: {react: "^18.0.0"}});
-});
-
-test("packageRules with non-name matchers are skipped", async () => {
-  const dir = makeDir();
-  writeFileSync(join(dir, "renovate.json"), JSON.stringify({
+  ["a disabled rule whose matchers are all negated", "renovate.json",
+    {packageRules: [{matchPackageNames: ["!/^@types/"], enabled: false}]}, {include: [/^@types/]}],
+  ["allowedVersions", "renovate.json",
+    {packageRules: [{matchPackageNames: ["react"], allowedVersions: "^18.0.0"}]},
+    {pin: {react: "^18.0.0"}, pinNoDowngrade: true}],
+  ["an invalid allowedVersions range", "renovate.json",
+    {packageRules: [{matchPackageNames: ["foo"], allowedVersions: "not-a-range"}]}, {}],
+  ["a deny-all followed by an allow-list", "renovate.json", {packageRules: [
+    {matchPackageNames: ["react"], enabled: false},
+    {matchPackageNames: ["*"], enabled: false},
+    {matchPackageNames: ["react", "react-dom"], enabled: true}, // clears the earlier exclude too
+  ]}, {include: ["react", "react-dom"]}],
+  ["a deny-all with no matcher and nothing re-enabled", "renovate.json",
+    {packageRules: [{enabled: false}]}, {exclude: ["*"]}],
+  ["a later enabled rule, which clears an earlier exclude", "renovate.json", {
+    ignoreDeps: ["ignored"],
     packageRules: [
-      {matchPackageNames: ["foo"], matchUpdateTypes: ["major"], enabled: false},
-      {matchManagers: ["npm"], enabled: false},
+      {matchPackageNames: ["foo", "bar"], enabled: false},
+      {matchPackageNames: ["foo"], enabled: true},
+      {matchPackageNames: ["ignored"], enabled: true}, // ignoreDeps is not a packageRule, so it stays
     ],
-  }));
-  expect(await loadRenovateConfig(dir)).toEqual({});
+  }, {exclude: ["ignored", "bar"]}],
+  ["a later enabled rule, which clears every copy of an earlier exclude", "renovate.json", {packageRules: [
+    {matchPackageNames: ["foo"], enabled: false},
+    {matchPackageNames: ["foo"], enabled: false},
+    {matchPackageNames: ["foo"], enabled: true},
+  ]}, {}],
+  ["renovate.jsonc, comments and all", "renovate.jsonc", `{\n  // ignore foo\n  "ignoreDeps": ["foo"]\n}`,
+    {exclude: ["foo"]}],
+])("loadRenovateConfig reads %s", async (_name, file, config, expected) => {
+  const dir = makeDir();
+  if (file) writeFileSync(join(dir, file), typeof config === "string" ? config : JSON.stringify(config));
+  expect(await loadRenovateConfig(dir)).toEqual(expected);
 });
 
-test("invalid allowedVersions range is ignored", async () => {
+test.each([["3 days", 3], ["1 week", 7], ["12 hours", 0.5]])("minimumReleaseAge %s → cooldown", async (age, cooldown) => {
+  const dir = makeDir();
+  writeFileSync(join(dir, "renovate.json"), JSON.stringify({minimumReleaseAge: age}));
+  expect(await loadRenovateConfig(dir, {cooldown: true})).toEqual({cooldown});
+});
+
+test.sequential.each([
+  ["packageRules with non-name matchers are skipped", {packageRules: [
+    {matchPackageNames: ["foo"], matchUpdateTypes: ["major"], enabled: false},
+    {matchManagers: ["npm"], enabled: false},
+    {matchPackageNames: ["webpack"], updateTypes: ["major"], enabled: false},
+    {matchPackageNames: ["rollup"], excludeDepNames: ["rollup"], enabled: false},
+    {matchPackageNames: ["vite"], depTypeList: ["devDependencies"], allowedVersions: "^1"},
+    {matchManagers: ["npm"], groupName: "npm"}, // nothing to import, so nothing to report
+  ]}, {}, [
+    "renovate config: skipping packageRule with unsupported matcher matchUpdateTypes",
+    "renovate config: skipping packageRule with unsupported matcher matchManagers",
+    "renovate config: skipping packageRule with unsupported matcher updateTypes",
+    "renovate config: skipping packageRule with unsupported matcher excludeDepNames",
+    "renovate config: skipping packageRule with unsupported matcher depTypeList",
+  ]],
+  ["legacy package matchers are honored", {packageRules: [
+    {packageNames: ["foo"], enabled: false},
+    {packagePatterns: ["^bar"], enabled: false},
+    {matchPackagePrefixes: ["@baz/"], enabled: false},
+    {matchPackageNames: ["qux"], excludePackageNames: ["qux"], enabled: false}, // and-not, skipped
+  ]}, {exclude: ["foo", /^bar/, "@baz/*"]},
+  ["renovate config: skipping packageRule mixing matchers and negations: qux, !qux"]],
+  // renovate needs a positive and every negation to match, which exclude cannot express
+  ["packageRules mixing positive and negated matchers are skipped",
+    {packageRules: [{matchPackageNames: ["@babel/*", "!@babel/core"], enabled: false}]}, {},
+    ["renovate config: skipping packageRule mixing matchers and negations: @babel/*, !@babel/core"]],
+  ["packageRule re-enabling inside a wider exclude is reported", {packageRules: [
+    {matchPackageNames: ["@babel/*"], enabled: false},
+    {matchPackageNames: ["@babel/core"], enabled: true},
+  ]}, {exclude: ["@babel/*"]},
+  ["renovate config: packageRule re-enables @babel/core, which a wider exclude keeps disabled"]],
+  // a `g` matcher carries lastIndex from one .test() to the next, so only the first name warned
+  ["every name a wider regex exclude keeps disabled is reported", {packageRules: [
+    {matchPackageNames: ["/^@babel/g"], enabled: false},
+    {matchPackageNames: ["@babel/core", "@babel/types"], enabled: true},
+  ]}, {exclude: [/^@babel/g]}, [
+    "renovate config: packageRule re-enables @babel/core, which a wider exclude keeps disabled",
+    "renovate config: packageRule re-enables @babel/types, which a wider exclude keeps disabled",
+  ]],
+  ["top-level enabled false disables everything", {enabled: false, ignoreDeps: ["foo"]}, {exclude: ["*"]},
+    ["renovate config: enabled is false, skipping all dependencies"]],
+])("%s", async (_name, config, expected, expectedWarnings) => {
+  const dir = makeDir();
+  writeFileSync(join(dir, "renovate.json"), JSON.stringify(config));
+  const warnings = await withWarnings(async () => {
+    expect(await loadRenovateConfig(dir)).toEqual(expected);
+  });
+  expect(warnings).toEqual(expectedWarnings);
+});
+
+test.sequential("a config shared by several directories is normalized once", async () => {
   const dir = makeDir();
   writeFileSync(join(dir, "renovate.json"), JSON.stringify({
-    packageRules: [{matchPackageNames: ["foo"], allowedVersions: "not-a-range"}],
+    packageRules: [{matchManagers: ["npm"], enabled: false}],
   }));
-  expect(await loadRenovateConfig(dir)).toEqual({});
+  mkdirSync(join(dir, "pkg"));
+  const warnings = await withWarnings(async () => {
+    expect(await loadRenovateConfig(dir)).toEqual({});
+    expect(await loadRenovateConfig(join(dir, "pkg"))).toEqual({}); // walks up to the same file
+  });
+  expect(warnings).toEqual(["renovate config: skipping packageRule with unsupported matcher matchManagers"]);
 });
 
-test("renovate.json5 with comments and trailing commas", async () => {
+test("renovate.json5 comments, trailing commas, unquoted keys and single quotes", async () => {
   const dir = makeDir();
   writeFileSync(join(dir, "renovate.json5"), `{
     // pin react
-    "packageRules": [
-      {"matchPackageNames": ["react"], "allowedVersions": "^18.0.0",},
-    ],
-  }`);
-  expect(await loadRenovateConfig(dir)).toEqual({pin: {react: "^18.0.0"}});
-});
-
-test("renovate.json5 with unquoted keys and single-quoted strings", async () => {
-  const dir = makeDir();
-  writeFileSync(join(dir, "renovate.json5"), `{
     extends: ['github>sxzz/renovate-config'],
     automerge: true,
     packageRules: [
-      {
-        matchPackageNames: ['react'],
-        allowedVersions: '^18.0.0',
-      },
+      {matchPackageNames: ['react'], allowedVersions: '^18.0.0',},
     ],
   }`);
-  expect(await loadRenovateConfig(dir, {}, noFetch)).toEqual({pin: {react: "^18.0.0"}});
+  expect(await loadRenovateConfig(dir, {}, emptyPresets)).toEqual({pin: {react: "^18.0.0"}, pinNoDowngrade: true});
 });
 
 test("extends github preset is fetched and merged", async () => {
@@ -150,60 +184,83 @@ test("extends github preset is fetched and merged", async () => {
   expect(await loadRenovateConfig(dir, {}, fetchText)).toEqual({
     exclude: ["node", "local-dep"],
     pin: {react: "^18"},
+    pinNoDowngrade: true,
   });
   expect(fetched[0]).toBe("https://raw.githubusercontent.com/sxzz/renovate-config/HEAD/default.json");
 });
 
-test("extends resolves recursively across presets", async () => {
+// Presets keyed by their `org/<key>` path, so a row only spells the graph it needs.
+test.each([
+  ["recursively", ["github>org/a"],
+    {a: {extends: ["github>org/b"], ignoreDeps: ["a"]}, b: {ignoreDeps: ["b"]}}, ["b", "a"]],
+  ["without looping on a cycle", ["github>org/a"],
+    {a: {extends: ["github>org/b"], ignoreDeps: ["a"]}, b: {extends: ["github>org/a"], ignoreDeps: ["b"]}}, ["b", "a"]],
+  // c is reached via both a and b (path-scoped seen), so it contributes on each path
+  ["on each path of a diamond", ["github>org/a", "github>org/b"],
+    {a: {extends: ["github>org/c"], ignoreDeps: ["a"]}, b: {extends: ["github>org/c"], ignoreDeps: ["b"]},
+      c: {ignoreDeps: ["c"]}}, ["c", "a", "c", "b"]],
+])("extends resolves %s", async (_name, extendsList, presets: Record<string, unknown>, exclude) => {
   const dir = makeDir();
-  writeFileSync(join(dir, "renovate.json"), JSON.stringify({extends: ["github>org/a"]}));
+  writeFileSync(join(dir, "renovate.json"), JSON.stringify({extends: extendsList}));
   const fetchText = fetcher((url) => {
-    if (url.includes("/org/a/")) return JSON.stringify({extends: ["github>org/b"], ignoreDeps: ["a"]});
-    if (url.includes("/org/b/")) return JSON.stringify({ignoreDeps: ["b"]});
-    return null;
+    const key = /\/org\/(\w+)\//.exec(url)?.[1];
+    return key && presets[key] ? JSON.stringify(presets[key]) : null;
   });
-  expect(await loadRenovateConfig(dir, {}, fetchText)).toEqual({exclude: ["b", "a"]});
+  expect(await loadRenovateConfig(dir, {}, fetchText)).toEqual({exclude});
 });
 
-test("named preset reads presets[name] from the repo config, subpath fetches the file", async () => {
+test("named preset is a file in the repo, subpath fetches the file", async () => {
   const dir = makeDir();
   writeFileSync(join(dir, "renovate.json"), JSON.stringify({
-    extends: ["github>org/a:group", "gitlab>org/b//path/file"],
+    extends: ["github>org/a:group", "github>org/a:file/key", "gitlab>org/b//path/file", "github>org/c:default"],
   }));
   const urls: Array<string> = [];
   const fetchText = fetcher((url) => {
     urls.push(url);
-    // named preset `:group` comes from the repo's default.json presets map, not group.json
-    if (url.endsWith("/org/a/HEAD/default.json")) return JSON.stringify({presets: {group: {ignoreDeps: ["g"]}}});
+    // `:group` is group.json, not a `presets` map inside the repo's default.json
+    if (url.endsWith("/org/a/HEAD/group.json")) return JSON.stringify({ignoreDeps: ["g"]});
+    if (url.endsWith("/org/a/HEAD/file.json")) return JSON.stringify({key: {ignoreDeps: ["k"]}});
     if (url.endsWith("/org/b/-/raw/HEAD/path/file.json")) return JSON.stringify({ignoreDeps: ["f"]});
+    if (url.endsWith("/org/c/HEAD/default.json")) return JSON.stringify({ignoreDeps: ["d"]});
     return null;
   });
-  expect(await loadRenovateConfig(dir, {}, fetchText)).toEqual({exclude: ["g", "f"]});
-  expect(urls).toContain("https://raw.githubusercontent.com/org/a/HEAD/default.json");
-  expect(urls).toContain("https://gitlab.com/org/b/-/raw/HEAD/path/file.json");
-  expect(urls).not.toContain("https://raw.githubusercontent.com/org/a/HEAD/group.json");
+  expect(await loadRenovateConfig(dir, {}, fetchText)).toEqual({exclude: ["g", "k", "f", "d"]});
+  expect(urls).toContain("https://raw.githubusercontent.com/org/a/HEAD/group.json");
+  expect(urls).not.toContain("https://raw.githubusercontent.com/org/a/HEAD/default.json");
 });
 
-test("named preset missing from the config is skipped (does not fall back to whole config)", async () => {
+test("named preset with an explicit extension is fetched verbatim", async () => {
   const dir = makeDir();
-  writeFileSync(join(dir, "renovate.json"), JSON.stringify({
-    extends: ["github>org/a:foo"],
-    ignoreDeps: ["own"],
-  }));
+  writeFileSync(join(dir, "renovate.json"), JSON.stringify({extends: ["github>org/a:group.jsonc"]}));
   const fetchText = fetcher((url) => {
-    // default.json exists but has no `foo` preset → Renovate would not apply the whole config
-    if (url.endsWith("/default.json")) return JSON.stringify({ignoreDeps: ["should-not-apply"]});
+    if (url.endsWith("/org/a/HEAD/group.jsonc")) return `{"ignoreDeps": ["g"]} // comment`;
     return null;
   });
-  expect(await loadRenovateConfig(dir, {}, fetchText)).toEqual({exclude: ["own"]});
+  expect(await loadRenovateConfig(dir, {}, fetchText)).toEqual({exclude: ["g"]});
 });
 
-test("built-in and unresolvable presets are skipped without fetching", async () => {
+test.each([
+  ["a named preset the file does not carry", ["github>org/a:file/foo"],
+    fetcher((url) => url.endsWith("/file.json") ? JSON.stringify({other: {ignoreDeps: ["nope"]}}) : null),
+    "Unable to resolve renovate preset github>org/a:file/foo: no preset foo in file"],
+  ["a preset that resolves to nothing", ["github>org/a"], noFetch,
+    "Unable to resolve renovate preset github>org/a: not found"],
+  ["an unreachable preset host", ["github>org/a"], () => Promise.reject(new Error("connect ECONNREFUSED")),
+    "Unable to resolve renovate preset github>org/a: connect ECONNREFUSED"],
+  ["an unparseable preset", ["github>org/a"], fetcher(() => "{bad json"),
+    "Unable to resolve renovate preset github>org/a: invalid JSON in https://raw.githubusercontent.com/org/a/HEAD/default.json"],
+])("%s is fatal", async (_name, extendsList, fetchText, message) => {
   const dir = makeDir();
-  writeFileSync(join(dir, "renovate.json"), JSON.stringify({
-    extends: ["config:recommended", ":pinVersions", "local>org/a", "bitbucket>org/b"],
-    ignoreDeps: ["own"],
-  }));
+  writeFileSync(join(dir, "renovate.json"), JSON.stringify({extends: extendsList, ignoreDeps: ["own"]}));
+  await expect(loadRenovateConfig(dir, {}, fetchText)).rejects.toThrow(message);
+});
+
+test.each([
+  ["built-in and unresolvable presets", ["config:recommended", ":pinVersions", "local>org/a", "bitbucket>org/b"]],
+  ["inherited-key forges", ["__proto__>org/a", "constructor>org/b"]],
+])("%s are skipped without fetching", async (_name, extendsList) => {
+  const dir = makeDir();
+  writeFileSync(join(dir, "renovate.json"), JSON.stringify({extends: extendsList, ignoreDeps: ["own"]}));
   let called = false;
   const fetchText = fetcher(() => { called = true; return null; });
   expect(await loadRenovateConfig(dir, {}, fetchText)).toEqual({exclude: ["own"]});
@@ -239,49 +296,11 @@ test("http preset is fetched directly as a single file", async () => {
   expect(urls).toEqual(["https://git.example.com/org/repo/raw/branch/main/renovate.json"]);
 });
 
-test("unreachable preset is skipped, local config still applies", async () => {
+test("extends accepts a bare string", async () => {
   const dir = makeDir();
-  writeFileSync(join(dir, "renovate.json"), JSON.stringify({
-    extends: ["github>org/a"],
-    ignoreDeps: ["own"],
-  }));
-  expect(await loadRenovateConfig(dir, {}, noFetch)).toEqual({exclude: ["own"]}); // every fetch fails
-});
-
-test("extends cycles terminate", async () => {
-  const dir = makeDir();
-  writeFileSync(join(dir, "renovate.json"), JSON.stringify({extends: ["github>org/a"]}));
-  const fetchText = fetcher((url) => {
-    if (url.includes("/org/a/")) return JSON.stringify({extends: ["github>org/b"], ignoreDeps: ["a"]});
-    if (url.includes("/org/b/")) return JSON.stringify({extends: ["github>org/a"], ignoreDeps: ["b"]});
-    return null;
-  });
-  expect(await loadRenovateConfig(dir, {}, fetchText)).toEqual({exclude: ["b", "a"]});
-});
-
-test("inherited-key forges (__proto__, constructor) are skipped, not fetched", async () => {
-  const dir = makeDir();
-  writeFileSync(join(dir, "renovate.json"), JSON.stringify({
-    extends: ["__proto__>org/a", "constructor>org/b"],
-    ignoreDeps: ["own"],
-  }));
-  let called = false;
-  const fetchText = fetcher(() => { called = true; return null; });
-  expect(await loadRenovateConfig(dir, {}, fetchText)).toEqual({exclude: ["own"]});
-  expect(called).toBe(false);
-});
-
-test("diamond extends resolves the shared preset on each path", async () => {
-  const dir = makeDir();
-  writeFileSync(join(dir, "renovate.json"), JSON.stringify({extends: ["github>org/a", "github>org/b"]}));
-  const fetchText = fetcher((url) => {
-    if (url.includes("/org/a/")) return JSON.stringify({extends: ["github>org/c"], ignoreDeps: ["a"]});
-    if (url.includes("/org/b/")) return JSON.stringify({extends: ["github>org/c"], ignoreDeps: ["b"]});
-    if (url.includes("/org/c/")) return JSON.stringify({ignoreDeps: ["c"]});
-    return null;
-  });
-  // c is reached via both a and b (path-scoped seen), so it contributes on each path.
-  expect(await loadRenovateConfig(dir, {}, fetchText)).toEqual({exclude: ["c", "a", "c", "b"]});
+  writeFileSync(join(dir, "renovate.json"), JSON.stringify({extends: "github>org/a", ignoreDeps: ["own"]}));
+  const fetchText = fetcher((url) => url.endsWith("/default.json") ? JSON.stringify({ignoreDeps: ["remote"]}) : null);
+  expect(await loadRenovateConfig(dir, {}, fetchText)).toEqual({exclude: ["remote", "own"]});
 });
 
 // Swap globalThis.fetch directly (not vi.stubGlobal, which bun's test runner lacks).
@@ -295,20 +314,23 @@ async function withFetch(impl: typeof fetch, fn: () => Promise<void>): Promise<v
   }
 }
 
-test("makePresetFetcher returns null (not throw) when the body read fails", async () => {
-  const fetchText = makePresetFetcher({noCache: true});
-  const impl = (() => Promise.resolve({
+test.sequential.each([
+  ["a failed body read", "x", () => Promise.resolve({
     ok: true, status: 200, headers: new Headers(), text: () => Promise.reject(new Error("reset")),
-  })) as unknown as typeof fetch;
-  await withFetch(impl, async () => {
-    expect(await fetchText("https://example.com/x")).toBe(null);
+  }), "https://example.com/x: reset"],
+  ["a non-ok response", "y", () => Promise.resolve(new Response(null, {status: 503})), "https://example.com/y: HTTP 503"],
+  ["an unreachable host", "w", () => Promise.reject(new Error("fetch failed")), "https://example.com/w: fetch failed"],
+])("makePresetFetcher throws on %s", async (_name, path, impl, message) => {
+  const fetchText = makePresetFetcher({noCache: true});
+  await withFetch(impl as unknown as typeof fetch, async () => {
+    await expect(fetchText(`https://example.com/${path}`)).rejects.toThrow(message);
   });
 });
 
-test("makePresetFetcher returns null on a non-ok response with no cache", async () => {
+test.sequential("makePresetFetcher returns null on 404, so another candidate file can be tried", async () => {
   const fetchText = makePresetFetcher({noCache: true});
-  await withFetch(() => Promise.resolve(new Response(null, {status: 503})), async () => {
-    expect(await fetchText("https://example.com/y")).toBe(null);
+  await withFetch(() => Promise.resolve(new Response(null, {status: 404})), async () => {
+    expect(await fetchText("https://example.com/z")).toBe(null);
   });
 });
 
@@ -347,6 +369,7 @@ test("real-world config", async () => {
       "cropperjs": "^1",
       "tailwindcss": "^3",
     },
+    pinNoDowngrade: true,
   });
 });
 

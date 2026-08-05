@@ -3,6 +3,7 @@ import {readFile, writeFile, mkdir, rename} from "node:fs/promises";
 import {join} from "node:path";
 import {env, platform, pid} from "node:process";
 import {homedir} from "node:os";
+import {getOrSet} from "./utils.ts";
 
 const cacheDir = join(
   platform === "win32" ?
@@ -17,12 +18,7 @@ let dirCreated: Promise<string | undefined> | null = null;
 // fetch, and many URLs are visited each run.
 const cacheKeyMemo = new Map<string, string>();
 function cacheKey(url: string): string {
-  let key = cacheKeyMemo.get(url);
-  if (key === undefined) {
-    key = createHash("sha256").update(url).digest("hex").substring(0, 16);
-    cacheKeyMemo.set(url, key);
-  }
-  return key;
+  return getOrSet(cacheKeyMemo, url, () => createHash("sha256").update(url).digest("hex").substring(0, 16));
 }
 
 export async function getCache(url: string): Promise<{etag: string, body: string} | null> {

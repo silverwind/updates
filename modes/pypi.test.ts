@@ -1,5 +1,6 @@
 import {updatePyprojectToml, fetchPypiInfo} from "./pypi.ts";
 import {type ModeContext, fetchTimeout, fieldSep} from "./shared.ts";
+import {parseUvDependencies} from "../utils/utils.ts";
 
 test("replaces >= operator", () => {
   const input = `dependencies = [\n  "requests >=2.28.0",\n]\n`;
@@ -75,6 +76,26 @@ test("fetchPypiInfo happy path", async () => {
   expect(result).toEqual([mockData, null]);
 });
 
+test("fetchPypiInfo keeps yanked flags through the size reducer", async () => {
+  // Only docs above the 16 KB threshold get reduced, and pypi yanks per file, not per release.
+  const files = (yankLast: boolean) => Array.from({length: 40}, (_, idx) => ({
+    filename: `pkg-${idx}.whl`,
+    url: `https://files.pythonhosted.org/packages/${"0".repeat(200)}/pkg-${idx}.whl`,
+    upload_time_iso_8601: "2025-01-01T00:00:00.000000Z",
+    yanked: yankLast && idx === 39,
+  }));
+  const mockData = {info: {name: "pkg", version: "1.0.1"}, releases: {"1.0.0": files(false), "1.0.1": files(true)}};
+  const ctx = {
+    pypiApiUrl: "https://pypi.org",
+    fetchTimeout,
+    noCache: true,
+    doFetch: () => Promise.resolve({ok: true, text: () => Promise.resolve(JSON.stringify(mockData)), headers: new Headers()}),
+  } as unknown as ModeContext;
+  const [data] = await fetchPypiInfo("reduced-pkg", ctx);
+  expect(data.releases["1.0.0"]).toEqual([{upload_time_iso_8601: "2025-01-01T00:00:00.000000Z"}]);
+  expect(data.releases["1.0.1"]).toEqual([{upload_time_iso_8601: "2025-01-01T00:00:00.000000Z", yanked: true}]);
+});
+
 test.each([
   ["fetch failure", () => Promise.resolve({ok: false, status: 404, statusText: "Not Found"}), "404"],
   ["null response", () => Promise.resolve(undefined), "Unable to fetch"],
@@ -97,4 +118,75 @@ test("rewrites single-quoted dependency preserving single quotes", () => {
     [`dependencies${fieldSep}requests`]: {old: "2.28.0", new: "2.31.0"} as any,
   };
   expect(updatePyprojectToml(input, deps)).toBe(`dependencies = [\n  'requests >=2.31.0',\n]\n`);
+});
+
+// A requirement whose marker uses double quotes has to live in a single-quoted TOML string.
+const quoted = (spec: string) => spec.includes(`"`) ? `'${spec}'` : `"${spec}"`;
+
+test.each([
+  ["environment marker", `tomli>=1.1.0; python_version < "3.11"`, "1.1.0", "2.2.1", `tomli>=2.2.1; python_version < "3.11"`],
+  ["extras and marker", `pytest[testing] >= 7.0.0 ; python_version >= "3.9"`, "7.0.0", "8.3.4", `pytest[testing] >= 8.3.4 ; python_version >= "3.9"`],
+  ["parenthesised specifier", "packaging (==20.0.0)", "20.0.0", "24.2", "packaging (==24.2)"],
+  ["cap the new version satisfies", "sphinx>=7.0.0,<8", "7.0.0", "7.4.7", "sphinx>=7.4.7,<8"],
+  ["violated cap raised at its own precision", "sphinx>=7.0.0,<8", "7.0.0", "8.2.0", "sphinx>=8.2.0,<9"],
+  ["violated two-part cap", "sphinx >=7.0.0, <8.0", "7.0.0", "8.2.0", "sphinx >=8.2.0, <8.3"],
+  ["violated inclusive cap", "urllib3>=1.26.0,<=2.0", "1.26.0", "2.2.3", "urllib3>=2.2.3,<=2.2.3"],
+  ["exclusion the new version misses", "packaging>=20.9,!=22.0", "20.9", "21.3", "packaging>=21.3,!=22.0"],
+  ["exclusion the new version hits", "packaging>=20.9,!=22.0", "20.9", "22.0", "packaging>=20.9,!=22.0"],
+  ["wildcard exclusion the new version hits", "numpy>=1.20,!=1.25.*", "1.20", "1.25.2", "numpy>=1.20,!=1.25.*"],
+  // PEP 440 excludes the bound's own release, so `<8` does not admit `8.0.0b1` and the cap moves.
+  ["cap violated by a prerelease of its own release", "sphinx>=7.0.0,<8", "7.0.0", "8.0.0b1", "sphinx>=8.0.0b1,<9"],
+  ["cap violated by a dev release of its own release", "sphinx>=7.0.0,<8.0.0", "7.0.0", "8.0.0.dev1", "sphinx>=8.0.0.dev1,<8.0.1"],
+  ["compatible release trimmed to the authored precision", "django~=4.2", "4.2", "4.3.1", "django~=4.3"],
+  ["compatible release padded to the authored precision", "django~=4.2.0", "4.2.0", "5.0", "django~=5.0.0"],
+])("updatePyprojectToml handles a %s", (_name, spec, old, newVersion, expected) => {
+  const input = `dependencies = [\n  ${quoted(spec)},\n]\n`;
+  const deps = {[`dependencies${fieldSep}${/^[\w.-]+/.exec(spec)![0]}`]: {old, new: newVersion} as any};
+  expect(updatePyprojectToml(input, deps)).toBe(`dependencies = [\n  ${quoted(expected)},\n]\n`);
+});
+
+test("only rewrites the package whose name the requirement starts with", () => {
+  const input = [
+    `dependencies = [`,
+    `  "requests >=2.28.0",`,
+    `  "requests-oauthlib >=2.28.0",`,
+    `]`,
+    ``,
+  ].join("\n");
+  const deps = {
+    [`dependencies${fieldSep}requests`]: {old: "2.28.0", new: "2.31.0"} as any,
+  };
+  expect(updatePyprojectToml(input, deps)).toContain(`"requests >=2.31.0"`);
+  expect(updatePyprojectToml(input, deps)).toContain(`"requests-oauthlib >=2.28.0"`);
+});
+
+// When the two disagree, a dependency is reported as outdated and then silently left unwritten.
+test.each([
+  "requests >=2.28.0",
+  "flask <3,>=2.2",
+  "packaging>=20.9,!=22.0",
+  "numpy>=1.20,!=1.25.*",
+  "sphinx >=7.0.0, <8.0",
+  `tomli>=1.1.0; python_version < "3.11"`,
+  `wheel (>=0.40.0); python_version < "3.8"`,
+  "transformers[torch] >=4.39.3",
+  "private-depB[extra1, extra2]~=2.4",
+  "types-requests==2.32.0.20240622",
+  "urllib3===1.26.0",
+  "ty>=0.0.1a15",
+])("reader and writer anchor on the same specifier of %s", (spec) => {
+  const [before] = parseUvDependencies([spec]);
+  const quote = quoted(spec)[0];
+  const deps = {[`dependencies${fieldSep}${before.name}`]: {old: before.version, new: "9.9.9"} as any};
+  const [after] = parseUvDependencies([updatePyprojectToml(`dependencies = [${quoted(spec)}]`, deps).split(quote)[1]]);
+  expect(after.name).toBe(before.name);
+  expect(after.version).not.toBe(before.version);
+});
+
+test("anchors on the whole version, not a prefix of a longer one", () => {
+  const input = `dependencies = [\n  "tomli>=1.1",\n]\ndev = [\n  "tomli>=1.1.5",\n]\n`;
+  const deps = {
+    [`dependencies${fieldSep}tomli`]: {old: "1.1", new: "2.2.1"} as any,
+  };
+  expect(updatePyprojectToml(input, deps)).toBe(`dependencies = [\n  "tomli>=2.2.1",\n]\ndev = [\n  "tomli>=1.1.5",\n]\n`);
 });

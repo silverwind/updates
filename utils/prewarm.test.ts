@@ -1,4 +1,4 @@
-import {test, expect, afterAll} from "vitest";
+import {test, expect, afterAll, beforeAll} from "vitest";
 import {mkdtempSync, rmSync, mkdirSync, writeFileSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
@@ -18,8 +18,14 @@ function makeDir(files: Record<string, string> = {}): string {
   return dir;
 }
 
+// an ambient GOPROXY must not leak into the default cases
+const origGoProxy = process.env.GOPROXY;
+beforeAll(() => { delete process.env.GOPROXY; });
+
 afterAll(() => {
   for (const dir of created) rmSync(dir, {recursive: true, force: true});
+  if (origGoProxy === undefined) delete process.env.GOPROXY;
+  else process.env.GOPROXY = origGoProxy;
 });
 
 test("empty dir returns no origins", () => {
@@ -65,6 +71,20 @@ test("go.mod triggers proxy.golang.org", () => {
 
 test("go.work triggers proxy.golang.org", () => {
   expect(prewarmOrigins(makeDir({"go.work": ""}), {})).toEqual(["https://proxy.golang.org/"]);
+});
+
+// warming proxy.golang.org while every lookup goes elsewhere opens a socket the run never uses
+test("GOPROXY decides the go origin", () => {
+  const dir = makeDir({"go.mod": ""});
+  process.env.GOPROXY = "https://internal.proxy,https://proxy.golang.org,direct";
+  expect(prewarmOrigins(dir, {})).toEqual(["https://internal.proxy/"]);
+  for (const value of ["off", "direct", "off,https://backup.proxy"]) {
+    process.env.GOPROXY = value;
+    expect(prewarmOrigins(dir, {})).toEqual([]);
+  }
+  process.env.GOPROXY = "https://internal.proxy";
+  expect(prewarmOrigins(dir, {goproxy: "http://127.0.0.1:2/"})).toEqual(["http://127.0.0.1:2/"]);
+  delete process.env.GOPROXY;
 });
 
 test("Dockerfile triggers hub.docker.com", () => {

@@ -1,7 +1,7 @@
 import {join} from "node:path";
 import {mkdtempSync, mkdirSync, writeFileSync} from "node:fs";
 import {tmpdir} from "node:os";
-import {baseType, filterDepsForMember, resolveWorkspaceMembers, parsePnpmWorkspace} from "./workspace.ts";
+import {baseType, filterDepsForMember, resolveWorkspaceMembers, parsePnpmWorkspace, pnpmCatalogEntries, updatePnpmWorkspace} from "./workspace.ts";
 import {fieldSep} from "../modes/shared.ts";
 
 const globalExpect = expect;
@@ -90,4 +90,45 @@ test("parsePnpmWorkspace", ({expect = globalExpect}: any = {}) => {
   expect(parsePnpmWorkspace("packages:\n  - packages/*\n")).toEqual(["packages/*"]);
   expect(parsePnpmWorkspace("")).toEqual([]);
   expect(parsePnpmWorkspace("packages:\n  # comment\n  - libs/*\nnodeLinker: hoisted\n")).toEqual(["libs/*"]);
+});
+
+const catalogYaml = [
+  "packages:",
+  "  - \"packages/*\"",
+  "",
+  "catalog:",
+  "  react: ^18.0.0",
+  "  'prismjs': \"^1.0.0\"  # pinned",
+  "",
+  "catalogs:",
+  "  tools:",
+  "    typescript: ^4.9.5",
+  "  legacy:",
+  "    react: ^17.0.0",
+  "",
+].join("\n");
+
+test("pnpmCatalogEntries", ({expect = globalExpect}: any = {}) => {
+  expect(Array.from(pnpmCatalogEntries(catalogYaml), ({type, name, value}) => [type, name, value])).toEqual([
+    ["catalog", "react", "^18.0.0"],
+    ["catalog", "prismjs", "^1.0.0"],
+    ["catalogs.tools", "typescript", "^4.9.5"],
+    ["catalogs.legacy", "react", "^17.0.0"],
+  ]);
+  expect(Array.from(pnpmCatalogEntries("packages:\n  - \"packages/*\"\n"))).toEqual([]);
+});
+
+test("updatePnpmWorkspace", ({expect = globalExpect}: any = {}) => {
+  const updated = updatePnpmWorkspace(catalogYaml, {
+    [`catalog${fieldSep}react`]: {old: "^18.0.0", new: "^19.1.0"},
+    [`catalog${fieldSep}prismjs`]: {old: "^1.0.0", new: "^1.30.0"},
+    [`catalogs.tools${fieldSep}typescript`]: {old: "^4.9.5", new: "^5.9.2"},
+    // stale, the file no longer holds this value
+    [`catalogs.legacy${fieldSep}react`]: {old: "^16.0.0", new: "^19.1.0"},
+  });
+  expect(updated).toContain("  react: ^19.1.0\n");
+  expect(updated).toContain("  'prismjs': \"^1.30.0\"  # pinned\n");
+  expect(updated).toContain("    typescript: ^5.9.2\n");
+  expect(updated).toContain("    react: ^17.0.0\n");
+  expect(updatePnpmWorkspace(catalogYaml, {})).toBe(catalogYaml);
 });

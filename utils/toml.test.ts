@@ -186,6 +186,6 @@ test("real-world pyproject.toml", () => {
     dependencies: ["djlint==1.30.0", "ty>=0.0.1a15"],
   });
   expect(result["dependency-groups"]).toEqual({
-    dev: ["PyYAML==1.0", "types-requests>=2.32.0.20240622", "types-paramiko==3.4.0.20240423"],
+    dev: ["PyYAML==1.0", "types-requests>=2.32.0.20240622,<3 ; python_version >= '3.9'", "types-paramiko==3.4.0.20240423"],
   });
 });

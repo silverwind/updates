@@ -15,6 +15,10 @@
 - `Dockerfile*`, `compose*.{yml,yaml}`, `docker-*.{yml,yaml}` - docker images
 - `Makefile`, `*.mk` - go tool versions in `go install` paths and docker image tags
 
+A docker image is keyed by image *and* tag, so a multi-stage file that references one image at two tags yields a row for each, labelled `image:tag`. Only LTS `ubuntu` tags are offered, as Renovate does.
+
+A `pnpm-workspace.yaml` `catalog:` and `catalogs:` entry is resolved and rewritten in the workspace file. A member's `catalog:` or `catalog:<name>` value only names a catalog, so it is not reported on its own and stays as authored. An `npm:<pkg>@<range>` alias is resolved as the aliased package while the manifest keeps the alias as its key, and the `npm:<pkg>@` prefix is written back with the new range.
+
 ## Usage
 
 ```bash
@@ -35,7 +39,7 @@ npx updates -u && npm i
 |`-i, --include <dep,...>`|Include only given dependencies|
 |`-e, --exclude <dep,...>`|Exclude given dependencies|
 |`-l, --pin <dep=range>`|Pin dependency to given semver range|
-|`-C, --cooldown <duration>`|Minimum dependency age, e.g. `7` (days), `1w`, `2d`, `6h`|
+|`-C, --cooldown <duration>`|Minimum dependency age. A bare number is days, or suffix one of `y` (365 days), `m` (30 days), `w`, `d`, `h`, `s`, so `5m` is five months and there is no minutes unit. A version the registry publishes no date for is never offered while a cooldown is active|
 |`-p, --prerelease [<dep,...>]`|Consider prerelease versions|
 |`-R, --release [<dep,...>]`|Only use release versions, may downgrade|
 |`-g, --greatest [<dep,...>]`|Prefer greatest over latest version|
@@ -57,7 +61,15 @@ npx updates -u && npm i
 |`-V, --verbose`|Print verbose output to stderr|
 |`-h, --help`|Print the help|
 
-Options that take multiple arguments can take them either via comma-separated value or by specifying the option multiple times. If an option has a optional `dep` argument but none is given, the option will be applied to all dependencies instead. All `dep` options support glob matching via `*` or regex (on CLI, wrap the regex in slashes, e.g. `'/^foo/'`).
+Options that take multiple arguments can take them either via comma-separated value or by specifying the option multiple times. If an option has a optional `dep` argument but none is given, the option will be applied to all dependencies instead. The `dep` options support glob matching via `*` or regex (on CLI, wrap the regex in slashes, e.g. `'/^foo/'`), except `-l/--pin`, whose `dep` is an exact dependency name.
+
+An invalid `--sockets`, `--timeout` or `--pin` range aborts the run rather than being ignored. `--sockets` and `--timeout` are rounded to a whole number.
+
+## Failed Lookups
+
+A dependency whose version could not be looked up is reported on its own and does not hold back the other results, which are still printed and written. Such a run always exits with code 1, ahead of any `-E` or `-U` signal, so a failure never passes as either "outdated" or "up to date". With `-j` the failures are listed in an `errors` array of `{mode, type, name, error}` objects alongside any `results`.
+
+Without `-j` a failure prints to stdout as `mode name: error`, dropping the `type`, so a docker or make failure names no file. A run where every lookup failed prints those lines alone, without the usual "All dependencies are up to date." message.
 
 ## Config File
 
@@ -79,10 +91,21 @@ export default {
 - `exclude` *Array\<string | RegExp>*: Array of dependencies to exclude
 - `types` *Array\<string>*: Array of dependency types to use
 - `registry` *string*: URL to npm registry
-- `cooldown` *number | string*: Minimum dependency age, e.g. `7` (days), `"1w"`, `"2d"`, `"6h"`
-- `pin` *Record\<string, string>*: Pin dependencies to semver ranges
+- `cooldown` *number | string*: Minimum dependency age. A bare number is days, or suffix one of `y` (365 days), `m` (30 days), `w`, `d`, `h`, `s`, so `"5m"` is five months and there is no minutes unit. A version the registry publishes no date for is never offered while a cooldown is active
+- `pin` *Record\<string, string>*: Pin dependencies to semver ranges, keyed by exact dependency name
 - `files` *Array\<string>*: File or directory paths to use
 - `modes` *Array\<string>*: Which modes to enable
+- `update` *boolean*: Update versions and write dependency files
+- `indirect` *boolean*: Include indirect Go dependencies
+- `timeout` *number*: Network request timeout in ms
+- `sockets` *number*: Maximum number of parallel HTTP sockets
+- `noCache` *boolean*: Disable HTTP cache
+- `json` *boolean*: Output a JSON object
+- `verbose` *boolean*: Print verbose output to stderr
+- `errorOnOutdated` *boolean*: Exit with code 2 when updates are available
+- `errorOnUnchanged` *boolean*: Exit with code 0 when updates are available and 2 when not
+- `color` *boolean*: Force color output
+- `noColor` *boolean*: Disable color output
 - `greatest` *boolean | Array\<string | RegExp>*: Prefer greatest over latest version
 - `prerelease` *boolean | Array\<string | RegExp>*: Consider prerelease versions
 - `release` *boolean | Array\<string | RegExp>*: Only use release versions
@@ -115,7 +138,7 @@ A `cooldown` of `0` in an override disables a global cooldown for the matched de
 
 ### Renovate config
 
-If a [Renovate](https://docs.renovatebot.com/) config is found, `ignoreDeps` and simple `packageRules` are inherited as `include`/`exclude`/`pin`. A rule that disables only negated matchers, like `"matchPackageNames": ["!/^@types/"]`, becomes an `include` since it leaves just those packages enabled. `minimumReleaseAge` is *not* inherited as `cooldown` by default — opt in via:
+If a [Renovate](https://docs.renovatebot.com/) config is found, `ignoreDeps` and simple `packageRules` are inherited as `include`/`exclude`/`pin`. Rules are evaluated in order, as Renovate evaluates them, so a later `"enabled": true` re-enables what an earlier rule disabled, and a rule that disables everything turns the rules after it into an allow-list. A rule that disables only negated matchers, like `"matchPackageNames": ["!/^@types/"]`, becomes an `include` since it leaves just those packages enabled. A top-level `"enabled": false` disables the repository. A rule matching on anything else, or mixing positive with negated matchers, is skipped, and is reported on stderr when it carried something inheritable. A preset in `extends` that cannot be fetched is an error, never an empty preset. An `allowedVersions` is inherited as a `pin` that filters candidates but, unlike `pin` and `--pin`, never moves a dependency down, as it is a ceiling in Renovate too. `minimumReleaseAge` is *not* inherited as `cooldown` by default, opt in via:
 
 ```ts
 export default {
@@ -125,7 +148,7 @@ export default {
 } satisfies Config;
 ```
 
-Values in `updates.config` override anything inherited.
+Values in `updates.config` override anything inherited. `pin` merges with the inherited `allowedVersions` ceilings per dependency: an authored entry replaces the ceiling of the same name and may downgrade into its range, while the other ceilings keep filtering.
 
 ## API
 
@@ -155,7 +178,7 @@ const output = await updates({
 //=> }
 ```
 
-The `updates()` function accepts all [config options](#config-options).
+The `updates()` function accepts all [config options](#config-options). A lookup that failed is reported in an `errors` array on the return value, absent when nothing failed, see [Failed Lookups](#failed-lookups).
 
 ## Environment Variables
 
@@ -167,8 +190,8 @@ The `updates()` function accepts all [config options](#config-options).
 |`GH_TOKEN`|Fallback GitHub API token|
 |`GITHUB_TOKEN`|Fallback GitHub API token|
 |`HOMEBREW_GITHUB_API_TOKEN`|Fallback GitHub API token|
-|`GOPROXY`|Go module proxy URL. Default: `https://proxy.golang.org,direct`|
-|`GONOPROXY`|Comma-separated list of Go module patterns to fetch directly, bypassing the proxy|
+|`GOPROXY`|Go module proxy list, honored as go itself does: `,` falls through to the next entry when the module is absent there, `\|` on any error, `off` fails the lookup and `direct` resolves through the VCS, both ending the list. A bare host gains an implicit `https://`. `direct` runs the `go` binary, so under the default list any module the proxy does not carry needs `go` on `PATH`. Default: `https://proxy.golang.org,direct`|
+|`GONOPROXY`|Comma-separated list of Go module patterns to fetch directly, bypassing the proxy. Patterns are matched with go's `path.Match`, where `*` does not cross a `/`, and a match on a leading path element covers the whole subtree|
 |`GOPRIVATE`|Fallback for `GONOPROXY` when not set|
 
 Token resolution order for forge APIs: `UPDATES_FORGE_TOKENS` (matched by host) > `UPDATES_GITHUB_API_TOKEN` > `GITHUB_API_TOKEN` > `GH_TOKEN` > `GITHUB_TOKEN` > `HOMEBREW_GITHUB_API_TOKEN`. The GitHub token fallback is only sent to GitHub itself; any other forge host (e.g. one referenced in a workflow `uses:`) is authenticated only with a matching `UPDATES_FORGE_TOKENS` entry, and otherwise receives no credentials.

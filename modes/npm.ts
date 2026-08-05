@@ -1,11 +1,11 @@
 import {env} from "node:process";
-import {parse} from "../utils/semver.ts";
+import {parse, satisfies, validRange} from "../utils/semver.ts";
 import rc from "../utils/rc.ts";
-import {tryOrNull} from "../utils/utils.ts";
+import {getOrSet, tryOrNull} from "../utils/utils.ts";
 import {
   type Config, type CheckResult, type Dep, type Deps, type ModeContext, type PackageInfo, type PackageRepository,
   normalizeUrl, getFetchOpts, fieldSep, fetchForgeEtag, selectTag, fetchWithEtag, fetchImmutable, dedupe,
-  coerceToVersion, hashRe, fetchActionTags, throwFetchError, fetchWithRetry, defaultApiUrls, parseCommitDate,
+  coerceToVersion, hashRe, fetchActionTags, throwFetchError, fetchWithRetry, defaultApiUrls, parseCommitDate, reduceJson,
 } from "./shared.ts";
 
 export type Npmrc = {
@@ -34,23 +34,27 @@ export type AuthAndRegistry = {
 const stripRe = /^.*?:\/\/(.*?@)?(github\.com[:/])/i;
 const partsRe = /^([^/]+)\/([^/]+)\/(?:.*\/)?([0-9a-f]+|v?[0-9]+\.[0-9]+\.[0-9]+)$/i;
 const npmVersionRe = /[0-9]+(\.[0-9]+)?(\.[0-9]+)?/g;
-const npmVersionRePre = /[0-9]+\.[0-9]+\.[0-9]+(-.+)?/g;
 // matches each path segment incl. its scope, e.g. `foo/@scope/pkg` -> [`foo`, `@scope/pkg`]
 const segmentRe = /(@[^/]+\/)?([^/]+)/g;
+// the published name inside one segment, dropping yarn's `@range` discriminator: `qs@~6.14.1` -> `qs`
+const segmentNameRe = /^(?:@[^/]+\/)?[^@]+/;
 
 // resolves a `resolutions`/`overrides` key to the published package, keeping the scope on the
 // final segment, e.g. `@babel/core` -> `@babel/core`, `foo/@scope/pkg` -> `@scope/pkg`
 export function resolutionsBasePackage(name: string): string {
   const segments = name.match(segmentRe);
-  return segments ? segments[segments.length - 1] : name;
+  const last = segments ? segments[segments.length - 1] : name;
+  return segmentNameRe.exec(last)?.[0] ?? last;
 }
 
 const defaultRegistry = defaultApiUrls.registry;
-let npmrc: Npmrc | null = null;
+const npmrcCache = new Map<string, Npmrc>();
 const authCache = new Map<string, AuthAndRegistry>();
 
-export function getNpmrc(): Npmrc {
-  return npmrc ??= rc("npm", {registry: defaultRegistry}) as Npmrc;
+// npm resolves `.npmrc` beside or above the manifest, so `dir` is the manifest's directory and two
+// manifests can carry different ones. Omitting it falls back to the cwd.
+export function getNpmrc(dir?: string): Npmrc {
+  return getOrSet(npmrcCache, dir ?? "", () => rc("npm", {registry: defaultRegistry}, dir) as Npmrc);
 }
 
 function replaceEnvVar(token: string): string {
@@ -95,42 +99,35 @@ function getRegistryAuthToken(registryUrl: string, config: Npmrc): AuthAndRegist
   return undefined;
 }
 
-function registryUrl(scope: string, npmrcConfig: Npmrc): string {
-  const url: string = npmrcConfig[`${scope}:registry`] || npmrcConfig.registry;
-  return url.endsWith("/") ? url : `${url}/`;
+// Never the default registry as a fallback, that would override an explicit --registry.
+function scopedRegistry(scope: string, npmrcConfig: Npmrc): string {
+  const url: string = npmrcConfig[`${scope}:registry`] || "";
+  return !url || url.endsWith("/") ? url : `${url}/`;
 }
 
-function getAuthAndRegistry(name: string, registry: string): AuthAndRegistry {
-  const npmrcConfig = getNpmrc();
-
+function getAuthAndRegistry(name: string, registry: string, dir: string | undefined): AuthAndRegistry {
+  const npmrcConfig = getNpmrc(dir);
   const scope = name.startsWith("@") ? name.split("/")[0] : "";
-  const cacheKey = `${scope}:${registry}`;
-  const cached = authCache.get(cacheKey);
-  if (cached) return cached;
-
-  // A scope with its own registry and credentials wins, everything else falls
-  // back to the default registry's auth.
-  let result: AuthAndRegistry | undefined;
-  if (scope) {
-    const url = normalizeUrl(registryUrl(scope, npmrcConfig));
-    if (url !== registry) {
+  return getOrSet(authCache, `${dir ?? ""}${fieldSep}${scope}:${registry}`, () => {
+    // A scope's own registry wins whether or not it carries credentials, as renovate registers the
+    // scope→registry rule unconditionally: falling back would leak a private name to the wrong host.
+    let result: AuthAndRegistry | undefined;
+    const scoped = scope && scopedRegistry(scope, npmrcConfig);
+    if (scoped) {
       try {
-        const scopedAuth = getRegistryAuthToken(url, npmrcConfig);
-        if (scopedAuth?.token) result = {auth: scopedAuth, registry: url};
+        const url = normalizeUrl(scoped);
+        if (url !== registry) result = {auth: getRegistryAuthToken(url, npmrcConfig), registry: url};
       } catch {}
     }
-  }
-  result ??= {auth: getRegistryAuthToken(registry, npmrcConfig), registry};
-
-  authCache.set(cacheKey, result);
-  return result;
+    return result ?? {auth: getRegistryAuthToken(registry, npmrcConfig), registry};
+  });
 }
 
-function resolveNpmRegistry(name: string, config: Config, args: Record<string, any>): AuthAndRegistry & {originalRegistry: string} {
+function resolveNpmRegistry(name: string, config: Config, args: Record<string, any>, dir: string | undefined): AuthAndRegistry & {originalRegistry: string} {
   const originalRegistry = normalizeUrl((typeof args.registry === "string" ? args.registry : false) ||
-    config.registry || getNpmrc().registry || defaultRegistry,
+    config.registry || getNpmrc(dir).registry || defaultRegistry,
   );
-  return {...getAuthAndRegistry(name, originalRegistry), originalRegistry};
+  return {...getAuthAndRegistry(name, originalRegistry, dir), originalRegistry};
 }
 
 function npmPackageUrl(registry: string, name: string, version?: string): string {
@@ -142,28 +139,27 @@ const npmDataCache = new Map<string, Promise<Record<string, any>>>();
 const npmVersionInfoCache = new Map<string, Promise<NpmVersionInfo>>();
 const npmFullDataCache = new Map<string, Promise<Record<string, any> | null>>();
 
-// Strip a registry package doc to the fields version selection reads. The
-// per-version objects (dependencies, dist, engines, …) dominate doc size and
-// are never used. Keeps the original doc shape so legacy cache entries with
-// full bodies stay readable.
+// The doc shape is kept, so legacy cache entries with full bodies stay readable.
 function reduceNpmDoc(data: Record<string, any>): Record<string, any> {
   const versions: Record<string, Record<string, never>> = {};
   for (const version of Object.keys(data.versions ?? {})) versions[version] = {};
   return {name: data.name, "dist-tags": data["dist-tags"], versions, time: data.time, error: data.error};
 }
 
-export async function fetchNpmInfo(name: string, type: string, config: Config, args: Record<string, any>, ctx: ModeContext): Promise<PackageInfo> {
-  const {auth, registry} = resolveNpmRegistry(name, config, args);
+export async function fetchNpmInfo(name: string, type: string, config: Config, args: Record<string, any>, ctx: ModeContext, dir?: string): Promise<PackageInfo> {
+  const {auth, registry} = resolveNpmRegistry(name, config, args, dir);
   const packageName = type === "resolutions" ? resolutionsBasePackage(name) : name;
   const url = npmPackageUrl(registry, packageName);
 
-  const data = await dedupe(npmDataCache, url, async () => {
+  // Keyed by url and doc flavor, as the abbreviated doc omits fields a later dated call needs.
+  const cacheKey = args.needsDates ? `${url}\0dates` : url;
+  const data = await dedupe(npmDataCache, cacheKey, async () => {
     const opts = getFetchOpts(auth?.type, auth?.token);
     // The abbreviated doc is a fraction of the size but omits the `time` map that cooldown reads.
     if (!args.needsDates) {
       opts.headers = {...opts.headers as Record<string, string>, "accept": "application/vnd.npm.install-v1+json"};
     }
-    const result = await fetchWithEtag(url, ctx, opts, reduceNpmDoc);
+    const result = await fetchWithEtag(url, ctx, opts, reduceJson(reduceNpmDoc), cacheKey);
     if (!("body" in result)) throwFetchError(result.res, url, name, registry);
     return JSON.parse(result.body);
   });
@@ -172,8 +168,8 @@ export async function fetchNpmInfo(name: string, type: string, config: Config, a
 
 export type NpmVersionInfo = {repository?: PackageRepository, homepage?: string, date?: string};
 
-export async function fetchNpmVersionInfo(name: string, version: string, config: Config, args: Record<string, any>, ctx: ModeContext): Promise<NpmVersionInfo> {
-  const {auth, registry} = resolveNpmRegistry(name, config, args);
+export async function fetchNpmVersionInfo(name: string, version: string, config: Config, args: Record<string, any>, ctx: ModeContext, dir?: string): Promise<NpmVersionInfo> {
+  const {auth, registry} = resolveNpmRegistry(name, config, args, dir);
   const url = npmPackageUrl(registry, name, version);
 
   return dedupe(npmVersionInfoCache, url, async (): Promise<NpmVersionInfo> => {
@@ -181,11 +177,11 @@ export async function fetchNpmVersionInfo(name: string, version: string, config:
       const fetchOpts = getFetchOpts(auth?.type, auth?.token);
       // Per-version npm metadata is immutable — cache forever.
       // Undefined fields drop out at JSON.stringify time.
-      const result = await fetchImmutable(url, ctx, fetchOpts, data => ({
+      const result = await fetchImmutable(url, ctx, fetchOpts, reduceJson(data => ({
         repository: data.repository,
         homepage: data.homepage,
         _npmOperationalInternal: data._npmOperationalInternal?.tmp ? {tmp: data._npmOperationalInternal.tmp} : undefined,
-      }));
+      })));
       if (!("body" in result)) return {};
       const data = JSON.parse(result.body);
       let date = "";
@@ -220,6 +216,20 @@ export function isLocalDep(value: string): boolean {
   return value.startsWith("link:") || value.startsWith("file:");
 }
 
+// A pnpm catalog reference: `catalog:` for the default catalog, `catalog:<name>` for a named one.
+export function isCatalogRef(value: string): boolean {
+  return value.startsWith("catalog:");
+}
+
+// The `npm:@jsr/…` flavour is a jsr specifier and belongs to isJsr, which callers test first.
+const npmAliasRe = /^npm:((?:@[^/@]+\/)?[^@/][^@]*)@(.+)$/;
+
+// Null when the value is no alias this tool can resolve, e.g. one naming a dist-tag, not a range.
+export function parseNpmAlias(value: string): {name: string, range: string} | null {
+  const match = npmAliasRe.exec(value);
+  return match && validRange(match[2]) ? {name: match[1], range: match[2]} : null;
+}
+
 // Both spellings carrying their own scope, name and version, anchored so they need no prefix check.
 const jsrRefRes = [
   /^npm:@jsr\/([^_]+)__([^@]+)@(.+)$/, // npm:@jsr/std__semver@1.0.5
@@ -252,10 +262,10 @@ export async function fetchJsrInfo(packageName: string, ctx: ModeContext): Promi
 
   const result = await fetchWithEtag(url, ctx, {
     headers: {"accept-encoding": "gzip, deflate, br"},
-  }, data => ({
+  }, reduceJson(data => ({
     latest: data.latest,
     versions: Object.fromEntries(Object.entries(data.versions ?? {}).map(([version, meta]) => [version, {createdAt: (meta as Record<string, any>)?.createdAt}])),
-  }));
+  })));
   if (!("body" in result)) throwFetchError(result.res, url, packageName, "JSR");
 
   const data = JSON.parse(result.body);
@@ -269,69 +279,174 @@ export async function fetchJsrInfo(packageName: string, ctx: ModeContext): Promi
   return [{name: packageName, "dist-tags": {latest: data.latest}, versions, time}, ctx.jsrApiUrl];
 }
 
-export function updatePackageJson(pkgStr: string, deps: Deps): string {
-  const lookup = new Map<string, string>();
-  for (const [key, {old, oldOrig, new: newVal}] of Object.entries(deps)) {
-    const [depType, name] = key.split(fieldSep);
-    const oldValue = oldOrig || old;
-    if (depType === "packageManager") {
-      lookup.set(`${depType}\0${name}@${oldValue}`, `"${depType}": "${name}@${newVal}"`);
-    } else {
-      lookup.set(`${name}\0${oldValue}`, `"${name}": "${newVal}"`);
+const jsonSpace = new Set([0x20, 0x09, 0x0a, 0x0d]);
+
+// The text span of every top-level pair, key included. A textual `content.indexOf('"overrides"')`
+// would find a nested `pnpm.overrides` written above the top-level one, hence the structural scan.
+function topLevelSpans(content: string): Map<string, {start: number, end: number}> {
+  const spans = new Map<string, {start: number, end: number}>();
+  let depth = 0;
+  let key: string | null = null;
+  let start = 0;
+  for (let index = 0; index < content.length; index++) {
+    const code = content.charCodeAt(index);
+    if (code === 0x22) { // '"'
+      const from = index;
+      while (content.charCodeAt(++index) !== 0x22 && index < content.length) if (content.charCodeAt(index) === 0x5c) index++; // '\'
+      if (depth === 1 && key === null) {
+        key = content.slice(from + 1, index);
+        start = from;
+      }
+    } else if (code === 0x7b || code === 0x5b) { // '{' '['
+      depth++;
+    } else if (code === 0x7d || code === 0x5d) { // '}' ']'
+      if (--depth === 0 && key !== null) spans.set(key, {start, end: index});
+      if (depth === 0) key = null;
+    } else if (code === 0x2c && depth === 1 && key !== null) { // ','
+      spans.set(key, {start, end: index});
+      key = null;
     }
   }
-  if (!lookup.size) return pkgStr;
-
-  return pkgStr.replace(/"((?:[^"\\]|\\.)*)": *"((?:[^"\\]|\\.)*)"/g, (match, key, value) => {
-    return lookup.get(`${key}\0${value}`) ?? match;
-  });
+  return spans;
 }
 
-// An exclusive upper bound rewritten onto the new version excludes the very version being
-// installed, so `<2.0.0` has to clear it rather than land on it. Mirrors renovate's npm
-// range handling. Returns null when the range is not an exclusive upper bound.
-function updateUpperBound(oldRange: string, newVersion: string): string | null {
-  const match = /^(<\s*)(\d+(?:\.\d+){0,2})$/.exec(oldRange);
-  if (!match) return null;
-  const [, operator, oldDigits] = match;
-
-  const {major, minor, patch} = parse(newVersion)!;
-  const parts = oldDigits.split(".").length;
-  let bound: string;
-  if (parts === 1) {
-    bound = `${major + 1}`;
-  } else if (parts === 2) {
-    bound = `${major}.${minor + 1}`;
-  } else if (oldDigits.endsWith(".0.0")) {
-    bound = `${major + 1}.0.0`;
-  } else {
-    bound = `${major}.${minor}.${patch + 1}`;
+// Matched as a `"key": "value"` pair, so two names sharing a value in one section are not confused.
+function pairValueIndex(content: string, from: number, keyJson: string, valueJson: string): number {
+  for (let index = content.indexOf(keyJson, from); index !== -1; index = content.indexOf(keyJson, index + 1)) {
+    let pos = index + keyJson.length;
+    while (jsonSpace.has(content.charCodeAt(pos))) pos++;
+    if (content.charCodeAt(pos) !== 0x3a) continue; // ':'
+    pos++;
+    while (jsonSpace.has(content.charCodeAt(pos))) pos++;
+    if (content.startsWith(valueJson, pos)) return pos;
   }
-  return `${operator}${bound}`;
+  return -1;
 }
 
-export function updateVersionRange(oldRange: string, newVersion: string, oldOrig: string | undefined): string {
-  const authored = oldOrig || oldRange;
-  if (/^>\s*\d/.test(authored)) return oldRange; // an exclusive lower bound already admits it
-  const upperBound = updateUpperBound(authored, newVersion);
-  if (upperBound) return upperBound;
+// A dep whose pair is nowhere in its own top-level span is left alone. Deps arrive in document
+// order, so a per-section cursor keeps the sweep linear.
+export function updatePackageJson(pkgStr: string, deps: Deps): string {
+  let doc: Record<string, any>;
+  try {
+    doc = JSON.parse(pkgStr);
+  } catch {
+    return pkgStr;
+  }
+  const spans = topLevelSpans(pkgStr);
+  const cursors = new Map<string, number>();
+  const edits: Array<{index: number, length: number, text: string}> = [];
+  for (const [depKey, {old, oldOrig, new: newVal}] of Object.entries(deps)) {
+    const [depType, name] = depKey.split(fieldSep);
+    const section = doc[depType];
+    // `packageManager` is the one dep type whose section is the value itself.
+    const inline = typeof section === "string";
+    const oldValue = inline ? `${name}@${oldOrig || old}` : oldOrig || old;
+    const span = spans.get(depType);
+    if (!span || (inline ? section : section?.[name]) !== oldValue) continue;
+    const keyJson = JSON.stringify(inline ? depType : name);
+    const valueJson = JSON.stringify(oldValue);
+    let index = pairValueIndex(pkgStr, cursors.get(depType) ?? span.start, keyJson, valueJson);
+    // url deps are re-inserted after the regular ones, so a cursor-relative hit can land later.
+    if (index === -1 || index >= span.end) index = pairValueIndex(pkgStr, span.start, keyJson, valueJson);
+    if (index === -1 || index >= span.end) continue;
+    cursors.set(depType, index + valueJson.length);
+    edits.push({index, length: valueJson.length, text: JSON.stringify(inline ? `${name}@${newVal}` : newVal)});
+  }
+  if (!edits.length) return pkgStr;
 
-  const newRange = oldRange.replace(npmVersionRePre, newVersion);
-  if (!oldOrig || oldOrig === oldRange) return newRange;
+  edits.sort((a, b) => a.index - b.index);
+  const parts: Array<string> = [];
+  let pos = 0;
+  for (const {index, length, text} of edits) {
+    if (index < pos) continue; // two deps landed on one span, so this one was placed wrong
+    parts.push(pkgStr.slice(pos, index), text);
+    pos = index + length;
+  }
+  parts.push(pkgStr.slice(pos));
+  return parts.join("");
+}
 
-  // Partial ^/~/>= ranges: retain oldOrig's part count and any space after >=.
-  const oldMatch = /^([\^~]|>=\s*)([\d.]+)$/.exec(oldOrig);
-  if (!oldMatch) return newRange;
-  const [, prefix, oldDigits] = oldMatch;
+const operators = String.raw`[<>]=?|[\^~=]`;
+// operator (plus any space), an optional `v`, release parts with x-ranges, an optional prerelease
+const comparatorRe = new RegExp(String.raw`^(${operators})?(\s*)(v?)((?:\d+|[xX*])(?:\.(?:\d+|[xX*]))*)(-[0-9A-Za-z.-]+)?$`);
+const operatorRe = new RegExp(`^(?:${operators})$`);
+const xPartRe = /^[xX*]$/;
+// build metadata belongs to the version it was authored with, never to its successor
+const buildMetaRe = /\+[0-9A-Za-z.-]+/g;
+// a range is complex when it holds more than one comparator, `||` and hyphen ranges included
+const complexRangeRe = /\|\||[\dxX*]\s+\S/;
 
-  // A prerelease can't be represented in fewer than 3 numeric parts, so leave the full version in place.
-  const newCore = newVersion.split(/[-+]/)[0];
-  if (newCore !== newVersion) return newRange;
+// Keeps the space an operator may have before its version, leaving a hyphen range's `-` as a marker.
+function comparators(range: string): Array<string> {
+  const out: Array<string> = [];
+  // `||` needs no surrounding space, so whitespace alone leaves `^1.0.0||^2.0.0` as one comparator.
+  for (const token of range.trim().replaceAll("||", " || ").split(/\s+/)) {
+    if (out.length && operatorRe.test(out[out.length - 1])) out[out.length - 1] += ` ${token}`;
+    else out.push(token);
+  }
+  return out;
+}
 
-  const oldParts = oldDigits.split(".").length;
-  const newParts = newCore.split(".");
-  if (newParts.length === oldParts) return newRange;
-  return `${prefix}${newParts.slice(0, oldParts).join(".")}`;
+// Keeps the operator, the authored precision and any x-range placeholder: `^5.9` -> `^6.1`, `1.x` -> `2.x`.
+function replaceComparator(comparator: string, newVersion: string): string {
+  const match = comparatorRe.exec(comparator);
+  if (!match) return comparator;
+  const [, operator = "", space, vPrefix, digits, pre = ""] = match;
+  const parts = digits.split(".");
+
+  // An exclusive upper bound rewritten onto the new version excludes the very version being
+  // installed, so `<2.0.0` has to clear it rather than land on it, and `<V.0.0-0`, what `^`/`~`
+  // desugar to, clears the whole major since it excludes every prerelease of V. Renovate's rule.
+  if (operator === "<" && !vPrefix && parts.length <= 3 && !/[xX*]/.test(digits) && (!pre || pre === "-0")) {
+    const {major, minor, patch} = parse(newVersion)!;
+    const bound = pre ? `${major + 1}.0.0-0` :
+      parts.length === 1 ? `${major + 1}` :
+        parts.length === 2 ? `${major}.${minor + 1}` :
+          digits.endsWith(".0.0") ? `${major + 1}.0.0` :
+            `${major}.${minor}.${patch + 1}`;
+    return `${operator}${space}${bound}`;
+  }
+  // A `>` already admits it; a `<` the branch above could not read cannot move without landing under it.
+  if (operator === ">" || operator === "<") return comparator;
+
+  // A prerelease can't be spelled in fewer than 3 numeric parts, so it replaces the whole range.
+  const newParts = newVersion.split("-")[0].split(".");
+  if (newParts.join(".") !== newVersion) return `${operator}${space}${vPrefix}${newVersion}`;
+  return `${operator}${space}${vPrefix}${parts.map((part, i) => xPartRe.test(part) ? part : newParts[i] ?? "0").join(".")}`;
+}
+
+// Renovate widens rather than replaces when a range must keep admitting what it already admits:
+// peer ranges always, and any multi-comparator range, whose earlier comparators a replace would
+// silently drop. lib/modules/manager/npm/range.ts
+function widens(depType: string | undefined, range: string): boolean {
+  return depType === "peerDependencies" || complexRangeRe.test(range);
+}
+
+// lib/modules/versioning/npm/range.ts, rangeStrategy=widen: an upper bound moves out to admit
+// the new version, everything else gains an or-branch for it.
+function widenRange(range: string, newVersion: string): string {
+  if (satisfies(newVersion, range)) return range; // already admitted, nothing to widen
+  const parts = comparators(range);
+  const last = parts[parts.length - 1];
+  if (!last.startsWith("<") && parts[parts.length - 2] !== "-") {
+    // A complex range ending in a lower bound has no widening renovate will spell out.
+    const branch = replaceComparator(last, newVersion);
+    if (parts.length > 1 && last.startsWith(">") || branch === last) return range;
+    return `${range} || ${branch}`;
+  }
+  parts[parts.length - 1] = replaceComparator(last, newVersion);
+  return parts.join(" ");
+}
+
+export function updateVersionRange(oldRange: string, newVersion: string, oldOrig: string | undefined, depType?: string): string {
+  // corepack refuses a `packageManager` whose integrity hash no longer matches its version, so
+  // `9.0.0+sha512.…` has to become a plain `11.20.0` rather than keep 9.0.0's hash.
+  const authored = (oldOrig || oldRange).replace(buildMetaRe, "");
+  const updated = widens(depType, authored) ? widenRange(authored, newVersion) : replaceComparator(authored, newVersion);
+  // A range that excludes the version it was rewritten for installs something other than what the
+  // run reports, so it is left as authored and the caller drops the dependency. `^1.0.0 <1.5.0`
+  // widened onto 2.0.0 is one: only the `<` moves, and the caret still caps below the new major.
+  return satisfies(newVersion, updated) ? updated : authored;
 }
 
 export function normalizeRange(range: string): string {
@@ -346,24 +461,21 @@ type CommitInfo = {
   commit: Record<string, any>,
 };
 
+// A failed lookup throws, as getTags does: swallowing it read a rate-limited or broken forge as a
+// dependency with no newer commit. A repository with no commits at all is the one genuine empty.
 export async function getLatestCommit(user: string, repo: string, ctx: ModeContext): Promise<CommitInfo> {
   const url = `${ctx.forgeApiUrl}/repos/${user}/${repo}/commits`;
-  try {
-    // Only the newest commit's date-bearing fields are read; drop the rest before caching.
-    const body = await fetchForgeEtag(url, ctx, async res => {
-      const {sha, commit} = JSON.parse(await res.text())[0];
-      return JSON.stringify([{sha, commit: {committer: commit?.committer, author: commit?.author}}]);
-    });
-    if (!body) return {hash: "", commit: {}};
-    const {sha: hash, commit} = JSON.parse(body)[0];
-    return {hash, commit};
-  } catch {
-    return {hash: "", commit: {}};
-  }
+  // Only the newest commit's date-bearing fields are read; drop the rest before caching.
+  const body = await fetchForgeEtag(url, ctx, async res => {
+    const [latest] = JSON.parse(await res.text());
+    return JSON.stringify(latest ? [{sha: latest.sha, commit: {committer: latest.commit?.committer, author: latest.commit?.author}}] : []);
+  });
+  const [latest] = body ? JSON.parse(body) : [];
+  return latest ? {hash: latest.sha, commit: latest.commit} : {hash: "", commit: {}};
 }
 
-export async function getTags(user: string, repo: string, ctx: ModeContext): Promise<Array<string>> {
-  const entries = await fetchActionTags(ctx.forgeApiUrl, user, repo, ctx);
+export async function getTags(user: string, repo: string, oldRef: string, ctx: ModeContext): Promise<Array<string>> {
+  const entries = await fetchActionTags(ctx.forgeApiUrl, user, repo, ctx, [oldRef]);
   return entries.map(e => e.name);
 }
 
@@ -388,7 +500,7 @@ export async function checkUrlDep(key: string, dep: Dep, ctx: ModeContext): Prom
       return {key, newRange: replaceRef(newRef), user, repo, oldRef, newRef, newDate};
     }
   } else {
-    const tags = await getTags(user, repo, ctx);
+    const tags = await getTags(user, repo, oldRef, ctx);
     const newTag = selectTag(tags, oldRef);
     if (newTag) {
       return {key, newRange: replaceRef(newTag), user, repo, oldRef, newRef: newTag};

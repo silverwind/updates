@@ -1,6 +1,7 @@
+import {AsyncLocalStorage} from "node:async_hooks";
 import {Buffer} from "node:buffer";
 import {env} from "node:process";
-import {parse, coerce, compareParsed, diff, diffParsed, gt, gte, lt, satisfies, valid} from "../utils/semver.ts";
+import {type Versioning, coerce, diff, gt, satisfies, semverVersioning, pep440Versioning, valid} from "../utils/semver.ts";
 import {getCache, setCache} from "../utils/fetchCache.ts";
 import {commaSeparatedToArray, matchesAny} from "../utils/utils.ts";
 import pkg from "../package.json" with {type: "json"};
@@ -38,10 +39,7 @@ export type Output = {
 export type CooldownOpts = {
   cooldownDays?: number,
   now?: number,
-  // Returns ISO date string for a given version, or undefined if unknown.
-  // When undefined is returned, the version is treated as eligible (we cannot
-  // prove it is too new) — callers must not pass this for ecosystems where
-  // missing data should mean "skip".
+  // A version whose date is unknown never passes an active cooldown, so only return published dates.
   getVersionDate?: (version: string) => string | undefined,
 };
 
@@ -50,21 +48,23 @@ export type FindVersionOpts = {
   semvers: Set<string>,
   usePre: boolean,
   useRel: boolean,
-  useGreatest: boolean,
   pinnedRange?: string,
+  pinNoDowngrade?: boolean,
+  versioning?: Versioning,
 } & CooldownOpts;
 
 export type FindNewVersionOpts = FindVersionOpts & {
   mode: string,
+  useGreatest: boolean,
   allowDowngrade: Set<RegExp> | boolean,
 };
 
-// Returns true if the given ISO date is at least cooldownDays old (inclusive)
-// relative to `now`. Missing date or inactive cooldown returns true.
+// An active cooldown requires a timestamp, as renovate's minimumReleaseAgeBehaviour default does:
+// a mirror omitting the newest release's date would let through the release it exists to hold back.
 export function passesCooldown(date: string | undefined, cooldownDays: number | undefined, now: number | undefined): boolean {
-  if (!cooldownDays || !now || !date) return true;
-  const ms = Date.parse(date);
-  if (Number.isNaN(ms)) return true;
+  if (!cooldownDays || !now) return true;
+  const ms = date ? Date.parse(date) : NaN;
+  if (Number.isNaN(ms)) return false;
   return (now - ms) / (24 * 3600 * 1000) >= cooldownDays;
 }
 
@@ -77,13 +77,20 @@ export type PackageRepository = string | {
   directory: string,
 };
 
+// Lives here rather than in the go mode so ModeContext can name it without a cycle.
+export type GoProxyEntry = {url: string, fallback: "," | "|"};
+
 export type ModeContext = {
   fetchTimeout: number,
   goProbeTimeout: number,
+  /** The run's socket budget, `--sockets` or `maxSockets` */
+  concurrency: number,
   forgeApiUrl: string,
   pypiApiUrl: string,
   jsrApiUrl: string,
+  /** The single endpoint a caller that can only address one uses, `goProxyChain`'s first entry */
   goProxyUrl: string,
+  goProxyChain: Array<GoProxyEntry>,
   cratesIoUrl: string,
   dockerApiUrl: string,
   doFetch: typeof doFetch,
@@ -95,9 +102,9 @@ export const fieldSep = "\0";
 export const fetchTimeout = 5000;
 export const goProbeTimeout = 2500;
 export const maxSockets = 25;
-// Cap pagination so a repo with hundreds of tag pages doesn't fan out hundreds
-// of concurrent requests. Shared by the forge tag and Docker Hub tag walks.
-export const maxTagPages = 10;
+// Tag lists are walked to the end: a truncated walk loses the tag a pinned sha resolves to, and on
+// Docker Hub hides a same-precision tag past the window. Renovate likewise stops only at this cap.
+export const maxTagPages = 100;
 
 // GitHub serves its API from a hostname of its own, unlike Gitea and Forgejo which serve
 // /api/v1 from the forge host itself. Also the default forge, hence forgeapi below.
@@ -155,12 +162,15 @@ export async function doFetch(url: string, opts?: RequestInit): Promise<Response
 
 // Retry only transient failures; a fresh AbortSignal is made per attempt since
 // an aborted one can't be reused. Non-ok responses resolve normally, not retried.
+// The slot is taken around the signal so queueing behind the budget is not charged to the timeout,
+// and per attempt so acquisitions stay sequential and cannot self-deadlock.
 export async function fetchWithRetry(
   ctx: ModeContext, url: string, opts: RequestInit = {},
 ): Promise<Response> {
+  const limit = getLimiter(ctx);
   for (let attempt = 0; ; attempt++) {
     try {
-      return await ctx.doFetch(url, {...opts, signal: AbortSignal.timeout(ctx.fetchTimeout)});
+      return await limit(() => ctx.doFetch(url, {...opts, signal: AbortSignal.timeout(ctx.fetchTimeout)}));
     } catch (err: any) {
       if (attempt >= fetchRetries || !err?.transient) throw err;
     }
@@ -174,19 +184,20 @@ async function readBody(res: Response): Promise<string> {
   return JSON.stringify(await res.json());
 }
 
-// Shrink a JSON body to the subset of fields a mode actually reads before it
-// is cached or returned. Must keep the original document shape so legacy cache
-// entries holding full bodies stay readable. Registry docs can be megabytes
-// (npm/pypi list every version with dist/file metadata), the used subset is
-// usually a few KB. Bodies below the threshold are kept as-is: reducing them
-// costs more than the re-parse it saves.
-export type BodyReducer = (data: any) => any;
+// Shrink a body to the subset of fields a mode actually reads before it is
+// cached or returned. Must keep the original document shape so legacy cache
+// entries holding full bodies stay readable. Bodies below the threshold are
+// kept as-is: reducing them costs more than the re-parse it saves.
+export type BodyReducer = (body: string) => string;
 const reduceThreshold = 16384;
+
+export const reduceJson = (reduce: (data: any) => any): BodyReducer =>
+  body => JSON.stringify(reduce(JSON.parse(body)));
 
 function reduceBody(body: string, reduce: BodyReducer | undefined): string {
   if (!reduce || body.length < reduceThreshold) return body;
   try {
-    return JSON.stringify(reduce(JSON.parse(body)));
+    return reduce(body);
   } catch {
     return body; // non-JSON or unexpected shape: cache as-is
   }
@@ -195,27 +206,29 @@ function reduceBody(body: string, reduce: BodyReducer | undefined): string {
 // Read and reduce a response body, persisting it under `cacheTag` when caching
 // is on. Never-revalidated URLs pass the literal "immutable" tag.
 async function readAndCache(
-  url: string, res: Response, ctx: ModeContext, reduce: BodyReducer | undefined, cacheTag: string | null | undefined,
+  cacheKey: string, res: Response, ctx: ModeContext, reduce: BodyReducer | undefined, cacheTag: string | null | undefined,
 ): Promise<{body: string, res: Response}> {
   const body = reduceBody(await readBody(res), reduce);
-  if (cacheTag && !ctx.noCache) setCache(url, cacheTag, body);
+  if (cacheTag && !ctx.noCache) setCache(cacheKey, cacheTag, body);
   return {body, res};
 }
 
 // Fetch with ETag revalidation against the persistent disk cache. The timeout
 // signal is created after the cache read, so slow disks do not eat the network
 // budget. Returns {body} on success, or {res} on error.
+// `cacheKey` separates responses that share a url but vary by request header, which a registry
+// that etags per url alone would revalidate into one another.
 export async function fetchWithEtag(
-  url: string, ctx: ModeContext, opts: RequestInit = {}, reduce?: BodyReducer,
+  url: string, ctx: ModeContext, opts: RequestInit = {}, reduce?: BodyReducer, cacheKey: string = url,
 ): Promise<{body: string, res?: Response} | {res: Response | undefined}> {
-  const cached = ctx.noCache ? null : await getCache(url);
+  const cached = ctx.noCache ? null : await getCache(cacheKey);
   const baseHeaders = opts.headers as Record<string, string> | undefined;
   const headers = cached ? {...baseHeaders, "if-none-match": cached.etag} : baseHeaders;
   const res = await fetchWithRetry(ctx, url, {...opts, headers});
   if (!res) return {res: undefined};
   if (res.status === 304 && cached) return {body: cached.body, res};
   if (!res.ok) return {res};
-  return readAndCache(url, res, ctx, reduce, res.headers?.get?.("etag"));
+  return readAndCache(cacheKey, res, ctx, reduce, res.headers?.get?.("etag"));
 }
 
 // Persistent cache for immutable URLs (e.g. per-version metadata, commit
@@ -251,40 +264,85 @@ export function dedupe<T>(cache: Map<string, Promise<T>>, key: string, fn: () =>
   return promise;
 }
 
-export function isVersionPrerelease(version: string): boolean {
-  return (parse(version)?.prerelease.length ?? 0) > 0;
+export type Limiter = <T>(fn: () => Promise<T>) => Promise<T>;
+
+// Set for the duration of a slot. Acquiring the same budget twice for one request deadlocks at
+// saturation, so a limiter reached from inside a slot passes straight through.
+const inSlot = new AsyncLocalStorage<boolean>();
+
+function createLimiter(concurrency: number): Limiter {
+  let active = 0;
+  let head = 0;
+  let waiting: Array<() => void> = [];
+  return async <T>(fn: () => Promise<T>): Promise<T> => {
+    if (inSlot.getStore()) return fn();
+    if (active < concurrency) active++;
+    else await new Promise<void>(resolve => { waiting.push(resolve); });
+    try {
+      return await inSlot.run(true, fn);
+    } finally {
+      // A cursor, not `shift`, so releasing a slot is O(1) with a large `--sockets` queue.
+      if (head < waiting.length) {
+        waiting[head++]();
+        if (head === waiting.length) {
+          waiting = [];
+          head = 0;
+        }
+      } else {
+        active--;
+      }
+    }
+  };
 }
 
-export function isRangePrerelease(range: string): boolean {
-  // can not use coerce here because it ignores prerelease tags
-  return /[0-9]+\.[0-9]+\.[0-9]+-.+/.test(range);
+export const effectiveConcurrency = (ctx: ModeContext): number => Math.max(ctx.concurrency || maxSockets, 1);
+
+const limiterByCtx = new WeakMap<ModeContext, Limiter>();
+
+export function getLimiter(ctx: ModeContext): Limiter {
+  let limiter = limiterByCtx.get(ctx);
+  if (!limiter) limiterByCtx.set(ctx, limiter = createLimiter(effectiveConcurrency(ctx)));
+  return limiter;
 }
 
-// Pulls the authored version out of a range, prerelease included.
-const rangeVersionRe = /\d+\.\d+\.\d+(?:-[a-zA-Z0-9_.-]+)?/;
+export function isVersionPrerelease(version: string, versioning: Versioning = semverVersioning): boolean {
+  const parsed = versioning.parse(version);
+  return Boolean(parsed && versioning.isPrerelease(parsed));
+}
 
-// Build the prerelease-augmented copy of a semvers set without mutating the
+// Build a prerelease-augmented copy of a semvers set without mutating the
 // input — getVersionOpts() caches its sets per-package, so mutating in place
-// silently leaks state across packages. Cached by input Set so repeated calls
-// for the same package's semvers set don't re-allocate.
-const prereleaseVariantsCache = new WeakMap<Set<string>, Set<string>>();
-function withPrereleaseVariants(semvers: Set<string>): Set<string> {
-  const cached = prereleaseVariantsCache.get(semvers);
+// silently leaks state across packages.
+function cachedVariants(cache: WeakMap<Set<string>, Set<string>>, semvers: Set<string>, add: (out: Set<string>) => void): Set<string> {
+  const cached = cache.get(semvers);
   if (cached) return cached;
   const out = new Set(semvers);
-  out.add("prerelease");
-  if (semvers.has("patch")) out.add("prepatch");
-  if (semvers.has("minor")) out.add("preminor");
-  if (semvers.has("major")) out.add("premajor");
-  prereleaseVariantsCache.set(semvers, out);
+  add(out);
+  cache.set(semvers, out);
   return out;
 }
 
-// Prerelease candidates are in play when the authored version already is one or --pre is set,
+const allPrereleaseCache = new WeakMap<Set<string>, Set<string>>();
+const sameReleasePrereleaseCache = new WeakMap<Set<string>, Set<string>>();
+
+// Prerelease candidates are in play when --pre is set or the authored version already is one,
 // and classifying against an uncoerced prerelease yields `pre*` diffs the raw set lacks.
-function prereleaseOpts(range: string, usePre: boolean, semvers: Set<string>): {effectiveUsePre: boolean, effectiveSemvers: Set<string>} {
-  const effectiveUsePre = isRangePrerelease(range) || usePre;
-  return {effectiveUsePre, effectiveSemvers: effectiveUsePre ? withPrereleaseVariants(semvers) : semvers};
+// An authored prerelease alone only reaches prereleases of its own release, as renovate keeps an
+// unstable candidate only when major, minor and patch match, so a `17.0.0-rc.0` pin must not
+// follow an unreleased 18.x canary train. --pre opts into every one, as ignoreUnstable=false does.
+function prereleaseOpts(range: string, usePre: boolean, semvers: Set<string>, versioning: Versioning): {effectiveUsePre: boolean, effectiveSemvers: Set<string>} {
+  if (usePre) {
+    return {effectiveUsePre: true, effectiveSemvers: cachedVariants(allPrereleaseCache, semvers, out => {
+      out.add("prerelease");
+      if (semvers.has("patch")) out.add("prepatch");
+      if (semvers.has("minor")) out.add("preminor");
+      if (semvers.has("major")) out.add("premajor");
+    })};
+  }
+  if (versioning.isRangePrerelease(range)) {
+    return {effectiveUsePre: true, effectiveSemvers: cachedVariants(sameReleasePrereleaseCache, semvers, out => out.add("prerelease"))};
+  }
+  return {effectiveUsePre: false, effectiveSemvers: semvers};
 }
 
 type DowngradeOpts = {
@@ -296,21 +354,21 @@ type DowngradeOpts = {
 // Check if a version transition should be allowed. Prevents:
 // - Pre-release to lower release (unless --release)
 // - Release to lower release (unless --allow-downgrade)
-export function isAllowedVersionTransition(oldVersion: string, newVersion: string, {useRel, allowDowngrade, name}: DowngradeOpts): boolean {
-  const oldCoerced = coerceToVersion(oldVersion);
-  const newCoerced = coerceToVersion(newVersion);
-  if (!oldCoerced || !newCoerced) return true;
+export function isAllowedVersionTransition(oldVersion: string, newVersion: string, {useRel, allowDowngrade, name}: DowngradeOpts, versioning: Versioning = semverVersioning): boolean {
+  const oldParsed = versioning.parseRange(oldVersion);
+  const newParsed = versioning.parse(newVersion);
+  if (!oldParsed || !newParsed) return true;
 
-  const oldIsPre = isRangePrerelease(oldVersion) || isVersionPrerelease(oldVersion);
-  const newIsPre = isVersionPrerelease(newVersion);
+  const oldIsPre = versioning.isRangePrerelease(oldVersion) || versioning.isPrerelease(oldParsed);
+  const newIsPre = versioning.isPrerelease(newParsed);
 
   // Pre-release to release: allow if upgrade, or with --release flag
   if (oldIsPre && !newIsPre) {
-    return gte(newCoerced, oldCoerced) || useRel;
+    return versioning.compare(newParsed, oldParsed) >= 0 || useRel;
   }
 
   // General downgrade from release to lower release: only with --allow-downgrade
-  if (!newIsPre && lt(newCoerced, oldCoerced)) {
+  if (!newIsPre && versioning.compare(newParsed, oldParsed) < 0) {
     return matchesAny(name, allowDowngrade);
   }
 
@@ -321,67 +379,51 @@ export function coerceToVersion(rangeOrVersion: string): string {
   return coerce(rangeOrVersion)?.version ?? "";
 }
 
-export function findVersion(data: any, versions: Array<string>, {range, semvers, usePre, useRel, useGreatest, pinnedRange, cooldownDays, now, getVersionDate}: FindVersionOpts): string | null {
-  const oldVersion = coerceToVersion(range);
-  if (!oldVersion) return null;
+export function findVersion(data: any, versions: Array<string>, {range, semvers, usePre, useRel, pinnedRange, pinNoDowngrade, cooldownDays, now, getVersionDate, versioning = semverVersioning}: FindVersionOpts): string | null {
+  // Rank and classify against the authored version with its prerelease intact. Coercing
+  // drops it, which would sort a prerelease pin above its own release.
+  const oldParsed = versioning.parseRange(range);
+  if (!oldParsed) return null;
 
-  // Rank and classify against the authored version with its prerelease intact.
-  // coerceToVersion() drops it, which would sort a prerelease pin above its own
-  // release and, when nothing is picked, report that unpublished release as the
-  // update. coerceToVersion always yields a 3-part number, so the fallback parses.
-  const oldParsed = parse(rangeVersionRe.exec(range)?.[0] ?? "") ?? parse(oldVersion)!;
-
-  const {effectiveUsePre, effectiveSemvers} = prereleaseOpts(range, usePre, semvers);
+  const {effectiveUsePre, effectiveSemvers} = prereleaseOpts(range, usePre, semvers, versioning);
 
   const time = data?.time;
-  const hasTime = Boolean(time);
-  const useGreatestPath = useGreatest || !hasTime;
   const cooldownActive = Boolean(cooldownDays && now);
   // Two cases deliberately move down: a pin the authored version already violates has to
   // be free to move down into it, and --release leaves a prerelease train for the newest
   // real release even when that is lower (isAllowedVersionTransition vets it afterwards).
-  const allowsDowngrade = (Boolean(pinnedRange) && !satisfies(oldParsed.version, pinnedRange!)) ||
-    (useRel && oldParsed.prerelease.length > 0);
+  // A renovate-derived pin is exempt from the first: it is a ceiling, not a target.
+  const allowsDowngrade = (Boolean(pinnedRange) && !pinNoDowngrade && !versioning.satisfiesRange(oldParsed, pinnedRange!)) ||
+    (useRel && versioning.isPrerelease(oldParsed));
 
-  let greatestDate = 0;
-  let picked = false;
-  let newVersionParsed = oldParsed;
+  // Highest candidate that passes every check, as renovate takes the first walking high to low.
+  // A publish date never outranks a version, so a backport released later cannot win.
+  let newVersionParsed: {version: string} | null = null;
 
   for (const version of versions) {
-    const parsed = parse(version);
-    if (!parsed?.version || parsed.prerelease.length && (!effectiveUsePre || useRel)) continue;
+    const parsed = versioning.parse(version);
+    if (!parsed || versioning.isPrerelease(parsed) && (!effectiveUsePre || useRel)) continue;
 
     // Candidates only ever move forward, matching renovate's release filter. Cheaper than
     // the range check below, so it runs first and rejects most of them.
-    if (!allowsDowngrade && compareParsed(parsed, oldParsed) <= 0) continue;
+    if (!allowsDowngrade && versioning.compare(parsed, oldParsed) <= 0) continue;
+    if (newVersionParsed && versioning.compare(parsed, newVersionParsed) <= 0) continue;
 
-    if (pinnedRange && !satisfies(parsed.version, pinnedRange)) continue;
-
-    // Resolve date string at most once — reused below by greatestDate path.
-    let dateStr: string | undefined;
-    if (cooldownActive) {
-      dateStr = getVersionDate ? getVersionDate(version) : (hasTime ? time[version] : undefined);
-      if (!passesCooldown(dateStr, cooldownDays, now)) continue;
-    }
+    if (pinnedRange && !versioning.satisfiesRange(parsed, pinnedRange)) continue;
+    if (cooldownActive && !passesCooldown(getVersionDate ? getVersionDate(version) : time?.[version], cooldownDays, now)) continue;
 
     // Always classified against the authored version, never against a candidate
     // picked earlier, so a chain of small steps cannot add up past the semvers gate.
-    const d = diffParsed(oldParsed, parsed);
-    if (!d || !effectiveSemvers.has(d)) continue;
+    // A stable candidate is classified by its own level, as the `pre` prefix a diff carries when
+    // the authored prerelease is the higher of the pair says nothing about it.
+    const d = versioning.diff(oldParsed, parsed);
+    const level = d && !versioning.isPrerelease(parsed) ? d.replace(/^pre/, "") : d;
+    if (!level || !effectiveSemvers.has(level)) continue;
 
-    // some registries like github don't have data.time available, fall back to greatest on them
-    if (useGreatestPath) {
-      if (picked && compareParsed(parsed, newVersionParsed) <= 0) continue;
-    } else {
-      const dateMs = Date.parse(dateStr ?? time[version]);
-      if (!(dateMs >= 0 && dateMs > greatestDate)) continue;
-      greatestDate = dateMs;
-    }
     newVersionParsed = parsed;
-    picked = true;
   }
 
-  return newVersionParsed.version;
+  return newVersionParsed?.version ?? null;
 }
 
 // TODO: maybe include pseudo-versions with --prerelease
@@ -389,23 +431,30 @@ export function isGoPseudoVersion(version: string): boolean {
   return /\d{14}-[0-9a-f]{12}$/.test(version);
 }
 
-export function findNewVersion(data: any, {mode, range, useGreatest, useRel, usePre, semvers, pinnedRange, cooldownDays, now, allowDowngrade}: FindNewVersionOpts): string | null {
-  if (range === "*") return null; // ignore wildcard
-  if (range.includes("||")) return null; // ignore or-chains
-  if (/\d\s/.test(range)) return null; // ignore compound ranges (">=1 <2", "1 - 2")
+export function findNewVersion(data: any, {mode, range: authoredRange, useGreatest, useRel, usePre, semvers, pinnedRange, pinNoDowngrade, cooldownDays, now, allowDowngrade}: FindNewVersionOpts): string | null {
+  if (authoredRange === "*") return null; // ignore wildcard
 
+  const versioning: Versioning = mode === "pypi" ? pep440Versioning : semverVersioning;
+  // Selection runs against an or-chain's last branch, as renovate reads a range's last comparator:
+  // `^17.0.0 || ^18.0.0` is an 18. The full range still decides how the update is written back.
+  const range = authoredRange.includes("||") ? authoredRange.split("||").pop()!.trim() : authoredRange;
   let versions: Array<string> = [];
+  let latestTag = "";
   let getVersionDate: ((v: string) => string | undefined) | undefined;
   if (mode === "pypi") {
-    const releases = data.releases;
-    versions = Object.keys(releases);
-    getVersionDate = (v: string) => releases?.[v]?.[0]?.upload_time_iso_8601;
+    const releases = data?.releases;
+    if (!releases) return null;
+    versions = Object.keys(releases).filter(version => !releases[version]?.some((file: any) => file?.yanked));
+    getVersionDate = (version: string) => releases[version]?.[0]?.upload_time_iso_8601;
+    latestTag = data.info?.version ?? "";
   } else if (mode === "npm" || mode === "cargo") {
+    if (!data?.versions) return null;
     versions = Object.keys(data.versions);
+    latestTag = data["dist-tags"]?.latest ?? "";
   } else if (mode === "go") {
     const oldVersion = coerceToVersion(range);
     if (!oldVersion) return null;
-    const {effectiveUsePre, effectiveSemvers} = prereleaseOpts(range, usePre, semvers);
+    const {effectiveUsePre, effectiveSemvers} = prereleaseOpts(range, usePre, semvers, versioning);
     const skipPrerelease = (v: string) => isVersionPrerelease(v) && (!effectiveUsePre || useRel);
     const transitionOpts = {useRel, allowDowngrade, name: data.name};
     // Use full original version for prerelease detection (range is shortened for Go)
@@ -434,27 +483,19 @@ export function findNewVersion(data: any, {mode, range, useGreatest, useRel, use
     }
     return null;
   }
-  const version = findVersion(data, versions, {range, semvers, usePre, useRel, useGreatest, pinnedRange, cooldownDays, now, getVersionDate});
-  if (!version) return null;
+  const version = findVersion(data, versions, {range, semvers, usePre, useRel, pinnedRange, pinNoDowngrade, cooldownDays, now, getVersionDate, versioning});
 
   if (useGreatest) {
     return version;
   } else {
-    let latestTag = "";
-    let originalLatestTag = "";
-    let latestIsPre = false;
-    if (mode === "pypi") {
-      originalLatestTag = data.info.version; // may not be a 3-part semver
-      latestTag = coerceToVersion(data.info.version); // add .0 to 6.0 so semver eats it
-      latestIsPre = isVersionPrerelease(originalLatestTag); // coercion strips the prerelease tag, so detect on the raw value
-    } else {
-      latestTag = data["dist-tags"].latest;
-      latestIsPre = isVersionPrerelease(latestTag);
-    }
+    const latestParsed = versions.includes(latestTag) ? versioning.parse(latestTag) : null;
+    const oldParsed = versioning.parseRange(range);
+    if (!latestParsed || !oldParsed) return version;
 
-    const oldVersion = coerceToVersion(range);
-    const oldIsPre = isRangePrerelease(range);
-    const newIsPre = isVersionPrerelease(version);
+    const newParsed = version ? versioning.parse(version) : null;
+    const latestIsPre = versioning.isPrerelease(latestParsed);
+    const oldIsPre = versioning.isRangePrerelease(range);
+    const newIsPre = Boolean(newParsed && versioning.isPrerelease(newParsed));
     const transitionOpts = {useRel, allowDowngrade, name: data.name};
 
     // update to new prerelease
@@ -464,11 +505,11 @@ export function findNewVersion(data: any, {mode, range, useGreatest, useRel, use
 
     // pre-release to release transition
     if (oldIsPre && !newIsPre) {
-      return isAllowedVersionTransition(range, version, transitionOpts) ? version : null;
+      return version && isAllowedVersionTransition(range, version, transitionOpts, versioning) ? version : null;
     }
 
     // check if latestTag is allowed by semvers
-    const d = diff(oldVersion, latestTag);
+    const d = versioning.diff(oldParsed, latestParsed);
     if (d && d !== "prerelease" && !semvers.has(d.replace(/^pre/, ""))) {
       return version;
     }
@@ -479,11 +520,11 @@ export function findNewVersion(data: any, {mode, range, useGreatest, useRel, use
     }
 
     // prevent downgrade to older version except with --allow-downgrade
-    if (lt(latestTag, oldVersion) && !latestIsPre) {
-      if (!isAllowedVersionTransition(range, latestTag, transitionOpts)) {
+    if (versioning.compare(latestParsed, oldParsed) < 0 && !latestIsPre) {
+      if (!isAllowedVersionTransition(range, latestTag, transitionOpts, versioning)) {
         // latest dist-tag is a disallowed downgrade — fall back to the in-range
         // `version` like the sibling branches, but only if it is a real upgrade.
-        return gt(version, oldVersion) ? version : null;
+        return newParsed && versioning.compare(newParsed, oldParsed) > 0 ? version : null;
       }
       return latestTag;
     }
@@ -494,23 +535,18 @@ export function findNewVersion(data: any, {mode, range, useGreatest, useRel, use
     }
 
     // If a pinned range is specified and latestTag doesn't satisfy it, return version
-    if (pinnedRange && !satisfies(latestTag, pinnedRange)) {
+    if (pinnedRange && !versioning.satisfiesRange(latestParsed, pinnedRange)) {
       return version;
     }
 
     // latestTag may be too new under cooldown — fall back to the
     // already-filtered `version` selected by findVersion.
-    if (cooldownDays && now) {
-      const latestDate = mode === "pypi" ?
-        data.releases?.[originalLatestTag || latestTag]?.[0]?.upload_time_iso_8601 :
-        data.time?.[latestTag];
-      if (!passesCooldown(latestDate, cooldownDays, now)) {
-        return version;
-      }
+    if (cooldownDays && now && !passesCooldown(getVersionDate ? getVersionDate(latestTag) : data.time?.[latestTag], cooldownDays, now)) {
+      return version;
     }
 
     // in all other cases, return latest dist-tag
-    return originalLatestTag || latestTag;
+    return latestTag;
   }
 }
 
@@ -631,6 +667,53 @@ export async function getForgeTokens(host: string, forgeApiUrl: string): Promise
   return Array.from(new Set(header ? [...tokens, header] : tokens));
 }
 
+// A forge failure the run must report rather than read as "no update". Renovate draws the same
+// line with PLATFORM_RATE_LIMIT_EXCEEDED and ExternalHostError.
+export type ForgeErrorKind = "rateLimit" | "server" | "network";
+
+export class ForgeError extends Error {
+  override readonly name = "ForgeError";
+  readonly kind: ForgeErrorKind;
+  readonly host: string;
+  readonly status: number;
+  readonly reset: number; // `x-ratelimit-reset` in epoch seconds, 0 when the forge sent none
+
+  constructor(kind: ForgeErrorKind, host: string, message: string, {status = 0, reset = 0, cause}: {status?: number, reset?: number, cause?: unknown} = {}) {
+    super(message, {cause});
+    this.kind = kind;
+    this.host = host;
+    this.status = status;
+    this.reset = reset;
+  }
+}
+
+// A rate limit is a 403 or 429 the headers or the body identify as one. A plain 403 is a
+// credential problem and still falls through to the next token.
+async function rateLimitReset(res: Response): Promise<number | null> {
+  if (res.status !== 403 && res.status !== 429) return null;
+  const reset = () => Number(res.headers?.get?.("x-ratelimit-reset")) || 0;
+  if (res.headers?.get?.("x-ratelimit-remaining") === "0" || res.headers?.get?.("retry-after")) return reset();
+  try {
+    // Cloned so a caller that reads the body of a non-rate-limited 403 still can.
+    const {message} = await (typeof res.clone === "function" ? res.clone() : res).json();
+    if (typeof message !== "string") return null;
+    if (message.includes("rate limit exceeded") || message.includes("abuse detection mechanism") ||
+      message.startsWith("You have exceeded a secondary rate limit")) return reset();
+  } catch {}
+  return null;
+}
+
+async function checkForgeResponse(res: Response, url: string, host: string, hasToken: boolean): Promise<Response> {
+  if (res.status >= 500) {
+    throw new ForgeError("server", host, `Received ${res.status}${res.statusText ? ` ${res.statusText}` : ""} from ${url}`, {status: res.status});
+  }
+  const reset = await rateLimitReset(res);
+  if (reset === null) return res;
+  const hint = hasToken ? " even though a token was sent" : ", set one for this host in UPDATES_FORGE_TOKENS";
+  const until = reset ? `, resets at ${new Date(reset * 1000).toISOString()}` : "";
+  throw new ForgeError("rateLimit", host, `Rate limit exceeded for ${host}${hint}${until}`, {status: res.status, reset});
+}
+
 export async function fetchForge(url: string, ctx: ModeContext, extraHeaders?: Record<string, string>): Promise<Response> {
   const host = urlHost(url);
 
@@ -644,19 +727,27 @@ export async function fetchForge(url: string, ctx: ModeContext, extraHeaders?: R
     return opts;
   };
 
-  if (!tokens.length) return fetchWithRetry(ctx, url, optsFor());
+  const attempt = async (token?: string) =>
+    checkForgeResponse(await fetchWithRetry(ctx, url, optsFor(token)), url, host, tokens.length > 0);
 
-  const cached = workingTokenCache.get(host);
-  if (cached) return fetchWithRetry(ctx, url, optsFor(cached));
+  try {
+    if (!tokens.length) return await attempt();
 
-  for (const token of tokens) {
-    const response = await fetchWithRetry(ctx, url, optsFor(token));
-    if (response.status !== 401 && response.status !== 403) {
-      workingTokenCache.set(host, token);
-      return response;
+    const cached = workingTokenCache.get(host);
+    if (cached) return await attempt(cached);
+
+    for (const token of tokens) {
+      const response = await attempt(token);
+      if (response.status !== 401 && response.status !== 403) {
+        workingTokenCache.set(host, token);
+        return response;
+      }
     }
+    return await attempt();
+  } catch (err: any) {
+    if (err instanceof ForgeError) throw err;
+    throw new ForgeError("network", host, err?.message ?? String(err), {cause: err});
   }
-  return fetchWithRetry(ctx, url, optsFor());
 }
 
 // Picks the highest valid semver tag. GitHub does not guarantee a particular
@@ -742,22 +833,37 @@ async function fetchTagsPage(url: string, ctx: ModeContext): Promise<{tags: Arra
   } catch { return null; }
 }
 
-export async function fetchActionTags(apiUrl: string, owner: string, repo: string, ctx: ModeContext): Promise<Array<TagEntry>> {
+// `oldRefs` are the refs the caller has to resolve, a sha pin's commit or a tag's own name. GitHub
+// serves tags newest-first, so the walk stops once every one has been seen. Naming none reads all.
+export async function fetchActionTags(apiUrl: string, owner: string, repo: string, ctx: ModeContext, oldRefs: Array<string> = []): Promise<Array<TagEntry>> {
   const tagsUrl = (page: number) => `${apiUrl}/repos/${owner}/${repo}/tags?per_page=100&page=${page}`;
+  const tags: Array<TagEntry> = [];
+  const unresolved = new Set(oldRefs.filter(Boolean));
+  const bounded = unresolved.size > 0;
+  const take = (page: {tags: Array<TagEntry>} | null): boolean => {
+    for (const entry of page?.tags ?? []) {
+      for (const ref of unresolved) if (ref === entry.name || entry.commitSha.startsWith(ref)) unresolved.delete(ref);
+      tags.push(entry);
+    }
+    return bounded && !unresolved.size;
+  };
   try {
     const page1 = await fetchTagsPage(tagsUrl(1), ctx);
-    if (!page1) return [];
-    const tags = page1.tags;
+    if (!page1) return tags;
     const last = /<([^>]+)>;\s*rel="last"/.exec(page1.link);
-    if (!last) return tags;
-    const lastPage = Math.min(Number(new URL(last[1]).searchParams.get("page")), maxTagPages);
-    if (lastPage < 2) return tags;
-    const pages = await Promise.all(
-      Array.from({length: lastPage - 1}, (_, idx) => fetchTagsPage(tagsUrl(idx + 2), ctx)),
-    );
-    for (const p of pages) if (p) tags.push(...p.tags);
+    const lastPage = last ? Math.min(Number(new URL(last[1]).searchParams.get("page")), maxTagPages) : 0;
+    // Each wave is one round trip and doubles up to the socket budget, the limiter caps the flight.
+    const maxWave = effectiveConcurrency(ctx);
+    for (let next = 2, wave = 1, done = take(page1); next <= lastPage && !done; next += wave, wave = Math.min(wave * 2, maxWave)) {
+      const pages = await Promise.all(
+        Array.from({length: Math.min(wave, lastPage - next + 1)}, (_, idx) => fetchTagsPage(tagsUrl(next + idx), ctx)),
+      );
+      for (const page of pages) done = take(page);
+    }
     return tags;
-  } catch {
+  } catch (err) {
+    // A classified failure is the dependency's result, unlike a malformed page worth degrading over.
+    if (err instanceof ForgeError) throw err;
     return [];
   }
 }

@@ -1,3 +1,5 @@
+import {join} from "node:path";
+import {tmpdir} from "node:os";
 import {
   isMakeFileName,
   parseMakeGoInstalls,
@@ -113,6 +115,28 @@ test("updateMakefile rewrites a spec directly followed by a # comment", () => {
   expect(updated).toBe("IMG := koalaman/app:1.1.0#pinned\n");
 });
 
+test("updateMakefile rewrites every spec on a line", () => {
+  const content = "\tgo install github.com/air-verse/air@v1.60.0 github.com/golangci/golangci-lint/cmd/golangci-lint@v1.60.0  # tools\n";
+  expect(updateMakefile(content, [
+    {oldSpec: "github.com/air-verse/air@v1.60.0", newSpec: "github.com/air-verse/air@v1.62.0"},
+    {oldSpec: "github.com/golangci/golangci-lint/cmd/golangci-lint@v1.60.0", newSpec: "github.com/golangci/golangci-lint/cmd/golangci-lint@v1.62.0"},
+  ])).toBe("\tgo install github.com/air-verse/air@v1.62.0 github.com/golangci/golangci-lint/cmd/golangci-lint@v1.62.0  # tools\n");
+});
+
+test("updateMakefile keeps two tags of the same image apart", () => {
+  const content = "OLD := koalaman/shellcheck:v0.11.0\nNEW := koalaman/shellcheck:v0.12.0\n";
+  const updated = updateMakefile(content, [
+    {oldSpec: "koalaman/shellcheck:v0.11.0", newSpec: "koalaman/shellcheck:v0.12.0"},
+    {oldSpec: "koalaman/shellcheck:v0.12.0", newSpec: "koalaman/shellcheck:v0.13.0"},
+  ]);
+  expect(updated).toBe("OLD := koalaman/shellcheck:v0.12.0\nNEW := koalaman/shellcheck:v0.13.0\n");
+});
+
+test("updateMakefile leaves a bare image inside a registry-prefixed one alone", () => {
+  const content = "PREFIXED := docker.io/koalaman/shellcheck:v0.11.0\n";
+  expect(updateMakefile(content, [{oldSpec: "koalaman/shellcheck:v0.11.0", newSpec: "koalaman/shellcheck:v0.12.0"}])).toBe(content);
+});
+
 test("updateMakefile rewrites a docker image tag and digest in place", () => {
   const content = "SHELLCHECK_IMAGE ?= docker.io/koalaman/shellcheck:v0.11.0@sha256:aaa  # renovate: datasource=docker\n";
   const updated = updateMakefile(content, [{
@@ -126,34 +150,55 @@ test("updateMakefile rewrites a docker image tag and digest in place", () => {
 test("resolveGoModuleRoot uses the /vN heuristic without a lookup", async () => {
   let fetched = false;
   const ctx = {goProxyUrl: "https://proxy", goProbeTimeout, doFetch: () => { fetched = true; return Promise.resolve({ok: true} as any); }} as unknown as ModeContext;
-  expect(await resolveGoModuleRoot("github.com/golangci/golangci-lint/v2/cmd/golangci-lint", ctx)).toBe("github.com/golangci/golangci-lint/v2");
+  expect(await resolveGoModuleRoot("github.com/golangci/golangci-lint/v2/cmd/golangci-lint", ".", ctx, [])).toBe("github.com/golangci/golangci-lint/v2");
   expect(fetched).toBe(false);
 });
 
 test("resolveGoModuleRoot probes prefixes longest-first", async () => {
   const ctx = {
     goProxyUrl: "https://proxy", goProbeTimeout,
-    doFetch: (url: string) => Promise.resolve({ok: url.endsWith("golang.org/x/vuln/@latest")} as any),
+    doFetch: (url: string) => Promise.resolve({
+      ok: url.endsWith("golang.org/x/vuln/@latest"), status: 404, json: () => Promise.resolve({Version: "v1.1.4"}),
+    } as any),
   } as unknown as ModeContext;
-  expect(await resolveGoModuleRoot("golang.org/x/vuln/cmd/govulncheck", ctx)).toBe("golang.org/x/vuln");
+  expect(await resolveGoModuleRoot("golang.org/x/vuln/cmd/govulncheck", ".", ctx, [])).toBe("golang.org/x/vuln");
 });
 
-test("resolveGoModuleRoot returns null when probes error or nothing resolves", async () => {
-  const errCtx = {goProxyUrl: "https://proxy", goProbeTimeout, doFetch: () => Promise.reject(new Error("network"))} as unknown as ModeContext;
-  expect(await resolveGoModuleRoot("golang.org/x/vuln/cmd/govulncheck", errCtx)).toBeNull();
-  const missCtx = {goProxyUrl: "https://proxy", goProbeTimeout, doFetch: () => Promise.resolve({ok: false} as any)} as unknown as ModeContext;
-  expect(await resolveGoModuleRoot("golang.org/x/vuln/cmd/govulncheck", missCtx)).toBeNull();
+test("resolveGoModuleRoot returns null when nothing resolves and throws when a probe fails", async () => {
+  // 404 is the probe's legitimate "not the module root"; a 429, a 5xx or a network failure
+  // answers nothing, and dropping the tool on one reads as "up to date".
+  const ctx = (doFetch: () => Promise<any>) => ({goProxyUrl: "https://proxy", goProbeTimeout, doFetch}) as unknown as ModeContext;
+  const missCtx = ctx(() => Promise.resolve({ok: false, status: 404} as any));
+  expect(await resolveGoModuleRoot("golang.org/x/vuln/cmd/govulncheck", ".", missCtx, [])).toBeNull();
+  const rateLimitCtx = ctx(() => Promise.resolve({ok: false, status: 429, statusText: "Too Many Requests"} as any));
+  await expect(resolveGoModuleRoot("golang.org/x/vuln/cmd/govulncheck", ".", rateLimitCtx, [])).rejects.toThrow("429");
+  const errCtx = ctx(() => Promise.reject(new Error("network")));
+  await expect(resolveGoModuleRoot("golang.org/x/vuln/cmd/govulncheck", ".", errCtx, [])).rejects.toThrow("network");
+});
+
+test("resolveGoModuleRoot never builds a proxy URL for off, direct or a GONOPROXY match", async () => {
+  // A cwd that does not exist makes the `go list` spawn fail at once, keeping this offline.
+  const missingCwd = join(tmpdir(), "updates-no-such-dir");
+  let fetched = false;
+  const ctx = (goProxyUrl: string) => ({
+    goProxyUrl, goProbeTimeout, doFetch: () => { fetched = true; return Promise.resolve({ok: true} as any); },
+  }) as unknown as ModeContext;
+  expect(await resolveGoModuleRoot("golang.org/x/vuln/cmd/govulncheck", missingCwd, ctx("off"), [])).toBeNull();
+  expect(await resolveGoModuleRoot("golang.org/x/vuln/cmd/govulncheck", missingCwd, ctx("direct"), [])).toBeNull();
+  expect(await resolveGoModuleRoot("git.corp.example/x/cmd/tool", missingCwd, ctx("https://proxy"), ["git.corp.example"])).toBeNull();
+  expect(fetched).toBe(false);
 });
 
 // fetchMakeInfo
+
+const goProxyCtx = (resolves: string, Version = "", Time = ""): ModeContext => ({
+  fetchTimeout, goProbeTimeout, goProxyUrl: "https://proxy", noCache: true,
+  goProxyChain: [{url: "https://proxy", fallback: ","}],
+  doFetch: (url: string) => Promise.resolve({ok: url.includes(resolves), status: 404, json: () => Promise.resolve({Version, Time})} as any),
+} as unknown as ModeContext);
+
 test("fetchMakeInfo resolves the latest version and preserves the install path", async () => {
-  const ctx = {
-    fetchTimeout, goProbeTimeout, goProxyUrl: "https://proxy", noCache: true,
-    doFetch: (url: string) => Promise.resolve({
-      ok: url.includes("golangci-lint/v2/@latest"),
-      json: () => Promise.resolve({Version: "v2.15.0", Time: "2026-05-01T00:00:00Z"}),
-    } as any),
-  } as unknown as ModeContext;
+  const ctx = goProxyCtx("golangci-lint/v2/@latest", "v2.15.0", "2026-05-01T00:00:00Z");
   expect(await fetchMakeInfo("github.com/golangci/golangci-lint/v2/cmd/golangci-lint", "v2.12.2", ".", ctx, [], defaultOpts)).toEqual({
     newInstallPath: "github.com/golangci/golangci-lint/v2/cmd/golangci-lint",
     newVersion: "v2.15.0",
@@ -162,47 +207,25 @@ test("fetchMakeInfo resolves the latest version and preserves the install path",
   });
 });
 
-test("fetchMakeInfo returns null when the module cannot be resolved", async () => {
-  const ctx = {fetchTimeout, goProbeTimeout, goProxyUrl: "https://proxy", doFetch: () => Promise.resolve({ok: false} as any)} as unknown as ModeContext;
-  expect(await fetchMakeInfo("golang.org/x/vuln/cmd/govulncheck", "v1.2.0", ".", ctx, [], defaultOpts)).toBeNull();
-});
-
-test("fetchMakeInfo does not downgrade a pseudo-version to a lower release", async () => {
-  const ctx = {
-    fetchTimeout, goProbeTimeout, goProxyUrl: "https://proxy", noCache: true,
-    doFetch: (url: string) => Promise.resolve({
-      ok: url.includes("pseudopkg/@latest"),
-      json: () => Promise.resolve({Version: "v0.4.1", Time: "2026-01-01T00:00:00Z"}),
-    } as any),
-  } as unknown as ModeContext;
-  expect(await fetchMakeInfo("github.com/example/pseudopkg", "v0.4.2-0.20230802210424-5b0b94c5c0d3", ".", ctx, [], defaultOpts)).toBeNull();
-});
-
-test("fetchMakeInfo returns null when a partial version stays the same after precision formatting", async () => {
-  const ctx = {
-    fetchTimeout, goProbeTimeout, goProxyUrl: "https://proxy", noCache: true,
-    doFetch: (url: string) => Promise.resolve({
-      ok: url.includes("example/dlv/@latest"),
-      json: () => Promise.resolve({Version: "v1.25.2", Time: "2026-03-01T00:00:00Z"}),
-    } as any),
-  } as unknown as ModeContext;
-  expect(await fetchMakeInfo("github.com/example/dlv", "v1", ".", ctx, [], defaultOpts)).toBeNull();
-});
-
 test("fetchMakeInfo upgrades a pseudo-version to a newer release", async () => {
-  const ctx = {
-    fetchTimeout, goProbeTimeout, goProxyUrl: "https://proxy", noCache: true,
-    doFetch: (url: string) => Promise.resolve({
-      ok: url.includes("pseudoupd/@latest"),
-      json: () => Promise.resolve({Version: "v1.5.0", Time: "2026-02-01T00:00:00Z"}),
-    } as any),
-  } as unknown as ModeContext;
+  const ctx = goProxyCtx("pseudoupd/@latest", "v1.5.0", "2026-02-01T00:00:00Z");
   expect(await fetchMakeInfo("github.com/example/pseudoupd", "v0.0.0-20221128193559-754e69321358", ".", ctx, [], defaultOpts)).toEqual({
     newInstallPath: "github.com/example/pseudoupd",
     newVersion: "v1.5.0",
     date: "2026-02-01T00:00:00Z",
     info: "https://github.com/example/pseudoupd",
   });
+});
+
+test.each([
+  ["the module cannot be resolved", "golang.org/x/vuln/cmd/govulncheck", "v1.2.0", "nothing/@latest", "", ""],
+  ["a pseudo-version would be downgraded to a lower release", "github.com/example/pseudopkg",
+    "v0.4.2-0.20230802210424-5b0b94c5c0d3", "pseudopkg/@latest", "v0.4.1", "2026-01-01T00:00:00Z"],
+  ["a partial version stays the same after precision formatting", "github.com/example/dlv", "v1",
+    "example/dlv/@latest", "v1.25.2", "2026-03-01T00:00:00Z"],
+])("fetchMakeInfo returns null when %s", async (_name, installPath, version, resolves, latest, time) => {
+  const ctx = goProxyCtx(resolves, latest, time);
+  expect(await fetchMakeInfo(installPath, version, ".", ctx, [], defaultOpts)).toBeNull();
 });
 
 // parseMakeImageValue / parseMakeDockerImages
@@ -288,14 +311,12 @@ test("fetchMakeDockerInfo returns null when the new tag's digest cannot be resol
   expect(await fetchMakeDockerInfo(image, ctx, defaultOpts)).toBeNull();
 });
 
-test("fetchMakeDockerInfo writes the real Hub tag when only 3-part tags are published", async () => {
-  // Authored tag is 2-part (`v0.12`) but Hub only publishes the 3-part `v0.13.0`, so the
-  // precision-reduced `v0.13` would 404 — write the real tag and pin its own digest.
+test("fetchMakeDockerInfo returns null when the registry publishes no tag at the authored precision", async () => {
+  // Pinning a floating `v0.12` to a 3-part tag swaps the deployment policy the author chose,
+  // which renovate's docker isCompatible refuses too.
   const ctx = {
     dockerApiUrl: "https://hub.docker.com", fetchTimeout, noCache: true,
     doFetch: (url: string) => {
-      if (url.endsWith("/tags/v0.13.0")) return Promise.resolve({ok: true, json: () => Promise.resolve({digest: digestB})} as any);
-      if (url.includes("/tags/")) return Promise.resolve({ok: false} as any); // a 2-part `/tags/v0.13` lookup 404s
       if (url.includes("/tags")) return Promise.resolve({ok: true, json: () => Promise.resolve({count: 2, results: [
         {name: "v0.12.0", tag_last_pushed: "2025-01-01T00:00:00Z"},
         {name: "v0.13.0", tag_last_pushed: "2025-06-01T00:00:00Z"},
@@ -304,12 +325,7 @@ test("fetchMakeDockerInfo writes the real Hub tag when only 3-part tags are publ
     },
   } as unknown as ModeContext;
   const image = parseMakeImageValue(`docker.io/koalaman/shellcheck:v0.12@${digestA}`)!;
-  expect(await fetchMakeDockerInfo(image, ctx, defaultOpts)).toEqual({
-    newTag: "v0.13.0",
-    newDigest: digestB,
-    date: "2025-06-01T00:00:00Z",
-    info: "https://hub.docker.com/r/koalaman/shellcheck",
-  });
+  expect(await fetchMakeDockerInfo(image, ctx, defaultOpts)).toBeNull();
 });
 
 test("fetchMakeDockerInfo returns null when no newer tag exists", async () => {

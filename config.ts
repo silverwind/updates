@@ -3,7 +3,7 @@ import {pathToFileURL} from "node:url";
 import {access} from "node:fs/promises";
 import type {ParseArgsOptionsConfig} from "node:util";
 import {validRange} from "./utils/semver.ts";
-import {commaSeparatedToArray, esc, walkUp, memoizeAsync} from "./utils/utils.ts";
+import {commaSeparatedToArray, patternToRegex, walkUp, memoizeAsync} from "./utils/utils.ts";
 import type {PresetFetchOptions, RenovateImportOptions} from "./utils/renovate.ts";
 
 export type Config = {
@@ -19,6 +19,13 @@ export type Config = {
   cooldown?: number | string;
   /** Pin dependencies to semver ranges */
   pin?: Record<string, string>;
+  /**
+   * @internal Not a user option. Set by the renovate importer for the `pin` entries that came
+   * from `allowedVersions`, which filter but never downgrade. The importer marks the whole map
+   * with `true`, loadConfig narrows it to the names renovate still owns, and only the
+   * per-directory config is ever read.
+   */
+  pinNoDowngrade?: boolean | Array<string>;
   /** File or directory paths to use */
   files?: Array<string>;
   /** Which modes to enable */
@@ -123,14 +130,6 @@ export const options: ParseArgsOptionsConfig = {
   "version": {short: "v", type: "boolean"},
 };
 
-// A string pattern is a case-insensitive glob; a RegExp is taken as authored.
-// CLI `/regex/` strings are already RegExp objects by the time they arrive here.
-function patternToRegex(pattern: string | RegExp): RegExp {
-  if (!(pattern instanceof RegExp)) return new RegExp(`^${esc(pattern).replaceAll("\\*", ".*")}$`, "i");
-  // strip g/y: these matchers are only used with .test(), where a stateful lastIndex flakes
-  return /[gy]/.test(pattern.flags) ? new RegExp(pattern.source, pattern.flags.replace(/[gy]/g, "")) : pattern;
-}
-
 export function parseMixedArg(arg: Arg): boolean | Set<string> {
   if (Array.isArray(arg) && arg.every(a => a === true)) {
     return true;
@@ -163,17 +162,23 @@ export function parseArgList(arg: Arg): Array<string> {
   return [];
 }
 
+// An unparsable range satisfies nothing, so dropping it would either discard the pin or freeze the
+// dependency forever. Renovate likewise rejects an allowedVersions it cannot parse.
+export function validatePin(pin: Config["pin"]): void {
+  for (const [pkg, range] of Object.entries(pin ?? {})) {
+    if (!validRange(range)) throw new Error(`Invalid pin range for ${pkg}: ${range}`);
+  }
+}
+
 export function parsePinArg(arg: Arg): Record<string, string> {
   const result: Record<string, string> = {};
-  const items = Array.isArray(arg) ? arg : [arg];
-  for (const val of items) {
-    if (typeof val !== "string") continue;
+  for (const val of Array.isArray(arg) ? arg : [arg]) {
+    if (typeof val !== "string") continue; // a flag recovered from a swallowed value arrives as `true`
     const eq = val.indexOf("=");
-    if (eq === -1) continue;
-    const pkg = val.slice(0, eq);
-    const range = val.slice(eq + 1);
-    if (pkg && range && validRange(range)) result[pkg] = range;
+    if (eq < 1) throw new Error(`Invalid pin: ${val}, expected <dep>=<range>`);
+    result[val.slice(0, eq)] = val.slice(eq + 1);
   }
+  validatePin(result);
   return result;
 }
 
@@ -219,5 +224,13 @@ export async function loadConfig(startDir: string, presetFetch: PresetFetchOptio
   const {loadRenovateConfig, makePresetFetcher} = await import("./utils/renovate.ts");
   const fetchText = makePresetFetcher(presetFetch);
   const renovateConfig = await loadRenovateConfig(found?.configDir ?? startDir, raw.inherit?.renovate, fetchText);
-  return {...renovateConfig, ...raw};
+  const config: Config = {...renovateConfig, ...raw};
+  // `pin` merges per key, so an authored pin for one dependency keeps the ceilings inherited for
+  // the others. An authored entry may downgrade, so the marker keeps only the names renovate owns.
+  if (renovateConfig.pin) {
+    config.pin = {...renovateConfig.pin, ...raw.pin};
+    config.pinNoDowngrade = Object.keys(renovateConfig.pin).filter(name => !raw.pin?.[name]);
+  }
+  validatePin(config.pin);
+  return config;
 }

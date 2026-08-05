@@ -1,3 +1,5 @@
+import {getOrSet} from "./utils.ts";
+
 export type SemVer = {
   major: number;
   minor: number;
@@ -12,20 +14,18 @@ const parseCache = new Map<string, SemVer | null>();
 
 function parseVersion(v: string): SemVer | null {
   if (typeof v !== "string") return null;
-  const cached = parseCache.get(v);
-  if (cached !== undefined) return cached;
-  const m = semverRe.exec(v.trim());
-  if (!m) { parseCache.set(v, null); return null; }
-  const major = Number(m[1]);
-  const minor = Number(m[2]);
-  const patch = Number(m[3]);
-  const prerelease: Array<string | number> = m[4] ?
-    m[4].split(".").map(p => /^\d+$/.test(p) ? Number(p) : p) :
-    [];
-  const version = `${major}.${minor}.${patch}${prerelease.length ? `-${prerelease.join(".")}` : ""}`;
-  const result: SemVer = {major, minor, patch, prerelease, version};
-  parseCache.set(v, result);
-  return result;
+  return getOrSet(parseCache, v, () => {
+    const m = semverRe.exec(v.trim());
+    if (!m) return null;
+    const major = Number(m[1]);
+    const minor = Number(m[2]);
+    const patch = Number(m[3]);
+    const prerelease: Array<string | number> = m[4] ?
+      m[4].split(".").map(p => /^\d+$/.test(p) ? Number(p) : p) :
+      [];
+    const version = `${major}.${minor}.${patch}${prerelease.length ? `-${prerelease.join(".")}` : ""}`;
+    return {major, minor, patch, prerelease, version};
+  });
 }
 
 function compareIdentifiers(a: string | number, b: string | number): number {
@@ -42,7 +42,7 @@ function compareMain(a: SemVer, b: SemVer): number {
 }
 
 // Compare pre-parsed versions, letting hot loops skip the parse-cache lookups.
-export function compareParsed(a: SemVer, b: SemVer): number {
+function compareParsed(a: SemVer, b: SemVer): number {
   const main = compareMain(a, b);
   if (main !== 0) return main;
   const aHasPre = a.prerelease.length > 0;
@@ -76,16 +76,10 @@ const coerceRe = /(?:^|[^.\d])(\d+)(?:\.(\d+))?(?:\.(\d+))?/;
 
 export function coerce(v: string): {version: string} | null {
   if (typeof v !== "string") return null;
-  const cached = coerceCache.get(v);
-  if (cached !== undefined) return cached;
-  const m = coerceRe.exec(v);
-  if (!m) { coerceCache.set(v, null); return null; }
-  const major = m[1];
-  const minor = m[2] || "0";
-  const patch = m[3] || "0";
-  const result = {version: `${major}.${minor}.${patch}`};
-  coerceCache.set(v, result);
-  return result;
+  return getOrSet(coerceCache, v, () => {
+    const m = coerceRe.exec(v);
+    return m ? {version: `${m[1]}.${m[2] || "0"}.${m[3] || "0"}`} : null;
+  });
 }
 
 export function diff(v1: string, v2: string): string | null {
@@ -96,7 +90,7 @@ export function diff(v1: string, v2: string): string | null {
 }
 
 // Lets hot loops pass already-parsed inputs and skip the parseVersion cache lookup.
-export function diffParsed(a: SemVer, b: SemVer): string | null {
+function diffParsed(a: SemVer, b: SemVer): string | null {
   if (a.version === b.version) return null;
 
   const cmp = compareParsed(a, b);
@@ -129,14 +123,6 @@ function compare(v1: string, v2: string): number | null {
 
 export function gt(v1: string, v2: string): boolean {
   return (compare(v1, v2) ?? -1) > 0;
-}
-
-export function gte(v1: string, v2: string): boolean {
-  return (compare(v1, v2) ?? -1) >= 0;
-}
-
-export function lt(v1: string, v2: string): boolean {
-  return (compare(v1, v2) ?? 1) < 0;
 }
 
 // --- Range parsing ---
@@ -286,47 +272,43 @@ function expandXRanges(range: string): string {
 const rangeCache = new Map<string, Array<Array<Comparator>> | null>();
 
 function parseRange(range: string): Array<Array<Comparator>> | null {
-  const cached = rangeCache.get(range);
-  if (cached !== undefined) return cached;
-  const orGroups = range.split("||").map(g => g.trim());
-  const result: Array<Array<Comparator>> = [];
+  return getOrSet(rangeCache, range, () => {
+    const orGroups = range.split("||").map(g => g.trim());
+    const result: Array<Array<Comparator>> = [];
 
-  for (let group of orGroups) {
-    if (!group) {
-      // Empty group in || means match anything
-      result.push([]);
-      continue;
+    for (let group of orGroups) {
+      if (!group) {
+        // Empty group in || means match anything
+        result.push([]);
+        continue;
+      }
+
+      // Expand in order: hyphen -> caret/tilde -> x-range
+      group = expandHyphen(group);
+      group = expandTildeCaret(group);
+      group = expandXRanges(group);
+
+      // Merge operators with their following version (handle spaces like ">= 3.1").
+      // Must run before the normalize pass below, else ">= 1.0.0" gets an "=" inserted.
+      group = group.replace(/(>=|<=|>|<|=)\s+/g, "$1");
+
+      // Normalize = prefix for exact versions
+      group = group.replace(/(^|[\s])v?(\d+\.\d+\.\d+(?:-[a-zA-Z0-9_-]+(?:\.[a-zA-Z0-9_-]+)*)?)\b/g,
+        (_, prefix, version) => `${prefix}=${version}`);
+
+      const comparators: Array<Comparator> = [];
+      for (const part of group.split(/\s+/).filter(Boolean)) {
+        const comp = parseComparator(part);
+        if (!comp) return null;
+        comparators.push(comp);
+      }
+
+      if (comparators.length === 0) return null;
+      result.push(comparators);
     }
 
-    // Expand in order: hyphen -> caret/tilde -> x-range
-    group = expandHyphen(group);
-    group = expandTildeCaret(group);
-    group = expandXRanges(group);
-
-    // Merge operators with their following version (handle spaces like ">= 3.1").
-    // Must run before the normalize pass below, else ">= 1.0.0" gets an "=" inserted.
-    group = group.replace(/(>=|<=|>|<|=)\s+/g, "$1");
-
-    // Normalize = prefix for exact versions
-    group = group.replace(/(^|[\s])v?(\d+\.\d+\.\d+(?:-[a-zA-Z0-9_-]+(?:\.[a-zA-Z0-9_-]+)*)?)\b/g,
-      (_, prefix, version) => `${prefix}=${version}`);
-
-    const parts = group.split(/\s+/).filter(Boolean);
-    const comparators: Array<Comparator> = [];
-
-    for (const part of parts) {
-      const comp = parseComparator(part);
-      if (!comp) { rangeCache.set(range, null); return null; }
-      comparators.push(comp);
-    }
-
-    if (comparators.length === 0) { rangeCache.set(range, null); return null; }
-    result.push(comparators);
-  }
-
-  const final = result.length ? result : null;
-  rangeCache.set(range, final);
-  return final;
+    return result.length ? result : null;
+  });
 }
 
 function testWithPrerelease(version: SemVer, comparators: Array<Comparator>): boolean {
@@ -364,3 +346,161 @@ export function validRange(range: string): string | null {
   if (typeof range !== "string") return null;
   return parseRange(range) ? range : null;
 }
+
+export type Pep440 = {
+  epoch: number;
+  release: Array<number>;
+  pre: [string, number] | null;
+  post: number | null;
+  dev: number | null;
+  local: Array<string | number> | null;
+  version: string;
+};
+
+// https://peps.python.org/pep-0440/#appendix-b-parsing-version-strings-with-regular-expressions
+// 1 epoch, 2 release, 3-4 pre letter/number, 5 implicit post number, 6-7 post letter/number,
+// 8-9 dev marker/number, 10 local.
+const pep440Pattern = "v?(?:(\\d+)!)?(\\d+(?:\\.\\d+)*)(?:[-_.]?(a|b|c|rc|alpha|beta|pre|preview)[-_.]?(\\d+)?)?(?:-(\\d+)|[-_.]?(post|rev|r)[-_.]?(\\d+)?)?(?:[-_.]?(dev)[-_.]?(\\d+)?)?(?:\\+([a-z0-9]+(?:[-_.][a-z0-9]+)*))?";
+const pep440Re = new RegExp(`^${pep440Pattern}$`, "i");
+const pep440SearchRe = new RegExp(pep440Pattern, "i");
+const preSpellings: Record<string, string> = {alpha: "a", beta: "b", c: "rc", pre: "rc", preview: "rc"};
+
+const pep440Cache = new Map<string, Pep440 | null>();
+
+export function parsePep440(v: string): Pep440 | null {
+  if (typeof v !== "string") return null;
+  return getOrSet(pep440Cache, v, () => {
+    const m = pep440Re.exec(v.trim());
+    if (!m) return null;
+    const preLetter = m[3]?.toLowerCase();
+    return {
+      epoch: m[1] ? Number(m[1]) : 0,
+      release: m[2].split(".").map(Number),
+      pre: preLetter ? [preSpellings[preLetter] ?? preLetter, Number(m[4] ?? 0)] : null,
+      post: m[5] !== undefined ? Number(m[5]) : m[6] !== undefined ? Number(m[7] ?? 0) : null,
+      dev: m[8] !== undefined ? Number(m[9] ?? 0) : null,
+      local: m[10] ? m[10].toLowerCase().split(/[._-]/).map(p => /^\d+$/.test(p) ? Number(p) : p) : null,
+      version: v.trim(),
+    };
+  });
+}
+
+// A pypi range is authored as a bare version, but a comparator may still be glued to it.
+function parsePep440Range(range: string): Pep440 | null {
+  return parsePep440(range) ?? parsePep440(pep440SearchRe.exec(range)?.[0] ?? "");
+}
+
+const isPep440Prerelease = (v: Pep440): boolean => Boolean(v.pre || v.dev);
+
+// Alphanumeric local segments sort before numeric ones, shorter before longer.
+function compareLocal(a: Array<string | number> | null, b: Array<string | number> | null): number {
+  if (!a || !b) return a ? 1 : b ? -1 : 0;
+  const len = Math.min(a.length, b.length);
+  for (let i = 0; i < len; i++) {
+    const aIsNum = typeof a[i] === "number";
+    if (aIsNum !== (typeof b[i] === "number")) return aIsNum ? 1 : -1;
+    if (a[i] < b[i]) return -1;
+    if (a[i] > b[i]) return 1;
+  }
+  return a.length - b.length;
+}
+
+export function comparePep440(a: Pep440, b: Pep440): number {
+  if (a.epoch !== b.epoch) return a.epoch - b.epoch;
+  // Trailing zeros are insignificant, so 1.0 and 1.0.0 are the same version.
+  const len = Math.max(a.release.length, b.release.length);
+  for (let i = 0; i < len; i++) {
+    const cmp = (a.release[i] ?? 0) - (b.release[i] ?? 0);
+    if (cmp) return cmp;
+  }
+  // A bare dev release precedes every pre-release of the same version, which precede the release.
+  const aRank = a.pre ? 0 : a.post === null && a.dev !== null ? -1 : 1;
+  const bRank = b.pre ? 0 : b.post === null && b.dev !== null ? -1 : 1;
+  if (aRank !== bRank) return aRank - bRank;
+  if (a.pre && b.pre) {
+    if (a.pre[0] !== b.pre[0]) return a.pre[0] < b.pre[0] ? -1 : 1;
+    if (a.pre[1] !== b.pre[1]) return a.pre[1] - b.pre[1];
+  }
+  if ((a.post ?? -1) !== (b.post ?? -1)) return (a.post ?? -1) - (b.post ?? -1);
+  const aDev = a.dev ?? Infinity;
+  const bDev = b.dev ?? Infinity;
+  if (aDev !== bDev) return aDev < bDev ? -1 : 1;
+  return compareLocal(a.local, b.local);
+}
+
+// Release segments beyond the third are the pypi norm (2.32.0.20250602), and renovate buckets
+// every change below the minor as a patch, so the fourth segment does not get its own level.
+function releaseLevel(a: Pep440, b: Pep440): string | null {
+  if (a.epoch !== b.epoch) return "major";
+  const len = Math.max(a.release.length, b.release.length);
+  for (let i = 0; i < len; i++) {
+    if ((a.release[i] ?? 0) !== (b.release[i] ?? 0)) return i === 0 ? "major" : i === 1 ? "minor" : "patch";
+  }
+  return null;
+}
+
+export function diffPep440(a: Pep440, b: Pep440): string | null {
+  const cmp = comparePep440(a, b);
+  if (cmp === 0) return null;
+  const level = releaseLevel(a, b);
+  if (isPep440Prerelease(cmp > 0 ? a : b)) return level ? `pre${level}` : "prerelease";
+  return level ?? "patch";
+}
+
+// The scheme-specific operations version selection needs, mirroring renovate's VersioningApi.
+export type Versioning<T extends {version: string} = any> = {
+  parse: (version: string) => T | null;
+  // Pulls the authored version out of a range, prerelease included.
+  parseRange: (range: string) => T | null;
+  compare: (a: T, b: T) => number;
+  diff: (a: T, b: T) => string | null;
+  isPrerelease: (parsed: T) => boolean;
+  isRangePrerelease: (range: string) => boolean;
+  satisfiesRange: (parsed: T, range: string) => boolean;
+};
+
+const rangeVersionRe = /\d+\.\d+\.\d+(?:-[a-zA-Z0-9_.-]+)?/;
+
+export const semverVersioning: Versioning<SemVer> = {
+  parse,
+  parseRange: range => parse(rangeVersionRe.exec(range)?.[0] ?? "") ?? parse(coerce(range)?.version ?? ""),
+  compare: compareParsed,
+  diff: diffParsed,
+  isPrerelease: parsed => parsed.prerelease.length > 0,
+  // can not use coerce here because it ignores prerelease tags
+  isRangePrerelease: range => /[0-9]+\.[0-9]+\.[0-9]+-.+/.test(range),
+  satisfiesRange: (parsed, range) => satisfies(parsed.version, range),
+};
+
+// Actions are tagged with floating majors and minors (`v3`, `v3.19`) as often as with full
+// versions, and plain semver rejects both. Ported from renovate's github-actions versioning.
+function parseActionsVersion(v: string): SemVer | null {
+  const stripped = v.trim().replace(/^v/i, "");
+  // `major.minor-prerelease` (`2.2-rc.1`) normalizes onto `major.minor.0-prerelease`
+  const parsed = parse(stripped) ?? parse(stripped.replace(/^(\d+\.\d+)(-.+)$/, "$1.0$2"));
+  if (parsed) return parsed;
+  // without the guard, coerce reads a foreign tag scheme like `codeql-bundle-v2.20.3` as a version
+  if (!/^\d/.test(stripped)) return null;
+  return parse(coerce(stripped)?.version ?? "");
+}
+
+export const githubActionsVersioning: Versioning<SemVer> = {
+  ...semverVersioning,
+  parse: parseActionsVersion,
+  parseRange: parseActionsVersion,
+  isRangePrerelease: range => Boolean(parseActionsVersion(range)?.prerelease.length),
+};
+
+export const pep440Versioning: Versioning<Pep440> = {
+  parse: parsePep440,
+  parseRange: parsePep440Range,
+  compare: comparePep440,
+  diff: diffPep440,
+  isPrerelease: isPep440Prerelease,
+  isRangePrerelease: range => {
+    const parsed = parsePep440Range(range);
+    return Boolean(parsed && isPep440Prerelease(parsed));
+  },
+  // --pin takes a semver range, so match it against the first three release segments.
+  satisfiesRange: ({release}, range) => satisfies(`${release[0] ?? 0}.${release[1] ?? 0}.${release[2] ?? 0}`, range),
+};

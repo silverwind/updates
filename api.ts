@@ -1,36 +1,36 @@
 import {cwd, platform, stderr} from "node:process";
 import {styleText} from "node:util";
 import {join, dirname, basename, resolve} from "node:path";
-import {lstatSync, readdirSync, truncateSync, writeFileSync, accessSync, type Stats} from "node:fs";
+import {lstatSync, readdirSync, realpathSync, truncateSync, writeFileSync, accessSync, type Stats} from "node:fs";
 import {readFile} from "node:fs/promises";
 import {parseToml} from "./utils/toml.ts";
-import {valid, validRange} from "./utils/semver.ts";
+import {githubActionsVersioning, validRange} from "./utils/semver.ts";
 import {timerel} from "timerel";
-import {npmTypes, uvTypes, goTypes, cargoTypes, parseUvDependencies, nonPackageEngines, parseDuration, parsePositiveInt, matchesAny, getProperty, memoizeAsync, timestamp, forgeDirs, modeByFileName, pMap, pushTo, tryOrNull} from "./utils/utils.ts";
+import {npmTypes, uvTypes, goTypes, cargoTypes, cargoTargetTypes, expandDepTypes, parseUvDependencies, nonPackageEngines, parseDuration, parsePositiveInt, matchesAny, memoizeAsync, timestamp, forgeDirs, modeByFileName, pMap, pushTo, tryOrNull} from "./utils/utils.ts";
 import {
-  type Dep, type Deps, type DepsByMode, type Output, type ModeContext,
-  type PackageRepository, type PackageInfo,
+  type Dep, type Deps, type DepsByMode, type Limiter, type Output as ModeOutput, type ModeContext,
+  type PackageRepository, type PackageInfo, type TagEntry,
   fieldSep, normalizeUrl, fetchTimeout, goProbeTimeout, maxSockets,
-  doFetch, findVersion, findNewVersion, coerceToVersion, getInfoUrl, getGithubTokens,
+  doFetch, fetchActionTags, findVersion, findNewVersion, getInfoUrl, getGithubTokens, getLimiter,
   passesCooldown, stripv, hashRe, isVersionLikeRef, defaultApiUrls,
 } from "./modes/shared.ts";
 import {flushCacheWrites} from "./utils/fetchCache.ts";
-import {loadConfig, configMixedToRegexes, patternsToRegexSet} from "./config.ts";
+import {loadConfig, configMixedToRegexes, patternsToRegexSet, validatePin} from "./config.ts";
 import type {Config, Override} from "./config.ts";
 import {
-  fetchNpmInfo, fetchNpmVersionInfo, fetchJsrInfo, isJsr, isLocalDep, parseJsrDependency,
+  fetchNpmInfo, fetchNpmVersionInfo, fetchJsrInfo, isJsr, isLocalDep, isCatalogRef, parseJsrDependency, parseNpmAlias,
   getNpmrc, updatePackageJson, updateVersionRange, normalizeRange, checkUrlDep,
 } from "./modes/npm.ts";
-import {fetchPypiInfo, updatePyprojectToml} from "./modes/pypi.ts";
+import {fetchPypiInfo, updatePyprojectToml, updateRequirement} from "./modes/pypi.ts";
 import {
-  resolveGoProxy, parseGoNoProxy,
+  resolveGoProxyChain, parseGoNoProxy,
   parseGoMod, parseGoWork, fetchGoProxyInfo, updateGoMod, rewriteGoImports,
   getGoInfoUrl, shortenGoVersion, shortenGoModule,
 } from "./modes/go.ts";
 import {
-  type ActionRef, type TagEntry,
-  actionsUsesRe, parseActionRef, getForgeApiBaseUrl,
-  fetchActionTags, fetchActionTagDate, formatActionVersion,
+  type ActionRef,
+  parseActionRef, parseUsesLine, getForgeApiBaseUrl,
+  fetchActionTagDate, formatActionVersion,
   updateWorkflowFile, isWorkflowFile, resolveWorkflowFiles,
 } from "./modes/actions.ts";
 import {
@@ -49,10 +49,22 @@ import {
   isMakeFileName, makeExactFileNames, parseMakeGoInstalls, parseMakeDockerImages,
   fetchMakeInfo, fetchMakeDockerInfo, formatMakeImageSpec, updateMakefile,
 } from "./modes/make.ts";
-import {fetchCratesIoInfo, updateCargoToml, updateCargoRange, parseCargoLock, findLockedVersion} from "./modes/cargo.ts";
-import {baseType, filterDepsForMember, resolveWorkspaceMembers, parsePnpmWorkspace, type WorkspaceMember} from "./utils/workspace.ts";
+import {fetchCratesIoInfo, updateCargoToml, updateCargoRange, cargoToNpmRange, parseCargoLock, findLockedVersion} from "./modes/cargo.ts";
+import {baseType, filterDepsForMember, resolveWorkspaceMembers, parsePnpmWorkspace, pnpmCatalogEntries, updatePnpmWorkspace, type WorkspaceMember} from "./utils/workspace.ts";
 
-export type {Config, Override, Dep, Deps, DepsByMode, Output};
+/** A dependency whose lookup failed. Every other dependency is still resolved and written. */
+export type DepError = {
+  mode: string,
+  /** The dependency type, or the file path for the file-scoped modes, as in `results` */
+  type: string,
+  name: string,
+  error: string,
+};
+
+/** `errors` is absent unless a lookup failed, keeping a clean run's shape unchanged. */
+export type Output = ModeOutput & {errors?: Array<DepError>};
+
+export type {Config, Override, Dep, Deps, DepsByMode};
 
 const defaultModes = new Set(["npm", "pypi", "go", "cargo", "actions", "docker", "make"]);
 
@@ -124,7 +136,7 @@ function depNames(name: string, kind: string): Array<string> {
   return [name];
 }
 
-const pinFor = (pin: Record<string, string>, names: Array<string>) => names.map(name => pin[name]).find(Boolean);
+const pinNameFor = (pin: Record<string, string>, names: Array<string>) => names.find(name => pin[name]);
 
 // `kind` selects the name spellings and defaults to `mode`. Make manifests hold both go
 // and docker deps, so those call sites pass it rather than claiming to be another mode.
@@ -181,12 +193,19 @@ function resolveFiles(filesArg: Set<string> | false): Set<string> {
   } else {
     const forgeDirSet = new Set<string>(forgeDirs);
     const candidates = [...Object.keys(modeByFileName), ...dockerExactFileNames, ...makeExactFileNames, ...forgeDirs];
+    // `Makefile` and `makefile` are both candidates and a case-insensitive filesystem opens
+    // either, so the real path's on-disk spelling is what stops one file being found twice.
+    const realPaths = new Set<string>();
     for (const [filename, path] of findUpSync(candidates, cwd())) {
       if (forgeDirSet.has(filename)) {
         for (const wf of resolveWorkflowFiles(path)) resolvedFiles.add(wf);
-      } else {
-        resolvedFiles.add(resolve(path));
+        continue;
       }
+      let realPath = resolve(path);
+      try { realPath = realpathSync.native(path); } catch {}
+      if (realPaths.has(realPath)) continue;
+      realPaths.add(realPath);
+      resolvedFiles.add(resolve(path));
     }
     try {
       for (const entry of readdirSync(cwd(), {withFileTypes: true})) {
@@ -214,8 +233,18 @@ function write(file: string, content: string): void {
   writeFileSync(file, content, platform === "win32" ? {flag: "r+"} : undefined);
 }
 
+// `results` holds one entry per name, so a name a file references twice gets its authored ref appended.
+const rowId = (mode: string, key: string) => `${mode}${fieldSep}${key.split(fieldSep, 2).join(fieldSep)}`;
+
 function buildOutput(deps: DepsByMode): Output {
   const output: Output = {results: {}};
+  const rowsPerName = new Map<string, number>();
+  for (const [mode, modeDeps] of Object.entries(deps)) {
+    for (const key of Object.keys(modeDeps)) {
+      const id = rowId(mode, key);
+      rowsPerName.set(id, (rowsPerName.get(id) ?? 0) + 1);
+    }
+  }
   for (const [mode, modeDeps] of Object.entries(deps)) {
     for (const [key, props] of Object.entries(modeDeps)) {
       if (typeof props.oldPrint === "string") props.old = props.oldPrint;
@@ -233,9 +262,11 @@ function buildOutput(deps: DepsByMode): Output {
       delete props.oldOrig;
       delete props.date;
 
-      const [type, name] = key.split(fieldSep);
+      const [type, name, ref] = key.split(fieldSep);
+      const label = ref && rowsPerName.get(rowId(mode, key))! > 1 ?
+        `${name}${mode === "actions" ? "@" : ":"}${ref}` : name;
       const r = output.results[mode] ??= {};
-      (r[type] ??= {})[name] = props;
+      (r[type] ??= {})[label] = props;
     }
   }
   return output;
@@ -273,32 +304,39 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
   const forgeApiUrl = apiUrl(opts.forgeapi, defaultApiUrls.forgeapi);
   const pypiApiUrl = apiUrl(opts.pypiapi, defaultApiUrls.pypiapi);
   const jsrApiUrl = apiUrl(opts.jsrapi, defaultApiUrls.jsrapi);
-  const goProxyUrl = apiUrl(opts.goproxy, resolveGoProxy);
+  const goProxyChain = resolveGoProxyChain(opts.goproxy);
+  const goProxyUrl = goProxyChain[0].url;
   const cratesIoUrl = apiUrl(opts.cargoapi, defaultApiUrls.cargoapi);
   const dockerApiUrl = apiUrl(opts.dockerapi, defaultApiUrls.dockerapi);
   const goNoProxy = parseGoNoProxy();
 
   const useVerboseColor = !config.noColor && (config.color || stderr.isTTY);
-  const colorFn = (color: "magenta" | "green" | "red") => useVerboseColor ? (text: string | number) => styleText(color, String(text)) : String;
+  // validateStream drops the codes when stderr is not a TTY, which is exactly what -c overrides.
+  const colorFn = (color: "magenta" | "green" | "red") => useVerboseColor ? (text: string | number) => styleText(color, String(text), {validateStream: false}) : String;
   const magenta = colorFn("magenta");
   const vGreen = colorFn("green");
   const vRed = colorFn("red");
 
+  let limit: Limiter | undefined;
   const ctx: ModeContext = {
     fetchTimeout: userTimeout || fetchTimeout,
     goProbeTimeout: userTimeout ? Math.max(1, Math.floor(userTimeout / 2)) : goProbeTimeout,
+    concurrency,
     forgeApiUrl,
     pypiApiUrl,
     jsrApiUrl,
     goProxyUrl,
+    goProxyChain,
     cratesIoUrl,
     dockerApiUrl,
-    doFetch: async (url: string, fetchOpts?: RequestInit) => {
+    // `--sockets` is one budget for the run: this slot covers the go and make probes, which reach
+    // doFetch directly rather than through fetchWithRetry.
+    doFetch: (url: string, fetchOpts?: RequestInit) => (limit ??= getLimiter(ctx))(async () => {
       if (config.verbose) console.error(`${timestamp()} ${magenta(fetchOpts?.method || "GET")} ${url}`);
       const res = await doFetch(url, fetchOpts);
       if (config.verbose) console.error(`${timestamp()} ${res.ok ? vGreen(res.status) : vRed(res.status)} ${url}`);
       return res;
-    },
+    }),
     noCache: Boolean(config.noCache),
   };
 
@@ -371,15 +409,35 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
 
   const include = patternsToRegexSet(config.include ?? []);
   const exclude = patternsToRegexSet(config.exclude ?? []);
+  validatePin(config.pin); // the CLI validates on parse, the programmatic caller has not
   const globalPin: Record<string, string> = config.pin ?? {};
+  // A pin the user authored (CLI `-l`, the programmatic `pin`, `updates.config`) may move a
+  // dependency down into its range; one inherited from renovate's allowedVersions is a ceiling
+  // and only ever filters (utils/renovate.ts), so provenance decides per name.
+  const resolvePin = (names: Array<string>, filePin: Record<string, string>, noDowngrade?: Config["pinNoDowngrade"]) => {
+    const authored = pinNameFor(globalPin, names);
+    if (authored) return {pinnedRange: globalPin[authored], pinNoDowngrade: false};
+    const inherited = pinNameFor(filePin, names);
+    return {
+      pinnedRange: inherited ? filePin[inherited] : undefined,
+      pinNoDowngrade: Boolean(inherited && Array.isArray(noDowngrade) && noDowngrade.includes(inherited)),
+    };
+  };
 
   const deps: DepsByMode = {};
   const maybeUrlDeps: Deps = {};
-  // Non-workspace npm/go/pypi/cargo manifests of the same mode are tracked per
-  // file (not in a single mode-keyed slot) so that processing several of them
-  // never overwrites each other's content/config and never merges their deps.
-  // Each gets a unique memberPath (the first stays "." to preserve the original
-  // single-manifest output shape), mirroring the workspace `|memberPath` scheme.
+  const cargoCrates = new Map<string, string>();
+  const npmAliases = new Map<string, {name: string, range: string}>();
+  // so a version the pypi writer would decline to write is dropped before it is reported
+  const pypiSpecs = new Map<string, string>();
+  const errors: Array<DepError> = [];
+  const addError = (mode: string, type: string, name: string, err: unknown) => {
+    errors.push({mode, type, name, error: (err as Error)?.message || String(err)});
+  };
+  const addKeyError = (mode: string, key: string, err: unknown) => {
+    const [type, name] = key.split(fieldSep);
+    addError(mode, type, name, err);
+  };
   type PlainFile = {absPath: string, content: string, memberPath: string, projectDir: string, modeConfig: Config, pin: Record<string, string>, modeCooldownDays: number};
   const plainFiles: Record<string, Array<PlainFile>> = {};
   const now = Date.now();
@@ -394,13 +452,18 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
     deps[mode][depKey(depType, typePrefix, name)] = {old, oldOrig} as Dep;
   };
 
-  // Classify one npm dependency value: jsr specifier, semver range, local
-  // link:/file: path, or a URL/tarball deferred to checkUrlDep.
   const addNpmDep = (depType: string, typePrefix: string, name: string, value: string) => {
+    // A catalog reference names a catalog, not a version: the range lives in pnpm-workspace.yaml,
+    // which is where it is reported and rewritten, so the member has nothing to resolve.
+    if (isCatalogRef(value)) return;
+    const alias = parseNpmAlias(value);
     if (isJsr(value)) {
       addDep("npm", depType, typePrefix, name, parseJsrDependency(value, name).version, value);
     } else if (validRange(value)) {
       addDep("npm", depType, typePrefix, name, normalizeRange(value), value);
+    } else if (alias) {
+      npmAliases.set(depKey(depType, typePrefix, name), alias);
+      addDep("npm", depType, typePrefix, name, normalizeRange(alias.range), value);
     } else if (isLocalDep(value)) {
       addDep("npm", depType, typePrefix, name, "0.0.0", value);
     } else {
@@ -408,26 +471,30 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
     }
   };
 
-  // The dep-collection loop every npm/pypi/go manifest shares, plain or workspace member.
-  // Only pypi has array-valued dep types; an array elsewhere is malformed and is skipped
-  // rather than collected by numeric index.
+  // Only pypi has array-valued dep types; an array elsewhere is malformed, not indices to collect.
   const collectDeps = (mode: string, pkg: Record<string, any>, typePrefix: string, depTypes: Array<string>, modeInclude: Set<RegExp>, modeExclude: Set<RegExp>) => {
-    for (const depType of depTypes) {
-      const obj = (mode === "npm" || mode === "go" ? pkg[depType] : getProperty(pkg, depType)) || {};
+    const addUvDeps = (specs: Array<unknown>, depType: string) => {
+      for (const {name, version, spec} of parseUvDependencies(specs)) {
+        if (canInclude(name, mode, modeInclude, modeExclude, depType)) {
+          addDep(mode, depType, typePrefix, name, normalizeRange(version), version);
+          pypiSpecs.set(depKey(depType, typePrefix, name), spec);
+        }
+      }
+    };
+    for (const [depType, table] of expandDepTypes(depTypes, pkg)) {
+      const obj = table || {};
       if (Array.isArray(obj)) {
         if (mode !== "pypi") continue;
-        for (const {name, version} of parseUvDependencies(obj)) {
-          if (canInclude(name, mode, modeInclude, modeExclude, depType)) {
-            addDep(mode, depType, typePrefix, name, normalizeRange(version), version);
-          }
-        }
+        addUvDeps(obj, depType);
       } else if (typeof obj === "string") {
         const [name, value] = obj.split("@");
         if (canInclude(name, mode, modeInclude, modeExclude, depType)) {
           addDep(mode, depType, typePrefix, name, normalizeRange(value), value);
         }
       } else {
-        for (const [name, value] of Object.entries(obj as Record<string, string>)) {
+        for (const [name, value] of Object.entries(obj as Record<string, any>)) {
+          // An explicit `-t project.optional-dependencies` lands here, and its keys name groups.
+          if (mode === "pypi" && Array.isArray(value)) { addUvDeps(value, `${depType}.${name}`); continue; }
           if (!canInclude(name, mode, modeInclude, modeExclude, depType)) continue;
           if (mode === "npm") addNpmDep(depType, typePrefix, name, value);
           else if (mode === "go") addDep(mode, depType, typePrefix, name, shortenGoVersion(value), stripv(value));
@@ -456,12 +523,13 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
   const goModFiles: GoModFileInfo[] = [];
   let goWorkData: {file: string, content: string} | null = null;
 
-  // Both stay empty unless the mode's workspace manifest is among the files.
   const cargoMemberFiles: WorkspaceMember[] = [];
   const pnpmMemberFiles: WorkspaceMember[] = [];
+  const pnpmCatalogFiles: WorkspaceMember[] = [];
 
   type ActionDepInfo = ActionRef & {
-    key: string, apiUrl: string, filePin: Record<string, string>, fileCooldownDays: number,
+    key: string, apiUrl: string, filePin: Record<string, string>, filePinNoDowngrade: Config["pinNoDowngrade"], fileCooldownDays: number,
+    comment: string, // the version the line's trailing comment names, empty when it names none
   };
   const actionDepInfos: Array<ActionDepInfo> = [];
   type DockerDepInfo = {
@@ -470,7 +538,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
   const dockerDepInfos: Array<DockerDepInfo> = [];
   type MakeDepBase = {
     key: string, name: string, oldSpec: string, projectDir: string,
-    filePin: Record<string, string>, fileCooldownDays: number, newSpec?: string,
+    filePin: Record<string, string>, filePinNoDowngrade: Config["pinNoDowngrade"], fileCooldownDays: number, newSpec?: string,
   };
   type MakeDepInfo = MakeDepBase & (
     {kind: "go", installPath: string, version: string} |
@@ -496,8 +564,8 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
 
   async function resolveModeFilters(projectDir: string) {
     const {dirConfig, include: modeInclude, exclude: modeExclude} = await resolveDirConfig(projectDir);
-    const pin: Record<string, string> = {...dirConfig.pin, ...globalPin};
-    return {modeConfig: dirConfig, modeInclude, modeExclude, pin};
+    // The directory's own pins only; resolvePin consults globalPin first and by name.
+    return {modeConfig: dirConfig, modeInclude, modeExclude, pin: dirConfig.pin ?? {}};
   }
 
   function resolveDepTypes(mode: string, modeConfig: Config): Array<string> {
@@ -506,18 +574,21 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
     if (mode === "npm") return npmTypes;
     if (mode === "pypi") return uvTypes;
     if (mode === "go") return config.indirect ? goTypes : goTypes.filter(t => t !== "indirect");
-    if (mode === "cargo") return cargoTypes;
+    // Target sections are only in the default list: an explicit `-t dependencies` asks for the
+    // plain table and must not be widened onto every `[target.*]` one.
+    if (mode === "cargo") return [...cargoTypes, ...cargoTargetTypes];
     return [];
   }
 
-  type FileFilters = {include: Set<RegExp>, exclude: Set<RegExp>, pin: Record<string, string>, cooldownDays: number};
+  type FileFilters = {include: Set<RegExp>, exclude: Set<RegExp>, pin: Record<string, string>, pinNoDowngrade: Config["pinNoDowngrade"], cooldownDays: number};
 
   function collectDockerRefs(content: string, relPath: string, regexes: Array<RegExp>, filters: FileFilters): void {
     deps.docker ??= {};
     for (const regex of regexes) {
       for (const {ref} of extractDockerRefs(content, regex)) {
         if (!canInclude(ref.fullImage, "docker", filters.include, filters.exclude, "docker")) continue;
-        const key = `${relPath}${fieldSep}${ref.fullImage}`;
+        // The tag is part of the key: one image at two tags is two dependencies.
+        const key = `${relPath}${fieldSep}${ref.fullImage}${fieldSep}${ref.tag}`;
         if (deps.docker[key]) continue;
         const parsed = parseDockerTag(ref.tag);
         if (!parsed) continue;
@@ -531,12 +602,14 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
 
   async function resolveFileConfig(fileDir: string): Promise<FileFilters> {
     const {dirConfig, include, exclude} = await resolveDirConfig(fileDir);
-    return {include, exclude, pin: dirConfig.pin ?? {}, cooldownDays: cooldownDaysFor(dirConfig.cooldown)};
+    return {
+      include, exclude, pin: dirConfig.pin ?? {}, pinNoDowngrade: dirConfig.pinNoDowngrade,
+      cooldownDays: cooldownDaysFor(dirConfig.cooldown),
+    };
   }
 
-  // A workspace manifest owns the empty dep-prefix for its mode, so plain manifests of the
-  // same mode must avoid the "." memberPath to keep their dep keys disjoint. Determine this up
-  // front so the result is independent of file iteration order (e.g. `-f plaindir -f wsdir`).
+  // A workspace manifest owns the empty dep-prefix for its mode, so plain ones must avoid the "."
+  // memberPath. Determined up front to stay independent of file order.
   const workspaceModes = new Set<string>();
   const parsedCargoToml = new Map<string, Record<string, any>>();
   for (const file of files) {
@@ -589,15 +662,20 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
 
       if (actionsEnabled) {
         deps.actions ??= {};
-        const actions = Array.from(content.matchAll(actionsUsesRe), m => parseActionRef(m[1])).filter(a => a !== null);
-        for (const action of actions) {
+        // The writer's parser, so a sha pin's trailing comment, its version, travels with the ref.
+        for (const line of content.split("\n")) {
+          const parsed = parseUsesLine(line);
+          const action = parsed && parseActionRef(parsed.value);
+          if (!action) continue;
           if (!canInclude(action.name, "actions", filters.include, filters.exclude, "actions")) continue;
-          const key = `${relPath}${fieldSep}${action.name}`;
+          // The ref is part of the key: a workflow may pin one action twice.
+          const key = `${relPath}${fieldSep}${action.name}${fieldSep}${action.ref}`;
           if (deps.actions[key]) continue;
           deps.actions[key] = {old: action.ref} as Dep;
           actionDepInfos.push({
-            ...action, key, apiUrl: getForgeApiBaseUrl(action.host, forgeApiUrl),
-            filePin: filters.pin, fileCooldownDays: filters.cooldownDays,
+            ...action, key, comment: parsed.pinnedVersion,
+            apiUrl: getForgeApiBaseUrl(action.host, forgeApiUrl),
+            filePin: filters.pin, filePinNoDowngrade: filters.pinNoDowngrade, fileCooldownDays: filters.cooldownDays,
           });
         }
       }
@@ -627,17 +705,21 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
       const filters = await resolveFileConfig(dirname(file));
       makeFileData[relPath] = {absPath: file, content};
       deps.make ??= {};
-      const makeShared = {projectDir: dirname(file), filePin: filters.pin, fileCooldownDays: filters.cooldownDays};
+      const makeShared = {
+        projectDir: dirname(file), filePin: filters.pin, filePinNoDowngrade: filters.pinNoDowngrade,
+        fileCooldownDays: filters.cooldownDays,
+      };
       for (const {installPath, version} of parseMakeGoInstalls(content)) {
         if (!canInclude(installPath, "make", filters.include, filters.exclude, "make", "go")) continue;
-        const key = `${relPath}${fieldSep}${installPath}`;
+        // The version is part of the key: a Makefile may install one tool at two versions.
+        const key = `${relPath}${fieldSep}${installPath}${fieldSep}${version}`;
         if (deps.make[key]) continue;
         deps.make[key] = {old: stripv(version), oldOrig: version} as Dep;
         makeDepInfos.push({kind: "go", key, name: installPath, oldSpec: `${installPath}@${version}`, installPath, version, ...makeShared});
       }
       for (const image of parseMakeDockerImages(content)) {
         if (!canInclude(image.writtenImage, "make", filters.include, filters.exclude, "make", "docker")) continue;
-        const key = `${relPath}${fieldSep}${image.writtenImage}`;
+        const key = `${relPath}${fieldSep}${image.writtenImage}${fieldSep}${image.ref.tag}`;
         if (deps.make[key]) continue;
         const parsed = parseDockerTag(image.ref.tag);
         if (!parsed) continue;
@@ -714,18 +796,23 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
       const lockedVersions = lockContent ? parseCargoLock(lockContent) : new Map<string, string[]>();
 
       const collectCargoDeps = (parsed: Record<string, any>, typePrefix: string) => {
-        for (const depType of dependencyTypes) {
-          const obj = getProperty(parsed, depType) || {};
+        for (const [depType, table] of expandDepTypes(dependencyTypes, parsed)) {
+          const obj = table || {};
           if (typeof obj !== "object" || Array.isArray(obj)) continue;
           for (const [name, value] of Object.entries(obj)) {
             if (!canInclude(name, mode, modeInclude, modeExclude, depType)) continue;
-            if (typeof value === "object" && value !== null && "version" in value && !("git" in value) && !("path" in value)) {
+            // `registry` joins `git` and `path` as a source this tool cannot resolve: crates.io
+            // would 404 on the name, or worse hit a same-named public crate.
+            if (typeof value === "object" && value !== null && "version" in value && !("git" in value) && !("path" in value) && !("registry" in value)) {
               const versionStr = (value as Record<string, string>).version;
-              if (validRange(versionStr)) {
-                addDep(mode, depType, typePrefix, name, findLockedVersion(lockedVersions, name, versionStr) ?? normalizeRange(versionStr), versionStr);
+              // A renamed dep keeps the manifest key so the rewrite finds it, lookups use `package`.
+              const crate = (value as Record<string, string>).package || name;
+              if (validRange(cargoToNpmRange(versionStr))) {
+                if (crate !== name) cargoCrates.set(depKey(depType, typePrefix, name), crate);
+                addDep(mode, depType, typePrefix, name, findLockedVersion(lockedVersions, crate, versionStr) ?? normalizeRange(cargoToNpmRange(versionStr)), versionStr);
               }
-            } else if (typeof value === "string" && validRange(value)) {
-              addDep(mode, depType, typePrefix, name, findLockedVersion(lockedVersions, name, value) ?? normalizeRange(value), value);
+            } else if (typeof value === "string" && validRange(cargoToNpmRange(value))) {
+              addDep(mode, depType, typePrefix, name, findLockedVersion(lockedVersions, name, value) ?? normalizeRange(cargoToNpmRange(value)), value);
             }
           }
         }
@@ -762,6 +849,11 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
       ]);
       const dependencyTypes = resolveDepTypes(mode, modeConfig);
       modeConfigs[mode] = {modeConfig, projectDir: workspaceDir, pin};
+
+      pnpmCatalogFiles.push({absPath: resolve(file), content: wsContent, memberPath: filename});
+      for (const {type, name, value} of pnpmCatalogEntries(wsContent)) {
+        if (canInclude(name, mode, modeInclude, modeExclude, type)) addNpmDep(type, `|${filename}`, name, value);
+      }
 
       if (rootContent !== null) {
         const rootPkg = parseFile(rootPkgPath, () => JSON.parse(rootContent));
@@ -846,26 +938,26 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
       };
 
       const modeDeps = deps[mode];
-      await pMap(Object.keys(modeDeps), async (key) => {
-        const [type, name] = key.split(fieldSep);
+      const lookupDep = async (key: string, type: string, name: string) => {
         const baseT = baseType(type);
         const {modeConfig, projectDir, pin, modeCooldownDays} = ctxForType(type);
         const dep = modeDeps[key];
+        const npmAlias = npmAliases.get(key);
         let info: PackageInfo;
         if (mode === "npm") {
           if (dep.oldOrig && isJsr(dep.oldOrig)) {
             info = await fetchJsrInfo(name, ctx);
           } else if (dep.oldOrig && isLocalDep(dep.oldOrig)) {
-            const localInfo = await tryOrNull(fetchNpmInfo(name, baseT, modeConfig, argsForNpm, ctx));
+            const localInfo = await tryOrNull(fetchNpmInfo(name, baseT, modeConfig, argsForNpm, ctx, projectDir));
             if (!localInfo) { delete modeDeps[key]; return; }
             info = localInfo;
           } else {
-            info = await fetchNpmInfo(name, baseT, modeConfig, argsForNpm, ctx);
+            info = await fetchNpmInfo(npmAlias?.name ?? name, baseT, modeConfig, argsForNpm, ctx, projectDir);
           }
         } else if (mode === "go") {
           info = await fetchGoProxyInfo(name, baseT, dep.oldOrig || dep.old, projectDir, ctx, goNoProxy);
         } else if (mode === "cargo") {
-          info = await fetchCratesIoInfo(name, ctx);
+          info = await fetchCratesIoInfo(cargoCrates.get(key) ?? name, ctx);
         } else {
           info = await fetchPypiInfo(name, ctx);
         }
@@ -873,12 +965,14 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
         const [data, registry] = info;
         if (data.error) throw new Error(data.error);
 
-        const {useGreatest, usePre, useRel, semvers, allowDowngrade: allowDown, cooldownOverride} = getVersionOpts(data.name);
+        // A go module answers to its `/vN` short name too, which is what `-i`/`-e` accept.
+        const names = depNames(data.name, mode);
+        const {useGreatest, usePre, useRel, semvers, allowDowngrade: allowDown, cooldownOverride} = getVersionOpts(data.name, names);
         const {old: oldRange, oldOrig} = dep;
-        const pinnedRange = pin[name];
+        const {pinnedRange, pinNoDowngrade} = resolvePin(names, pin, modeConfig.pinNoDowngrade);
         const depCooldownDays = cooldownOverride ?? modeCooldownDays;
         const newVersion = findNewVersion(data, {
-          usePre, useRel, useGreatest, semvers, range: oldRange, mode, pinnedRange, allowDowngrade: allowDown,
+          usePre, useRel, useGreatest, semvers, range: oldRange, mode, pinnedRange, pinNoDowngrade, allowDowngrade: allowDown,
           cooldownDays: depCooldownDays || undefined, now: depCooldownDays ? now : undefined,
         });
 
@@ -889,17 +983,29 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
           newRange = updateCargoRange(oldOrig, newVersion);
         } else if (newVersion) {
           if (oldOrig && isLocalDep(oldOrig)) {
-            newRange = String(getNpmrc()["save-exact"]) === "true" ? newVersion : `^${newVersion}`;
+            newRange = String(getNpmrc(projectDir)["save-exact"]) === "true" ? newVersion : `^${newVersion}`;
           } else if (oldOrig && isJsr(oldOrig)) {
             const match = jsrSpecifierRe.exec(oldOrig);
             if (match) newRange = `${match[1]}${newVersion}`;
             else if (oldOrig.startsWith("jsr:")) newRange = `jsr:${newVersion}`;
+          } else if (npmAlias) {
+            // Only the aliased package's range moves, and the `npm:<pkg>@` prefix is written
+            // back with it so the manifest keeps aliasing the key it always did.
+            newRange = `npm:${npmAlias.name}@${updateVersionRange(oldRange, newVersion, npmAlias.range, baseT)}`;
           } else {
-            newRange = updateVersionRange(oldRange, newVersion, oldOrig);
+            newRange = updateVersionRange(oldRange, newVersion, oldOrig, baseT);
           }
         }
 
-        if (!newVersion || newVersion === oldRange || oldOrig && (oldOrig === newRange)) {
+        // The pypi writer declines a rewrite leaving any specifier unsatisfied, so a version it
+        // would refuse must not be offered either.
+        const spec = pypiSpecs.get(key);
+        if (!newVersion || newVersion === oldRange || oldOrig && (oldOrig === newRange) ||
+          spec && !updateRequirement(spec, oldOrig || oldRange, newRange)) {
+          // Without this, a version no range could be written for reads as already current.
+          if (config.verbose && newVersion && newVersion !== oldRange) {
+            console.error(`${timestamp()} ${magenta("SKIP")} ${name}: ${oldOrig || oldRange} can not be rewritten to ${newVersion}`);
+          }
           delete modeDeps[key];
           return;
         }
@@ -912,16 +1018,26 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
         if (oldOrig && isJsr(oldOrig)) dep.newPrint = newVersion;
 
         if (mode === "npm") {
-          npmFollowUps.set(key, {name, promise: fetchNpmVersionInfo(data.name, newVersion, modeConfig, argsForNpm, ctx)});
+          npmFollowUps.set(key, {name: npmAlias?.name ?? name, promise: fetchNpmVersionInfo(data.name, newVersion, modeConfig, argsForNpm, ctx, projectDir)});
         } else if (mode === "pypi") {
           dep.info = getInfoUrl(data, registry, data.info.name);
         } else if (mode === "go") {
           dep.info = getGoInfoUrl(data.newPath || name);
         } else if (mode === "cargo") {
-          dep.info = `https://crates.io/crates/${name}`;
+          dep.info = `https://crates.io/crates/${data.name}`;
         }
 
         setDepAge(dep, date);
+      };
+
+      await pMap(Object.keys(modeDeps), async (key) => {
+        const [type, name] = key.split(fieldSep);
+        try {
+          await lookupDep(key, type, name);
+        } catch (err) {
+          delete modeDeps[key];
+          addError(mode, type, name, err);
+        }
       }, {concurrency});
 
       await Promise.all(Array.from(npmFollowUps, async ([key, {name, promise}]) => {
@@ -933,8 +1049,14 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
       }));
 
       if (mode === "npm" && Object.keys(maybeUrlDeps).length) {
-        const results = (await pMap(Object.entries(maybeUrlDeps), ([key, dep]) =>
-          checkUrlDep(key, dep, ctx), {concurrency})).filter(r => r !== null);
+        const results = (await pMap(Object.entries(maybeUrlDeps), async ([key, dep]) => {
+          try {
+            return await checkUrlDep(key, dep, ctx);
+          } catch (err) {
+            addKeyError("npm", key, err);
+            return null;
+          }
+        }, {concurrency})).filter(r => r !== null);
 
         for (const {key, newRange, user, repo, oldRef, newRef, newDate} of results) {
           const dep: Dep = modeDeps[key] = {
@@ -958,17 +1080,30 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
 
       await pMap(depsByRepo.values(), async (infos) => {
         const {apiUrl, owner, repo} = infos[0];
-        const tags = await fetchActionTags(apiUrl, owner, repo, ctx);
+        let tags: Array<TagEntry>;
+        try {
+          tags = await fetchActionTags(apiUrl, owner, repo, ctx, infos.map(info => info.ref));
+        } catch (err) {
+          for (const info of infos) {
+            delete deps.actions[info.key];
+            addKeyError("actions", info.key, err);
+          }
+          return;
+        }
+        // Candidates are the versions tags parse to, never the tag text: a `+meta` or leading-zero
+        // tag would never map back to its own entry.
         const versions: string[] = [];
-        const tagByStripped = new Map<string, string>();
+        const tagByVersion = new Map<string, string>();
         const entryByName = new Map<string, TagEntry>();
         const commitShaToTag = new Map<string, string>();
         for (const tag of tags) {
           entryByName.set(tag.name, tag);
-          const bare = stripv(tag.name);
-          if (valid(bare)) {
-            versions.push(bare);
-            if (!tagByStripped.has(bare)) tagByStripped.set(bare, tag.name);
+          const version = githubActionsVersioning.parse(tag.name)?.version;
+          if (version) {
+            const existing = tagByVersion.get(version);
+            // `v3.19` and `v3.19.0` are the same version; the more precise tag names it.
+            if (!existing) versions.push(version);
+            if (!existing || tag.name.length > existing.length) tagByVersion.set(version, tag.name);
           }
           if (tag.commitSha) commitShaToTag.set(tag.commitSha, tag.name);
         }
@@ -982,46 +1117,50 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
         // retry. Bounded loop avoids pathological cases (e.g. all versions
         // released within the cooldown window).
         async function pickVersion(opts: Parameters<typeof findVersion>[2]): Promise<{version: string, tag: string, commitSha: string, date: string} | null> {
+          // A tag's date costs a request, so findVersion has none to gate on and would reject
+          // every candidate under an active cooldown. The gate runs per pick below.
+          const selectOpts = {...opts, cooldownDays: undefined, now: undefined};
           const denylist = new Set<string>();
           for (let attempt = 0; attempt < 20; attempt++) {
             const candidates = denylist.size ? versions.filter(v => !denylist.has(v)) : versions;
-            const picked = findVersion({}, candidates, opts);
-            if (!picked || picked === opts.range) return null;
-            const tag = tagByStripped.get(picked);
-            if (!tag) { denylist.add(picked); continue; }
+            const picked = findVersion({}, candidates, selectOpts);
+            if (!picked) return null;
+            const tag = tagByVersion.get(picked)!;
             const commitSha = entryByName.get(tag)?.commitSha || "";
             if (!opts.cooldownDays) return {version: picked, tag, commitSha, date: ""};
             const date = commitSha ? await getDate(commitSha) : "";
+            // An empty date is the commit carrying none, which holds the candidate back; not
+            // knowing is a failed run and must not read as either.
+            if (date === undefined) throw new Error(`Unable to fetch the commit date for ${owner}/${repo}@${tag}`);
             if (passesCooldown(date, opts.cooldownDays, opts.now)) return {version: picked, tag, commitSha, date};
             denylist.add(picked);
           }
           return null;
         }
 
-        await pMap(infos, async ({key, host, ref, name: actionName, isHash, filePin, fileCooldownDays}) => {
+        const updateAction = async ({key, host, ref, comment, name: actionName, isHash, filePin, filePinNoDowngrade, fileCooldownDays}: ActionDepInfo) => {
           const dep = deps.actions[key];
           const infoUrl = `https://${host || "github.com"}/${owner}/${repo}`;
-          const actionPin = globalPin[actionName] ?? filePin[actionName];
+          const {pinnedRange: actionPin, pinNoDowngrade} = resolvePin([actionName], filePin, filePinNoDowngrade);
 
-          // A sha resolves to the tag that carries it, which is the version to compare
-          // against; without one every candidate looks like an upgrade, including an older
-          // commit. A branch ref or foreign tag scheme coerces to a version but must keep
-          // its text, otherwise the pin is replaced by an unrelated release tag.
+          // A sha pin's version is whatever its trailing comment names, failing that the tag
+          // carrying the commit; without one every candidate looks like an upgrade, an older commit
+          // included. A branch ref coerces to a version but must keep its text, or a release tag
+          // replaces the pin.
           let oldRef = ref;
           if (isHash) {
             // abbreviated pins need a prefix scan, the map is keyed by full sha
-            oldRef = commitShaToTag.get(ref) ?? commitShaToTag.entries().find(([sha]) => sha.startsWith(ref))?.[1] ?? "";
+            oldRef = comment || commitShaToTag.get(ref) || commitShaToTag.entries().find(([sha]) => sha.startsWith(ref))?.[1] || "";
           } else if (!isVersionLikeRef(ref)) {
             oldRef = "";
           }
-          const oldVersion = oldRef ? coerceToVersion(stripv(oldRef)) : "";
-          if (!oldVersion) { delete deps.actions[key]; return; }
+          if (!oldRef) { delete deps.actions[key]; return; }
 
           const {usePre, useRel, semvers, cooldownOverride} = getVersionOpts(actionName);
           const actionCooldownDays = cooldownOverride ?? fileCooldownDays;
           const result = await pickVersion({
-            range: oldVersion, semvers, usePre, useRel,
-            useGreatest: true, pinnedRange: actionPin,
+            range: oldRef, semvers, usePre, useRel, versioning: githubActionsVersioning,
+            pinnedRange: actionPin, pinNoDowngrade,
             cooldownDays: actionCooldownDays || undefined, now: actionCooldownDays ? now : undefined,
           });
           if (!result) { delete deps.actions[key]; return; }
@@ -1045,8 +1184,18 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
           dep.info = infoUrl;
 
           // Only a cooldown run has fetched the date already, otherwise it takes a request.
-          const newDate = date || (newCommitSha ? await getDate(newCommitSha) : "");
+          // The age is cosmetic, so an undeterminable date goes unprinted rather than dropping the update.
+          const newDate = date || (newCommitSha ? await tryOrNull(getDate(newCommitSha)) : "");
           if (newDate) setDepAge(dep, newDate);
+        };
+
+        await pMap(infos, async (info) => {
+          try {
+            await updateAction(info);
+          } catch (err) {
+            delete deps.actions[info.key];
+            addKeyError("actions", info.key, err);
+          }
         }, {concurrency});
       }, {concurrency});
 
@@ -1059,12 +1208,20 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
       const depsByImage = Map.groupBy(dockerDepInfos, info => info.fullImage);
 
       await pMap(depsByImage.entries(), async ([fullImage, infos]) => {
+        // An image on a registry other than Docker Hub has no lookup to attempt yet.
+        if (infos[0].ref.registry) {
+          for (const info of infos) delete deps.docker[info.key];
+          return;
+        }
         let data: Record<string, any>;
         try {
           const [fetchedData] = await fetchDockerInfo(fullImage, ctx);
           data = fetchedData;
-        } catch {
-          for (const info of infos) delete deps.docker[info.key];
+        } catch (err) {
+          for (const info of infos) {
+            delete deps.docker[info.key];
+            addKeyError("docker", info.key, err);
+          }
           return;
         }
 
@@ -1073,7 +1230,8 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
           const dep = deps.docker[info.key];
           const oldTag = dep.oldOrig || dep.old;
           const {semvers, cooldownOverride} = getVersionOpts(fullImage, names);
-          const pinnedRange = pinFor(globalPin, names) ?? pinFor(info.filePin, names);
+          // findDockerVersion only moves a tag up, so a renovate-derived pin has nothing to suppress.
+          const {pinnedRange} = resolvePin(names, info.filePin);
           const dockerCooldownDays = cooldownOverride ?? info.fileCooldownDays;
           const result = findDockerVersion(
             data.tags, oldTag, semvers,
@@ -1097,29 +1255,34 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
       await pMap(makeDepInfos, async (info) => {
         const names = depNames(info.name, info.kind);
         const {useGreatest, usePre, useRel, semvers, allowDowngrade: allowDown, cooldownOverride} = getVersionOpts(info.name, names);
-        const pinnedRange = pinFor(globalPin, names) ?? pinFor(info.filePin, names);
+        const {pinnedRange, pinNoDowngrade} = resolvePin(names, info.filePin, info.filePinNoDowngrade);
         const makeCooldownDays = cooldownOverride ?? info.fileCooldownDays;
         const opts = {
-          semvers, useGreatest, usePre, useRel, allowDowngrade: allowDown, pinnedRange,
+          semvers, useGreatest, usePre, useRel, allowDowngrade: allowDown, pinnedRange, pinNoDowngrade,
           cooldownDays: makeCooldownDays || undefined, now: makeCooldownDays ? now : undefined,
         };
         const dep = deps.make[info.key];
-        let update: MakeUpdate | MakeDockerUpdate;
-        if (info.kind === "go") {
-          const goUpdate = await tryOrNull(fetchMakeInfo(info.installPath, info.version, info.projectDir, ctx, goNoProxy, opts));
-          if (!goUpdate) { delete deps.make[info.key]; return; }
-          info.newSpec = `${goUpdate.newInstallPath}@${goUpdate.newVersion}`;
-          dep.new = goUpdate.newVersion;
-          update = goUpdate;
-        } else {
-          const dockerUpdate = await tryOrNull(fetchMakeDockerInfo(info.image, ctx, opts));
-          if (!dockerUpdate) { delete deps.make[info.key]; return; }
-          info.newSpec = formatMakeImageSpec(info.image.writtenImage, dockerUpdate.newTag, info.image.digest ? dockerUpdate.newDigest : null);
-          dep.new = dockerUpdate.newTag;
-          update = dockerUpdate;
+        try {
+          let update: MakeUpdate | MakeDockerUpdate;
+          if (info.kind === "go") {
+            const goUpdate = await fetchMakeInfo(info.installPath, info.version, info.projectDir, ctx, goNoProxy, opts);
+            if (!goUpdate) { delete deps.make[info.key]; return; }
+            info.newSpec = `${goUpdate.newInstallPath}@${goUpdate.newVersion}`;
+            dep.new = goUpdate.newVersion;
+            update = goUpdate;
+          } else {
+            const dockerUpdate = await fetchMakeDockerInfo(info.image, ctx, opts);
+            if (!dockerUpdate) { delete deps.make[info.key]; return; }
+            info.newSpec = formatMakeImageSpec(info.image.writtenImage, dockerUpdate.newTag, info.image.digest ? dockerUpdate.newDigest : null);
+            dep.new = dockerUpdate.newTag;
+            update = dockerUpdate;
+          }
+          dep.info = update.info;
+          if (update.date) setDepAge(dep, update.date);
+        } catch (err) {
+          delete deps.make[info.key];
+          addKeyError("make", info.key, err);
         }
-        dep.info = update.info;
-        if (update.date) setDepAge(dep, update.date);
       }, {concurrency});
       if (!Object.keys(deps.make).length) delete deps.make;
     })());
@@ -1134,7 +1297,8 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
   }
 
   if (!countDeps(deps)) {
-    return {results: {}, message: "All dependencies are up to date."};
+    // A run that resolved nothing because everything failed is not an up-to-date one.
+    return errors.length ? {results: {}, errors} : {results: {}, message: "All dependencies are up to date."};
   }
 
   if (config.update) {
@@ -1210,8 +1374,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
       }
 
       // Workspace members and unrelated plain manifests of the same mode can coexist (e.g. a
-      // workspace dir plus a second `-f` directory), so write both rather than treating the
-      // workspace as exclusive. Their dep keys are kept disjoint via the memberPath prefixes.
+      // workspace dir plus a second `-f` directory), so both are written.
       if (mode === "go") {
         for (const goMod of [...goModFiles, ...(plainFiles.go ?? [])]) {
           const localDeps = filterDepsForMember(deps[mode], goMod.memberPath);
@@ -1235,6 +1398,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
         updateMembers(mode, cargoMemberFiles, updateCargoToml);
         updateMembers(mode, plainFiles.cargo ?? [], updateCargoToml);
       } else if (mode === "npm") {
+        updateMembers(mode, pnpmCatalogFiles, updatePnpmWorkspace);
         updateMembers(mode, pnpmMemberFiles, updatePackageJson);
         updateMembers(mode, plainFiles.npm ?? [], updatePackageJson);
       } else {
@@ -1243,5 +1407,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
     }
   }
 
-  return buildOutput(deps);
+  const output = buildOutput(deps);
+  if (errors.length) output.errors = errors;
+  return output;
 }

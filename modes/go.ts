@@ -2,22 +2,44 @@ import {env} from "node:process";
 import {join, dirname} from "node:path";
 import {readFileSync, globSync} from "node:fs";
 import {
-  type Deps, type ModeContext, type PackageInfo, fieldSep, stripv, getSubDir, normalizeUrl, fetchWithRetry, defaultApiUrls,
-  getExecFile, isGoPseudoVersion,
+  type Deps, type GoProxyEntry, type ModeContext, type PackageInfo, dedupe, fieldSep, stripv, getSubDir, normalizeUrl,
+  fetchWithRetry, defaultApiUrls, getExecFile, isGoPseudoVersion, isVersionPrerelease,
+  throwFetchError,
 } from "./shared.ts";
-import {esc} from "../utils/utils.ts";
+import {gt, valid} from "../utils/semver.ts";
+import {esc, getOrSet, longestFirstAlternation, tryOrNull} from "../utils/utils.ts";
 
-export {isGoPseudoVersion};
+export type {GoProxyEntry};
 
-export function resolveGoProxy(): string {
-  const proxyEnv = env.GOPROXY || `${defaultApiUrls.goproxy},direct`;
-  for (const entry of proxyEnv.split(/[,|]/)) {
-    const trimmed = entry.trim();
-    if (trimmed && trimmed !== "direct" && trimmed !== "off") {
-      return normalizeUrl(trimmed);
-    }
+// go turns a bare host into an https URL, so `GOPROXY=proxy.corp/mod` reaches the same endpoint.
+function goProxyEntryUrl(url: string): string {
+  const absolute = url.includes(":/") || url.startsWith("/");
+  return normalizeUrl(!absolute && /[.:/]/.test(url) ? `https://${url}` : url);
+}
+
+// GOPROXY is an ordered list: `,` moves on only when the module is absent there, `|` on any error.
+// `off` (fail, look nothing up) and `direct` (VCS only) both end the list, exactly as in go.
+export function parseGoProxy(value: string): Array<GoProxyEntry> {
+  const entries: Array<GoProxyEntry> = [];
+  let rest = value;
+  while (rest) {
+    const sepIdx = rest.search(/[,|]/);
+    const url = (sepIdx === -1 ? rest : rest.slice(0, sepIdx)).trim();
+    const fallback = sepIdx !== -1 && rest[sepIdx] === "|" ? "|" : ",";
+    rest = sepIdx === -1 ? "" : rest.slice(sepIdx + 1);
+    if (!url) continue;
+    if (url === "off" || url === "direct") { entries.push({url, fallback}); break; }
+    entries.push({url: goProxyEntryUrl(url), fallback});
   }
-  return defaultApiUrls.goproxy;
+  return entries;
+}
+
+// An endpoint override stands in for the whole list, without one GOPROXY spells it out. `off` and
+// `direct` are tokens, not URLs, so no origin can be derived from them.
+export function resolveGoProxyChain(override?: string): Array<GoProxyEntry> {
+  if (typeof override === "string") return [{url: normalizeUrl(override), fallback: ","}];
+  const list = parseGoProxy(env.GOPROXY || `${defaultApiUrls.goproxy},direct`);
+  return list.length ? list : [{url: defaultApiUrls.goproxy, fallback: ","}];
 }
 
 export function parseGoNoProxy(): Array<string> {
@@ -30,25 +52,24 @@ export function parseGoNoProxy(): Array<string> {
 const goPatternCache = new Map<string, RegExp>();
 
 function goPatternToRegex(pattern: string): RegExp {
-  let cached = goPatternCache.get(pattern);
-  if (cached) return cached;
-  let body = "";
-  for (let idx = 0; idx < pattern.length; idx++) {
-    const char = pattern[idx];
-    if (char === "*") {
-      body += "[^/]*";
-    } else if (char === "?") {
-      body += "[^/]";
-    } else if (char === "[" && pattern.includes("]", idx + 1)) {
-      const end = pattern.indexOf("]", idx + 1);
-      body += `[${pattern.slice(idx + 1, end).replace(/\\/g, "\\\\")}]`;
-      idx = end;
-    } else {
-      body += esc(char); // an unterminated `[` lands here too, as a literal
+  return getOrSet(goPatternCache, pattern, () => {
+    let body = "";
+    for (let idx = 0; idx < pattern.length; idx++) {
+      const char = pattern[idx];
+      if (char === "*") {
+        body += "[^/]*";
+      } else if (char === "?") {
+        body += "[^/]";
+      } else if (char === "[" && pattern.includes("]", idx + 1)) {
+        const end = pattern.indexOf("]", idx + 1);
+        body += `[${pattern.slice(idx + 1, end).replace(/\\/g, "\\\\")}]`;
+        idx = end;
+      } else {
+        body += esc(char); // an unterminated `[` lands here too, as a literal
+      }
     }
-  }
-  goPatternCache.set(pattern, cached = new RegExp(`^${body}(?:/.*)?$`));
-  return cached;
+    return new RegExp(`^${body}(?:/.*)?$`);
+  });
 }
 
 export function isGoNoProxy(modulePath: string, goNoProxy: Array<string>): boolean {
@@ -102,6 +123,9 @@ const firstWordRe = /^(\S+)/;
 const replaceInBlockRe = /^(\S+)(?:\s+(v\S+))?\s+=>\s+(\S+)(?:\s+(v\S+))?/;
 const replaceDirectiveRe = /^replace\s+(\S+)(?:\s+(v\S+))?\s+=>\s+(\S+)(?:\s+(v\S+))?/;
 
+const quotedRe = /^"(.*)"$/; // a module path may be quoted, and the quotes are not part of it
+const trimQuotes = (str: string): string => quotedRe.exec(str)?.[1] ?? str;
+
 // Local paths carry no version, so they have to parse too — the caller needs to know the
 // module is replaced even when there is nothing to update on the right-hand side.
 function isLocalReplaceTarget(target: string): boolean {
@@ -112,7 +136,7 @@ function parseReplaceDirective(trimmed: string, inBlock: boolean): ReplaceMatch 
   const match = (inBlock ? replaceInBlockRe : replaceDirectiveRe).exec(trimmed);
   if (!match) return null;
   const [, origModule, origVersion, targetModule, targetVersion] = match;
-  return {origModule, origVersion: origVersion ?? "", targetModule, targetVersion: targetVersion ?? ""};
+  return {origModule: trimQuotes(origModule), origVersion: origVersion ?? "", targetModule: trimQuotes(targetModule), targetVersion: targetVersion ?? ""};
 }
 
 function shouldSkipMajorProbe(name: string, type: string, currentVersion: string): boolean {
@@ -120,10 +144,6 @@ function shouldSkipMajorProbe(name: string, type: string, currentVersion: string
 }
 
 type ProbeResult = {Version: string, Time: string, path: string};
-
-function noUpdateInfo(name: string, currentVersion: string): PackageInfo {
-  return [{name, old: currentVersion, new: currentVersion}, null];
-}
 
 export async function probeMajorVersions(
   currentMajor: number,
@@ -191,12 +211,12 @@ export function parseGoMod(content: string): {deps: Record<string, string>, indi
     if (trimmed.startsWith("//")) continue; // full-line comments are not dependencies
 
     if (inTool) {
-      if (trimmed) toolPaths.push(trimmed);
+      if (trimmed) toolPaths.push(trimQuotes(trimmed));
       continue;
     }
 
     const toolMatch = toolLineRe.exec(trimmed);
-    if (toolMatch) { toolPaths.push(toolMatch[1]); continue; }
+    if (toolMatch) { toolPaths.push(trimQuotes(toolMatch[1])); continue; }
 
     const isIndirect = trimmed.includes("// indirect");
 
@@ -215,7 +235,7 @@ export function parseGoMod(content: string): {deps: Record<string, string>, indi
 
     const match = (inRequire ? requireEntryRe : requireLineRe).exec(trimmed);
     if (match) {
-      (isIndirect ? indirect : deps)[match[1]] = match[2];
+      (isIndirect ? indirect : deps)[trimQuotes(match[1])] = match[2];
     }
   }
 
@@ -249,41 +269,126 @@ export function parseGoMod(content: string): {deps: Record<string, string>, indi
 async function fetchGoVcsInfo(name: string, type: string, currentVersion: string, goCwd: string, ctx: ModeContext): Promise<PackageInfo> {
   const currentMajor = extractGoMajor(name);
 
-  const goListQuery = async (modulePath: string, timeout: number): Promise<ProbeResult | null> => {
+  // A missing `go`, an unreachable host, an auth prompt and a nonexistent module all leave
+  // `go list` with the same exit, and nothing follows `direct`, so any failure is the dep's error.
+  const goListQuery = async (modulePath: string, timeout: number): Promise<ProbeResult> => {
     try {
       const execFile = await getExecFile();
       const {stdout} = await execFile("go", ["list", "-m", "-json", `${modulePath}@latest`], {timeout, cwd: goCwd, env});
       const data = JSON.parse(stdout) as {Version: string, Time?: string};
       return {Version: data.Version, Time: data.Time || "", path: modulePath};
-    } catch {
-      return null;
+    } catch (err: any) {
+      // go names the reason on stderr, where execFile's own message only repeats the command
+      const reason = String(err?.stderr ?? "").trim().split("\n")[0] || err?.message || String(err);
+      throw new Error(`go list -m ${modulePath}@latest failed: ${reason}`);
     }
   };
+  // A probe only answers "does this major exist", so a failing one costs no more than a missing one.
+  const probeQuery = (modulePath: string) => tryOrNull(goListQuery(modulePath, ctx.goProbeTimeout));
 
   // Fetch @latest and first major probe in parallel
   const skip = shouldSkipMajorProbe(name, type, currentVersion);
   const [latest, firstProbe] = await Promise.all([
     goListQuery(name, ctx.fetchTimeout),
-    skip ? null : goListQuery(buildGoModulePath(name, currentMajor + 1), ctx.goProbeTimeout),
+    skip ? null : probeQuery(buildGoModulePath(name, currentMajor + 1)),
   ]);
-  if (!latest) return noUpdateInfo(name, currentVersion);
 
-  const probeResult = await probeMajorVersions(currentMajor, firstProbe, (major) =>
-    goListQuery(buildGoModulePath(name, major), ctx.goProbeTimeout),
+  const probeResult = await probeMajorVersions(currentMajor, firstProbe, major =>
+    probeQuery(buildGoModulePath(name, major)),
   );
   return buildGoPackageInfo(name, currentVersion, probeResult, latest.Version, latest.Time);
 }
 
-export async function fetchGoProxyInfo(name: string, type: string, currentVersion: string, goCwd: string, ctx: ModeContext, goNoProxy: Array<string>): Promise<PackageInfo> {
-  if (isGoNoProxy(name, goNoProxy)) return fetchGoVcsInfo(name, type, currentVersion, goCwd, ctx);
+const goProxyHeaders = {"accept-encoding": "gzip, deflate, br"};
 
-  const encoded = encodeGoModulePath(name);
+type ProxyFetch = (url: string) => Promise<Response>;
+type GoModuleFetch = (doFetch: ProxyFetch, base: string, path: string) => Promise<ProbeResult | null>;
+
+// 404 and 410 are the protocol's "not here", anything else is a proxy failure, never "up to date".
+const isGoProxyMiss = (status: number): boolean => status === 404 || status === 410;
+
+async function readGoProxyInfo(res: Response, url: string, path: string): Promise<ProbeResult> {
+  try {
+    const data = await res.json() as {Version?: string, Time?: string};
+    if (data?.Version) return {Version: data.Version, Time: data.Time || "", path};
+  } catch {}
+  throw new Error(`Invalid response from ${url}`);
+}
+
+// `@latest` is optional in the GOPROXY protocol, so a miss only says this endpoint has nothing.
+const fetchGoLatest: GoModuleFetch = async (doFetch, base, path) => {
+  const url = `${base}/${encodeGoModulePath(path)}/@latest`;
+  const res = await doFetch(url);
+  if (res.ok) return readGoProxyInfo(res, url, path);
+  if (isGoProxyMiss(res.status)) return null;
+  throwFetchError(res, url, path, base);
+};
+
+const goLatestByCtx = new WeakMap<ModeContext, Map<string, Promise<ProbeResult | null>>>();
+
+// One `@latest` per endpoint and module path for the whole run, as the make mode's probe makes the
+// same request as the lookup that follows. A rejected one is evicted so the lookup still retries.
+export function fetchGoLatestOnce(ctx: ModeContext, doFetch: ProxyFetch, base: string, path: string): Promise<ProbeResult | null> {
+  const byUrl = getOrSet(goLatestByCtx, ctx, () => new Map());
+  return dedupe(byUrl, `${base}/${path}`, () => fetchGoLatest(doFetch, base, path));
+}
+
+// The order `@latest` reports: a release outranks any prerelease, pseudo-versions among them.
+function isHigherGoVersion(candidate: string, best: string): boolean {
+  const candidateIsPre = isVersionPrerelease(candidate);
+  if (candidateIsPre !== isVersionPrerelease(best)) return !candidateIsPre;
+  return gt(candidate, best);
+}
+
+// `@v/list` is `version [timestamp]` per line, unordered. `major` bounds the answer: some proxies
+// list every major under each path, and a version the path cannot carry writes a go.mod go refuses.
+export function pickGoListVersion(body: string, major = 0): {Version: string, Time: string} | null {
+  let best: {Version: string, Time: string} | null = null;
+  for (const line of body.split("\n")) {
+    const [version, time] = line.trim().split(/\s+/);
+    if (!version || !valid(version)) continue;
+    if (major && Number.parseInt(stripv(version)) !== major) continue;
+    if (best && !isHigherGoVersion(version, best.Version)) continue;
+    best = {Version: version, Time: time ?? ""};
+  }
+  return best;
+}
+
+// 0 for a path without a major suffix: v0, v1 and `+incompatible` v2+ all live there.
+function goPathMajor(path: string): number {
+  return goMajorSuffixRe.test(path) || gopkgMajorSuffixRe.test(path) ? extractGoMajor(path) : 0;
+}
+
+// `<proxy>/<mod>/@v/list`, what go falls back to when a proxy omits `@latest`.
+const fetchGoList: GoModuleFetch = async (doFetch, base, path) => {
+  const encoded = encodeGoModulePath(path);
+  const url = `${base}/${encoded}/@v/list`;
+  const res = await doFetch(url);
+  if (!res.ok) {
+    if (isGoProxyMiss(res.status)) return null;
+    throwFetchError(res, url, path, base);
+  }
+  const best = pickGoListVersion(await res.text(), goPathMajor(path));
+  if (!best) return null; // a known module with no versions yet
+  if (best.Time) return {...best, path};
+  // No timestamp in the list, so stat the one version picked as go does. A failure costs only the date.
+  const infoUrl = `${base}/${encoded}/@v/${encodeGoModulePath(best.Version)}.info`;
+  try {
+    const infoRes = await doFetch(infoUrl);
+    if (infoRes.ok) return readGoProxyInfo(infoRes, infoUrl, path);
+  } catch {}
+  return {...best, path};
+};
+
+// null when this proxy does not know the module, so the caller can move down the chain.
+async function fetchGoProxyModule(base: string, name: string, type: string, currentVersion: string, ctx: ModeContext): Promise<PackageInfo | null> {
   const currentMajor = extractGoMajor(name);
-  const probeGoMajor = async (major: number): Promise<ProbeResult | null> => {
-    const path = buildGoModulePath(name, major);
+  const goLatest: GoModuleFetch = (doFetch, proxy, path) => fetchGoLatestOnce(ctx, doFetch, proxy, path);
+  const primaryFetch: ProxyFetch = url => fetchWithRetry(ctx, url, {headers: goProxyHeaders});
+  const probeFetch: ProxyFetch = url => ctx.doFetch(url, {signal: AbortSignal.timeout(ctx.goProbeTimeout), headers: goProxyHeaders});
+  const probeWith = (fetchModule: GoModuleFetch) => async (path: string) => {
     try {
-      const r = await ctx.doFetch(`${ctx.goProxyUrl}/${encodeGoModulePath(path)}/@latest`, {signal: AbortSignal.timeout(ctx.goProbeTimeout), headers: {"accept-encoding": "gzip, deflate, br"}});
-      return r.ok ? {...await r.json() as {Version: string, Time: string}, path} : null;
+      return await fetchModule(probeFetch, base, path);
     } catch {
       return null;
     }
@@ -291,26 +396,43 @@ export async function fetchGoProxyInfo(name: string, type: string, currentVersio
 
   // Fetch @latest and probe for next major version in parallel
   const skip = shouldSkipMajorProbe(name, type, currentVersion);
-  const [res, earlyProbe] = await Promise.all([
-    fetchWithRetry(ctx, `${ctx.goProxyUrl}/${encoded}/@latest`, {headers: {"accept-encoding": "gzip, deflate, br"}}),
-    skip ? null : probeGoMajor(currentMajor + 1),
+  const nextMajorPath = buildGoModulePath(name, currentMajor + 1);
+  const [latest, latestProbe] = await Promise.all([
+    goLatest(primaryFetch, base, name),
+    skip ? null : probeWith(goLatest)(nextMajorPath),
   ]);
-  if (!res.ok) return noUpdateInfo(name, currentVersion);
+  const primary = latest ?? await fetchGoList(primaryFetch, base, name);
+  if (!primary) return null;
 
-  let latestVersion: string;
-  let latestTime: string;
-  try {
-    const data = await res.json() as {Version: string, Time: string};
-    latestVersion = data.Version;
-    latestTime = data.Time;
-  } catch {
-    return noUpdateInfo(name, currentVersion);
-  }
+  // A proxy serves `@latest` for every major of a module or for none, and `latestProbe` settled
+  // which, so further majors go straight to that endpoint rather than missing on the other first.
+  const probe = probeWith(latest ? goLatest : fetchGoList);
+  const firstProbe = skip || latest ? latestProbe : await probeWith(fetchGoList)(nextMajorPath);
+  const probeResult = await probeMajorVersions(currentMajor, firstProbe, major => probe(buildGoModulePath(name, major)));
 
-  const probeResult = await probeMajorVersions(currentMajor, earlyProbe, probeGoMajor);
-
-  return buildGoPackageInfo(name, currentVersion, probeResult, latestVersion, latestTime);
+  return buildGoPackageInfo(name, currentVersion, probeResult, primary.Version, primary.Time);
 }
+
+export async function fetchGoProxyInfo(name: string, type: string, currentVersion: string, goCwd: string, ctx: ModeContext, goNoProxy: Array<string>): Promise<PackageInfo> {
+  if (isGoNoProxy(name, goNoProxy)) return fetchGoVcsInfo(name, type, currentVersion, goCwd, ctx);
+
+  for (const {url, fallback} of ctx.goProxyChain) {
+    // go fails the lookup outright, and a lookup that could not run is not an up-to-date dependency.
+    if (url === "off") throw new Error("Module lookup disabled by GOPROXY=off");
+    if (url === "direct") return fetchGoVcsInfo(name, type, currentVersion, goCwd, ctx);
+    try {
+      const info = await fetchGoProxyModule(url, name, type, currentVersion, ctx);
+      if (info) return info;
+    } catch (err) {
+      if (fallback === ",") throw err; // only `|` moves past a proxy that is broken rather than empty
+    }
+  }
+  throw new Error(`Unable to find ${name} on any GOPROXY entry`);
+}
+
+// Module paths may be quoted in go.mod and the quotes have to survive a rewrite. `group` is this
+// capture's number in the whole pattern, so the backreference demands a matching quote.
+const quotedPath = (name: string, group: number) => `("?)${esc(name)}\\${group}`;
 
 export function updateGoMod(pkgStr: string, deps: Deps): [string, Record<string, string>] {
   let newPkgStr = pkgStr;
@@ -319,30 +441,44 @@ export function updateGoMod(pkgStr: string, deps: Deps): [string, Record<string,
     const [depType, name] = key.split(fieldSep);
     const oldValue = oldOrig || old;
     const newValue = deps[key].new;
-
-    if (depType === "replace") {
-      // Update version in replace line: => targetModule vOLD -> => targetModule vNEW
-      newPkgStr = newPkgStr.replace(new RegExp(`(=>\\s+${esc(name)}\\s+)v${esc(oldValue)}`, "g"), `$1v${newValue}`);
-      continue;
-    }
-
-    // Indirect deps: only bump version, no major version rewriting or replace removal
-    if (depType === "indirect") {
-      newPkgStr = newPkgStr.replace(new RegExp(`(${esc(name)}) +v${esc(oldValue)}`, "g"), `$1 v${newValue}`);
-      continue;
-    }
-
     const newPath = goModulePathForVersion(name, newValue);
 
-    if (newPath !== name) {
-      newPkgStr = newPkgStr.replace(new RegExp(`${esc(name)} +v${esc(oldValue)}`, "g"), `${newPath} v${newValue}`);
+    if (depType === "replace") {
+      // go rejects a replace whose version does not match the path's major, so a major bump moves
+      // the target onto a new path. Only a self-replace carries its left-hand side along.
+      if (newPath !== name) {
+        const beforeSelfReplace = newPkgStr;
+        newPkgStr = newPkgStr.replace(
+          new RegExp(`(^\\s*(?:replace\\s+)?)${quotedPath(name, 2)}(\\s+=>\\s+)${quotedPath(name, 4)}(\\s+)v${esc(oldValue)}`, "gm"),
+          `$1$2${newPath}$2$3$4${newPath}$4$5v${newValue}`,
+        );
+        // A self-replace is not in `deps`, so its require line is reachable only here, and go
+        // applies the replacement solely to the path the require names. The lookahead spares a
+        // `name vOLD => other vNEW` line, which carries a dep of its own.
+        if (newPkgStr !== beforeSelfReplace) {
+          const beforeRequire = newPkgStr;
+          newPkgStr = newPkgStr.replace(
+            new RegExp(`(^\\s*(?:require\\s+)?)${quotedPath(name, 2)}(\\s+)v\\S+(?=\\s*(?://.*)?$)`, "gm"),
+            `$1$2${newPath}$2$3v${newValue}`,
+          );
+          if (newPkgStr !== beforeRequire) majorVersionRewrites[name] = newPath;
+        }
+      }
+      // Update version in replace line: => targetModule vOLD -> => targetModule vNEW
+      newPkgStr = newPkgStr.replace(new RegExp(`(=>\\s+)${quotedPath(name, 2)}(\\s+)v${esc(oldValue)}`, "g"), `$1$2${newPath}$2$3v${newValue}`);
+      continue;
+    }
+
+    // An indirect dep only ever bumps its version: no path rewrite and no replace removal.
+    if (newPath !== name && depType !== "indirect") {
+      newPkgStr = newPkgStr.replace(new RegExp(`${quotedPath(name, 1)} +v${esc(oldValue)}`, "g"), `$1${newPath}$1 v${newValue}`);
       // Rewrite tool paths referencing the old module path
       if (depType === "tool") {
-        newPkgStr = newPkgStr.replace(new RegExp(`(^\\s+|^tool\\s+)${esc(name)}(/\\S+)?\\s*$`, "gm"), `$1${newPath}$2`);
+        newPkgStr = newPkgStr.replace(new RegExp(`(^\\s+|^tool\\s+)("?)${esc(name)}((?:/[^"\\s]+)?)\\2\\s*$`, "gm"), `$1$2${newPath}$3$2`);
       }
       majorVersionRewrites[name] = newPath;
     } else {
-      newPkgStr = newPkgStr.replace(new RegExp(`(${esc(name)}) +v${esc(oldValue)}`, "g"), `$1 v${newValue}`);
+      newPkgStr = newPkgStr.replace(new RegExp(`(${quotedPath(name, 2)}) +v${esc(oldValue)}`, "g"), `$1 v${newValue}`);
     }
   }
   return [newPkgStr, majorVersionRewrites];
@@ -352,9 +488,7 @@ export function rewriteGoImports(projectDir: string, majorVersionRewrites: Recor
   const entries = Object.entries(majorVersionRewrites);
   if (!entries.length) return;
   const lookup = new Map(entries);
-  // Sort longest-first so prefix paths don't shadow longer ones in the alternation
-  const sortedPaths = entries.map(([oldPath]) => oldPath).sort((a, b) => b.length - a.length);
-  const combinedRe = new RegExp(`"(${sortedPaths.map(esc).join("|")})(/|")`, "g");
+  const combinedRe = new RegExp(`"(${longestFirstAlternation(lookup.keys())})(/|")`, "g");
   const goFiles = globSync("**/*.go", {cwd: projectDir});
   for (const relPath of goFiles) {
     const filePath = join(projectDir, relPath);

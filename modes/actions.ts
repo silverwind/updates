@@ -1,12 +1,9 @@
 import {resolve, join} from "node:path";
 import {readdirSync} from "node:fs";
 import {parse} from "../utils/semver.ts";
-import {type ModeContext, type TagEntry, stripv, hashRe, fetchForge, fetchActionTags, formatVersionPrecision, githubApiUrl, parseCommitDate} from "./shared.ts";
+import {type ModeContext, ForgeError, stripv, hashRe, fetchForge, formatVersionPrecision, githubApiUrl, parseCommitDate} from "./shared.ts";
 import {getCache, setCache} from "../utils/fetchCache.ts";
-import {esc, forgeDirs} from "../utils/utils.ts";
-
-export {type TagEntry, fetchActionTags};
-export const actionsUsesRe = /^\s*(?:-\s*)?uses:\s*['"]?([^'"#\s]+)['"]?/gm;
+import {forgeDirs, longestFirstAlternation} from "../utils/utils.ts";
 
 export type ActionRef = {
   host: string | null,
@@ -41,7 +38,8 @@ export function getForgeApiBaseUrl(host: string | null, forgeApiUrl: string): st
   return host === "github.com" ? githubApiUrl : `https://${host}/api/v1`;
 }
 
-export async function fetchActionTagDate(apiUrl: string, owner: string, repo: string, commitSha: string, ctx: ModeContext): Promise<string> {
+// "" is a commit with no date, which holds a cooldown candidate back, undefined is a failed request.
+export async function fetchActionTagDate(apiUrl: string, owner: string, repo: string, commitSha: string, ctx: ModeContext): Promise<string | undefined> {
   // Commit data is immutable — cache the resolved date forever keyed by URL.
   const url = `${apiUrl}/repos/${owner}/${repo}/git/commits/${commitSha}`;
   if (!ctx.noCache) {
@@ -50,12 +48,15 @@ export async function fetchActionTagDate(apiUrl: string, owner: string, repo: st
   }
   try {
     const res = await fetchForge(url, ctx);
-    if (!res.ok) return "";
+    if (res.status === 404) return ""; // the commit is gone, so no date will ever exist
+    if (!res.ok) return undefined;
     const date = parseCommitDate(await res.json());
     if (date && !ctx.noCache) setCache(url, "immutable", date);
     return date;
-  } catch {
-    return "";
+  } catch (err) {
+    // A classified forge failure is the dependency's result, a malformed body is worth degrading over.
+    if (err instanceof ForgeError) throw err;
+    return undefined;
   }
 }
 
@@ -64,22 +65,65 @@ export function formatActionVersion(newFullVersion: string, oldRef: string): str
   return formatVersionPrecision(newParsed?.version ?? stripv(newFullVersion), oldRef);
 }
 
-export function updateWorkflowFile(content: string, actionDeps: Array<{name: string, oldRef: string, newRef: string, newComment?: string}>): string {
-  let newContent = content;
-  for (const {name, oldRef, newRef, newComment} of actionDeps) {
-    const uses = `(uses:\\s*['"]?(?:https?:\\/\\/)?)${esc(name)}@${esc(oldRef)}(?![\\w.-])`;
-    // A sha pin carries its readable version in a trailing comment. Rewriting the sha alone
-    // leaves that comment naming the old version, so the file misreports what it pins. Run
-    // first, so the pass below only sees occurrences without a comment.
-    if (newComment) {
-      newContent = newContent.replace(new RegExp(`${uses}([ \\t]*#[ \\t]*)v?\\d\\S*`, "g"), `$1${name}@${newRef}$2${newComment}`);
-    }
-    newContent = newContent.replace(new RegExp(uses, "g"), `$1${name}@${newRef}`);
-  }
-  return newContent;
+// Reader and writer share this, so the writer can never reach a `uses:` the reader did not extract,
+// like a commented-out step or one quoted inside a `run:` script.
+const usesLineRe = /^(\s*(?:-\s*)?uses:\s*)([^\n]*)$/;
+
+// The version a trailing comment names, behind the `renovate:`, `pin `, `tag=` and `ratchet:`
+// prefixes a pinned sha's comment carries. Mirrors renovate's pinTokenRe.
+const pinTokenRe = /^\s*(?:(?:renovate\s*:\s*)?(?:pin\s+|tag\s*=\s*)?|ratchet:[\w-]+\/[.\w-]+)@?((?:[\w-]*[-/])?v?\d+(?:\.\d+(?:\.\d+)?)?(?:-[a-zA-Z0-9.]+)?)/;
+
+export type UsesLine = {
+  prefix: string, // indentation, the list dash and `uses:` with its trailing space
+  quote: string, // the quote around the value, empty when it is unquoted
+  value: string, // the `[scheme://]owner/repo[/path]@ref` text, unquoted
+  gap: string, // whatever sits between the value and the comment
+  comment: string, // the comment including its `#`, empty when the line has none
+  pinnedVersion: string, // the version the comment names, empty when it names none
+  pinnedEnd: number, // offset into `comment` just past the token that named it
+};
+
+export function parseUsesLine(line: string): UsesLine | null {
+  const match = usesLineRe.exec(line);
+  if (!match) return null;
+  const [, prefix, remainder] = match;
+  const quote = remainder[0] === "'" || remainder[0] === '"' ? remainder[0] : "";
+  const quoteEnd = quote ? remainder.indexOf(quote, 1) : 0;
+  if (quoteEnd === -1) return null;
+  const value = quote ? remainder.slice(1, quoteEnd) : /^[^\s#]*/.exec(remainder)![0];
+  if (!value) return null;
+  const rest = remainder.slice(quote ? quoteEnd + 1 : value.length);
+  const hash = rest.indexOf("#");
+  const comment = hash === -1 ? "" : rest.slice(hash);
+  const pin = comment ? pinTokenRe.exec(comment.slice(1)) : null;
+  return {
+    prefix, quote, value,
+    gap: hash === -1 ? rest : rest.slice(0, hash),
+    comment,
+    pinnedVersion: pin?.[1] ?? "",
+    pinnedEnd: pin ? pin[0].length + 1 : 0,
+  };
 }
 
-const workflowFileRe = new RegExp(`(?:^|/)(?:${forgeDirs.map(esc).join("|")})\\/(?:workflows\\/[^/]+|(?:[^/]+\\/)*action)\\.ya?ml$`);
+const schemeRe = /^https?:\/\//;
+
+export function updateWorkflowFile(content: string, actionDeps: Array<{name: string, oldRef: string, newRef: string, newComment?: string}>): string {
+  const depByUses = new Map(actionDeps.map(dep => [`${dep.name}@${dep.oldRef}`, dep]));
+  return content.split("\n").map(line => {
+    const parsed = parseUsesLine(line);
+    if (!parsed) return line;
+    const {prefix, quote, value, gap, comment, pinnedVersion, pinnedEnd} = parsed;
+    const scheme = schemeRe.exec(value)?.[0] ?? "";
+    const dep = depByUses.get(value.slice(scheme.length));
+    if (!dep) return line;
+    // A sha pin's trailing comment names the version and would otherwise keep naming the old one.
+    // Renovate rewrites it to the version alone, dropping any `tag=`/`pin`/`ratchet:` prefix.
+    const newComment = dep.newComment && pinnedVersion ? `# ${dep.newComment}${comment.slice(pinnedEnd)}` : comment;
+    return `${prefix}${quote}${scheme}${dep.name}@${dep.newRef}${quote}${gap}${newComment}`;
+  }).join("\n");
+}
+
+const workflowFileRe = new RegExp(`(?:^|/)(?:${longestFirstAlternation(forgeDirs)})/(?:workflows/[^/]+|(?:[^/]+/)*action)\\.ya?ml$`);
 
 export function isWorkflowFile(file: string): boolean {
   return workflowFileRe.test(file.replace(/\\/g, "/"));

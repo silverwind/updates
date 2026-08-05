@@ -104,34 +104,45 @@ async function main(): Promise<void> {
 
   const useColor = !config.noColor && (config.color || stdout.isTTY);
   if (useColor) {
-    red = (text: string | number) => styleText("red", String(text));
-    green = (text: string | number) => styleText("green", String(text));
+    // validateStream drops the codes when stdout is not a TTY, which is exactly what -c overrides.
+    red = (text: string | number) => styleText("red", String(text), {validateStream: false});
+    green = (text: string | number) => styleText("green", String(text), {validateStream: false});
   }
   jsonOutput = Boolean(config.json);
 
   const output = await updates(config);
 
   const hasResults = Object.keys(output.results).length > 0;
+  const errors = output.errors ?? [];
 
-  if (output.message) {
-    console.info(config.json ? JSON.stringify({message: output.message}) : output.message);
+  if (config.json) {
+    console.info(JSON.stringify({
+      ...(output.message && {message: output.message}),
+      ...(hasResults && {results: output.results}),
+      ...(errors.length && {errors}),
+    }));
+  } else if (output.message) {
+    console.info(output.message);
   } else if (hasResults) {
-    if (config.json) {
-      console.info(JSON.stringify({results: output.results}));
-    } else {
-      console.info(formatOutput(output));
-    }
+    console.info(formatOutput(output));
+  }
 
-    if (config.update) {
-      for (const [mode, modeResults] of Object.entries(output.results)) {
-        if (Object.values(modeResults).some(deps => Object.keys(deps).length)) {
-          console.info(green(`✨ ${mode} updated`));
-        }
+  if (config.update && hasResults && !config.json) {
+    for (const [mode, modeResults] of Object.entries(output.results)) {
+      if (Object.values(modeResults).some(deps => Object.keys(deps).length)) {
+        console.info(green(`✨ ${mode} updated`));
       }
     }
   }
 
-  if (config.errorOnOutdated) {
+  if (!config.json) {
+    for (const {mode, name, error} of errors) console.info(red(`${mode} ${name}: ${error}`));
+  }
+
+  // A run that could not look everything up is neither outdated nor up to date, so -E/-U yield to it.
+  if (errors.length) {
+    await end(undefined, 1);
+  } else if (config.errorOnOutdated) {
     await end(undefined, hasResults ? 2 : 0);
   } else if (config.errorOnUnchanged) {
     await end(undefined, hasResults ? 0 : 2);
