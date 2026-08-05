@@ -14,22 +14,9 @@ const noFetch = fetcher(() => null);
 
 const emptyPresets = fetcher(() => "{}");
 
-// vitest runs a file's tests concurrently, so the console swap below needs test.sequential. Bun
-// runs them in order and has no such property.
+// vitest runs a file's tests concurrently, so the globalThis.fetch swap below needs test.sequential.
+// Bun runs them in order and has no such property.
 const sequential = "sequential" in test ? test.sequential : test;
-
-// Callers must use `sequential`, as a concurrent neighbor would see the swapped console.error.
-async function withWarnings(fn: () => Promise<void>): Promise<Array<string>> {
-  const original = console.error;
-  const warnings: Array<string> = [];
-  console.error = (message: string) => { warnings.push(message); };
-  try {
-    await fn();
-  } finally {
-    console.error = original;
-  }
-  return warnings;
-}
 
 const created: Array<string> = [];
 
@@ -77,6 +64,28 @@ test.each([
     {matchPackageNames: ["foo"], enabled: false},
     {matchPackageNames: ["foo"], enabled: true},
   ]}, {}],
+  ["none of the packageRules with non-name matchers", "renovate.json", {packageRules: [
+    {matchPackageNames: ["foo"], matchUpdateTypes: ["major"], enabled: false},
+    {matchManagers: ["npm"], enabled: false},
+    {matchPackageNames: ["webpack"], updateTypes: ["major"], enabled: false},
+    {matchPackageNames: ["rollup"], excludeDepNames: ["rollup"], enabled: false},
+    {matchPackageNames: ["vite"], depTypeList: ["devDependencies"], allowedVersions: "^1"},
+  ]}, {}],
+  ["legacy package matchers", "renovate.json", {packageRules: [
+    {packageNames: ["foo"], enabled: false},
+    {packagePatterns: ["^bar"], enabled: false},
+    {matchPackagePrefixes: ["@baz/"], enabled: false},
+    {matchPackageNames: ["qux"], excludePackageNames: ["qux"], enabled: false}, // and-not, skipped
+  ]}, {exclude: ["foo", /^bar/, "@baz/*"]}],
+  // renovate needs a positive and every negation to match, which exclude cannot express
+  ["no packageRule mixing positive and negated matchers", "renovate.json",
+    {packageRules: [{matchPackageNames: ["@babel/*", "!@babel/core"], enabled: false}]}, {}],
+  ["a wider exclude a later rule cannot punch a hole in", "renovate.json", {packageRules: [
+    {matchPackageNames: ["@babel/*"], enabled: false},
+    {matchPackageNames: ["@babel/core"], enabled: true},
+  ]}, {exclude: ["@babel/*"]}],
+  ["top-level enabled false, which disables everything", "renovate.json",
+    {enabled: false, ignoreDeps: ["foo"]}, {exclude: ["*"]}],
   ["renovate.jsonc, comments and all", "renovate.jsonc", `{\n  // ignore foo\n  "ignoreDeps": ["foo"]\n}`,
     {exclude: ["foo"]}],
 ])("loadRenovateConfig reads %s", async (_name, file, config, expected) => {
@@ -91,67 +100,11 @@ test.each([["3 days", 3], ["1 week", 7], ["12 hours", 0.5]])("minimumReleaseAge 
   expect(await loadRenovateConfig(dir, {cooldown: true})).toEqual({cooldown});
 });
 
-sequential.each([
-  ["packageRules with non-name matchers are skipped", {packageRules: [
-    {matchPackageNames: ["foo"], matchUpdateTypes: ["major"], enabled: false},
-    {matchManagers: ["npm"], enabled: false},
-    {matchPackageNames: ["webpack"], updateTypes: ["major"], enabled: false},
-    {matchPackageNames: ["rollup"], excludeDepNames: ["rollup"], enabled: false},
-    {matchPackageNames: ["vite"], depTypeList: ["devDependencies"], allowedVersions: "^1"},
-    {matchManagers: ["npm"], groupName: "npm"}, // nothing to import, so nothing to report
-  ]}, {}, [
-    "renovate config: skipping packageRule with unsupported matcher matchUpdateTypes",
-    "renovate config: skipping packageRule with unsupported matcher matchManagers",
-    "renovate config: skipping packageRule with unsupported matcher updateTypes",
-    "renovate config: skipping packageRule with unsupported matcher excludeDepNames",
-    "renovate config: skipping packageRule with unsupported matcher depTypeList",
-  ]],
-  ["legacy package matchers are honored", {packageRules: [
-    {packageNames: ["foo"], enabled: false},
-    {packagePatterns: ["^bar"], enabled: false},
-    {matchPackagePrefixes: ["@baz/"], enabled: false},
-    {matchPackageNames: ["qux"], excludePackageNames: ["qux"], enabled: false}, // and-not, skipped
-  ]}, {exclude: ["foo", /^bar/, "@baz/*"]},
-  ["renovate config: skipping packageRule mixing matchers and negations: qux, !qux"]],
-  // renovate needs a positive and every negation to match, which exclude cannot express
-  ["packageRules mixing positive and negated matchers are skipped",
-    {packageRules: [{matchPackageNames: ["@babel/*", "!@babel/core"], enabled: false}]}, {},
-    ["renovate config: skipping packageRule mixing matchers and negations: @babel/*, !@babel/core"]],
-  ["packageRule re-enabling inside a wider exclude is reported", {packageRules: [
-    {matchPackageNames: ["@babel/*"], enabled: false},
-    {matchPackageNames: ["@babel/core"], enabled: true},
-  ]}, {exclude: ["@babel/*"]},
-  ["renovate config: packageRule re-enables @babel/core, which a wider exclude keeps disabled"]],
-  // a `g` matcher carries lastIndex from one .test() to the next, so only the first name warned
-  ["every name a wider regex exclude keeps disabled is reported", {packageRules: [
-    {matchPackageNames: ["/^@babel/g"], enabled: false},
-    {matchPackageNames: ["@babel/core", "@babel/types"], enabled: true},
-  ]}, {exclude: [/^@babel/g]}, [
-    "renovate config: packageRule re-enables @babel/core, which a wider exclude keeps disabled",
-    "renovate config: packageRule re-enables @babel/types, which a wider exclude keeps disabled",
-  ]],
-  ["top-level enabled false disables everything", {enabled: false, ignoreDeps: ["foo"]}, {exclude: ["*"]},
-    ["renovate config: enabled is false, skipping all dependencies"]],
-])("%s", async (_name, config, expected, expectedWarnings) => {
+test("a subdirectory inherits the config of a parent directory", async () => {
   const dir = makeDir();
-  writeFileSync(join(dir, "renovate.json"), JSON.stringify(config));
-  const warnings = await withWarnings(async () => {
-    expect(await loadRenovateConfig(dir)).toEqual(expected);
-  });
-  expect(warnings).toEqual(expectedWarnings);
-});
-
-sequential("a config shared by several directories is normalized once", async () => {
-  const dir = makeDir();
-  writeFileSync(join(dir, "renovate.json"), JSON.stringify({
-    packageRules: [{matchManagers: ["npm"], enabled: false}],
-  }));
+  writeFileSync(join(dir, "renovate.json"), JSON.stringify({ignoreDeps: ["foo"]}));
   mkdirSync(join(dir, "pkg"));
-  const warnings = await withWarnings(async () => {
-    expect(await loadRenovateConfig(dir)).toEqual({});
-    expect(await loadRenovateConfig(join(dir, "pkg"))).toEqual({}); // walks up to the same file
-  });
-  expect(warnings).toEqual(["renovate config: skipping packageRule with unsupported matcher matchManagers"]);
+  expect(await loadRenovateConfig(join(dir, "pkg"))).toEqual({exclude: ["foo"]});
 });
 
 test("renovate.json5 comments, trailing commas, unquoted keys and single quotes", async () => {

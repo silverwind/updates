@@ -138,7 +138,7 @@ A `cooldown` of `0` in an override disables a global cooldown for the matched de
 
 ### Renovate config
 
-If a [Renovate](https://docs.renovatebot.com/) config is found, `ignoreDeps` and simple `packageRules` are inherited as `include`/`exclude`/`pin`. Rules are evaluated in order, as Renovate evaluates them, so a later `"enabled": true` re-enables what an earlier rule disabled, and a rule that disables everything turns the rules after it into an allow-list. A rule that disables only negated matchers, like `"matchPackageNames": ["!/^@types/"]`, becomes an `include` since it leaves just those packages enabled. A top-level `"enabled": false` disables the repository. A rule matching on anything else, or mixing positive with negated matchers, is skipped, and is reported on stderr when it carried something inheritable. A preset in `extends` that cannot be fetched is an error, never an empty preset. An `allowedVersions` is inherited as a `pin` that filters candidates but, unlike `pin` and `--pin`, never moves a dependency down, as it is a ceiling in Renovate too. `minimumReleaseAge` is *not* inherited as `cooldown` by default, opt in via:
+If a [Renovate](https://docs.renovatebot.com/) config is found, `ignoreDeps`, `enabled` and `allowedVersions` in `packageRules` are inherited as `include`/`exclude`/`pin`, evaluated in order as Renovate does. A rule matching on anything but package names is skipped, and a preset in `extends` that cannot be fetched is an error. `allowedVersions` filters candidates but never downgrades, as it is a ceiling in Renovate too. `minimumReleaseAge` is *not* inherited as `cooldown` by default, opt in via:
 
 ```ts
 export default {
@@ -148,7 +148,7 @@ export default {
 } satisfies Config;
 ```
 
-Values in `updates.config` override anything inherited. `pin` merges with the inherited `allowedVersions` ceilings per dependency: an authored entry replaces the ceiling of the same name and may downgrade into its range, while the other ceilings keep filtering.
+Values in `updates.config` override anything inherited. `pin` merges per dependency, where an authored entry replaces the ceiling of the same name and may downgrade into its range.
 
 ## API
 

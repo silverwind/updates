@@ -2,7 +2,7 @@ import {join} from "node:path";
 import {readFile} from "node:fs/promises";
 import {parseJsonish} from "./json5.ts";
 import {validRange} from "./semver.ts";
-import {walkUp, memoizeAsync, forgeDirs, getOrSet, patternToRegex} from "./utils.ts";
+import {walkUp, memoizeAsync, forgeDirs, getOrSet} from "./utils.ts";
 import {getCache, setCache} from "./fetchCache.ts";
 import {fetchRetries, isTransientFetchError} from "../modes/shared.ts";
 import type {Config} from "../config.ts";
@@ -63,10 +63,6 @@ type RenovatePackageRule = {
 
 type Matcher = string | RegExp;
 
-function warn(message: string): void {
-  console.error(`renovate config: ${message}`);
-}
-
 // Deprecated spellings renovate still migrates into matchPackageNames. A prefix is minimatch
 // `foo{/,}**`, which is updates' `foo*`.
 const packageNameKeys: Record<string, (value: string) => string> = {
@@ -87,21 +83,21 @@ const legacyMatcherKeys = ["updateTypes", "managers", "datasources", "depTypeLis
 const catchAllNames = new Set(["*", "**"]);
 
 // The name patterns a packageRule matches on, `[]` when it has no matcher at all (renovate then
-// applies it to every dependency), or the matcher key that cannot be mapped, either because it
+// applies it to every dependency), or undefined when a matcher cannot be mapped, either because it
 // matches on something else or because its value is not a list of names.
-function ruleNames(rule: RenovatePackageRule): Array<string> | string {
+function ruleNames(rule: RenovatePackageRule): Array<string> | undefined {
   const names: Array<string> = [];
   for (const [key, value] of Object.entries(rule)) {
     // Object.hasOwn, not `in`: `in` matches inherited keys like __proto__/constructor.
     const toName = Object.hasOwn(packageNameKeys, key) ? packageNameKeys[key] : undefined;
     if (!toName) {
-      if (key.startsWith("match") || key.startsWith("exclude") || legacyMatcherKeys.includes(key)) return key;
+      if (key.startsWith("match") || key.startsWith("exclude") || legacyMatcherKeys.includes(key)) return undefined;
       continue;
     }
     const list = typeof value === "string" ? [value] : value; // renovate allowString
-    if (!Array.isArray(list)) return key;
+    if (!Array.isArray(list)) return undefined;
     for (const entry of list) {
-      if (typeof entry !== "string" || !entry) return key;
+      if (typeof entry !== "string" || !entry) return undefined;
       names.push(toName(entry));
     }
   }
@@ -178,23 +174,15 @@ function applyRules(rules: Array<RenovatePackageRule>): {allowed: Array<Matcher>
   for (const rule of rules) {
     if (!rule || typeof rule !== "object") continue;
     const names = ruleNames(rule);
-    if (!Array.isArray(names)) {
-      // only worth naming a rule updates would otherwise have imported something from
-      if (rule.enabled !== undefined || typeof rule.allowedVersions === "string") {
-        warn(`skipping packageRule with unsupported matcher ${names}`);
-      }
-      continue;
-    }
+    if (!names) continue;
     const {positive, negated} = splitNames(names);
 
-    if (rule.enabled === false) {
-      if (positive.length && negated.length) {
-        warn(`skipping packageRule mixing matchers and negations: ${names.join(", ")}`);
-      } else if (!names.length || positive.some(name => catchAllNames.has(name))) {
+    // a rule mixing matchers with negations needs an and-not, which exclude cannot express
+    if (rule.enabled === false && !(positive.length && negated.length)) {
+      if (!names.length || positive.some(name => catchAllNames.has(name))) {
         allowed = []; // disables everything, until a later rule re-enables names
       } else if (!positive.length) {
         if (allowed === null) allowed = negated.map(toMatcher); // all-negated leaves an allow-list
-        else if (allowed.length) warn(`skipping packageRule narrowing an allow-list: ${names.join(", ")}`);
       } else {
         for (const name of positive) disabled.push(toMatcher(name));
       }
@@ -202,17 +190,11 @@ function applyRules(rules: Array<RenovatePackageRule>): {allowed: Array<Matcher>
       if (!names.length) {
         allowed = null; // re-enables every dependency
         disabled = [];
-      } else if (negated.length || !positive.length) {
-        warn(`skipping packageRule re-enabling by negation: ${names.join(", ")}`);
-      } else {
+      } else if (positive.length && !negated.length) { // a re-enable by negation is not expressible
         for (const name of positive) {
           const matcher = toMatcher(name);
-          const kept = disabled.filter(entry => !sameMatcher(entry, matcher));
           // an exclude the name only partly overlaps cannot be punched a hole in
-          if (kept.length === disabled.length && disabled.some(entry => patternToRegex(entry).test(name))) {
-            warn(`packageRule re-enables ${name}, which a wider exclude keeps disabled`);
-          }
-          disabled = kept;
+          disabled = disabled.filter(entry => !sameMatcher(entry, matcher));
           allowed?.push(matcher);
         }
       }
@@ -233,10 +215,7 @@ function applyRules(rules: Array<RenovatePackageRule>): {allowed: Array<Matcher>
 
 function normalize(raw: RenovateConfig, opts: RenovateImportOptions): Partial<Config> {
   // renovate skips a repository whose config disables it (lib/workers/repository/configured.ts)
-  if (raw.enabled === false) {
-    warn("enabled is false, skipping all dependencies");
-    return {exclude: ["*"]};
-  }
+  if (raw.enabled === false) return {exclude: ["*"]};
 
   const out: Partial<Config> = {};
 
@@ -487,8 +466,8 @@ const findRenovateUp = memoizeAsync((startDir: string) => walkUp(startDir, async
 }));
 
 // Both keyed by config-file path, as loadRenovateConfig runs once per manifest directory and a
-// monorepo shares one config across them, where resolving `extends` is network I/O and normalizing
-// warns once per rule it cannot import. Callers spread the result rather than mutate it.
+// monorepo shares one config across them, where resolving `extends` is network I/O. Callers spread
+// the result rather than mutate it.
 const resolvedExtendsCache = new Map<string, Promise<RenovateConfig>>();
 const normalizedCache = new Map<string, Promise<Partial<Config>>>();
 
