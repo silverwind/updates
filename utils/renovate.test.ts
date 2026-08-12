@@ -14,9 +14,8 @@ const noFetch = fetcher(() => null);
 
 const emptyPresets = fetcher(() => "{}");
 
-// vitest runs a file's tests concurrently, so the globalThis.fetch swap below needs test.sequential.
-// Bun runs them in order and has no such property.
-const sequential = "sequential" in test ? test.sequential : test;
+// Both runners run a file's tests concurrently, so the globalThis.fetch swap below has to opt out.
+const sequential = test.sequential ?? (test as any).serial ?? test;
 
 const created: Array<string> = [];
 
@@ -196,7 +195,8 @@ test("named preset with an explicit extension is fetched verbatim", async () => 
   expect(await loadRenovateConfig(dir, {}, fetchText)).toEqual({exclude: ["g"]});
 });
 
-test.each([
+// bun 1.3.14 deadlocks when these rejections are asserted from concurrent tests, so run them in order.
+sequential.each([
   ["a named preset the file does not carry", ["github>org/a:file/foo"],
     fetcher((url) => url.endsWith("/file.json") ? JSON.stringify({other: {ignoreDeps: ["nope"]}}) : null),
     "Unable to resolve renovate preset github>org/a:file/foo: no preset foo in file"],

@@ -384,9 +384,8 @@ test.each([
 });
 
 // UPDATES_FORGE_TOKENS is one process-wide slot, and the two tests below hold a value of their
-// own across awaits, so neither may run while the other does. vitest runs a file's tests
-// concurrently, bun runs them in order and has no such property.
-const sequential = "sequential" in test ? test.sequential : test;
+// own across awaits, so neither may run while the other does, under either runner's concurrency.
+const sequential = test.sequential ?? (test as any).serial ?? test;
 
 sequential("getForgeTokens", async () => {
   // empty host (unparseable url) -> no token
