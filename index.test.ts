@@ -194,10 +194,9 @@ beforeAll(async () => {
     Promise.all(jsrFilesPromises),
   ]);
 
+  // The npm fixtures are pruned to what the client reads: dist-tags, version keys, time and
+  // the per-version repository/homepage. Full packuments would be ~54MB parsed for nothing.
   const npmParsed = new Map<string, any>(npmFiles.map(({urlName, data}) => [urlName, JSON.parse(data)]));
-  // Blank per-version bodies: the client re-reduces the packument, so serving the
-  // full ~54MB is downloaded and parsed for nothing.
-  const stripNpmDoc = (doc: any) => ({...doc, versions: Object.fromEntries(Object.keys(doc.versions ?? {}).map(v => [v, {}]))});
 
   // registry.npmjs.org answers this `accept` with the abbreviated document, which carries no
   // `time` map, so serving one regardless would hide the full-packument fallback that fills them.
@@ -210,7 +209,7 @@ beforeAll(async () => {
       let gz = gzips.get(flavor);
       if (!gz) {
         gzips.set(flavor, gz = (async () => {
-          const doc = stripNpmDoc(npmParsed.get(urlName));
+          const doc = {...npmParsed.get(urlName)};
           if (flavor === "abbrev") delete doc.time;
           return gzipPromise(JSON.stringify(doc));
         })());
