@@ -308,6 +308,24 @@ test.each([
       time: {"1.0.0": "2026-01-01T00:00:00Z", "1.1.0": "2026-04-10T00:00:00Z",
         "1.2.0": "2026-04-22T00:00:00Z", "1.3.0": "2026-04-24T00:00:00Z"}},
     {range: "1.0.0", cooldownDays: 5, now: Date.parse("2026-04-25T00:00:00Z")}, "1.1.0"],
+  ["deprecated latest is skipped",
+    {name: "pkg", "dist-tags": {latest: "2.0.0"}, versions: {"1.0.0": {}, "1.1.0": {}, "2.0.0": {deprecated: true}}},
+    {range: "1.0.0"}, "1.1.0"],
+  ["deprecated versions stay in reach of a version that is itself deprecated",
+    {name: "pkg", "dist-tags": {latest: "2.0.0"}, versions: {"1.0.0": {deprecated: true}, "1.1.0": {}, "2.0.0": {deprecated: true}}},
+    {range: "1.0.0"}, "2.0.0"],
+  // a deprecated tag is still the ceiling, so the 3.0.0 the maintainer never tagged stays out of
+  // reach, and the releases below it are no downgrade target either
+  ["a deprecated latest does not promote an off-tag release",
+    {name: "pkg", "dist-tags": {latest: "2.0.0"}, versions: {"1.0.0": {}, "1.1.0": {}, "2.0.0": {deprecated: true}, "3.0.0": {}}},
+    {range: "1.0.0"}, "1.1.0"],
+  ["a deprecated latest is no downgrade target",
+    {name: "pkg", "dist-tags": {latest: "2.0.0"}, versions: {"1.0.0": {}, "1.1.0": {}, "2.0.0": {deprecated: true}, "3.0.0": {}}},
+    {range: "3.0.0", allowDowngrade: true}, null],
+  // `^10` coerces to a version the package never published, so the exemption above cannot fire
+  ["a wholly deprecated package keeps its newest release for a range naming no published version",
+    {name: "pkg", "dist-tags": {latest: "10.1.0"}, versions: {"10.0.1": {deprecated: true}, "10.1.0": {deprecated: true}}},
+    {range: "^10"}, "10.1.0"],
 ])("findNewVersion %s", (_name, data, opts, expected) => {
   expect(findNewVersion(data, {...npmOpts, ...opts})).toBe(expected);
 });

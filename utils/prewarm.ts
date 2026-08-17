@@ -6,6 +6,7 @@ import {resolveGoProxyChain} from "../modes/go.ts";
 import {defaultApiUrls} from "../modes/shared.ts";
 import {forgeDirs, modeByFileName} from "./utils.ts";
 import {parseIni} from "./rc.ts";
+import {parseMixedArg, type Arg} from "../config.ts";
 
 function npmrcRegistry(dir: string): string | undefined {
   try {
@@ -52,15 +53,20 @@ function modeForFile(filename: string): string | undefined {
 // Registry overrides from the config file are not seen here: it loads later.
 export function prewarmOrigins(dir: string, args: Record<string, unknown>): string[] {
   const modes = new Set<string>();
+  // `-M` only: a config-file `modes` has not loaded yet, as with the registry overrides below.
+  const cliModes = parseMixedArg(args.modes as Arg);
+  const enabled = (mode: string) => !(cliModes instanceof Set) || cliModes.has(mode);
   try {
     for (const entry of readdirSync(dir, {withFileTypes: true})) {
       if (entry.isFile()) {
         const mode = modeForFile(entry.name);
-        if (mode) modes.add(mode);
+        if (mode && enabled(mode)) modes.add(mode);
       } else if (entry.isDirectory() && forgeDirs.some(forgeDir => forgeDir === entry.name)) {
         // Bare forge dir, matching resolveFiles' auto-discovery: workflows also live
-        // outside `workflows/` as `<forge>/**/action.yml`.
-        modes.add("actions");
+        // outside `workflows/` as `<forge>/**/action.yml`. A workflow's docker images are
+        // read with docker alone enabled, so that mode claims the dir when actions is off.
+        if (enabled("actions")) modes.add("actions");
+        else if (enabled("docker")) modes.add("docker");
       }
     }
   } catch {}

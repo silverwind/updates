@@ -5,7 +5,7 @@ import {validRange} from "./semver.ts";
 import {walkUp, memoizeAsync, forgeDirs, getOrSet} from "./utils.ts";
 import {getCache, setCache} from "./fetchCache.ts";
 import {fetchRetries, isTransientFetchError} from "../modes/shared.ts";
-import type {Config} from "../config.ts";
+import type {Config, Override} from "../config.ts";
 
 // Renovate also reads .gitlab, which has no workflow files and so is absent from the actions list.
 const renovateDirs = [...forgeDirs, ".gitlab"];
@@ -58,15 +58,17 @@ type RenovateConfig = {
 type RenovatePackageRule = {
   enabled?: boolean;
   allowedVersions?: string;
+  minimumReleaseAge?: string;
   [key: string]: unknown;
 };
 
 type Matcher = string | RegExp;
 
 // Deprecated spellings renovate still migrates into matchPackageNames. A prefix is minimatch
-// `foo{/,}**`, which is updates' `foo*`.
+// `foo{/,}**`, which is updates' `foo*`, and renovate's own configMigration emits that form into
+// matchPackageNames.
 const packageNameKeys: Record<string, (value: string) => string> = {
-  matchPackageNames: name => name,
+  matchPackageNames: name => name.replace(/\{\/,\}\*\*$/, "*"),
   packageNames: name => name,
   matchPackagePatterns: pattern => pattern === "*" ? "*" : `/${pattern}/`,
   packagePatterns: pattern => pattern === "*" ? "*" : `/${pattern}/`,
@@ -166,10 +168,11 @@ export type RenovateImportOptions = {
 // Apply the packageRules in order, as renovate does: a matching rule disables or re-enables what it
 // matches and the last match wins. `allowed` becomes non-null once a rule disables everything,
 // turning the remainder into an allow-list. A rule needing an and-not is skipped, not approximated.
-function applyRules(rules: Array<RenovatePackageRule>): {allowed: Array<Matcher> | null, disabled: Array<Matcher>, pin: Record<string, string>} {
+function applyRules(rules: Array<RenovatePackageRule>): {allowed: Array<Matcher> | null, disabled: Array<Matcher>, pin: Record<string, string>, cooldowns: Array<Override>} {
   let allowed: Array<Matcher> | null = null;
   let disabled: Array<Matcher> = [];
   const pin: Record<string, string> = {};
+  const cooldowns: Array<Override> = [];
 
   for (const rule of rules) {
     if (!rule || typeof rule !== "object") continue;
@@ -200,6 +203,13 @@ function applyRules(rules: Array<RenovatePackageRule>): {allowed: Array<Matcher>
       }
     }
 
+    // renovate's per-rule minimumReleaseAge beats the top-level one for what it matches, last rule
+    // winning, which is exactly an updates override
+    if (typeof rule.minimumReleaseAge === "string" && !negated.length) {
+      const days = parseRenovateDuration(rule.minimumReleaseAge);
+      if (days !== undefined) cooldowns.push({include: names.length ? positive.map(toMatcher) : undefined, cooldown: days});
+    }
+
     if (typeof rule.allowedVersions === "string" && validRange(rule.allowedVersions)) {
       // Renovate applies allowedVersions as a ceiling on releases already newer than the current
       // one, so it never rolls a dependency back, unlike a pin the authored version violates
@@ -210,7 +220,7 @@ function applyRules(rules: Array<RenovatePackageRule>): {allowed: Array<Matcher>
     }
   }
 
-  return {allowed, disabled, pin};
+  return {allowed, disabled, pin, cooldowns};
 }
 
 function normalize(raw: RenovateConfig, opts: RenovateImportOptions): Partial<Config> {
@@ -227,7 +237,7 @@ function normalize(raw: RenovateConfig, opts: RenovateImportOptions): Partial<Co
   // no `enabled: true` rule clears ignoreDeps, so it stays out of applyRules and merges at the end
   const ignored: Array<Matcher> = Array.isArray(raw.ignoreDeps) ?
     raw.ignoreDeps.filter(dep => typeof dep === "string" && Boolean(dep)) : [];
-  const {allowed, disabled, pin} = applyRules(Array.isArray(raw.packageRules) ? raw.packageRules : []);
+  const {allowed, disabled, pin, cooldowns} = applyRules(Array.isArray(raw.packageRules) ? raw.packageRules : []);
 
   const exclude = [...ignored, ...disabled];
   if (allowed?.length) out.include = allowed;
@@ -237,6 +247,7 @@ function normalize(raw: RenovateConfig, opts: RenovateImportOptions): Partial<Co
     out.pin = pin;
     out.pinNoDowngrade = true;
   }
+  if (opts.cooldown && cooldowns.length) out.overrides = cooldowns;
 
   return out;
 }

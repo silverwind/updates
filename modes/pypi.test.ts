@@ -130,13 +130,16 @@ test.each([
   ["cap the new version satisfies", "sphinx>=7.0.0,<8", "7.0.0", "7.4.7", "sphinx>=7.4.7,<8"],
   ["violated cap raised at its own precision", "sphinx>=7.0.0,<8", "7.0.0", "8.2.0", "sphinx>=8.2.0,<9"],
   ["violated two-part cap", "sphinx >=7.0.0, <8.0", "7.0.0", "8.2.0", "sphinx >=8.2.0, <8.3"],
+  ["violated three-part cap", "protobuf>=3.20.2,<5.0.0", "3.20.2", "5.29.0", "protobuf>=5.29.0,<5.30.0"],
+  // the lower bound's own precision says nothing about the cap's, which is where the bump lands
+  ["violated cap over a one-part lower bound", "sphinx>=7,<7.4.0", "7", "7.5.1", "sphinx>=7.5.1,<7.5.2"],
   ["violated inclusive cap", "urllib3>=1.26.0,<=2.0", "1.26.0", "2.2.3", "urllib3>=2.2.3,<=2.2.3"],
   ["exclusion the new version misses", "packaging>=20.9,!=22.0", "20.9", "21.3", "packaging>=21.3,!=22.0"],
   ["exclusion the new version hits", "packaging>=20.9,!=22.0", "20.9", "22.0", "packaging>=20.9,!=22.0"],
   ["wildcard exclusion the new version hits", "numpy>=1.20,!=1.25.*", "1.20", "1.25.2", "numpy>=1.20,!=1.25.*"],
   // PEP 440 excludes the bound's own release, so `<8` does not admit `8.0.0b1` and the cap moves.
   ["cap violated by a prerelease of its own release", "sphinx>=7.0.0,<8", "7.0.0", "8.0.0b1", "sphinx>=8.0.0b1,<9"],
-  ["cap violated by a dev release of its own release", "sphinx>=7.0.0,<8.0.0", "7.0.0", "8.0.0.dev1", "sphinx>=8.0.0.dev1,<8.0.1"],
+  ["cap violated by a dev release of its own release", "sphinx>=7.0.0,<8.0.0", "7.0.0", "8.0.0.dev1", "sphinx>=8.0.0.dev1,<8.1.0"],
   ["compatible release trimmed to the authored precision", "django~=4.2", "4.2", "4.3.1", "django~=4.3"],
   ["compatible release padded to the authored precision", "django~=4.2.0", "4.2.0", "5.0", "django~=5.0.0"],
 ])("updatePyprojectToml handles a %s", (_name, spec, old, newVersion, expected) => {

@@ -19,9 +19,9 @@ if (!args.help && !args.version) {
 
 let red: (text: string | number) => string = String;
 let green: (text: string | number) => string = String;
-// Effective json setting (CLI flag or config file), so error output matches the
-// success/message paths even when json comes from the config file rather than -j.
-let jsonOutput = false;
+// Seeded from the flag so an error raised before the config loads still honours -j, then widened
+// to the effective setting below, so the config file's `json` reaches the error path too.
+let jsonOutput = Boolean(args.json);
 
 async function end(err?: Error | void, exitCode?: number): Promise<void> {
   if (err) {
@@ -56,7 +56,7 @@ async function main(): Promise<void> {
     -e, --exclude <dep,...>            Exclude given dependencies
     -l, --pin <dep=range>              Pin dependency to given semver range
     -C, --cooldown <duration>          Minimum dependency age, e.g. 7 (days), 1w, 2d, 6h
-    -p, --prerelease [<dep,...>]       Consider prerelease versions
+    -p, --prerelease [<dep,...>]       Consider prerelease versions, implying --greatest
     -R, --release [<dep,...>]          Only use release versions, may downgrade
     -g, --greatest [<dep,...>]         Prefer greatest over latest version
     -t, --types <type,...>             Dependency types to update

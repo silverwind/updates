@@ -53,11 +53,14 @@ function specifierAllows(version: Pep440, {op, version: text}: Pep508Specifier):
     parsed.release.slice(0, -1).every((part, idx) => (version.release[idx] ?? 0) === part);
 }
 
-// Renovate's handleUpperBound: a cap the new version reaches moves up by one at the cap's own
-// precision, the segments above it taken from the new version (`<8` → `<9`, `<8.0` → `<8.3`).
-function raisedUpperBound(cap: Pep440, version: Pep440): string {
-  const last = cap.release.length - 1;
-  return cap.release.map((_, idx) => (version.release[idx] ?? 0) + (idx === last ? 1 : 0)).join(".");
+// Renovate's getRangePrecision: a cap the new version reaches moves up by one at the segment where
+// it first rises above the lower bound, one further down when the segment below that is a zero
+// (`>=3.20.2,<5.0.0` is minor-wide), with the segments under it taken from the new version or zeroed.
+function raisedUpperBound(cap: Pep440, lower: Pep440, version: Pep440): string {
+  let precision = cap.release.findIndex((part, idx) => part > lower.release[idx]);
+  if (precision === 0 && cap.release[1] === 0) precision = 1;
+  else if (precision === -1) precision = cap.release.length - 1;
+  return cap.release.map((_, idx) => idx > precision ? 0 : (version.release[idx] ?? 0) + Number(idx === precision)).join(".");
 }
 
 // Renovate's updateRangeValue for `~=`: its precision is the constraint the author stated, so the
@@ -86,7 +89,7 @@ export function updateRequirement(text: string, oldValue: string, newValue: stri
     // A cap the new lower bound passes is raised rather than left unsatisfiable. An exclusion stays
     // as authored, as renovate takes one to be there for a reason, and the guard below then bails.
     const cap = parsePep440(specifier.version);
-    if (specifier.op === "<" && cap) specifier.version = raisedUpperBound(cap, newParsed);
+    if (specifier.op === "<" && cap) specifier.version = raisedUpperBound(cap, oldParsed, newParsed);
     else if (specifier.op === "<=") specifier.version = newValue;
   }
   if (specifiers.some(specifier => !specifierAllows(newParsed, specifier))) return null;

@@ -5,7 +5,7 @@ import {updateVersionRange, normalizeRange} from "./npm.ts";
 
 type SparseIndexRecord = {vers?: string; yanked?: boolean; pubtime?: string};
 
-const cratesIoCache = new Map<string, Promise<Record<string, any>>>();
+const cratesIoByCtx = new WeakMap<ModeContext, Map<string, Promise<Record<string, any>>>>();
 
 // The index is sharded by lowercased name length: `1/a`, `2/ab`, `3/a/abc`, `se/rd/serde`.
 function indexSuffix(name: string): string {
@@ -42,7 +42,7 @@ export async function fetchCratesIoInfo(name: string, ctx: ModeContext): Promise
   const url = indexUrl(ctx.cratesIoUrl, name);
 
   // dedup in-flight/completed requests per run; disk-cache staleness is gated by ctx.noCache inside fetchWithEtag
-  const data = await dedupe(cratesIoCache, url, async () => {
+  const data = await dedupe(cratesIoByCtx, ctx, url, async () => {
     const result = await fetchWithEtag(url, ctx, getFetchOpts(), reduceSparseIndex);
     if (!("body" in result)) throwFetchError(result.res, url, name, ctx.cratesIoUrl);
     const versions: Record<string, Record<string, never>> = {};
@@ -62,7 +62,8 @@ export async function fetchCratesIoInfo(name: string, ctx: ModeContext): Promise
       }
       parsedLines++;
       if (!record?.vers || record.yanked) continue;
-      const version = record.vers;
+      // Build metadata (`0.14.7+wasi-0.2.4`) is no part of a range, and renovate's crate datasource drops it too.
+      const version = record.vers.split("+")[0];
       versions[version] = {};
       if (record.pubtime) time[version] = record.pubtime;
       const parsed = parse(version);
@@ -148,6 +149,41 @@ export function findLockedVersion(allVersions: Map<string, string[]>, name: stri
 // a key matched back in the source has to accept all three spellings.
 const tomlKey = (key: string) => `(?:${esc(key)}|"${esc(key)}"|'${esc(key)}')`;
 
+// `[x]` or `[[x]]`, with the indentation and trailing comment TOML permits around it.
+const tableHeaderRe = /^[ \t]*\[(\[?)[ \t]*([^[\]]+?)[ \t]*\]\1[ \t]*(?:#.*)?[ \t\r]*$/;
+
+// An odd count opens a multi-line string, inside which a bracketed line is text, not a header.
+function multilineDelim(line: string): string {
+  for (const delim of [`"""`, `'''`]) {
+    if (line.split(delim).length % 2 === 0) return delim;
+  }
+  return "";
+}
+
+// The span each table occupies, its header line included. An array of tables holds no dependency
+// but still ends the table before it, so it takes part with a path nothing matches.
+function tableSpans(str: string): Array<{path: string, start: number, end: number}> {
+  const spans: Array<{path: string, start: number, end: number}> = [];
+  let delim = "";
+  let pos = 0;
+  for (const line of str.split("\n")) {
+    if (delim) {
+      if (line.includes(delim)) delim = "";
+    } else {
+      const header = tableHeaderRe.exec(line);
+      if (header) {
+        const previous = spans.at(-1);
+        if (previous) previous.end = pos;
+        spans.push({path: header[1] ? "" : header[2], start: pos, end: str.length});
+      } else {
+        delim = multilineDelim(line);
+      }
+    }
+    pos += line.length + 1;
+  }
+  return spans;
+}
+
 export function updateCargoToml(pkgStr: string, deps: Deps): string {
   let newPkgStr = pkgStr;
   for (const [key, dep] of Object.entries(deps)) {
@@ -160,21 +196,24 @@ export function updateCargoToml(pkgStr: string, deps: Deps): string {
     // section work. Workspace members carry a `|path` suffix on the type.
     const sectionEsc = typeKey.split("|")[0].split(".").map(tomlKey).join("\\.");
 
-    // Simple form: name = "version" or name = 'version'
-    newPkgStr = newPkgStr.replace(
-      new RegExp(`^(\\s*${nameEsc}\\s*=\\s*["'])${oldEsc}(["'].*)$`, "gm"),
-      `$1${newValue}$2`,
-    );
-    // Inline table: name = { ..., version = "x.y.z", ... } (version need not be the first key)
-    newPkgStr = newPkgStr.replace(
-      new RegExp(`^(\\s*${nameEsc}\\s*=\\s*\\{(?:"[^"]*"|'[^']*'|[^}\\n])*?\\bversion\\s*=\\s*["'])${oldEsc}(["'])`, "gm"),
-      `$1${newValue}$2`,
-    );
-    // Extended table: [section.name] with version = "x.y.z"
-    newPkgStr = newPkgStr.replace(
-      new RegExp(`(\\[${sectionEsc}\\.${nameEsc}\\](?:(?!\\n\\[)[\\s\\S])*?version\\s*=\\s*["'])${oldEsc}(["'])`, "g"),
-      `$1${newValue}$2`,
-    );
+    // The forms that name no table of their own stay inside the table the dependency was read from,
+    // as the same name at the same version may well sit in another one too. Its own `[section.name]`
+    // wins, or the bare `[section]` above it would claim the rewrite, and a table neither pattern
+    // finds leaves the whole file as the scope rather than losing the rewrite.
+    const ownRe = new RegExp(`^${sectionEsc}\\.${nameEsc}$`);
+    const sectionRe = new RegExp(`^${sectionEsc}$`);
+    const rewrite = (scope: string) => scope
+      // Simple form: name = "version" or name = 'version'
+      .replace(new RegExp(`^(\\s*${nameEsc}\\s*=\\s*["'])${oldEsc}(["'].*)$`, "gm"), `$1${newValue}$2`)
+      // Inline table: name = { ..., version = "x.y.z", ... } (version need not be the first key)
+      .replace(new RegExp(`^(\\s*${nameEsc}\\s*=\\s*\\{(?:"[^"\\n]*"|'[^'\\n]*'|[^"'}\\n])*?\\bversion\\s*=\\s*["'])${oldEsc}(["'])`, "gm"), `$1${newValue}$2`)
+      // Extended table: [section.name] with version = "x.y.z", which the scope above is that table
+      .replace(new RegExp(`(\\[${sectionEsc}\\.${nameEsc}\\](?:(?!\\n\\[)[\\s\\S])*?version\\s*=\\s*["'])${oldEsc}(["'])`, "g"), `$1${newValue}$2`);
+    const spans = tableSpans(newPkgStr);
+    const span = spans.find(entry => ownRe.test(entry.path)) ?? spans.find(entry => sectionRe.test(entry.path));
+    newPkgStr = span ?
+      newPkgStr.slice(0, span.start) + rewrite(newPkgStr.slice(span.start, span.end)) + newPkgStr.slice(span.end) :
+      rewrite(newPkgStr);
   }
   return newPkgStr;
 }

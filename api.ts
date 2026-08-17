@@ -1,7 +1,7 @@
 import {cwd, platform, stderr} from "node:process";
 import {styleText} from "node:util";
 import {join, dirname, basename, resolve} from "node:path";
-import {lstatSync, readdirSync, realpathSync, truncateSync, writeFileSync, accessSync, type Stats} from "node:fs";
+import {statSync, readdirSync, realpathSync, truncateSync, writeFileSync, accessSync, type Stats} from "node:fs";
 import {readFile} from "node:fs/promises";
 import {parseToml} from "./utils/toml.ts";
 import {githubActionsVersioning, validRange} from "./utils/semver.ts";
@@ -19,7 +19,7 @@ import {loadConfig, configMixedToRegexes, patternsToRegexSet, validatePin} from 
 import type {Config, Override} from "./config.ts";
 import {
   fetchNpmInfo, fetchNpmVersionInfo, fetchJsrInfo, isJsr, isLocalDep, isCatalogRef, parseJsrDependency, parseNpmAlias,
-  getNpmrc, updatePackageJson, updateVersionRange, normalizeRange, checkUrlDep,
+  getNpmrc, updatePackageJson, updateVersionRange, normalizeRange, checkUrlDep, resolutionsBasePackage, selectorTypes,
 } from "./modes/npm.ts";
 import {fetchPypiInfo, updatePyprojectToml, updateRequirement} from "./modes/pypi.ts";
 import {
@@ -132,6 +132,8 @@ const depKey = (depType: string, typePrefix: string, name: string) => `${depType
 
 const countDeps = (deps: DepsByMode) => Object.values(deps).reduce((num, modeDeps) => num + Object.keys(modeDeps).length, 0);
 
+const normalizePep503 = (name: string) => name.toLowerCase().replace(/[-_.]+/g, "-");
+
 // The spellings a dep answers to, so include/exclude patterns, overrides and pin keys
 // all match on the same set regardless of which one the manifest happens to use.
 function depNames(name: string, kind: string): Array<string> {
@@ -162,16 +164,22 @@ function resolveFiles(filesArg: Set<string> | false): Set<string> {
   const resolvedFiles = new Set<string>();
 
   if (filesArg) {
-    for (const file of filesArg) {
+    for (const arg of filesArg) {
       let stat: Stats;
       try {
-        stat = lstatSync(file);
+        stat = statSync(arg);
       } catch (err) {
-        throw new Error(`Unable to open ${file}: ${(err as Error).message}`);
+        throw new Error(`Unable to open ${arg}: ${(err as Error).message}`);
       }
+      // A symlink is the file it points at, which is also the spelling whose name selects a mode:
+      // an argument naming both collapses here rather than being collected twice, and `link.json`
+      // pointing at a `package.json` is the manifest it resolves to, as the auto-discovery branch
+      // below already treats a real path as the file's identity.
+      let file = resolve(arg);
+      try { file = realpathSync.native(arg); } catch {}
 
       if (stat.isFile()) {
-        resolvedFiles.add(resolve(file));
+        resolvedFiles.add(file);
       } else if (stat.isDirectory()) {
         try {
           for (const entry of readdirSync(file, {withFileTypes: true})) {
@@ -181,7 +189,7 @@ function resolveFiles(filesArg: Set<string> | false): Set<string> {
             }
           }
         } catch {}
-        const normalized = resolve(file).replace(/\\/g, "/");
+        const normalized = file.replace(/\\/g, "/");
         const endsInWorkflowsDir = forgeDirs.some(forgeDir => normalized.endsWith(`/${forgeDir}/workflows`));
         const endsInForgeDir = !endsInWorkflowsDir && forgeDirs.some(forgeDir => normalized.endsWith(`/${forgeDir}`));
         const forgeDirCandidates: Array<string> = endsInWorkflowsDir ? [dirname(normalized)] :
@@ -191,7 +199,7 @@ function resolveFiles(filesArg: Set<string> | false): Set<string> {
           for (const workflow of resolveWorkflowFiles(forgeDir)) resolvedFiles.add(workflow);
         }
       } else {
-        throw new Error(`${file} is neither a file nor directory`);
+        throw new Error(`${arg} is neither a file nor directory`);
       }
     }
   } else {
@@ -222,13 +230,17 @@ function resolveFiles(filesArg: Set<string> | false): Set<string> {
     } catch {}
   }
 
+  // A workspace manifest is processed before the plain manifests of its mode: a run started inside
+  // a member finds that member's own file first, which would then be collected a second time.
+  const workspaceFiles: Array<string> = [];
   for (const file of Array.from(resolvedFiles)) {
     const filename = basename(file);
     if (!Object.hasOwn(workspaceManifests, filename)) continue;
+    workspaceFiles.push(file);
     resolvedFiles.delete(join(dirname(file), workspaceManifests[filename].supersedes));
   }
 
-  return resolvedFiles;
+  return workspaceFiles.length ? new Set([...workspaceFiles, ...resolvedFiles]) : resolvedFiles;
 }
 
 // preserve file metadata on windows
@@ -358,6 +370,9 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
   const patch = configMixedToRegexes(config.patch);
   const minor = configMixedToRegexes(config.minor);
   const allowDowngrade = configMixedToRegexes(config.allowDowngrade);
+  for (const mode of config.modes ?? []) {
+    if (!defaultModes.has(mode)) throw new Error(`Invalid mode: ${mode}, expected one of: ${modeOrder.join(",")}`);
+  }
   const enabledModes = config.modes?.length ? new Set(config.modes) : defaultModes;
 
   type CompiledOverride = {
@@ -381,16 +396,18 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
   // Kick off `gh auth token` early so the first forge request isn't blocked on a subprocess.
   if (enabledModes.has("actions")) getGithubTokens();
 
-  const versionOptsCache = new Map<string, {useGreatest: boolean, usePre: boolean, useRel: boolean, semvers: Set<string>, allowDowngrade: boolean, cooldownOverride: number | undefined}>();
+  const versionOptsCache = new Map<string, {names: Array<string>, useGreatest: boolean, usePre: boolean, useRel: boolean, semvers: Set<string>, allowDowngrade: boolean, cooldownOverride: number | undefined}>();
 
   // Resolve per-dependency options: start from the global flags, then apply
   // every matching override in order so the last matching one wins. cooldown is
   // returned as an override (undefined = no override) since its base differs per
   // mode. patch wins over minor, matching the global precedence.
-  function getVersionOpts(name: string, names?: Array<string>) {
-    let entry = versionOptsCache.get(name);
+  function getVersionOpts(kind: string, name: string) {
+    // Keyed by kind too: a docker `redis` and an npm `redis` resolve different overrides.
+    const cacheKey = `${kind}${fieldSep}${name}`;
+    let entry = versionOptsCache.get(cacheKey);
     if (!entry) {
-      const allNames = names ?? [name];
+      const allNames = depNames(name, kind);
       const anyMatches = (set: Set<RegExp> | boolean) => allNames.some(n => matchesAny(n, set));
       let useGreatest = anyMatches(greatest);
       let usePre = anyMatches(prerelease);
@@ -413,8 +430,8 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
 
       const semvers = usePatch ? semversByPrecision.patch : useMinor ? semversByPrecision.minor : semversByPrecision.major;
 
-      entry = {useGreatest, usePre, useRel, semvers, allowDowngrade: allowDown, cooldownOverride};
-      versionOptsCache.set(name, entry);
+      entry = {names: allNames, useGreatest, usePre, useRel, semvers, allowDowngrade: allowDown, cooldownOverride};
+      versionOptsCache.set(cacheKey, entry);
     }
     return entry;
   }
@@ -485,8 +502,13 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
 
   // Only pypi has array-valued dep types; an array elsewhere is malformed, not indices to collect.
   const collectDeps = (mode: string, pkg: Record<string, any>, typePrefix: string, depTypes: Array<string>, modeInclude: Set<RegExp>, modeExclude: Set<RegExp>) => {
+    // uv resolves a dep with a source of its own from git, a url, the filesystem or another index,
+    // never from pypi.org, where the same name may well be someone else's package. The keys are
+    // matched PEP 503-normalized, as `Flask-SQLAlchemy` and `flask_sqlalchemy` are one project.
+    const uvSources = new Set(Object.keys(pkg.tool?.uv?.sources ?? {}).map(normalizePep503));
     const addUvDeps = (specs: Array<unknown>, depType: string) => {
       for (const {name, version, spec} of parseUvDependencies(specs)) {
+        if (uvSources.has(normalizePep503(name))) continue;
         if (canInclude(name, mode, modeInclude, modeExclude, depType)) {
           addDep(mode, depType, typePrefix, name, normalizeRange(version), version);
           pypiSpecs.set(depKey(depType, typePrefix, name), spec);
@@ -504,9 +526,25 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
           addDep(mode, depType, typePrefix, name, normalizeRange(value), value);
         }
       } else {
-        for (const [name, value] of Object.entries(obj as Record<string, any>)) {
+        const entries = Object.entries(obj as Record<string, any>);
+        // npm's nested `overrides` object carries no version of its own. Renovate recurses into it,
+        // which the writer's flat key scan cannot place a rewrite in, so it is skipped instead, and
+        // a name it shadows is skipped with it rather than rewritten inside the nested copy.
+        const nestedNames = new Set<string>();
+        if (mode === "npm") {
+          const collectNested = (value: any) => {
+            if (!value || typeof value !== "object") return;
+            for (const [key, inner] of Object.entries(value)) {
+              nestedNames.add(key);
+              collectNested(inner);
+            }
+          };
+          for (const [, value] of entries) collectNested(value);
+        }
+        for (const [name, value] of entries) {
           // An explicit `-t project.optional-dependencies` lands here, and its keys name groups.
           if (mode === "pypi" && Array.isArray(value)) { addUvDeps(value, `${depType}.${name}`); continue; }
+          if (typeof value !== "string" || nestedNames.has(name)) continue;
           if (!canInclude(name, mode, modeInclude, modeExclude, depType)) continue;
           if (mode === "npm") addNpmDep(depType, typePrefix, name, value);
           else if (mode === "go") addDep(mode, depType, typePrefix, name, shortenGoVersion(value), stripv(value));
@@ -624,6 +662,9 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
   // memberPath. Determined up front to stay independent of file order.
   const workspaceModes = new Set<string>();
   const parsedCargoToml = new Map<string, Record<string, any>>();
+  // A cargo workspace root shares its filename with its members, so resolveFiles cannot hoist it.
+  // It has to run first all the same, or a member listed ahead of it is collected a second time.
+  const cargoWorkspaceFiles: Array<string> = [];
   for (const file of files) {
     const filename = basename(file);
     if (Object.hasOwn(workspaceManifests, filename)) workspaceModes.add(workspaceManifests[filename].mode);
@@ -634,7 +675,10 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
         const parsed = parseToml(content);
         parsedCargoToml.set(file, parsed);
         const members = (parsed.workspace as Record<string, any>)?.members;
-        if (Array.isArray(members) && members.length) workspaceModes.add("cargo");
+        if (Array.isArray(members) && members.length) {
+          workspaceModes.add("cargo");
+          cargoWorkspaceFiles.push(file);
+        }
       } catch {}
     }
   }
@@ -663,7 +707,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
   };
 
   // `fileContents` already holds exactly the files whose mode is enabled, in `files` order.
-  for (const file of fileContents.keys()) {
+  for (const file of cargoWorkspaceFiles.length ? new Set([...cargoWorkspaceFiles, ...fileContents.keys()]) : fileContents.keys()) {
     if (isWorkflowFile(file)) {
       const actionsEnabled = enabledModes.has("actions");
       const dockerEnabled = enabledModes.has("docker");
@@ -788,6 +832,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
     // second `-f` directory) fall through to be processed as plain files.
     if (filename === "go.mod" && goModFiles.some(m => m.absPath === resolve(file))) continue;
     if (filename === "package.json" && pnpmMemberFiles.some(m => m.absPath === resolve(file))) continue;
+    if (filename === "Cargo.toml" && cargoMemberFiles.some(m => m.absPath === resolve(file))) continue;
 
     if (filename === "Cargo.toml") {
       deps[mode] ??= {};
@@ -910,9 +955,15 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
   // The abbreviated npm packument carries no publish dates, so cooldown needs the full one,
   // which is roughly twice the size. Decided once per run because the doc is cached by URL
   // and shared across every dep that reads it, but only from npm's own cooldown sources.
+  // The published name the lookup resolves options under, which the manifest key answers for in
+  // neither direction: an `npm:` alias names another package, and a selector key is no name at all.
+  const npmIdentity = (key: string, name: string) => npmAliases.get(key)?.name ??
+    (selectorTypes.has(key.split(fieldSep)[0].split("|")[0]) ? resolutionsBasePackage(name) : name);
+
   const npmNeedsDates = Boolean(cooldownDaysFor(modeConfigs.npm?.modeConfig.cooldown)) ||
     (plainFiles.npm ?? []).some(entry => entry.modeCooldownDays) ||
-    Object.keys(deps.npm ?? {}).some(key => getVersionOpts(key.split(fieldSep)[1]).cooldownOverride);
+    (overridesHaveCooldown && Object.keys(deps.npm ?? {}).some(key =>
+      getVersionOpts("npm", npmIdentity(key, key.split(fieldSep)[1])).cooldownOverride));
   const argsForNpm = {registry: config.registry, needsDates: npmNeedsDates};
 
   for (const [mode, modeConfigEntry] of Object.entries(modeConfigs)) {
@@ -944,7 +995,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
           const [type, name] = k.split(fieldSep);
           const {modeCooldownDays} = ctxForType(type);
           if (!modeCooldownDays && !overridesHaveCooldown) continue;
-          const cd = getVersionOpts(name).cooldownOverride ?? modeCooldownDays;
+          const cd = getVersionOpts(mode, mode === "npm" ? npmIdentity(k, name) : name).cooldownOverride ?? modeCooldownDays;
           if (cd && !passesCooldown(date, cd, now)) delete modeDeps[k];
         }
       };
@@ -964,7 +1015,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
             if (!localInfo) { delete modeDeps[key]; return; }
             info = localInfo;
           } else {
-            info = await fetchNpmInfo(npmAlias?.name ?? name, baseT, modeConfig, argsForNpm, ctx, projectDir);
+            info = await fetchNpmInfo(npmAlias?.name ?? name, baseT, modeConfig, argsForNpm, ctx, projectDir, dep.old);
           }
         } else if (mode === "go") {
           info = await fetchGoProxyInfo(name, baseT, dep.oldOrig || dep.old, projectDir, ctx, goNoProxy);
@@ -977,9 +1028,11 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
         const [data, registry] = info;
         if (data.error) throw new Error(data.error);
 
-        // A go module answers to its `/vN` short name too, which is what `-i`/`-e` accept.
-        const names = depNames(data.name, mode);
-        const {useGreatest, usePre, useRel, semvers, allowDowngrade: allowDown, cooldownOverride} = getVersionOpts(data.name, names);
+        // A go module answers to its `/vN` short name too, which is what `-i`/`-e` accept. A
+        // `packageManager` names its own identity, so corepack's `yarn` keeps resolving as
+        // `@yarnpkg/cli` while options and pins stay on the `yarn` the manifest and the row show.
+        const identity = baseT === "packageManager" ? name : data.name;
+        const {names, useGreatest, usePre, useRel, semvers, allowDowngrade: allowDown, cooldownOverride} = getVersionOpts(mode, identity);
         const {old: oldRange, oldOrig} = dep;
         const {pinnedRange, pinNoDowngrade} = resolvePin(names, pin, modeConfig.pinNoDowngrade);
         const depCooldownDays = cooldownOverride ?? modeCooldownDays;
@@ -1168,7 +1221,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
           }
           if (!oldRef) { delete deps.actions[key]; return; }
 
-          const {usePre, useRel, semvers, cooldownOverride} = getVersionOpts(actionName);
+          const {usePre, useRel, semvers, cooldownOverride} = getVersionOpts("actions", actionName);
           const actionCooldownDays = cooldownOverride ?? fileCooldownDays;
           const result = await pickVersion({
             range: oldRef, semvers, usePre, useRel, versioning: githubActionsVersioning,
@@ -1237,11 +1290,10 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
           return;
         }
 
-        const names = depNames(fullImage, "docker");
+        const {names, semvers, cooldownOverride} = getVersionOpts("docker", fullImage);
         for (const info of infos) {
           const dep = deps.docker[info.key];
           const oldTag = dep.oldOrig || dep.old;
-          const {semvers, cooldownOverride} = getVersionOpts(fullImage, names);
           // findDockerVersion only moves a tag up, so a renovate-derived pin has nothing to suppress.
           const {pinnedRange} = resolvePin(names, info.filePin);
           const dockerCooldownDays = cooldownOverride ?? info.fileCooldownDays;
@@ -1265,8 +1317,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
   if (makeDepInfos.length) {
     fetchTasks.push((async () => {
       await pMap(makeDepInfos, async (info) => {
-        const names = depNames(info.name, info.kind);
-        const {useGreatest, usePre, useRel, semvers, allowDowngrade: allowDown, cooldownOverride} = getVersionOpts(info.name, names);
+        const {names, useGreatest, usePre, useRel, semvers, allowDowngrade: allowDown, cooldownOverride} = getVersionOpts(info.kind, info.name);
         const {pinnedRange, pinNoDowngrade} = resolvePin(names, info.filePin, info.filePinNoDowngrade);
         const makeCooldownDays = cooldownOverride ?? info.fileCooldownDays;
         const opts = {

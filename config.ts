@@ -54,7 +54,7 @@ export type Config = {
   sockets?: number;
   /** Prefer greatest over latest version */
   greatest?: boolean | Array<string | RegExp>;
-  /** Consider prerelease versions */
+  /** Consider prerelease versions, implying `greatest` */
   prerelease?: boolean | Array<string | RegExp>;
   /** Only use release versions, may downgrade */
   release?: boolean | Array<string | RegExp>;
@@ -80,7 +80,7 @@ export type Override = {
   cooldown?: number | string;
   /** Prefer greatest over latest version */
   greatest?: boolean;
-  /** Consider prerelease versions */
+  /** Consider prerelease versions, implying `greatest` */
   prerelease?: boolean;
   /** Only use release versions, may downgrade */
   release?: boolean;
@@ -231,6 +231,9 @@ export async function loadConfig(startDir: string, presetFetch: PresetFetchOptio
     config.pin = {...renovateConfig.pin, ...raw.pin};
     config.pinNoDowngrade = Object.keys(renovateConfig.pin).filter(name => !raw.pin?.[name]);
   }
+  // Overrides concatenate for the same reason, with the authored ones last so they win the
+  // last-match-wins pass in api.ts rather than discarding what renovate contributed.
+  if (renovateConfig.overrides?.length) config.overrides = [...renovateConfig.overrides, ...(raw.overrides ?? [])];
   validatePin(config.pin);
   return config;
 }

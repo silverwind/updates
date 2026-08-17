@@ -51,7 +51,9 @@ export function parseCliArgs(argv?: Array<string>): {args: Record<string, Arg>, 
   let positionalsSeen = 0;
   for (const [index, token] of result.tokens.entries()) {
     if (token.kind === "positional") positionalsSeen++;
-    if (token.kind !== "option" || !token.value?.startsWith("-")) continue;
+    // An inline value (`--exclude=-u`, `-i-p`) was written deliberately, so only a separately
+    // parsed one can be a flag parseArgs swallowed.
+    if (token.kind !== "option" || token.inlineValue || !token.value?.startsWith("-")) continue;
     const dashes = token.value.startsWith("--") ? 2 : 1;
     const key = getOptionKey(token.value.substring(dashes));
     if (!key) continue;

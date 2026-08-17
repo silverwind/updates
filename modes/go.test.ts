@@ -260,9 +260,9 @@ test.each([
 });
 
 // probeMajorVersions
-const probeOf = (major: number) => ({Version: `v${major}.0.0`, Time: "", path: `mod/v${major}`});
-const makeProbe = (existing: Array<number>) =>
-  (major: number) => Promise.resolve(existing.includes(major) ? probeOf(major) : null);
+const probeOf = (major: number, pre = false) => ({Version: `v${major}.0.0${pre ? "-rc.1" : ""}`, Time: "", path: `mod/v${major}`});
+const makeProbe = (existing: Array<number>, prerelease: Array<number>) =>
+  (major: number) => Promise.resolve(existing.includes(major) ? probeOf(major, prerelease.includes(major)) : null);
 
 test.each([
   ["returns null when firstProbe is null", null, [99], null],
@@ -271,8 +271,11 @@ test.each([
   ["finds the highest major across a large gap", probeOf(2), Array.from({length: 19}, (_, idx) => idx + 2), probeOf(20)],
   // v2 exists but v3 does not — exponential search hits v3 first and stops
   ["stops at the first gap in the exponential search", probeOf(2), [2, 4], probeOf(2)],
-])("probeMajorVersions %s", async (_name, firstProbe, existing, expected) => {
-  expect(await probeMajorVersions(1, firstProbe, makeProbe(existing))).toEqual(expected);
+  // a prerelease-only top major would hide the released one below it, and stands in only alone
+  ["skips a prerelease-only highest major", probeOf(2), [2, 3, 4], probeOf(3), [4]],
+  ["keeps a prerelease-only major when no probed one has a release", probeOf(2, true), [2], probeOf(2, true), [2]],
+])("probeMajorVersions %s", async (_name, firstProbe, existing, expected, prerelease = []) => {
+  expect(await probeMajorVersions(1, firstProbe, makeProbe(existing, prerelease))).toEqual(expected);
 });
 
 const goProxyBase = "https://proxy";

@@ -23,6 +23,8 @@ test("table header", () => {
 
 test("nested table header", () => {
   expect(parseToml(`[tool.poetry]\nname = "x"`)).toEqual({tool: {poetry: {name: "x"}}});
+  expect(parseToml(`[__proto__.poetry]\nname = "x"`)).toEqual({["__proto__"]: {poetry: {name: "x"}}});
+  expect(({} as Record<string, unknown>).poetry).toBeUndefined();
 });
 
 test("dotted keys", () => {

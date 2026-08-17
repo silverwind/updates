@@ -31,5 +31,12 @@
   },
   "resolutions": {
     "versions/updates": "^1.0.0"
+  },
+  "overrides": {
+    "noty": "3.1.0",
+    "prismjs": "1.0.0",
+    "@babel/preset-env": {
+      "prismjs": "1.0.0"
+    }
   }
 }

@@ -3,7 +3,7 @@ import {Buffer} from "node:buffer";
 import {env} from "node:process";
 import {type Versioning, coerce, diff, gt, satisfies, semverVersioning, pep440Versioning, valid} from "../utils/semver.ts";
 import {getCache, setCache} from "../utils/fetchCache.ts";
-import {commaSeparatedToArray, matchesAny} from "../utils/utils.ts";
+import {commaSeparatedToArray, getOrSet, matchesAny} from "../utils/utils.ts";
 import pkg from "../package.json" with {type: "json"};
 
 export type {Config} from "../config.ts";
@@ -248,8 +248,11 @@ export async function fetchImmutable(
 
 // Share one in-flight/completed promise per key so concurrent lookups for the
 // same resource issue a single request. A rejected promise is evicted so the
-// next caller retries rather than inheriting the failure forever.
-export function dedupe<T>(cache: Map<string, Promise<T>>, key: string, fn: () => Promise<T>): Promise<T> {
+// next caller retries rather than inheriting the failure forever. Keyed per run,
+// so a second updates() call in one process re-requests rather than answering
+// from the finished run's map.
+export function dedupe<T>(byCtx: WeakMap<ModeContext, Map<string, Promise<T>>>, ctx: ModeContext, key: string, fn: () => Promise<T>): Promise<T> {
+  const cache = getOrSet(byCtx, ctx, () => new Map<string, Promise<T>>());
   let promise = cache.get(key);
   if (!promise) {
     cache.set(key, promise = (async () => {
@@ -451,6 +454,18 @@ export function findNewVersion(data: any, {mode, range: authoredRange, useGreate
     if (!data?.versions) return null;
     versions = Object.keys(data.versions);
     latestTag = data["dist-tags"]?.latest ?? "";
+    // renovate's ignoreDeprecated: a range resolving to a live version never moves onto a deprecated one,
+    // npm-only because crates.io version records are `{}` and its yanked releases are dropped at fetch
+    if (mode === "npm" && !data.versions[coerceToVersion(range)]?.deprecated) {
+      const live = versions.filter(version => !data.versions[version]?.deprecated);
+      // A deprecated tag is still the ceiling the maintainer published, so nothing above it is
+      // offered either. Standing a live release in for the tag instead would make it a downgrade
+      // target, and dropping it outright would leave latest reading as greatest.
+      const capped = latestTag && !live.includes(latestTag) ? live.filter(version => !gt(version, latestTag)) : live;
+      // A wholly deprecated package has nothing else to offer, and its range need not name a
+      // published version for the exemption above to have been the one that applies.
+      versions = capped.length ? capped : live.length ? live : versions;
+    }
   } else if (mode === "go") {
     const oldVersion = coerceToVersion(range);
     if (!oldVersion) return null;

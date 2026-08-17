@@ -152,6 +152,9 @@ export async function probeMajorVersions(
 ): Promise<ProbeResult | null> {
   if (!firstProbe) return null;
   let highest = firstProbe;
+  // A major whose `@latest` is a prerelease or pseudo-version carries nothing to upgrade to, and
+  // taking it would hide every released major below it, so it only stands in when none has one.
+  let highestRelease = isVersionPrerelease(firstProbe.Version) ? null : firstProbe;
 
   // Stop at first gap — Go majors are conventionally contiguous.
   const cap = currentMajor + 101;
@@ -162,13 +165,16 @@ export async function probeMajorVersions(
     const results = await Promise.all(Array.from({length: to - from + 1}, (_, idx) => probeFn(from + idx)));
     const gapIdx = results.indexOf(null);
     const hits = gapIdx === -1 ? results : results.slice(0, gapIdx);
-    if (hits.length) highest = hits.at(-1)!;
+    if (hits.length) {
+      highest = hits.at(-1)!;
+      highestRelease = hits.findLast(hit => !isVersionPrerelease(hit!.Version)) ?? highestRelease;
+    }
     if (gapIdx !== -1) break;
     from = to + 1;
     batchSize *= 2;
   }
 
-  return highest;
+  return highestRelease ?? highest;
 }
 
 function buildGoPackageInfo(
@@ -329,8 +335,7 @@ const goLatestByCtx = new WeakMap<ModeContext, Map<string, Promise<ProbeResult |
 // One `@latest` per endpoint and module path for the whole run, as the make mode's probe makes the
 // same request as the lookup that follows. A rejected one is evicted so the lookup still retries.
 export function fetchGoLatestOnce(ctx: ModeContext, doFetch: ProxyFetch, base: string, path: string): Promise<ProbeResult | null> {
-  const byUrl = getOrSet(goLatestByCtx, ctx, () => new Map());
-  return dedupe(byUrl, `${base}/${path}`, () => fetchGoLatest(doFetch, base, path));
+  return dedupe(goLatestByCtx, ctx, `${base}/${path}`, () => fetchGoLatest(doFetch, base, path));
 }
 
 // The order `@latest` reports: a release outranks any prerelease, pseudo-versions among them.

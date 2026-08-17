@@ -234,6 +234,14 @@ test("fetchNpmInfo resolutions key keeps scope", async () => {
   await fetchNpmInfo("@babel/core", "resolutions", {}, {}, ctx);
   // the scope must survive: fetch @babel/core, never the unscoped `core`
   expect(fetchedUrl.endsWith("/@babel%2fcore")).toBe(true);
+  // corepack publishes yarn 2 and up as @yarnpkg/cli, yarn 1 alone stays on `yarn`
+  await fetchNpmInfo("yarn", "packageManager", {}, {}, ctx, undefined, "4.9.2");
+  expect(fetchedUrl.endsWith("/@yarnpkg%2fcli")).toBe(true);
+  await fetchNpmInfo("yarn", "packageManager", {}, {}, ctx, undefined, "1.22.22");
+  expect(fetchedUrl.endsWith("/yarn")).toBe(true);
+  // an `overrides` key is a selector like a `resolutions` one, never a name to request verbatim
+  await fetchNpmInfo("noty@3", "overrides", {}, {}, ctx);
+  expect(fetchedUrl.endsWith("/noty")).toBe(true);
 });
 
 test("fetchNpmInfo reads .npmrc from the manifest dir and honors an uncredentialed scoped registry", async () => {

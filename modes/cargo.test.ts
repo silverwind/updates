@@ -24,6 +24,17 @@ test.each([
     `dependencies${fieldSep}serde`, {old: "1.0.0", new: "1.1.0"}, `[dependencies]\nserde = { version = "1.1.0", features = ["derive"] }\n`],
   [`extended table [dependencies.name]`, `[dependencies.serde]\nversion = "1.0.0"\nfeatures = ["derive"]\n`,
     `dependencies${fieldSep}serde`, {old: "1.0.0", new: "1.2.0"}, `[dependencies.serde]\nversion = "1.2.0"\nfeatures = ["derive"]\n`],
+  // an extended table names no bare `[dependencies]` header, which must not widen the scope to the file
+  [`extended table beside a same-named dev entry`, `[dependencies.serde]\nversion = "1.0.0"\n\n[dev-dependencies]\nserde = "1.0.0"\n`,
+    `dependencies${fieldSep}serde`, {old: "1.0.0", new: "1.0.1"}, `[dependencies.serde]\nversion = "1.0.1"\n\n[dev-dependencies]\nserde = "1.0.0"\n`],
+  // TOML permits indentation and a trailing comment on a header, and a scope that misses one
+  // widens back to the file, so the dev entry below would be rewritten with it
+  [`indented header beside a same-named dev entry`, `  [dependencies] # pinned\n  serde = "1.0.0"\n\n  [dev-dependencies]\n  serde = "1.0.0"\n`,
+    `dependencies${fieldSep}serde`, {old: "1.0.0", new: "1.0.1"}, `  [dependencies] # pinned\n  serde = "1.0.1"\n\n  [dev-dependencies]\n  serde = "1.0.0"\n`],
+  // a bracketed line inside a multi-line string is text: taking it for a header loses the rewrite,
+  // and letting the extended-table pass reach it rewrites the package metadata instead
+  [`header the description only quotes`, `[package]\ndescription = """\n[dependencies.serde]\nversion = "1.0.0"\n"""\n\n[dependencies]\nserde = "1.0.0"\n`,
+    `dependencies${fieldSep}serde`, {old: "1.0.0", new: "1.0.1"}, `[package]\ndescription = """\n[dependencies.serde]\nversion = "1.0.0"\n"""\n\n[dependencies]\nserde = "1.0.1"\n`],
   [`oldOrig instead of old`, `[dependencies]\nserde = "1.0.0"\n`,
     `dependencies${fieldSep}serde`, {old: "1.0.0", oldOrig: "1.0.0", new: "1.0.2"}, `[dependencies]\nserde = "1.0.2"\n`],
   [`extended dev-dependencies`, `[dev-dependencies.tokio]\nversion = "1.28.0"\nfeatures = ["full"]\n`,
@@ -45,9 +56,12 @@ test("preserves surrounding content", () => {
     `[dependencies]`,
     `serde = "1.0.0"`,
     `tokio = { version = "1.28.0", features = ["full"] }`,
+    `serde = { version = "1.0.0.1", features = ["derive", "rc"] }`,
+    ...Array.from({length: 10}, () => `tokio = { version = "1.0", default-features = false, features = ["net", "time"] }`),
     ``,
     `[dev-dependencies]`,
     `rand = "0.8.5"`,
+    `serde = "1.0.0"`,
     ``,
   ].join("\n");
   const deps = {
@@ -58,7 +72,7 @@ test("preserves surrounding content", () => {
   expect(result).toContain(`serde = "1.0.1"`);
   expect(result).toContain(`version = "1.30.0", features = ["full"]`);
   expect(result).toContain(`name = "my-crate"`);
-  expect(result).toContain(`rand = "0.8.5"`);
+  expect(result).toContain(`[dev-dependencies]\nrand = "0.8.5"\nserde = "1.0.0"`);
 });
 
 // fetchCratesIoInfo
@@ -67,7 +81,7 @@ test("fetchCratesIoInfo happy path", async () => {
   const body = sparse(
     {name: "serde", vers: "1.0.0", yanked: false, pubtime: "2024-01-01T12:00:00Z"},
     {name: "serde", vers: "1.0.100", yanked: false, pubtime: "2024-06-01T12:00:00Z"},
-    {name: "serde", vers: "1.0.200", yanked: false, pubtime: "2025-01-15T12:00:00Z"},
+    {name: "serde", vers: "1.0.200+spec-1.1.0", yanked: false, pubtime: "2025-01-15T12:00:00Z"},
   );
   const [data, registry] = await fetchCratesIoInfo("serde", sparseCtx(body, urls));
   expect(urls).toEqual(["https://index.crates.io/se/rd/serde"]);

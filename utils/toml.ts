@@ -8,8 +8,11 @@ type TomlObject = {[key: string]: TomlValue};
 const arrayTableRe = /^\[\[([^\]]+)\]\]$/;
 const tableRe = /^\[([^[\]]+)\]$/;
 
+// A `__proto__` table is a plain key of the document, never a write into Object.prototype.
+const emptyTable = (): TomlObject => Object.create(null);
+
 export function parseToml(input: string): TomlObject {
-  const root: TomlObject = {};
+  const root = emptyTable();
   let current = root;
   const lines = input.split(/\r?\n/);
 
@@ -28,13 +31,13 @@ export function parseToml(input: string): TomlObject {
         if (Array.isArray(existing)) {
           target = existing[existing.length - 1] as TomlObject;
         } else {
-          if (!existing || typeof existing !== "object") target[keys[k]] = {};
+          if (!existing || typeof existing !== "object") target[keys[k]] = emptyTable();
           target = target[keys[k]] as TomlObject;
         }
       }
       const lastKey = keys[keys.length - 1];
       if (!Array.isArray(target[lastKey])) target[lastKey] = [];
-      const newTable: TomlObject = {};
+      const newTable = emptyTable();
       (target[lastKey]).push(newTable);
       current = newTable;
       continue;
@@ -136,7 +139,7 @@ function inferScalar(raw: string): TomlValue {
 }
 
 function parseInlineTable(raw: string): TomlObject {
-  const obj: TomlObject = {};
+  const obj = emptyTable();
   const inner = raw.slice(1, raw.lastIndexOf("}")).trim();
   if (!inner) return obj;
   for (const part of splitTopLevel(inner)) {
@@ -248,7 +251,7 @@ function lastIndexOfUnquoted(s: string, target: string): number {
 function descend(target: TomlObject, keys: Array<string>): TomlObject {
   for (const key of keys) {
     if (!(key in target) || typeof target[key] !== "object" || Array.isArray(target[key])) {
-      target[key] = {};
+      target[key] = emptyTable();
     }
     target = target[key];
   }

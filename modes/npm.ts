@@ -39,6 +39,9 @@ const segmentRe = /(@[^/]+\/)?([^/]+)/g;
 // the published name inside one segment, dropping yarn's `@range` discriminator: `qs@~6.14.1` -> `qs`
 const segmentNameRe = /^(?:@[^/]+\/)?[^@]+/;
 
+// The dep types whose keys are selectors rather than plain package names.
+export const selectorTypes = new Set(["resolutions", "overrides"]);
+
 // resolves a `resolutions`/`overrides` key to the published package, keeping the scope on the
 // final segment, e.g. `@babel/core` -> `@babel/core`, `foo/@scope/pkg` -> `@scope/pkg`
 export function resolutionsBasePackage(name: string): string {
@@ -135,25 +138,35 @@ function npmPackageUrl(registry: string, name: string, version?: string): string
   return version ? `${base}/${version}` : base;
 }
 
-const npmDataCache = new Map<string, Promise<Record<string, any>>>();
-const npmVersionInfoCache = new Map<string, Promise<NpmVersionInfo>>();
-const npmFullDataCache = new Map<string, Promise<Record<string, any> | null>>();
+// Per run, like go's goLatestByCtx and docker's hubTagsByCtx: a second updates() call in one
+// process must re-request rather than answer from the finished run's map.
+const npmDataByCtx = new WeakMap<ModeContext, Map<string, Promise<Record<string, any>>>>();
+const npmVersionInfoByCtx = new WeakMap<ModeContext, Map<string, Promise<NpmVersionInfo>>>();
+const npmFullDataByCtx = new WeakMap<ModeContext, Map<string, Promise<Record<string, any> | null>>>();
+
+// Bumped when the reducer drops or adds a field: an entry an older shape wrote still revalidates
+// to a 304, so only a key it was never stored under refetches it.
+const docShape = "v2";
+// Keyed by url and doc flavor too, as the abbreviated doc omits fields a later dated call needs.
+const docCacheKey = (url: string, needsDates: boolean) => `${url}\0${docShape}${needsDates ? "-dates" : ""}`;
 
 // The doc shape is kept, so legacy cache entries with full bodies stay readable.
 function reduceNpmDoc(data: Record<string, any>): Record<string, any> {
-  const versions: Record<string, Record<string, never>> = {};
-  for (const version of Object.keys(data.versions ?? {})) versions[version] = {};
+  const versions: Record<string, {deprecated?: true}> = {};
+  for (const version of Object.keys(data.versions ?? {})) versions[version] = data.versions[version]?.deprecated ? {deprecated: true} : {};
   return {name: data.name, "dist-tags": data["dist-tags"], versions, time: data.time, error: data.error};
 }
 
-export async function fetchNpmInfo(name: string, type: string, config: Config, args: Record<string, any>, ctx: ModeContext, dir?: string): Promise<PackageInfo> {
-  const {auth, registry} = resolveNpmRegistry(name, config, args, dir);
-  const packageName = type === "resolutions" ? resolutionsBasePackage(name) : name;
+export async function fetchNpmInfo(name: string, type: string, config: Config, args: Record<string, any>, ctx: ModeContext, dir?: string, version = ""): Promise<PackageInfo> {
+  // corepack publishes yarn 2 and up as `@yarnpkg/cli`, only yarn 1 lives under `yarn`. renovate's rule.
+  const packageName = selectorTypes.has(type) ? resolutionsBasePackage(name) :
+    type === "packageManager" && name === "yarn" && (parse(version)?.major ?? 0) > 1 ? "@yarnpkg/cli" : name;
+  // The published name, not the manifest key, is what a scoped `.npmrc` registry and its token key on.
+  const {auth, registry} = resolveNpmRegistry(packageName, config, args, dir);
   const url = npmPackageUrl(registry, packageName);
 
-  // Keyed by url and doc flavor, as the abbreviated doc omits fields a later dated call needs.
-  const cacheKey = args.needsDates ? `${url}\0dates` : url;
-  const data = await dedupe(npmDataCache, cacheKey, async () => {
+  const cacheKey = docCacheKey(url, Boolean(args.needsDates));
+  const data = await dedupe(npmDataByCtx, ctx, cacheKey, async () => {
     const opts = getFetchOpts(auth?.type, auth?.token);
     // The abbreviated doc is a fraction of the size but omits the `time` map that cooldown reads.
     if (!args.needsDates) {
@@ -172,7 +185,7 @@ export async function fetchNpmVersionInfo(name: string, version: string, config:
   const {auth, registry} = resolveNpmRegistry(name, config, args, dir);
   const url = npmPackageUrl(registry, name, version);
 
-  return dedupe(npmVersionInfoCache, url, async (): Promise<NpmVersionInfo> => {
+  return dedupe(npmVersionInfoByCtx, ctx, url, async (): Promise<NpmVersionInfo> => {
     try {
       const fetchOpts = getFetchOpts(auth?.type, auth?.token);
       // Per-version npm metadata is immutable — cache forever.
@@ -191,11 +204,11 @@ export async function fetchNpmVersionInfo(name: string, version: string, config:
         if (match) date = new Date(Number(match[1])).toISOString();
       }
       const fullUrl = npmPackageUrl(registry, name);
-      // With a cooldown active the package doc was already fetched in full, dates included.
-      if (!date) date = (await npmDataCache.get(fullUrl))?.time?.[version] || "";
+      // With a cooldown active the package doc was already fetched in full, under the dated key.
+      if (!date && args.needsDates) date = (await npmDataByCtx.get(ctx)?.get(docCacheKey(fullUrl, true)))?.time?.[version] || "";
       if (!date) {
         // _npmOperationalInternal is absent on some registries, fetch full metadata
-        const fullData = await tryOrNull(dedupe(npmFullDataCache, fullUrl, async () => {
+        const fullData = await tryOrNull(dedupe(npmFullDataByCtx, ctx, fullUrl, async () => {
           const res = await fetchWithRetry(ctx, fullUrl, fetchOpts);
           return res?.ok ? await res.json() : null;
         }));

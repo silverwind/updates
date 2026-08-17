@@ -15,9 +15,11 @@
 - `Dockerfile*`, `compose*.{yml,yaml}`, `docker-*.{yml,yaml}` - docker images
 - `Makefile`, `*.mk` - go tool versions in `go install` paths and docker image tags
 
-A docker image is keyed by image *and* tag, so a multi-stage file that references one image at two tags yields a row for each, labelled `image:tag`. Only LTS `ubuntu` tags are offered, as Renovate does.
+A docker image is keyed by image *and* tag, so a multi-stage file that references one image at two tags yields a row for each, labelled `image:tag`. Only LTS `ubuntu` tags are offered, as Renovate does. Only Docker Hub is queried, so an image on another registry produces no row and no error, as does a `Dockerfile` or compose reference pinned to a digest.
 
-A `pnpm-workspace.yaml` `catalog:` and `catalogs:` entry is resolved and rewritten in the workspace file. A member's `catalog:` or `catalog:<name>` value only names a catalog, so it is not reported on its own and stays as authored. An `npm:<pkg>@<range>` alias is resolved as the aliased package while the manifest keeps the alias as its key, and the `npm:<pkg>@` prefix is written back with the new range.
+A `pnpm-workspace.yaml` `catalog:` and `catalogs:` entry is resolved and rewritten in the workspace file. A member's `catalog:` or `catalog:<name>` value only names a catalog, so it is not reported on its own and stays as authored. An `npm:<pkg>@<range>` alias is resolved as the aliased package while the manifest keeps the alias as its key, and the `npm:<pkg>@` prefix is written back with the new range. A `packageManager` of `yarn` at 2 or above is looked up as `@yarnpkg/cli`, where corepack publishes it, as Renovate does. A nested `overrides` object carries no version of its own, so it is skipped, and so is a `pyproject.toml` dependency that `[tool.uv.sources]` gives a source of its own, which uv never resolves from pypi.
+
+A deprecated npm version is never offered, as Renovate's `ignoreDeprecated` does, unless the authored version is itself deprecated.
 
 ## Usage
 
@@ -40,7 +42,7 @@ npx updates -u && npm i
 |`-e, --exclude <dep,...>`|Exclude given dependencies|
 |`-l, --pin <dep=range>`|Pin dependency to given semver range|
 |`-C, --cooldown <duration>`|Minimum dependency age. A bare number is days, or suffix one of `y` (365 days), `m` (30 days), `w`, `d`, `h`, `s`, so `5m` is five months and there is no minutes unit. A version the registry publishes no date for is never offered while a cooldown is active|
-|`-p, --prerelease [<dep,...>]`|Consider prerelease versions|
+|`-p, --prerelease [<dep,...>]`|Consider prerelease versions, implying `--greatest`|
 |`-R, --release [<dep,...>]`|Only use release versions, may downgrade|
 |`-g, --greatest [<dep,...>]`|Prefer greatest over latest version|
 |`-t, --types <type,...>`|Dependency types to update|
@@ -63,7 +65,7 @@ npx updates -u && npm i
 
 Options that take multiple arguments can take them either via comma-separated value or by specifying the option multiple times. If an option has a optional `dep` argument but none is given, the option will be applied to all dependencies instead. The `dep` options support glob matching via `*` or regex (on CLI, wrap the regex in slashes, e.g. `'/^foo/'`), except `-l/--pin`, whose `dep` is an exact dependency name.
 
-An invalid `--sockets`, `--timeout` or `--pin` range aborts the run rather than being ignored. `--sockets` and `--timeout` are rounded to a whole number.
+An invalid `--sockets`, `--timeout`, `--modes` or `--pin` range aborts the run rather than being ignored. `--sockets` and `--timeout` are rounded to a whole number.
 
 ## Failed Lookups
 
@@ -107,11 +109,11 @@ export default {
 - `color` *boolean*: Force color output
 - `noColor` *boolean*: Disable color output
 - `greatest` *boolean | Array\<string | RegExp>*: Prefer greatest over latest version
-- `prerelease` *boolean | Array\<string | RegExp>*: Consider prerelease versions
+- `prerelease` *boolean | Array\<string | RegExp>*: Consider prerelease versions, implying `greatest`
 - `release` *boolean | Array\<string | RegExp>*: Only use release versions
 - `patch` *boolean | Array\<string | RegExp>*: Consider only up to semver-patch
 - `minor` *boolean | Array\<string | RegExp>*: Consider only up to semver-minor
-- `allowDowngrade` *boolean | Array\<string | RegExp>*: Allow version downgrades
+- `allowDowngrade` *boolean | Array\<string | RegExp>*: Allow version downgrades when using the latest version
 - `overrides` *Array\<Override>*: Per-package option overrides matched by name (see [Overrides](#overrides))
 - `inherit` *object*: Opt-in to inheriting select fields from other tools' configs (see [Renovate config](#renovate-config))
 
@@ -138,7 +140,7 @@ A `cooldown` of `0` in an override disables a global cooldown for the matched de
 
 ### Renovate config
 
-If a [Renovate](https://docs.renovatebot.com/) config is found, `ignoreDeps`, `enabled` and `allowedVersions` in `packageRules` are inherited as `include`/`exclude`/`pin`, evaluated in order as Renovate does. A rule matching on anything but package names is skipped, and a preset in `extends` that cannot be fetched is an error. `allowedVersions` filters candidates but never downgrades, as it is a ceiling in Renovate too. `minimumReleaseAge` is *not* inherited as `cooldown` by default, opt in via:
+If a [Renovate](https://docs.renovatebot.com/) config is found, `ignoreDeps`, `enabled` and `allowedVersions` in `packageRules` are inherited as `include`/`exclude`/`pin`, evaluated in order as Renovate does. A rule matching on anything but package names is skipped, a preset in `extends` that cannot be fetched is an error, and one with no URL, a built-in like `config:recommended` or a `local>`, is skipped. `allowedVersions` filters candidates but never downgrades, as it is a ceiling in Renovate too. `minimumReleaseAge` is *not* inherited as `cooldown` by default, and neither is a per-package rule's own, which becomes an `overrides` entry, opt in via:
 
 ```ts
 export default {

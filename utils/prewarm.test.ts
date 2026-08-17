@@ -46,6 +46,9 @@ test("package.json triggers npm + jsr + github", () => {
     "https://api.github.com/",
   ]));
   expect(origins).toHaveLength(3);
+  expect(prewarmOrigins(makeDir({"package.json": "{}"}), {modes: "docker"})).toEqual([]);
+  // a workflow's docker images are read with docker alone enabled, so the forge dir still warms the hub
+  expect(prewarmOrigins(makeDir({".github/workflows/ci.yml": ""}), {modes: "docker"})).toEqual(["https://hub.docker.com/"]);
 });
 
 test("pnpm-workspace.yaml triggers same set as package.json", () => {

@@ -298,6 +298,7 @@ beforeAll(async () => {
   // Docker Hub API fixtures
   const dockerFixtures: Array<[string, string]> = [
     ["/v2/repositories/library/node/tags", "fixtures/docker/node-tags.json"],
+    ["/v2/repositories/library/noty/tags", "fixtures/docker/node-tags.json"], // an image sharing an npm dep's name
     ["/v2/repositories/library/postgres/tags", "fixtures/docker/postgres-tags.json"],
     ["/v2/repositories/library/redis/tags", "fixtures/docker/redis-tags.json"],
   ];
@@ -926,6 +927,12 @@ test("packageManager", async ({expect = globalExpect}: any = {}) => {
   `);
 });
 
+test("overrides type", async ({expect = globalExpect}: any = {}) => {
+  // the nested override carries no version of its own and is no dependency, and the top-level
+  // `prismjs` it shadows is skipped too, as a rewrite would land in the nested copy
+  expect(await makeTest("-j -t overrides")()).toEqual({npm: {overrides: notyResult.npm.dependencies}});
+});
+
 test("exclude", async ({expect = globalExpect}: any = {}) => {
   expect(await makeTest("-j -e gulp-sourcemaps -i /react/")()).toMatchInlineSnapshot(`
     {
@@ -983,11 +990,6 @@ test("uv", async ({expect = globalExpect}: any = {}) => {
             "info": "https://github.com/yaml/pyyaml",
             "new": "6.0",
             "old": "1.0",
-          },
-          "types-paramiko": {
-            "info": "https://github.com/python/typeshed",
-            "new": "3.5.0.20250801",
-            "old": "3.4.0.20240423",
           },
           "types-requests": {
             "info": "https://github.com/python/typeshed",
@@ -1391,6 +1393,18 @@ test("docker image names match with and without the docker.io prefix", async ({e
     "PLAIN := koalaman/shellcheck:v0.11.0",
     "",
   ].join("\n"));
+
+  // an npm dep of the same name resolves its options first, and answers for neither spelling
+  const clashDir = join(testDir, "test-docker-npm-name-clash");
+  mkdirSync(clashDir, {recursive: true});
+  await writeFile(join(clashDir, "package.json"), JSON.stringify({dependencies: {noty: "3.1.0"}}));
+  await writeFile(join(clashDir, "Dockerfile"), "FROM noty:18\n");
+  const clash = await updates({
+    files: [clashDir], registry: npmUrl, forgeapi: githubUrl, dockerapi: dockerUrl,
+    color: false, noCache: true, patch: ["docker.io/library/noty"],
+  });
+  expect(clash.results.npm.dependencies.noty.new).toBe("3.1.4");
+  expect(clash.results.docker).toBeUndefined(); // 18 to 22 is no patch
 });
 
 test("go prerelease with -p per-package", async ({expect = globalExpect}: any = {}) => {
@@ -1536,6 +1550,13 @@ test("cargo workspace update", async ({expect = globalExpect}: any = {}) => {
   writeFileSync(join(testCargoWorkDir, "crate-a", "Cargo.toml"), readFileSync(join(cargoWorkspaceDir, "crate-a", "Cargo.toml"), "utf8"));
   writeFileSync(join(testCargoWorkDir, "crate-b", "Cargo.toml"), readFileSync(join(cargoWorkspaceDir, "crate-b", "Cargo.toml"), "utf8"));
 
+  // a member named alongside its root, in either order, is no second file: the root supersedes it
+  const both = await updates({
+    files: [join(testCargoWorkDir, "crate-a", "Cargo.toml"), join(testCargoWorkDir, "Cargo.toml")],
+    cargoapi: cargoUrl, color: false, noCache: true,
+  });
+  expect(Object.keys(both.results.cargo).filter(key => key.includes("crate-a"))).toHaveLength(1);
+
   await runCliExec([
     script,
     "-u",
@@ -1554,13 +1575,14 @@ test("cargo workspace update", async ({expect = globalExpect}: any = {}) => {
 });
 
 test("pnpm workspace", async ({expect = globalExpect}: any = {}) => {
-  const result = await updates({
+  const opts = {
     files: [pnpmWorkspaceFile],
     registry: npmUrl,
     forgeapi: githubUrl,
     color: false,
     noCache: true,
-  });
+  };
+  const result = await updates(opts);
   const {npm} = result.results;
   expect(npm).toBeDefined();
 
@@ -1580,6 +1602,13 @@ test("pnpm workspace", async ({expect = globalExpect}: any = {}) => {
   expect(npm["catalogs.build|pnpm-workspace.yaml"]["typescript"]).toBeDefined();
   // lib-b's `svgstore: "catalog:"` names the catalog and holds no range of its own
   expect(libBDeps["svgstore"]).toBeUndefined();
+
+  // a member's own manifest, listed first as a run started inside it would find it, is no second file
+  const fromMember = await updates({
+    ...opts,
+    files: [join(pnpmWorkspaceDir, "packages", "app-a", "package.json"), pnpmWorkspaceFile],
+  });
+  expect(Object.keys(fromMember.results.npm).sort()).toEqual(Object.keys(npm).sort());
 });
 
 test("pnpm workspace update, and a second run is a no-op", async ({expect = globalExpect}: any = {}) => {
@@ -1648,18 +1677,29 @@ test("pin holds the range and keeps the authored precision", async ({expect = gl
   expect(npm.dependencies.react.new).toBe("18.2");
 });
 
-test("a config-file pin merges with the renovate ceilings rather than replacing them", async ({expect = globalExpect}: any = {}) => {
+test("a config-file pin and overrides merge with the renovate ones rather than replacing them", async ({expect = globalExpect}: any = {}) => {
   const dir = mkdtempSync(join(tmpdir(), "updates-pinmerge-"));
   try {
     const file = join(dir, "package.json");
     await writeFile(file, JSON.stringify({dependencies: {noty: "3.1.0"}}));
     await writeFile(join(dir, "renovate.json"), JSON.stringify({
-      packageRules: [{matchPackageNames: ["noty"], allowedVersions: "<3.1.4"}],
+      packageRules: [
+        {matchPackageNames: ["noty"], allowedVersions: "<3.1.4"},
+        {matchPackageNames: ["esbuild"], minimumReleaseAge: "1 day"},
+      ],
     }));
-    await writeFile(join(dir, "updates.config.js"), `module.exports = {pin: {"gulp-sourcemaps": "^2.0.0"}};\n`);
+    await writeFile(join(dir, "updates.config.js"), `module.exports = {inherit: {renovate: {cooldown: true}}, ` +
+      `pin: {"gulp-sourcemaps": "^2.0.0"}, overrides: [{include: ["gulp-sourcemaps"], greatest: true}]};\n`);
 
     const output = await updates(apiOpts({files: [file]}));
     expect(output.results.npm.dependencies.noty.new).toBe("3.1.3");
+
+    // the authored entry comes last, so api.ts's last-match-wins still gives it precedence
+    const {args, positionals} = parseCliArgs(["-f", file]);
+    expect((await resolveConfig(args, positionals)).overrides).toEqual([
+      {include: ["esbuild"], cooldown: 1},
+      {include: ["gulp-sourcemaps"], greatest: true},
+    ]);
   } finally {
     try {
       await rm(dir, {recursive: true, force: true, maxRetries: 10, retryDelay: 100});
@@ -2002,6 +2042,22 @@ test("docker directory discovery covers every recognized filename", async ({expe
   for (const suffix of ["Dockerfile.dev", "docker-stack.yml"]) {
     expect(byName.get(find(suffix)!).node).toMatchObject({old: "18", new: "22"});
   }
+
+  // a symlinked directory is the directory it points at, junction so win32 needs no privileges
+  const linked = join(testDir, "test-docker-dir-symlink");
+  symlinkSync(dockerDir, linked, "junction");
+  const {stdout: linkedStdout} = await runCliExec(dockerArgs("-j", "-f", linked));
+  expect(Object.keys(JSON.parse(linkedStdout).results.docker)).toHaveLength(byName.size);
+
+  // a link is the file it points at, whose name is what selects the mode, and naming both is no
+  // second file however they are ordered
+  const linkedFile = join(testDir, "test-docker-file-symlink");
+  const target = join(dockerDir, "Dockerfile.dev");
+  symlinkSync(target, linkedFile);
+  for (const args of [[linkedFile, target], [target, linkedFile]]) {
+    const {stdout} = await runCliExec(dockerArgs("-j", "-f", args[0], "-f", args[1]));
+    expect(Object.keys(JSON.parse(stdout).results.docker)).toHaveLength(1);
+  }
 });
 
 test("fetch error includes URL and no stack trace", async ({expect = globalExpect}: any = {}) => {
@@ -2037,6 +2093,11 @@ test("repeated multi-value flag survives swallowed flag recovery", async ({expec
   expect(keys).toContain("react");
   expect(keys).toContain("gulp-sourcemaps");
   expect(nonLast.npm.dependencies.react.new).toBe("18.3.0-next-fecc288b7-20221025");
+
+  // an inline value was written deliberately, so `--exclude=-u` excludes `-u` rather than updating
+  const {args} = parseCliArgs(["-i", "noty", "--exclude=-u"]);
+  expect(args.exclude).toEqual(["-u"]);
+  expect(args.update).toBeUndefined();
 });
 
 // Config option tests — each test gets its own temp dir for concurrency safety. Only the exit
@@ -2093,6 +2154,14 @@ test("config json yields JSON error output without -j flag", async ({expect = gl
     const {errors} = JSON.parse(err?.stdout || "{}");
     expect(errors[0].error).toContain("test.invalid");
   }
+
+  // -j is honoured for an error raised before any config has loaded
+  try {
+    await configTest(`{}`, "-j -l foo");
+    throw new Error("Expected non-zero exit");
+  } catch (err: any) {
+    expect(JSON.parse(err?.stdout || "{}").error).toContain("Invalid pin: foo");
+  }
 });
 
 test("a /regex/ cli value applies the flag to the packages it matches alone", async ({expect = globalExpect}: any = {}) => {
@@ -2127,6 +2196,21 @@ test("api basic", async ({expect = globalExpect}: any = {}) => {
   expect(output.results.npm.dependencies.noty.old).toBe("3.1.0");
   expect(output.results.npm.dependencies.noty.new).toBe("3.1.4");
   expect(output.results.npm.dependencies.noty.info).toBeTruthy();
+
+  // a second call in the same process re-requests rather than answering from the finished run's cache
+  let latest = "3.1.4";
+  const registry = makeServer(async (_, res) => res.send(await gzipPromise(JSON.stringify({
+    name: "noty", "dist-tags": {latest}, versions: {"3.1.0": {}, "3.1.4": {}, "3.2.1": {}},
+  }))));
+  await registry.start(0);
+  try {
+    const opts = apiOpts({include: ["noty"], registry: makeUrl(registry), noCache: true});
+    expect((await updates(opts)).results.npm.dependencies.noty.new).toBe("3.1.4");
+    latest = "3.2.1";
+    expect((await updates(opts)).results.npm.dependencies.noty.new).toBe("3.2.1");
+  } finally {
+    await registry.close();
+  }
 });
 
 test("api no deps", async ({expect = globalExpect}: any = {}) => {
@@ -2194,6 +2278,7 @@ test("api overrides last match wins", async ({expect = globalExpect}: any = {}) 
 test("api modes filter", async ({expect = globalExpect}: any = {}) => {
   const output = await updates(apiOpts({include: ["noty"], modes: ["pypi"]}));
   expect(output.message).toBe("No dependencies found, nothing to do.");
+  await expect(updates(apiOpts({modes: ["nope"]}))).rejects.toThrow("Invalid mode: nope");
 });
 
 test("api output structure", async ({expect = globalExpect}: any = {}) => {

@@ -75,7 +75,8 @@ test.each([
     {packagePatterns: ["^bar"], enabled: false},
     {matchPackagePrefixes: ["@baz/"], enabled: false},
     {matchPackageNames: ["qux"], excludePackageNames: ["qux"], enabled: false}, // and-not, skipped
-  ]}, {exclude: ["foo", /^bar/, "@baz/*"]}],
+    {matchPackageNames: ["@qux/{/,}**"], enabled: false}, // the prefix form configMigration emits
+  ]}, {exclude: ["foo", /^bar/, "@baz/*", "@qux/*"]}],
   // renovate needs a positive and every negation to match, which exclude cannot express
   ["no packageRule mixing positive and negated matchers", "renovate.json",
     {packageRules: [{matchPackageNames: ["@babel/*", "!@babel/core"], enabled: false}]}, {}],
@@ -97,6 +98,16 @@ test.each([["3 days", 3], ["1 week", 7], ["12 hours", 0.5]])("minimumReleaseAge 
   const dir = makeDir();
   writeFileSync(join(dir, "renovate.json"), JSON.stringify({minimumReleaseAge: age}));
   expect(await loadRenovateConfig(dir, {cooldown: true})).toEqual({cooldown});
+});
+
+test("a packageRule minimumReleaseAge with no matcher applies to every dependency", async () => {
+  const dir = makeDir();
+  writeFileSync(join(dir, "renovate.json"), JSON.stringify({packageRules: [
+    {minimumReleaseAge: "7 days"},
+    {matchPackageNames: ["esbuild"], minimumReleaseAge: "1 day"},
+  ]}));
+  expect(await loadRenovateConfig(dir, {cooldown: true}))
+    .toEqual({overrides: [{cooldown: 7}, {include: ["esbuild"], cooldown: 1}]});
 });
 
 test("a subdirectory inherits the config of a parent directory", async () => {
@@ -338,6 +349,7 @@ test("real-world config", async () => {
       "tailwindcss": "^3",
     },
     pinNoDowngrade: true,
+    overrides: [{include: ["esbuild"], cooldown: 1}],
   });
 });
 

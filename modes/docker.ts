@@ -1,5 +1,5 @@
 import {coerce, diff, gt, satisfies} from "../utils/semver.ts";
-import {getOrSet, longestFirstAlternation} from "../utils/utils.ts";
+import {longestFirstAlternation} from "../utils/utils.ts";
 import {type Deps, type ModeContext, type PackageInfo, dedupe, fieldSep, fetchWithEtag, effectiveConcurrency, getLimiter, isSameVersionScheme, passesCooldown, reduceJson, stripv, throwFetchError, formatVersionPrecision, maxTagPages} from "./shared.ts";
 
 export type DockerImageRef = {
@@ -92,7 +92,7 @@ export function extractDockerRefs(content: string, regex: RegExp): Array<{ref: D
 const hubTagsByCtx = new WeakMap<ModeContext, Map<string, Promise<Record<string, string>>>>();
 
 export function fetchDockerHubTags(namespace: string, repo: string, ctx: ModeContext): Promise<Record<string, string>> {
-  return dedupe(getOrSet(hubTagsByCtx, ctx, () => new Map()), `${namespace}/${repo}`, () =>
+  return dedupe(hubTagsByCtx, ctx, `${namespace}/${repo}`, () =>
     fetchDockerHubTagsUncached(namespace, repo, ctx));
 }
 

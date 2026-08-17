@@ -51,6 +51,11 @@
       "allowedVersions": "^3",
     },
     {
+      // a fast-moving dep does not need the repo-wide soak time
+      "matchPackageNames": ["esbuild"],
+      "minimumReleaseAge": "1 day",
+    },
+    {
       // ignore all @types/* packages via regex matcher
       "matchPackageNames": ["/^@types\\//"],
       "enabled": false,
