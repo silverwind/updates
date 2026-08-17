@@ -145,7 +145,7 @@ export type MakeVersionOpts = {
   useGreatest: boolean,
   usePre: boolean,
   useRel: boolean,
-  allowDowngrade: Set<RegExp> | boolean,
+  allowDowngrade: boolean,
   pinnedRange?: string,
   pinNoDowngrade?: boolean,
   cooldownDays?: number,
@@ -175,7 +175,7 @@ export type MakeDockerUpdate = {newTag: string, newDigest: string | null, date: 
 export async function fetchMakeDockerInfo(image: MakeDockerImage, ctx: ModeContext, opts: MakeVersionOpts): Promise<MakeDockerUpdate | null> {
   const {namespace, repo, fullImage, tag} = image.ref;
   const [data] = await fetchDockerInfo(fullImage, ctx); // throws for non-Hub registries
-  const result = findDockerVersion(data.tags, tag, opts.semvers, opts.cooldownDays, opts.now, opts.pinnedRange);
+  const result = findDockerVersion(data.tags, tag, opts.semvers, opts.cooldownDays, opts.now, opts.pinnedRange, opts.usePre, opts.useRel);
   if (!result) return null;
 
   let newDigest: string | null = null;

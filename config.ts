@@ -52,17 +52,17 @@ export type Config = {
   timeout?: number;
   /** Maximum number of parallel HTTP sockets */
   sockets?: number;
-  /** Prefer greatest over latest version */
+  /** Ignore the `latest` tag and take the greatest release */
   greatest?: boolean | Array<string | RegExp>;
-  /** Consider prerelease versions, implying `greatest` */
+  /** Consider prereleases, implying `greatest` */
   prerelease?: boolean | Array<string | RegExp>;
-  /** Only use release versions, may downgrade */
+  /** Never consider prereleases */
   release?: boolean | Array<string | RegExp>;
   /** Consider only up to semver-patch */
   patch?: boolean | Array<string | RegExp>;
   /** Consider only up to semver-minor */
   minor?: boolean | Array<string | RegExp>;
-  /** Allow version downgrades when using latest version */
+  /** Allow downgrading onto a lower `latest` tag */
   allowDowngrade?: boolean | Array<string | RegExp>;
   /** Per-package option overrides, matched by name; last matching override wins */
   overrides?: Array<Override>;
@@ -78,17 +78,17 @@ export type Override = {
   exclude?: Array<string | RegExp>;
   /** Minimum dependency age, e.g. 7 (days), "1w", "2d", "6h"; 0 disables a global cooldown */
   cooldown?: number | string;
-  /** Prefer greatest over latest version */
+  /** Ignore the `latest` tag and take the greatest release */
   greatest?: boolean;
-  /** Consider prerelease versions, implying `greatest` */
+  /** Consider prereleases, implying `greatest` */
   prerelease?: boolean;
-  /** Only use release versions, may downgrade */
+  /** Never consider prereleases */
   release?: boolean;
   /** Consider only up to semver-patch */
   patch?: boolean;
   /** Consider only up to semver-minor */
   minor?: boolean;
-  /** Allow version downgrades when using latest version */
+  /** Allow downgrading onto a lower `latest` tag */
   allowDowngrade?: boolean;
 };
 

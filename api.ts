@@ -1221,10 +1221,10 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
           }
           if (!oldRef) { delete deps.actions[key]; return; }
 
-          const {usePre, useRel, semvers, cooldownOverride} = getVersionOpts("actions", actionName);
+          const {useGreatest, usePre, useRel, semvers, allowDowngrade: allowDown, cooldownOverride} = getVersionOpts("actions", actionName);
           const actionCooldownDays = cooldownOverride ?? fileCooldownDays;
           const result = await pickVersion({
-            range: oldRef, semvers, usePre, useRel, versioning: githubActionsVersioning,
+            range: oldRef, semvers, useGreatest, usePre, useRel, allowDowngrade: allowDown, versioning: githubActionsVersioning,
             pinnedRange: actionPin, pinNoDowngrade,
             cooldownDays: actionCooldownDays || undefined, now: actionCooldownDays ? now : undefined,
           });
@@ -1290,7 +1290,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
           return;
         }
 
-        const {names, semvers, cooldownOverride} = getVersionOpts("docker", fullImage);
+        const {names, semvers, usePre, useRel, cooldownOverride} = getVersionOpts("docker", fullImage);
         for (const info of infos) {
           const dep = deps.docker[info.key];
           const oldTag = dep.oldOrig || dep.old;
@@ -1300,7 +1300,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
           const result = findDockerVersion(
             data.tags, oldTag, semvers,
             dockerCooldownDays || undefined, dockerCooldownDays ? now : undefined,
-            pinnedRange,
+            pinnedRange, usePre, useRel,
           );
           if (!result) { delete deps.docker[info.key]; continue; }
 

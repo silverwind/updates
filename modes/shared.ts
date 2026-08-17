@@ -3,7 +3,7 @@ import {Buffer} from "node:buffer";
 import {env} from "node:process";
 import {type Versioning, coerce, diff, gt, satisfies, semverVersioning, pep440Versioning, valid} from "../utils/semver.ts";
 import {getCache, setCache} from "../utils/fetchCache.ts";
-import {commaSeparatedToArray, getOrSet, matchesAny} from "../utils/utils.ts";
+import {commaSeparatedToArray, getOrSet} from "../utils/utils.ts";
 import pkg from "../package.json" with {type: "json"};
 
 export type {Config} from "../config.ts";
@@ -46,17 +46,21 @@ export type CooldownOpts = {
 export type FindVersionOpts = {
   range: string,
   semvers: Set<string>,
+  useGreatest: boolean,
   usePre: boolean,
   useRel: boolean,
+  // The tag published for the package, which selection may not climb past outside greatest mode.
+  latest?: string,
   pinnedRange?: string,
   pinNoDowngrade?: boolean,
+  // Already resolved against the --allow-downgrade patterns by the caller, for every name the
+  // dependency answers to, so selection only reads the verdict.
+  allowDowngrade?: boolean,
   versioning?: Versioning,
 } & CooldownOpts;
 
-export type FindNewVersionOpts = FindVersionOpts & {
+export type FindNewVersionOpts = Omit<FindVersionOpts, "latest"> & {
   mode: string,
-  useGreatest: boolean,
-  allowDowngrade: Set<RegExp> | boolean,
 };
 
 // An active cooldown requires a timestamp, as renovate's minimumReleaseAgeBehaviour default does:
@@ -328,76 +332,66 @@ function cachedVariants(cache: WeakMap<Set<string>, Set<string>>, semvers: Set<s
 const allPrereleaseCache = new WeakMap<Set<string>, Set<string>>();
 const sameReleasePrereleaseCache = new WeakMap<Set<string>, Set<string>>();
 
-// Prerelease candidates are in play when --pre is set or the authored version already is one,
-// and classifying against an uncoerced prerelease yields `pre*` diffs the raw set lacks.
+// Prerelease candidates are in play when --prerelease is set or the authored version already is
+// one, and classifying against an uncoerced prerelease yields `pre*` diffs the raw set lacks.
 // An authored prerelease alone only reaches prereleases of its own release, as renovate keeps an
 // unstable candidate only when major, minor and patch match, so a `17.0.0-rc.0` pin must not
-// follow an unreleased 18.x canary train. --pre opts into every one, as ignoreUnstable=false does.
-function prereleaseOpts(range: string, usePre: boolean, semvers: Set<string>, versioning: Versioning): {effectiveUsePre: boolean, effectiveSemvers: Set<string>} {
+// follow an unreleased 18.x canary train. --prerelease opts into every one, as ignoreUnstable=false
+// does, and --release turns them all away again, as ncu's `--pre 0` overrides its own auto-enable.
+// Every mode filters through the returned `skipsPrerelease`, as renovate keeps its unstable filter
+// in the shared lookup rather than per datasource.
+export function prereleaseOpts(range: string, usePre: boolean, useRel: boolean, semvers: Set<string>, versioning: Versioning = semverVersioning) {
+  const anyPrerelease = usePre || versioning.isRangePrerelease(range);
+  let effectiveSemvers = semvers;
   if (usePre) {
-    return {effectiveUsePre: true, effectiveSemvers: cachedVariants(allPrereleaseCache, semvers, out => {
+    effectiveSemvers = cachedVariants(allPrereleaseCache, semvers, out => {
       out.add("prerelease");
       if (semvers.has("patch")) out.add("prepatch");
       if (semvers.has("minor")) out.add("preminor");
       if (semvers.has("major")) out.add("premajor");
-    })};
+    });
+  } else if (anyPrerelease) {
+    effectiveSemvers = cachedVariants(sameReleasePrereleaseCache, semvers, out => out.add("prerelease"));
   }
-  if (versioning.isRangePrerelease(range)) {
-    return {effectiveUsePre: true, effectiveSemvers: cachedVariants(sameReleasePrereleaseCache, semvers, out => out.add("prerelease"))};
-  }
-  return {effectiveUsePre: false, effectiveSemvers: semvers};
-}
-
-type DowngradeOpts = {
-  useRel: boolean,
-  allowDowngrade: Set<RegExp> | boolean,
-  name: string,
-};
-
-// Check if a version transition should be allowed. Prevents:
-// - Pre-release to lower release (unless --release)
-// - Release to lower release (unless --allow-downgrade)
-export function isAllowedVersionTransition(oldVersion: string, newVersion: string, {useRel, allowDowngrade, name}: DowngradeOpts, versioning: Versioning = semverVersioning): boolean {
-  const oldParsed = versioning.parseRange(oldVersion);
-  const newParsed = versioning.parse(newVersion);
-  if (!oldParsed || !newParsed) return true;
-
-  const oldIsPre = versioning.isRangePrerelease(oldVersion) || versioning.isPrerelease(oldParsed);
-  const newIsPre = versioning.isPrerelease(newParsed);
-
-  // Pre-release to release: allow if upgrade, or with --release flag
-  if (oldIsPre && !newIsPre) {
-    return versioning.compare(newParsed, oldParsed) >= 0 || useRel;
-  }
-
-  // General downgrade from release to lower release: only with --allow-downgrade
-  if (!newIsPre && versioning.compare(newParsed, oldParsed) < 0) {
-    return matchesAny(name, allowDowngrade);
-  }
-
-  return true;
+  // An unparseable candidate is no prerelease, matching isVersionPrerelease, so the go mode can
+  // hand its raw strings straight in.
+  const skipsPrerelease = (parsed: any) => (!anyPrerelease || useRel) && Boolean(parsed) && versioning.isPrerelease(parsed);
+  return {effectiveSemvers, skipsPrerelease};
 }
 
 export function coerceToVersion(rangeOrVersion: string): string {
   return coerce(rangeOrVersion)?.version ?? "";
 }
 
-export function findVersion(data: any, versions: Array<string>, {range, semvers, usePre, useRel, pinnedRange, pinNoDowngrade, cooldownDays, now, getVersionDate, versioning = semverVersioning}: FindVersionOpts): string | null {
+export function findVersion(data: any, versions: Array<string>, {range, semvers, useGreatest, usePre, useRel, latest, pinnedRange, pinNoDowngrade, allowDowngrade, cooldownDays, now, getVersionDate, versioning = semverVersioning}: FindVersionOpts): string | null {
   // Rank and classify against the authored version with its prerelease intact. Coercing
   // drops it, which would sort a prerelease pin above its own release.
   const oldParsed = versioning.parseRange(range);
   if (!oldParsed) return null;
 
-  const {effectiveUsePre, effectiveSemvers} = prereleaseOpts(range, usePre, semvers, versioning);
+  const {effectiveSemvers, skipsPrerelease} = prereleaseOpts(range, usePre, useRel, semvers, versioning);
+
+  // renovate's respectLatest: the tag is a ceiling, so a release the maintainer published without
+  // blessing it stays out of reach however it sorts. A version already past the tag may still climb
+  // further, as renovate exempts it. --greatest asks for the greatest version there is, which is to
+  // say no ceiling at all, and so does --prerelease unless --release takes its prereleases away.
+  // A pin whose range the tag falls outside is a target of its own, so it lifts the ceiling too.
+  const latestParsed = latest ? versioning.parse(latest) : null;
+  const ceiling = useGreatest || (usePre && !useRel) ||
+    (latestParsed && pinnedRange && !versioning.satisfiesRange(latestParsed, pinnedRange)) ? null : latestParsed;
+  const pastCeiling = Boolean(ceiling && versioning.compare(oldParsed, ceiling) > 0);
+
+  // Two things open a step down, onto different targets: an authored pin the version already
+  // violates moves into the pin's range, while --allow-downgrade follows the tag the maintainer
+  // stepped back to. A renovate-derived pin opens neither, being a ceiling rather than a target.
+  // --allow-downgrade lands on the tag itself, so a tag that is gone or deprecated offers nowhere
+  // to land. With no tag published there is nothing to land on but the release below a prerelease
+  // train, which is the only step down worth taking blind.
+  const intoPin = Boolean(pinnedRange) && !pinNoDowngrade && !versioning.satisfiesRange(oldParsed, pinnedRange!);
+  const ontoTag = Boolean(allowDowngrade) && (Boolean(ceiling) || versioning.isPrerelease(oldParsed));
 
   const time = data?.time;
   const cooldownActive = Boolean(cooldownDays && now);
-  // Two cases deliberately move down: a pin the authored version already violates has to
-  // be free to move down into it, and --release leaves a prerelease train for the newest
-  // real release even when that is lower (isAllowedVersionTransition vets it afterwards).
-  // A renovate-derived pin is exempt from the first: it is a ceiling, not a target.
-  const allowsDowngrade = (Boolean(pinnedRange) && !pinNoDowngrade && !versioning.satisfiesRange(oldParsed, pinnedRange!)) ||
-    (useRel && versioning.isPrerelease(oldParsed));
 
   // Highest candidate that passes every check, as renovate takes the first walking high to low.
   // A publish date never outranks a version, so a backport released later cannot win.
@@ -405,12 +399,16 @@ export function findVersion(data: any, versions: Array<string>, {range, semvers,
 
   for (const version of versions) {
     const parsed = versioning.parse(version);
-    if (!parsed || versioning.isPrerelease(parsed) && (!effectiveUsePre || useRel)) continue;
+    if (!parsed || skipsPrerelease(parsed)) continue;
 
     // Candidates only ever move forward, matching renovate's release filter. Cheaper than
     // the range check below, so it runs first and rejects most of them.
-    if (!allowsDowngrade && versioning.compare(parsed, oldParsed) <= 0) continue;
+    const stepDown = versioning.compare(parsed, oldParsed) <= 0;
+    if (stepDown && !intoPin && !ontoTag) continue;
     if (newVersionParsed && versioning.compare(parsed, newVersionParsed) <= 0) continue;
+    // A pin moves into its own range, wherever the tag sits; anything else lands on the tag.
+    if (stepDown && !intoPin && ceiling && versioning.compare(parsed, ceiling) !== 0) continue;
+    if (!stepDown && ceiling && !pastCeiling && versioning.compare(parsed, ceiling) > 0) continue;
 
     if (pinnedRange && !versioning.satisfiesRange(parsed, pinnedRange)) continue;
     if (cooldownActive && !passesCooldown(getVersionDate ? getVersionDate(version) : time?.[version], cooldownDays, now)) continue;
@@ -429,12 +427,12 @@ export function findVersion(data: any, versions: Array<string>, {range, semvers,
   return newVersionParsed?.version ?? null;
 }
 
-// TODO: maybe include pseudo-versions with --prerelease
+// TODO: maybe include pseudo-versions with --greatest
 export function isGoPseudoVersion(version: string): boolean {
   return /\d{14}-[0-9a-f]{12}$/.test(version);
 }
 
-export function findNewVersion(data: any, {mode, range: authoredRange, useGreatest, useRel, usePre, semvers, pinnedRange, pinNoDowngrade, cooldownDays, now, allowDowngrade}: FindNewVersionOpts): string | null {
+export function findNewVersion(data: any, {mode, range: authoredRange, useGreatest, usePre, useRel, semvers, pinnedRange, pinNoDowngrade, cooldownDays, now, allowDowngrade}: FindNewVersionOpts): string | null {
   if (authoredRange === "*") return null; // ignore wildcard
 
   const versioning: Versioning = mode === "pypi" ? pep440Versioning : semverVersioning;
@@ -457,34 +455,35 @@ export function findNewVersion(data: any, {mode, range: authoredRange, useGreate
     // renovate's ignoreDeprecated: a range resolving to a live version never moves onto a deprecated one,
     // npm-only because crates.io version records are `{}` and its yanked releases are dropped at fetch
     if (mode === "npm" && !data.versions[coerceToVersion(range)]?.deprecated) {
-      const live = versions.filter(version => !data.versions[version]?.deprecated);
-      // A deprecated tag is still the ceiling the maintainer published, so nothing above it is
-      // offered either. Standing a live release in for the tag instead would make it a downgrade
-      // target, and dropping it outright would leave latest reading as greatest.
-      const capped = latestTag && !live.includes(latestTag) ? live.filter(version => !gt(version, latestTag)) : live;
       // A wholly deprecated package has nothing else to offer, and its range need not name a
-      // published version for the exemption above to have been the one that applies.
-      versions = capped.length ? capped : live.length ? live : versions;
+      // published version for the exemption above to have been the one that applies. The tag stays
+      // findVersion's ceiling either way, so a deprecated one still holds back what it published.
+      const live = versions.filter(version => !data.versions[version]?.deprecated);
+      versions = live.length ? live : versions;
     }
   } else if (mode === "go") {
     const oldVersion = coerceToVersion(range);
     if (!oldVersion) return null;
-    const {effectiveUsePre, effectiveSemvers} = prereleaseOpts(range, usePre, semvers, versioning);
-    const skipPrerelease = (v: string) => isVersionPrerelease(v) && (!effectiveUsePre || useRel);
-    const transitionOpts = {useRel, allowDowngrade, name: data.name};
+    const {effectiveSemvers, skipsPrerelease} = prereleaseOpts(range, usePre, useRel, semvers, versioning);
     // Use full original version for prerelease detection (range is shortened for Go)
     const originalOldVersion = data.old || range;
+    const oldParsed = versioning.parseRange(originalOldVersion);
+    // A step down off the authored version is only offered with --allow-downgrade, as findVersion does.
+    const mayStepDown = Boolean(allowDowngrade) ||
+      (Boolean(pinnedRange) && !pinNoDowngrade && Boolean(oldParsed) && !versioning.satisfiesRange(oldParsed, pinnedRange!));
 
-    // A candidate is taken only if it is a real, allowed upgrade under the active
-    // semver, transition, cooldown and pin constraints.
+    // A candidate is taken only if it is a real, allowed upgrade under the active semver, step-down,
+    // cooldown and pin constraints. No ceiling among them: the proxy's `@latest` is the only
+    // candidate source, so it already is its own.
     const accepts = (candidate: string, time: string | undefined): boolean => {
       const coerced = coerceToVersion(candidate);
-      if (!coerced || isGoPseudoVersion(candidate) || skipPrerelease(candidate)) return false;
+      const parsed = versioning.parse(candidate);
+      if (!coerced || isGoPseudoVersion(candidate) || skipsPrerelease(parsed)) return false;
       // Classify against the authored version first: coercing strips the prerelease, so
       // a `-rc.1` or pseudo-version pin would compare equal to its own release and stall.
       const d = diff(originalOldVersion, candidate) ?? diff(oldVersion, coerced);
       if (!d || !effectiveSemvers.has(d)) return false;
-      if (!isAllowedVersionTransition(originalOldVersion, candidate, transitionOpts)) return false;
+      if (!mayStepDown && parsed && oldParsed && versioning.compare(parsed, oldParsed) < 0) return false;
       if (!passesCooldown(time, cooldownDays, now)) return false;
       return !pinnedRange || satisfies(coerced, pinnedRange);
     };
@@ -498,71 +497,10 @@ export function findNewVersion(data: any, {mode, range: authoredRange, useGreate
     }
     return null;
   }
-  const version = findVersion(data, versions, {range, semvers, usePre, useRel, pinnedRange, pinNoDowngrade, cooldownDays, now, getVersionDate, versioning});
-
-  if (useGreatest) {
-    return version;
-  } else {
-    const latestParsed = versions.includes(latestTag) ? versioning.parse(latestTag) : null;
-    const oldParsed = versioning.parseRange(range);
-    if (!latestParsed || !oldParsed) return version;
-
-    const newParsed = version ? versioning.parse(version) : null;
-    const latestIsPre = versioning.isPrerelease(latestParsed);
-    const oldIsPre = versioning.isRangePrerelease(range);
-    const newIsPre = Boolean(newParsed && versioning.isPrerelease(newParsed));
-    const transitionOpts = {useRel, allowDowngrade, name: data.name};
-
-    // update to new prerelease
-    if (!useRel && usePre || (oldIsPre && newIsPre)) {
-      return version;
-    }
-
-    // pre-release to release transition
-    if (oldIsPre && !newIsPre) {
-      return version && isAllowedVersionTransition(range, version, transitionOpts, versioning) ? version : null;
-    }
-
-    // check if latestTag is allowed by semvers
-    const d = versioning.diff(oldParsed, latestParsed);
-    if (d && d !== "prerelease" && !semvers.has(d.replace(/^pre/, ""))) {
-      return version;
-    }
-
-    // prevent upgrading to prerelease with --release-only
-    if (useRel && latestIsPre) {
-      return version;
-    }
-
-    // prevent downgrade to older version except with --allow-downgrade
-    if (versioning.compare(latestParsed, oldParsed) < 0 && !latestIsPre) {
-      if (!isAllowedVersionTransition(range, latestTag, transitionOpts, versioning)) {
-        // latest dist-tag is a disallowed downgrade — fall back to the in-range
-        // `version` like the sibling branches, but only if it is a real upgrade.
-        return newParsed && versioning.compare(newParsed, oldParsed) > 0 ? version : null;
-      }
-      return latestTag;
-    }
-
-    // prevent upgrading from non-prerelease to prerelease from latest dist-tag by default
-    if (!oldIsPre && latestIsPre && !usePre) {
-      return version;
-    }
-
-    // If a pinned range is specified and latestTag doesn't satisfy it, return version
-    if (pinnedRange && !versioning.satisfiesRange(latestParsed, pinnedRange)) {
-      return version;
-    }
-
-    // latestTag may be too new under cooldown — fall back to the
-    // already-filtered `version` selected by findVersion.
-    if (cooldownDays && now && !passesCooldown(getVersionDate ? getVersionDate(latestTag) : data.time?.[latestTag], cooldownDays, now)) {
-      return version;
-    }
-
-    // in all other cases, return latest dist-tag
-    return latestTag;
-  }
+  // The tag is findVersion's ceiling and the floor a step down lands on, so it has nothing left to
+  // decide here. Modes without a tag pass none and are simply uncapped.
+  return findVersion(data, versions, {range, semvers, useGreatest, usePre, useRel, latest: latestTag,
+    pinnedRange, pinNoDowngrade, allowDowngrade, cooldownDays, now, getVersionDate, versioning});
 }
 
 // A forge host includes its port: two instances on one hostname are different endpoints.

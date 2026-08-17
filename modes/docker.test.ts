@@ -52,10 +52,14 @@ test("dockerImageNames", () => {
 
 // parseDockerTag
 test.each([
-  ["18", {version: "18", suffix: ""}],
-  ["18.19.1", {version: "18.19.1", suffix: ""}],
-  ["18-alpine", {version: "18", suffix: "-alpine"}],
-  ["v1.2.3", {version: "v1.2.3", suffix: ""}],
+  ["18", {version: "18", prerelease: "", suffix: ""}],
+  ["18.19.1", {version: "18.19.1", prerelease: "", suffix: ""}],
+  ["18-alpine", {version: "18", prerelease: "", suffix: "-alpine"}],
+  ["v1.2.3", {version: "v1.2.3", prerelease: "", suffix: ""}],
+  // a hyphen starts the variant suffix, so `-rc` is a channel while `rc3` is a prerelease of 1.27
+  ["1.27-rc", {version: "1.27", prerelease: "", suffix: "-rc"}],
+  ["1.27rc3", {version: "1.27", prerelease: "rc3", suffix: ""}],
+  ["1.27rc3-alpine", {version: "1.27", prerelease: "rc3", suffix: "-alpine"}],
   ["latest", null],
   ["bullseye", null],
 ])("parseDockerTag %s", (tag, expected) => {

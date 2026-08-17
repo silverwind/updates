@@ -42,13 +42,13 @@ npx updates -u && npm i
 |`-e, --exclude <dep,...>`|Exclude given dependencies|
 |`-l, --pin <dep=range>`|Pin dependency to given semver range|
 |`-C, --cooldown <duration>`|Minimum dependency age. A bare number is days, or suffix one of `y` (365 days), `m` (30 days), `w`, `d`, `h`, `s`, so `5m` is five months and there is no minutes unit. A version the registry publishes no date for is never offered while a cooldown is active|
-|`-p, --prerelease [<dep,...>]`|Consider prerelease versions, implying `--greatest`|
-|`-R, --release [<dep,...>]`|Only use release versions, may downgrade|
-|`-g, --greatest [<dep,...>]`|Prefer greatest over latest version|
+|`-p, --prerelease [<dep,...>]`|Consider prereleases, implying `--greatest`|
+|`-R, --release [<dep,...>]`|Never consider prereleases|
+|`-g, --greatest [<dep,...>]`|Ignore the `latest` tag and take the greatest release|
 |`-t, --types <type,...>`|Dependency types to update|
 |`-P, --patch [<dep,...>]`|Consider only up to semver-patch|
 |`-m, --minor [<dep,...>]`|Consider only up to semver-minor|
-|`-d, --allow-downgrade [<dep,...>]`|Allow version downgrades when using latest version|
+|`-d, --allow-downgrade [<dep,...>]`|Allow downgrading onto a lower `latest` tag|
 |`-s, --sockets <num>`|Maximum number of parallel HTTP sockets opened. Default: 25|
 |`-T, --timeout <ms>`|Network request timeout in ms (go probes use half). Default: 5000|
 |`-r, --registry <url>`|Override npm registry URL|
@@ -108,12 +108,12 @@ export default {
 - `errorOnUnchanged` *boolean*: Exit with code 0 when updates are available and 2 when not
 - `color` *boolean*: Force color output
 - `noColor` *boolean*: Disable color output
-- `greatest` *boolean | Array\<string | RegExp>*: Prefer greatest over latest version
-- `prerelease` *boolean | Array\<string | RegExp>*: Consider prerelease versions, implying `greatest`
-- `release` *boolean | Array\<string | RegExp>*: Only use release versions
+- `greatest` *boolean | Array\<string | RegExp>*: Ignore the `latest` tag and take the greatest release
+- `prerelease` *boolean | Array\<string | RegExp>*: Consider prereleases, implying `greatest`
+- `release` *boolean | Array\<string | RegExp>*: Never consider prereleases
 - `patch` *boolean | Array\<string | RegExp>*: Consider only up to semver-patch
 - `minor` *boolean | Array\<string | RegExp>*: Consider only up to semver-minor
-- `allowDowngrade` *boolean | Array\<string | RegExp>*: Allow version downgrades when using the latest version
+- `allowDowngrade` *boolean | Array\<string | RegExp>*: Allow downgrading onto a lower `latest` tag
 - `overrides` *Array\<Override>*: Per-package option overrides matched by name (see [Overrides](#overrides))
 - `inherit` *object*: Opt-in to inheriting select fields from other tools' configs (see [Renovate config](#renovate-config))
 

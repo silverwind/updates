@@ -56,13 +56,13 @@ async function main(): Promise<void> {
     -e, --exclude <dep,...>            Exclude given dependencies
     -l, --pin <dep=range>              Pin dependency to given semver range
     -C, --cooldown <duration>          Minimum dependency age, e.g. 7 (days), 1w, 2d, 6h
-    -p, --prerelease [<dep,...>]       Consider prerelease versions, implying --greatest
-    -R, --release [<dep,...>]          Only use release versions, may downgrade
-    -g, --greatest [<dep,...>]         Prefer greatest over latest version
+    -p, --prerelease [<dep,...>]       Consider prereleases, implying --greatest
+    -R, --release [<dep,...>]          Never consider prereleases
+    -g, --greatest [<dep,...>]         Ignore the latest tag and take the greatest release
     -t, --types <type,...>             Dependency types to update
     -P, --patch [<dep,...>]            Consider only up to semver-patch
     -m, --minor [<dep,...>]            Consider only up to semver-minor
-    -d, --allow-downgrade [<dep,...>]  Allow version downgrades when using latest version
+    -d, --allow-downgrade [<dep,...>]  Allow downgrading onto a lower latest tag
     -s, --sockets <num>                Maximum number of parallel HTTP sockets opened. Default: ${maxSockets}
     -T, --timeout <ms>                 Network request timeout in ms (go probes use half). Default: ${fetchTimeout}
     -r, --registry <url>               Override npm registry URL

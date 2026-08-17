@@ -1,6 +1,6 @@
-import {coerce, diff, gt, satisfies} from "../utils/semver.ts";
+import {coerce, diff, gt, parse, satisfies} from "../utils/semver.ts";
 import {longestFirstAlternation} from "../utils/utils.ts";
-import {type Deps, type ModeContext, type PackageInfo, dedupe, fieldSep, fetchWithEtag, effectiveConcurrency, getLimiter, isSameVersionScheme, passesCooldown, reduceJson, stripv, throwFetchError, formatVersionPrecision, maxTagPages} from "./shared.ts";
+import {type Deps, type ModeContext, type PackageInfo, dedupe, fieldSep, fetchWithEtag, effectiveConcurrency, getLimiter, isSameVersionScheme, passesCooldown, prereleaseOpts, reduceJson, stripv, throwFetchError, formatVersionPrecision, maxTagPages} from "./shared.ts";
 
 export type DockerImageRef = {
   registry: string | null,
@@ -10,9 +10,11 @@ export type DockerImageRef = {
   fullImage: string,
 };
 
-// Match semver or semver-prefix tags, with optional suffix like -alpine
-// Examples: "18", "18.19", "18.19.1", "v1.2.3", "18-alpine", "1.2.3-bookworm"
-const dockerTagRe = /^(v?\d+(?:\.\d+){0,2})(-.+)?$/;
+// Match semver or semver-prefix tags, with an optional prerelease glued to the version and an
+// optional suffix like -alpine. A hyphen starts the suffix, so `1.27-rc` is the `-rc` variant while
+// `1.27rc3` is a prerelease of 1.27, the same split renovate's docker versioning makes.
+// Examples: "18", "18.19", "v1.2.3", "18-alpine", "1.27rc3", "1.27rc3-alpine"
+const dockerTagRe = /^(v?\d+(?:\.\d+){0,2})([a-z][a-z0-9]*)?(-.+)?$/i;
 
 // Extraction regexes
 // Dockerfile instructions are case-insensitive
@@ -66,16 +68,16 @@ export function parseDockerImageRef(ref: string): DockerImageRef | null {
   return {registry, namespace, repo, tag, fullImage: imagePart};
 }
 
-export function parseDockerTag(tag: string): {version: string, suffix: string} | null {
+export function parseDockerTag(tag: string): {version: string, prerelease: string, suffix: string} | null {
   const match = dockerTagRe.exec(tag);
   if (!match) return null;
-  return {version: match[1], suffix: match[2] || ""};
+  return {version: match[1], prerelease: match[2] || "", suffix: match[3] || ""};
 }
 
-export function formatDockerVersion(newSemver: string, oldTag: string): string {
+export function formatDockerVersion(newSemver: string, oldTag: string, prerelease = ""): string {
   const oldParsed = parseDockerTag(oldTag);
   if (!oldParsed) return oldTag;
-  return formatVersionPrecision(newSemver, oldParsed.version, oldParsed.suffix);
+  return formatVersionPrecision(newSemver, oldParsed.version, `${prerelease}${oldParsed.suffix}`);
 }
 
 export function extractDockerRefs(content: string, regex: RegExp): Array<{ref: DockerImageRef, match: string}> {
@@ -198,6 +200,10 @@ export async function fetchDockerInfo(name: string, ctx: ModeContext): Promise<P
   return [{tags: filterStableTags(repo, tags), name}, null];
 }
 
+// A tag's prerelease rides along with its coerced version so the shared semver rules order it:
+// `1.27rc3` becomes `1.27.0-rc3`, which sorts below `1.27.0` and above `1.27.0-rc2`.
+const dockerSemver = (coerced: string, prerelease: string) => prerelease ? `${coerced}-${prerelease}` : coerced;
+
 export function findDockerVersion(
   tagMap: Record<string, string>,
   oldTag: string,
@@ -205,6 +211,8 @@ export function findDockerVersion(
   cooldownDays?: number,
   now?: number,
   pinnedRange?: string,
+  usePre = false,
+  useRel = false,
 ): {newTag: string, date: string} | null {
   const oldParsed = parseDockerTag(oldTag);
   if (!oldParsed) return null;
@@ -213,8 +221,12 @@ export function findDockerVersion(
   if (!oldCoerced) return null;
 
   const oldFields = stripv(oldParsed.version).split(".").length;
+  // Same prerelease policy as every other mode: only --prerelease, or a tag that already names one,
+  // puts prereleases in play, and --release takes them back out.
+  const oldSemver = dockerSemver(oldCoerced, oldParsed.prerelease);
+  const {effectiveSemvers, skipsPrerelease} = prereleaseOpts(oldSemver, usePre, useRel, semvers);
 
-  let bestVersion = oldCoerced;
+  let bestVersion = oldSemver;
   let bestTag = "";
   let bestDate = "";
 
@@ -228,12 +240,15 @@ export function findDockerVersion(
 
     const coerced = coerce(stripv(parsed.version))?.version;
     if (!coerced) continue;
+    // The tag's own text already says whether it is a prerelease, so only those pay for a parse.
+    if (parsed.prerelease && skipsPrerelease(parse(dockerSemver(coerced, parsed.prerelease)))) continue;
 
     if (pinnedRange && !satisfies(coerced, pinnedRange)) continue;
 
     if (!passesCooldown(lastUpdated, cooldownDays, now)) continue;
 
-    if (coerced === bestVersion) {
+    const candidate = dockerSemver(coerced, parsed.prerelease);
+    if (candidate === bestVersion) {
       // duplicate tags coerce to the same version — keep the most recently pushed one
       if (bestTag && Date.parse(lastUpdated) > Date.parse(bestDate)) {
         bestTag = tagName;
@@ -242,20 +257,22 @@ export function findDockerVersion(
       continue;
     }
 
-    const d = diff(bestVersion, coerced);
-    if (!d || !semvers.has(d)) continue;
+    const d = diff(bestVersion, candidate);
+    if (!d || !effectiveSemvers.has(d)) continue;
 
-    if (gt(coerced, bestVersion)) {
-      bestVersion = coerced;
+    if (gt(candidate, bestVersion)) {
+      bestVersion = candidate;
       bestTag = tagName;
       bestDate = lastUpdated;
     }
   }
 
-  if (!bestTag || bestVersion === oldCoerced) return null;
+  if (!bestTag || bestVersion === oldSemver) return null;
   // The formatted tag is synthesized from a coerced version, so keep the real Hub tag when the
   // registry does not publish that spelling, as `26.04` coerces and formats back to `26.4`.
-  const formatted = formatDockerVersion(bestVersion, oldTag);
+  // Neither half of a dockerSemver holds a `-`, so the winner splits back apart without parsing.
+  const [bestRelease, bestPre = ""] = bestVersion.split("-");
+  const formatted = formatDockerVersion(bestRelease, oldTag, bestPre);
   const newTag = formatted in tagMap ? formatted : bestTag;
   if (newTag === oldTag) return null;
   return {newTag, date: bestDate};

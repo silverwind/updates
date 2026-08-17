@@ -51,7 +51,7 @@ export function parseCliArgs(argv?: Array<string>): {args: Record<string, Arg>, 
   let positionalsSeen = 0;
   for (const [index, token] of result.tokens.entries()) {
     if (token.kind === "positional") positionalsSeen++;
-    // An inline value (`--exclude=-u`, `-i-p`) was written deliberately, so only a separately
+    // An inline value (`--exclude=-u`, `-i-g`) was written deliberately, so only a separately
     // parsed one can be a flag parseArgs swallowed.
     if (token.kind !== "option" || token.inlineValue || !token.value?.startsWith("-")) continue;
     const dashes = token.value.startsWith("--") ? 2 : 1;
@@ -61,7 +61,7 @@ export function parseCliArgs(argv?: Array<string>): {args: Record<string, Arg>, 
     // The flag was wrongly swallowed as this option's value; drop only that bogus
     // value (the dash-prefixed token.value, which may not be the last element)
     // rather than discarding the whole accumulated array, so other repeats like
-    // `-i react -i -p -i vue` keep both `react` and `vue`.
+    // `-i react -i -g -i vue` keep both `react` and `vue`.
     const swallowed = values[token.name];
     if (Array.isArray(swallowed)) {
       const pos = swallowed.indexOf(token.value);

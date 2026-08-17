@@ -5,7 +5,6 @@ import {
   normalizeUrl,
   getFetchOpts,
   isVersionPrerelease,
-  isAllowedVersionTransition,
   coerceToVersion,
   selectTag,
   resolvePackageJsonUrl,
@@ -35,7 +34,7 @@ import {flushCacheWrites} from "../utils/fetchCache.ts";
 const defaultOpts = {allowDowngrade: false as any};
 
 // npm-mode findNewVersion reads `data` without mutating it, so rows may share fixtures.
-const npmOpts = {mode: "npm", useGreatest: false, useRel: false, usePre: false, semvers: new Set(["patch", "minor", "major"]), ...defaultOpts};
+const npmOpts = {mode: "npm", useGreatest: false, usePre: false, useRel: false, semvers: new Set(["patch", "minor", "major"]), ...defaultOpts};
 
 // Abbreviated npm metadata: has versions and dist-tags but no time
 const tsAbbrev = {name: "typescript", "dist-tags": {latest: "6.0.2"}, versions: {"5.9.2": {}, "5.9.3": {}, "6.0.0": {}, "6.0.1": {}, "6.0.2": {}}};
@@ -105,18 +104,6 @@ test("isVersionPrerelease detects prereleases", () => {
   expect(isVersionPrerelease("2026.3.post1", pep440Versioning)).toBe(false);
 });
 
-test.each([
-  ["a pre to a higher release", "1.0.0-alpha", "2.0.0", {}, true],
-  ["a pre to a lower release without --release", "2.0.0-alpha", "1.0.0", {}, false],
-  ["a pre to a lower release with --release", "2.0.0-alpha", "1.0.0", {useRel: true}, true],
-  ["a release to a lower release", "2.0.0", "1.0.0", {}, false],
-  ["a release to a lower release with allowDowngrade", "2.0.0", "1.0.0", {allowDowngrade: true}, true],
-  ["a release to itself", "1.0.0", "1.0.0", {}, true],
-  ["a release to a higher release", "1.0.0", "2.0.0", {}, true],
-])("isAllowedVersionTransition %s", (_name, from, to, opts, expected) => {
-  expect(isAllowedVersionTransition(from, to, {useRel: false, allowDowngrade: false as any, name: "pkg", ...opts})).toBe(expected);
-});
-
 test("coerceToVersion extracts a version, or nothing", () => {
   expect(coerceToVersion("^1.2.3")).toBe("1.2.3");
   expect(coerceToVersion("5")).toBe("5.0.0");
@@ -182,7 +169,23 @@ test.each([
   expect(getSubDir(url)).toBe(expected);
 });
 
-const findVersionOpts = {range: "1.0.0", semvers: new Set(["major", "minor", "patch"]), usePre: false, useRel: false};
+const findVersionOpts = {range: "1.0.0", semvers: new Set(["major", "minor", "patch"]), useGreatest: false, usePre: false, useRel: false};
+
+// A step down is only offered with --allow-downgrade, and only onto the tag, that being where the
+// maintainer stepped back to. With no tag published the one worthwhile step down is off a
+// prerelease train onto the release below it, and a release has nowhere to go at all.
+test.each([
+  ["a pre to a higher release", "1.0.0-alpha", ["2.0.0"], {}, "2.0.0"],
+  ["a pre to a lower release", "2.0.0-alpha", ["1.0.0"], {}, null],
+  ["a pre to a lower release with allowDowngrade", "2.0.0-alpha", ["1.0.0"], {allowDowngrade: true}, "1.0.0"],
+  ["a release to a lower release", "2.0.0", ["1.0.0"], {}, null],
+  ["a release to a lower release with allowDowngrade but no tag", "2.0.0", ["1.0.0"], {allowDowngrade: true}, null],
+  ["a release onto a lower tag with allowDowngrade", "2.0.0", ["1.0.0", "1.5.0"], {allowDowngrade: true, latest: "1.0.0"}, "1.0.0"],
+  ["a release to itself", "1.0.0", ["1.0.0"], {allowDowngrade: true}, null],
+  ["a release to a higher release", "1.0.0", ["2.0.0"], {}, "2.0.0"],
+])("findVersion steps down only with allowDowngrade: %s", (_name, range, versions, opts, expected) => {
+  expect(findVersion({}, versions, {...findVersionOpts, range, ...opts})).toBe(expected);
+});
 const cooldownTimes = {"1.0.0": "2026-01-01T00:00:00Z", "1.1.0": "2026-04-10T00:00:00Z",
   "1.2.0": "2026-04-22T00:00:00Z", "1.3.0": "2026-04-24T00:00:00Z"};
 const cooldownNow = {cooldownDays: 5, now: Date.parse("2026-04-25T00:00:00Z")};
@@ -208,6 +211,7 @@ test("findVersion picks the highest prerelease regardless of order", () => {
   const opts = {
     range: "1.0.0",
     semvers: new Set(["major", "minor", "patch"]),
+    useGreatest: false,
     usePre: true,
     useRel: false,
   } as const;
@@ -232,6 +236,7 @@ test("findVersion selects by version even when publish dates disagree", () => {
   };
   const opts = {
     semvers: new Set(["major", "minor", "patch"]),
+    useGreatest: false,
     usePre: false,
     useRel: false,
   } as const;
@@ -244,7 +249,7 @@ test("findVersion never reports an unpublished release for a prerelease range", 
   // release it is a prerelease of
   const data = {versions: {"2.0.0-rc.1": {}, "2.0.0-rc.2": {}}, time: {"2.0.0-rc.1": "2025-01-01T00:00:00Z", "2.0.0-rc.2": "2025-01-02T00:00:00Z"}};
   const versions = ["2.0.0-rc.1", "2.0.0-rc.2"];
-  const opts = {range: "^2.0.0-rc.1", usePre: false, useRel: false} as const;
+  const opts = {range: "^2.0.0-rc.1", useGreatest: false, usePre: false, useRel: false} as const;
   expect(findVersion(data, versions, {...opts, semvers: new Set(["patch"])})).toBe("2.0.0-rc.2");
   expect(findVersion(data, versions, {...opts, semvers: new Set(["patch"]), cooldownDays: 3650, now: Date.parse("2025-01-03T00:00:00Z")})).toBe(null);
 });
@@ -268,6 +273,11 @@ const threeVersions = {
   versions: {"1.0.0": {}, "1.1.0": {}, "2.0.0": {}},
   time: {"1.0.0": "2025-01-01", "1.1.0": "2025-02-01", "2.0.0": "2025-03-01"},
 };
+const preRcs = {
+  name: "pkg",
+  "dist-tags": {latest: "0.6.0-rc331"},
+  versions: {"0.6.0-rc98": {}, "0.6.0-rc99": {}, "0.6.0-rc330": {}, "0.6.0-rc331": {}},
+};
 const preLatest = (latest: string) => ({
   name: "pkg",
   "dist-tags": {latest},
@@ -277,8 +287,8 @@ const preLatest = (latest: string) => ({
 
 test.each([
   ["wildcard range returns null", twoVersions, {range: "*"}, null],
-  // Ranked against the last branch, so 2.0.0 is the authored version and 1.1.0 no upgrade
-  ["or-chain resolves against its newest branch", threeVersions, {range: "^1.0.0 || ^2.0.0", semvers: new Set(["minor"])}, "2.0.0"],
+  // Ranked against the last branch, so the authored version is 2.0.0 and 1.1.0 no upgrade
+  ["or-chain resolves against its newest branch", threeVersions, {range: "^1.0.0 || ^2.0.0", semvers: new Set(["minor"])}, null],
   ["compound range resolves", threeVersions, {range: ">=1.0.0 <2.0.0"}, "2.0.0"],
   ["useGreatest returns version directly", threeVersions, {range: "1.0.0", useGreatest: true}, "2.0.0"],
   ["npm latest dist-tag", threeVersions, {range: "1.0.0"}, "2.0.0"],
@@ -296,7 +306,11 @@ test.each([
       time: {"1.0.0": "2025-01-01", "1.0.1": "2025-02-01", "2.0.0": "2025-03-01"}},
     {range: "1.0.0", semvers: new Set(["patch"])}, "1.0.1"],
   ["useRel with prerelease latest", preLatest("2.0.0-rc.1"), {range: "1.0.0", useRel: true}, "1.1.0"],
-  ["latestTag is prerelease, no usePre", preLatest("2.0.0-beta.1"), {range: "1.0.0"}, "1.1.0"],
+  // --release turns the prereleases --prerelease opted into back off, leaving plain latest mode,
+  // so the 2.0.0 the maintainer never tagged stays behind the ceiling
+  ["--release turns --prerelease back to releases", {name: "pkg", "dist-tags": {latest: "1.1.0"}, versions: {"1.0.0": {}, "1.1.0": {}, "2.0.0-rc.1": {}, "2.0.0": {}}},
+    {range: "1.0.0", usePre: true, useRel: true}, "1.1.0"],
+  ["latestTag is prerelease, latest mode", preLatest("2.0.0-beta.1"), {range: "1.0.0"}, "1.1.0"],
   // Abbreviated metadata (no time field) so findVersion picks the greatest in-range candidate.
   // latest dist-tag (1.9.9) is below the installed 2.0.0, so the downgrade guard must not
   // discard the valid 2.0.1 upgrade.
@@ -322,6 +336,12 @@ test.each([
   ["a deprecated latest is no downgrade target",
     {name: "pkg", "dist-tags": {latest: "2.0.0"}, versions: {"1.0.0": {}, "1.1.0": {}, "2.0.0": {deprecated: true}, "3.0.0": {}}},
     {range: "3.0.0", allowDowngrade: true}, null],
+  // semver orders alphanumeric prerelease identifiers lexically, so rc99 outranks rc331 while the
+  // maintainer only ever tagged rc331. respectLatest keeps the untagged one out of reach, and lets
+  // a train that already runs past the tag carry on regardless.
+  ["a prerelease past the latest tag is out of reach", preRcs, {range: "0.6.0-rc330"}, "0.6.0-rc331"],
+  ["a prerelease train past the latest tag still moves", preRcs, {range: "0.6.0-rc98"}, "0.6.0-rc99"],
+  ["--prerelease takes the one past the latest tag", preRcs, {range: "0.6.0-rc330", usePre: true}, "0.6.0-rc99"],
   // `^10` coerces to a version the package never published, so the exemption above cannot fire
   ["a wholly deprecated package keeps its newest release for a range naming no published version",
     {name: "pkg", "dist-tags": {latest: "10.1.0"}, versions: {"10.0.1": {deprecated: true}, "10.1.0": {deprecated: true}}},
@@ -330,7 +350,7 @@ test.each([
   expect(findNewVersion(data, {...npmOpts, ...opts})).toBe(expected);
 });
 
-const pypiOpts = {mode: "pypi", useGreatest: false, useRel: false, usePre: false, semvers: new Set(["patch", "minor", "major"]), ...defaultOpts};
+const pypiOpts = {mode: "pypi", useGreatest: false, usePre: false, useRel: false, semvers: new Set(["patch", "minor", "major"]), ...defaultOpts};
 const pypiDoc = (latest: string, versions: Array<string>, yanked: Array<string> = []) => ({
   name: "pkg",
   info: {name: "pkg", version: latest},
@@ -365,8 +385,8 @@ test("findNewVersion does not follow an unstable train across a major", () => {
   };
   const opts = {...npmOpts, range: "17.0.0-rc.0"};
   expect(findNewVersion(data, opts)).toBe("18.2.0");
-  expect(findNewVersion(data, {...opts, useGreatest: true})).toBe("18.2.0");
   expect(findNewVersion(data, {...opts, usePre: true})).toBe("18.3.0-next-fecc288b");
+  expect(findNewVersion(data, {...opts, usePre: true, useRel: true})).toBe("18.2.0");
   expect(findNewVersion({...data, "dist-tags": {latest: "17.0.0-rc.1"}, versions: {"17.0.0-rc.0": {}, "17.0.0-rc.1": {}}}, opts)).toBe("17.0.0-rc.1");
 });
 
@@ -378,7 +398,7 @@ test("findNewVersion tolerates a packument missing versions or naming an absent 
 });
 
 // go mode reads the resolved versions off `data` rather than a packument
-const goOpts = {mode: "go", useGreatest: false, useRel: false, usePre: false,
+const goOpts = {mode: "go", useGreatest: false, usePre: false, useRel: false,
   semvers: new Set(["patch", "minor", "major"]), ...defaultOpts};
 const goData = {name: "github.com/foo/bar", old: "1.0.0", new: "3.0.0", Time: "2025-03-01"};
 const goSameMajor = (sameMajorNew: string) => ({...goData, sameMajorNew, sameMajorTime: "2025-02-01"});

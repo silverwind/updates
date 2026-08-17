@@ -744,20 +744,10 @@ test("release", async ({expect = globalExpect}: any = {}) => {
             "new": "7.11.5",
             "old": "7.0.0",
           },
-          "eslint-plugin-storybook": {
-            "info": "https://github.com/storybookjs/storybook/tree/HEAD/code/lib/eslint-plugin",
-            "new": "9.1.7",
-            "old": "10.0.0-beta.5",
-          },
           "gulp-sourcemaps": {
             "info": "https://github.com/gulp-sourcemaps/gulp-sourcemaps",
             "new": "2.6.5",
             "old": "2.0.0",
-          },
-          "html-webpack-plugin": {
-            "info": "https://github.com/jantimon/html-webpack-plugin",
-            "new": "3.2.0",
-            "old": "4.0.0-alpha.2",
           },
           "jpeg-buffer-orientation": {
             "info": "https://github.com/fisker/jpeg-buffer-orientation",
@@ -831,6 +821,17 @@ test("release", async ({expect = globalExpect}: any = {}) => {
       },
     }
   `);
+});
+
+// --release only narrows the field to releases; stepping down off a prerelease train whose own
+// release does not exist yet is --allow-downgrade's call.
+test("release with allow-downgrade", async ({expect = globalExpect}: any = {}) => {
+  const results = await makeTest("-j -R -d")();
+  expect(results.npm.dependencies["eslint-plugin-storybook"]).toEqual({
+    info: "https://github.com/storybookjs/storybook/tree/HEAD/code/lib/eslint-plugin",
+    new: "9.1.7",
+    old: "10.0.0-beta.5",
+  });
 });
 
 test("patch", async ({expect = globalExpect}: any = {}) => {
