@@ -98,8 +98,16 @@ export type ModeContext = {
   cratesIoUrl: string,
   dockerApiUrl: string,
   doFetch: typeof doFetch,
+  /** Subprocess seam, as `doFetch` is for the network: a test supplies its own rather than
+   * spawning a real `go`. Absent outside tests, where the real one is loaded lazily. */
+  execFile?: ExecFile,
   noCache: boolean,
 };
+
+/** The promisified `child_process.execFile` shape the go and make modes call. */
+export type ExecFile = (
+  file: string, args: Array<string>, opts: Record<string, any>,
+) => Promise<{stdout: string, stderr: string}>;
 
 export const packageVersion = pkg.version;
 export const fieldSep = "\0";
@@ -556,6 +564,11 @@ async function loadExecFile() {
   ]);
   return promisify(execFile);
 }
+// A context's own seam wins, so a test never reaches child_process at all.
+export function execFileFor(ctx: ModeContext): ExecFile | Promise<ExecFile> {
+  return ctx.execFile ?? getExecFile();
+}
+
 export function getExecFile() {
   return execFilePromise ??= loadExecFile();
 }

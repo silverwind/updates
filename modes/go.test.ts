@@ -357,13 +357,17 @@ test("fetchGoProxyInfo falls through a `|` list on a proxy failure", async () =>
   expect(data.new).toBe("1.2.0");
 });
 
-// `direct` routes to a VCS lookup the 1ms timeout kills, and neither token may reach a proxy.
+// `direct` routes to a VCS lookup, and neither token may reach a proxy. The lookup runs against the
+// context's own execFile, so no `go` is spawned: the real one reaches the network for an unreachable
+// module and then has to be killed mid-run, which is slow, needs a toolchain, and leaves the failure
+// text up to whichever `go` is installed.
 test.each([
   ["off", ".", /disabled by GOPROXY=off/],
-  ["direct", resolve("."), /go list -m github.com\/foo\/bar@latest failed/],
+  ["direct", resolve("."), /go list -m github.com\/foo\/bar@latest failed: no such host/],
 ])("fetchGoProxyInfo fails without contacting a proxy for GOPROXY=%s", async (value, cwd, message) => {
   const seen: Array<string> = [];
-  const ctx = {...makeGoCtx({}, seen, parseGoProxy(value)), fetchTimeout: 1, goProbeTimeout: 1};
+  const execFile = () => Promise.reject(Object.assign(new Error("Command failed"), {stderr: "no such host"}));
+  const ctx = {...makeGoCtx({}, seen, parseGoProxy(value)), execFile};
   await expect(infoFor(ctx, cwd)).rejects.toThrow(message);
   expect(seen).toEqual([]);
 });
