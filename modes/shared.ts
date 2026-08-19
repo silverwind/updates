@@ -179,7 +179,9 @@ async function fetchWithDeadline(ctx: ModeContext, url: string, opts: RequestIni
           const error = new Error(`Failed to fetch ${url}: timed out after ${ctx.fetchTimeout}ms`);
           (error as any).transient = true; // a wedged origin is worth the same retry a socket error gets
           reject(error);
-        }, ctx.fetchTimeout + timeoutGrace);
+          // Grace so the signal still wins the ordinary race and keeps its own error, capped by the
+          // timeout itself so a short one stays short.
+        }, ctx.fetchTimeout + Math.min(timeoutGrace, ctx.fetchTimeout));
       }),
     ]);
   } finally {
