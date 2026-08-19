@@ -280,7 +280,6 @@ async function fetchGoVcsInfo(name: string, type: string, currentVersion: string
   const goListQuery = async (modulePath: string, timeout: number): Promise<ProbeResult> => {
     try {
       const execFile = await getExecFile();
-      console.error(`[goexec] spawning: go list -m -json ${modulePath}@latest timeout=${timeout}`); // DEBUG(ci-hang)
       const {stdout} = await execFile("go", ["list", "-m", "-json", `${modulePath}@latest`], {timeout, cwd: goCwd, env});
       const data = JSON.parse(stdout) as {Version: string, Time?: string};
       return {Version: data.Version, Time: data.Time || "", path: modulePath};

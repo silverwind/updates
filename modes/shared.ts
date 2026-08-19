@@ -174,13 +174,13 @@ async function fetchWithDeadline(ctx: ModeContext, url: string, opts: RequestIni
   try {
     return await Promise.race([
       ctx.doFetch(url, {...opts, signal: AbortSignal.timeout(ctx.fetchTimeout)}),
+      // The grace lets the signal win the ordinary race and keep its own error, and is capped by
+      // the timeout so a short one stays short.
       new Promise<never>((_, reject) => {
         timer = setTimeout(() => {
           const error = new Error(`Failed to fetch ${url}: timed out after ${ctx.fetchTimeout}ms`);
           (error as any).transient = true; // a wedged origin is worth the same retry a socket error gets
           reject(error);
-          // Grace so the signal still wins the ordinary race and keeps its own error, capped by the
-          // timeout itself so a short one stays short.
         }, ctx.fetchTimeout + Math.min(timeoutGrace, ctx.fetchTimeout));
       }),
     ]);
@@ -199,7 +199,7 @@ export async function fetchWithRetry(
   const limit = getLimiter(ctx);
   for (let attempt = 0; ; attempt++) {
     try {
-      return await limit(() => debugTrack(`fetch t=${ctx.fetchTimeout} ${url}`, fetchWithDeadline(ctx, url, opts)));
+      return await limit(() => fetchWithDeadline(ctx, url, opts));
     } catch (err: any) {
       if (attempt >= fetchRetries || !err?.transient) throw err;
     }
@@ -284,14 +284,14 @@ export function dedupe<T>(byCtx: WeakMap<ModeContext, Map<string, Promise<T>>>, 
   const cache = getOrSet(byCtx, ctx, () => new Map<string, Promise<T>>());
   let promise = cache.get(key);
   if (!promise) {
-    cache.set(key, promise = debugTrack(`dedupe ${key}`, (async () => {
+    cache.set(key, promise = (async () => {
       try {
         return await fn();
       } catch (err) {
         cache.delete(key);
         throw err;
       }
-    })()));
+    })());
   }
   return promise;
 }
@@ -302,53 +302,14 @@ export type Limiter = <T>(fn: () => Promise<T>) => Promise<T>;
 // saturation, so a limiter reached from inside a slot passes straight through.
 const inSlot = new AsyncLocalStorage<boolean>();
 
-// DEBUG(ci-hang): report any await that outlives the threshold. Memoized promises are the prime
-// suspects: one stalled await is shared by every later caller, so a single hang poisons the run.
-const debugStallMs = Number(env.UPDATES_DEBUG_STALL_MS || 0);
-let debugSeq = 0;
-
-async function trackSlow<T>(label: string, promise: Promise<T>): Promise<T> {
-  const id = debugSeq++;
-  const started = Date.now();
-  const timer = setTimeout(() => console.error(`[slow] ${label} #${id} pending >${debugStallMs}ms`), debugStallMs);
-  timer.unref?.();
-  try {
-    return await promise;
-  } finally {
-    clearTimeout(timer);
-    const ms = Date.now() - started;
-    if (ms > debugStallMs) console.error(`[slow] ${label} #${id} settled after ${ms}ms`);
-  }
-}
-
-// Untracked without the env var, so the production path keeps the original promise untouched.
-export function debugTrack<T>(label: string, promise: Promise<T>): Promise<T> {
-  return debugStallMs ? trackSlow(label, promise) : promise;
-}
-
 function createLimiter(concurrency: number): Limiter {
   let active = 0;
   let head = 0;
   let waiting: Array<() => void> = [];
-  const stalled = new Set<number>();
   return async <T>(fn: () => Promise<T>): Promise<T> => {
     if (inSlot.getStore()) return fn();
-    const id = debugSeq++;
-    const stack = debugStallMs ? new Error("acquire").stack : "";
-    let timer: any;
     if (active < concurrency) active++;
-    else {
-      if (debugStallMs) {
-        timer = setTimeout(() => {
-          stalled.add(id);
-          console.error(`[stall] waiter ${id} blocked >${debugStallMs}ms: active=${active} concurrency=${concurrency} waiting=${waiting.length} head=${head} stalledHere=${stalled.size} inSlot=${inSlot.getStore()}\n${stack}`);
-        }, debugStallMs);
-        timer.unref?.();
-      }
-      await new Promise<void>(resolve => { waiting.push(resolve); });
-      if (timer) clearTimeout(timer);
-      if (stalled.delete(id)) console.error(`[stall] waiter ${id} recovered after the report`);
-    }
+    else await new Promise<void>(resolve => { waiting.push(resolve); });
     try {
       return await inSlot.run(true, fn);
     } finally {
@@ -596,7 +557,7 @@ async function loadExecFile() {
   return promisify(execFile);
 }
 export function getExecFile() {
-  return execFilePromise ??= debugTrack("getExecFile", loadExecFile());
+  return execFilePromise ??= loadExecFile();
 }
 
 const githubTokenEnvNames = ["UPDATES_GITHUB_API_TOKEN", "GITHUB_API_TOKEN", "GH_TOKEN", "GITHUB_TOKEN", "HOMEBREW_GITHUB_API_TOKEN"];
@@ -616,7 +577,7 @@ let githubTokensPromise: Promise<string[]> | undefined;
 export function getGithubTokens(): Promise<string[]> {
   const tokens = envGithubTokens();
   if (tokens.length) return Promise.resolve(tokens);
-  return githubTokensPromise ??= debugTrack("ghAuthToken", (async () => {
+  return githubTokensPromise ??= (async () => {
     try {
       const execFile = await getExecFile();
       const {stdout} = await execFile("gh", ["auth", "token"], {encoding: "utf8", timeout: 5000});
@@ -625,7 +586,7 @@ export function getGithubTokens(): Promise<string[]> {
     } catch {
       return [];
     }
-  })());
+  })();
 }
 
 const reExtraheader = /^http\.(\S+)\/\.extraheader AUTHORIZATION:\s*basic\s+(\S+)$/i;
