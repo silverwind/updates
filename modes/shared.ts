@@ -174,7 +174,8 @@ export async function fetchWithRetry(
   const limit = getLimiter(ctx);
   for (let attempt = 0; ; attempt++) {
     try {
-      return await limit(() => ctx.doFetch(url, {...opts, signal: AbortSignal.timeout(ctx.fetchTimeout)}));
+      // DEBUG(ci-hang): a fetch outliving its own AbortSignal means the signal never fired.
+      return await limit(() => debugTrack(`fetch t=${ctx.fetchTimeout} ${url}`, ctx.doFetch(url, {...opts, signal: AbortSignal.timeout(ctx.fetchTimeout)})));
     } catch (err: any) {
       if (attempt >= fetchRetries || !err?.transient) throw err;
     }
