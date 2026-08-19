@@ -259,14 +259,14 @@ export function dedupe<T>(byCtx: WeakMap<ModeContext, Map<string, Promise<T>>>, 
   const cache = getOrSet(byCtx, ctx, () => new Map<string, Promise<T>>());
   let promise = cache.get(key);
   if (!promise) {
-    cache.set(key, promise = (async () => {
+    cache.set(key, promise = debugTrack(`dedupe ${key}`, (async () => {
       try {
         return await fn();
       } catch (err) {
         cache.delete(key);
         throw err;
       }
-    })());
+    })()));
   }
   return promise;
 }
@@ -277,10 +277,29 @@ export type Limiter = <T>(fn: () => Promise<T>) => Promise<T>;
 // saturation, so a limiter reached from inside a slot passes straight through.
 const inSlot = new AsyncLocalStorage<boolean>();
 
-// DEBUG(ci-hang): the slot wait below is the only unbounded await in the fetch path, so a stalled
-// run must be parked there. Dump the limiter state and the acquiring stack when a wait runs long.
+// DEBUG(ci-hang): report any await that outlives the threshold. Memoized promises are the prime
+// suspects: one stalled await is shared by every later caller, so a single hang poisons the run.
 const debugStallMs = Number(env.UPDATES_DEBUG_STALL_MS || 0);
 let debugSeq = 0;
+
+async function trackSlow<T>(label: string, promise: Promise<T>): Promise<T> {
+  const id = debugSeq++;
+  const started = Date.now();
+  const timer = setTimeout(() => console.error(`[slow] ${label} #${id} pending >${debugStallMs}ms`), debugStallMs);
+  timer.unref?.();
+  try {
+    return await promise;
+  } finally {
+    clearTimeout(timer);
+    const ms = Date.now() - started;
+    if (ms > debugStallMs) console.error(`[slow] ${label} #${id} settled after ${ms}ms`);
+  }
+}
+
+// Untracked without the env var, so the production path keeps the original promise untouched.
+export function debugTrack<T>(label: string, promise: Promise<T>): Promise<T> {
+  return debugStallMs ? trackSlow(label, promise) : promise;
+}
 
 function createLimiter(concurrency: number): Limiter {
   let active = 0;
@@ -552,7 +571,7 @@ async function loadExecFile() {
   return promisify(execFile);
 }
 export function getExecFile() {
-  return execFilePromise ??= loadExecFile();
+  return execFilePromise ??= debugTrack("getExecFile", loadExecFile());
 }
 
 const githubTokenEnvNames = ["UPDATES_GITHUB_API_TOKEN", "GITHUB_API_TOKEN", "GH_TOKEN", "GITHUB_TOKEN", "HOMEBREW_GITHUB_API_TOKEN"];
@@ -572,7 +591,7 @@ let githubTokensPromise: Promise<string[]> | undefined;
 export function getGithubTokens(): Promise<string[]> {
   const tokens = envGithubTokens();
   if (tokens.length) return Promise.resolve(tokens);
-  return githubTokensPromise ??= (async () => {
+  return githubTokensPromise ??= debugTrack("ghAuthToken", (async () => {
     try {
       const execFile = await getExecFile();
       const {stdout} = await execFile("gh", ["auth", "token"], {encoding: "utf8", timeout: 5000});
@@ -581,7 +600,7 @@ export function getGithubTokens(): Promise<string[]> {
     } catch {
       return [];
     }
-  })();
+  })());
 }
 
 const reExtraheader = /^http\.(\S+)\/\.extraheader AUTHORIZATION:\s*basic\s+(\S+)$/i;
