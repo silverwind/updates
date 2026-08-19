@@ -98,8 +98,13 @@ export type ModeContext = {
   cratesIoUrl: string,
   dockerApiUrl: string,
   doFetch: typeof doFetch,
+  execFile: ExecFile, // subprocess seam, as doFetch is for the network
   noCache: boolean,
 };
+
+export type ExecFile = (
+  file: string, args: Array<string>, opts: Record<string, any>,
+) => Promise<{stdout: string, stderr: string}>;
 
 export const packageVersion = pkg.version;
 export const fieldSep = "\0";
@@ -164,31 +169,6 @@ export async function doFetch(url: string, opts?: RequestInit): Promise<Response
   }
 }
 
-// A request the runtime never settles hangs the whole run, since nothing above this has a deadline
-// of its own. Seen under bun, where a saturated origin leaves fetches pending long past the abort
-// their own AbortSignal was built with, so the signal alone cannot be trusted to bound an attempt.
-const timeoutGrace = 500;
-
-async function fetchWithDeadline(ctx: ModeContext, url: string, opts: RequestInit): Promise<Response> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      ctx.doFetch(url, {...opts, signal: AbortSignal.timeout(ctx.fetchTimeout)}),
-      // The grace lets the signal win the ordinary race and keep its own error, and is capped by
-      // the timeout so a short one stays short.
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(() => {
-          const error = new Error(`Failed to fetch ${url}: timed out after ${ctx.fetchTimeout}ms`);
-          (error as any).transient = true; // a wedged origin is worth the same retry a socket error gets
-          reject(error);
-        }, ctx.fetchTimeout + Math.min(timeoutGrace, ctx.fetchTimeout));
-      }),
-    ]);
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 // Retry only transient failures; a fresh AbortSignal is made per attempt since
 // an aborted one can't be reused. Non-ok responses resolve normally, not retried.
 // The slot is taken around the signal so queueing behind the budget is not charged to the timeout,
@@ -199,7 +179,7 @@ export async function fetchWithRetry(
   const limit = getLimiter(ctx);
   for (let attempt = 0; ; attempt++) {
     try {
-      return await limit(() => fetchWithDeadline(ctx, url, opts));
+      return await limit(() => ctx.doFetch(url, {...opts, signal: AbortSignal.timeout(ctx.fetchTimeout)}));
     } catch (err: any) {
       if (attempt >= fetchRetries || !err?.transient) throw err;
     }

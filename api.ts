@@ -12,7 +12,7 @@ import {
   type PackageRepository, type PackageInfo, type TagEntry,
   fieldSep, normalizeUrl, fetchTimeout, goProbeTimeout, maxSockets,
   doFetch, fetchActionTags, findVersion, findNewVersion, getInfoUrl, getGithubTokens, getLimiter,
-  passesCooldown, stripv, hashRe, isVersionLikeRef, defaultApiUrls,
+  passesCooldown, stripv, hashRe, isVersionLikeRef, defaultApiUrls, getExecFile,
 } from "./modes/shared.ts";
 import {flushCacheWrites} from "./utils/fetchCache.ts";
 import {loadConfig, configMixedToRegexes, patternsToRegexSet, validatePin} from "./config.ts";
@@ -344,6 +344,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
 
   let limit: Limiter | undefined;
   const ctx: ModeContext = {
+    execFile: async (file, args, opts) => (await getExecFile())(file, args, opts), // lazy, so child_process loads only if a mode shells out
     fetchTimeout: userTimeout || fetchTimeout,
     goProbeTimeout: userTimeout ? Math.max(1, Math.floor(userTimeout / 2)) : goProbeTimeout,
     concurrency,

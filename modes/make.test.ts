@@ -1,5 +1,3 @@
-import {join} from "node:path";
-import {tmpdir} from "node:os";
 import {
   isMakeFileName,
   parseMakeGoInstalls,
@@ -147,8 +145,9 @@ test("updateMakefile rewrites a docker image tag and digest in place", () => {
 });
 
 // resolveGoModuleRoot
+const execFileFails = () => Promise.reject(new Error("no such file or directory"));
 const rootCtx = (doFetch: (url: string) => Promise<any>, goProxyUrl = "https://proxy") =>
-  ({goProxyUrl, fetchTimeout, doFetch}) as unknown as ModeContext;
+  ({goProxyUrl, fetchTimeout, doFetch, execFile: execFileFails}) as unknown as ModeContext;
 const rootHit = (path: string) => (url: string) => Promise.resolve({
   ok: url.endsWith(`${path}/@latest`), status: 404, json: () => Promise.resolve({Version: "v1.1.4"}),
 } as any);
@@ -178,13 +177,11 @@ test("resolveGoModuleRoot returns null when nothing resolves and throws when a p
 });
 
 test("resolveGoModuleRoot never builds a proxy URL for off, direct or a GONOPROXY match", async () => {
-  // A cwd that does not exist makes the `go list` spawn fail at once, keeping this offline.
-  const missingCwd = join(tmpdir(), "updates-no-such-dir");
   let fetched = false;
   const ctx = (goProxyUrl: string) => rootCtx(() => { fetched = true; return Promise.resolve({ok: true} as any); }, goProxyUrl);
-  expect(await resolveGoModuleRoot("golang.org/x/vuln/cmd/govulncheck", missingCwd, ctx("off"), [])).toBeNull();
-  expect(await resolveGoModuleRoot("golang.org/x/vuln/cmd/govulncheck", missingCwd, ctx("direct"), [])).toBeNull();
-  expect(await resolveGoModuleRoot("git.corp.example/x/cmd/tool", missingCwd, ctx("https://proxy"), ["git.corp.example"])).toBeNull();
+  expect(await resolveGoModuleRoot("golang.org/x/vuln/cmd/govulncheck", ".", ctx("off"), [])).toBeNull();
+  expect(await resolveGoModuleRoot("golang.org/x/vuln/cmd/govulncheck", ".", ctx("direct"), [])).toBeNull();
+  expect(await resolveGoModuleRoot("git.corp.example/x/cmd/tool", ".", ctx("https://proxy"), ["git.corp.example"])).toBeNull();
   expect(fetched).toBe(false);
 });
 

@@ -6,11 +6,11 @@ import {writeFile, readFile, rm} from "node:fs/promises";
 import {fileURLToPath} from "node:url";
 import {tmpdir} from "node:os";
 import {execPath, platform, versions} from "node:process";
-import {gzip, constants} from "node:zlib";
+import {gzip, gzipSync, constants} from "node:zlib";
 import {promisify} from "node:util";
 import type {Server} from "node:http";
 import {satisfies} from "./utils/semver.ts";
-import {npmTypes, forgeDirs} from "./utils/utils.ts";
+import {npmTypes, forgeDirs, getOrSet} from "./utils/utils.ts";
 import {updates} from "./api.ts";
 import {parseCliArgs, resolveConfig} from "./cli.ts";
 import {resolutionsBasePackage} from "./modes/npm.ts";
@@ -32,6 +32,7 @@ globalThis.fetch = ((input: any, init?: any) => {
 
 const globalExpect = expect;
 const gzipPromise = (data: string | Buffer) => promisify(gzip)(data, {level: constants.Z_BEST_SPEED});
+const gzipNow = (data: string | Buffer) => gzipSync(data, {level: constants.Z_BEST_SPEED}); // for handlers, which must not await
 const testFile = fileURLToPath(new URL("fixtures/npm-test/package.json", import.meta.url));
 const emptyFile = fileURLToPath(new URL("fixtures/npm-empty/package.json", import.meta.url));
 const jsrFile = fileURLToPath(new URL("fixtures/npm-jsr/package.json", import.meta.url));
@@ -63,7 +64,9 @@ const testPkg = JSON.parse(readFileSync(testFile, "utf8"));
 const testDir = mkdtempSync(join(tmpdir(), "updates-"));
 const script = fileURLToPath(new URL("dist/index.js", import.meta.url));
 
-type RouteHandler = (req: any, res: any) => void | Promise<void>;
+// An awaiting handler holds the request open, which the client sees as a response that never comes.
+// The void return does not reject an async one on its own, so makeServer checks at run time.
+type RouteHandler = (req: any, res: any) => void;
 
 function isObject<T = Record<string, any>>(obj: any): obj is T {
   return Object.prototype.toString.call(obj) === "[object Object]";
@@ -72,7 +75,7 @@ function isObject<T = Record<string, any>>(obj: any): obj is T {
 function makeServer(defaultHandler: RouteHandler) {
   const routes = new Map<string, RouteHandler>();
 
-  const server = createServer(async (req, res) => {
+  const server = createServer((req, res) => {
     const url = (req.url || "/").split("?")[0];
     const handler = routes.get(url) || defaultHandler;
 
@@ -82,7 +85,7 @@ function makeServer(defaultHandler: RouteHandler) {
     };
 
     try {
-      await handler(req, res);
+      if (handler(req, res) as unknown) throw new Error("route handler returned a promise; it must be synchronous");
     } catch (err) {
       res.statusCode = 500;
       res.end(String(err)); // an Error makes end() throw, leaving the client to stall until its timeout
@@ -203,18 +206,14 @@ beforeAll(async () => {
   const abbreviatedType = "application/vnd.npm.install-v1+json";
   for (const {urlName} of npmFiles) {
     // gzip lazily and per flavor: only a --cooldown run ever asks for the dated document
-    const gzips = new Map<string, Promise<Buffer>>();
-    npmServer.get(`/${urlName}`, async (req, res) => {
+    const gzips = new Map<string, Buffer>();
+    npmServer.get(`/${urlName}`, (req, res) => {
       const flavor = req.headers.accept?.includes(abbreviatedType) ? "abbrev" : "full";
-      let gz = gzips.get(flavor);
-      if (!gz) {
-        gzips.set(flavor, gz = (async () => {
-          const doc = {...npmParsed.get(urlName)};
-          if (flavor === "abbrev") delete doc.time;
-          return gzipPromise(JSON.stringify(doc));
-        })());
-      }
-      res.send(await gz);
+      res.send(getOrSet(gzips, flavor, () => {
+        const doc = {...npmParsed.get(urlName)};
+        if (flavor === "abbrev") delete doc.time;
+        return gzipNow(JSON.stringify(doc));
+      }));
     });
   }
 
@@ -236,10 +235,10 @@ beforeAll(async () => {
     const time = data.time || {};
     for (const version of Object.keys(versions)) {
       let gz: Buffer | undefined;
-      npmServer.get(`/${urlName}/${version}`, async (_, res) => {
+      npmServer.get(`/${urlName}/${version}`, (_, res) => {
         if (!gz) {
           const vData = {...versions[version], _npmOperationalInternal: {tmp: `tmp/${urlName}_${version}_${Date.parse(time[version] || "2024-01-01") || 0}_0`}};
-          gz = await gzipPromise(JSON.stringify(vData));
+          gz = gzipNow(JSON.stringify(vData));
         }
         res.send(gz);
       });
@@ -2200,7 +2199,7 @@ test("api basic", async ({expect = globalExpect}: any = {}) => {
 
   // a second call in the same process re-requests rather than answering from the finished run's cache
   let latest = "3.1.4";
-  const registry = makeServer(async (_, res) => res.send(await gzipPromise(JSON.stringify({
+  const registry = makeServer((_, res) => res.send(gzipNow(JSON.stringify({
     name: "noty", "dist-tags": {latest}, versions: {"3.1.0": {}, "3.1.4": {}, "3.2.1": {}},
   }))));
   await registry.start(0);
