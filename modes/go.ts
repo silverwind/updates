@@ -3,7 +3,7 @@ import {join, dirname} from "node:path";
 import {readFileSync, globSync} from "node:fs";
 import {
   type Deps, type GoProxyEntry, type ModeContext, type PackageInfo, dedupe, fieldSep, stripv, getSubDir, normalizeUrl,
-  fetchWithRetry, defaultApiUrls, getExecFile, isGoPseudoVersion, isVersionPrerelease,
+  fetchWithRetry, fetchWithDeadline, defaultApiUrls, getExecFile, isGoPseudoVersion, isVersionPrerelease,
   throwFetchError,
 } from "./shared.ts";
 import {gt, valid} from "../utils/semver.ts";
@@ -390,7 +390,10 @@ async function fetchGoProxyModule(base: string, name: string, type: string, curr
   const currentMajor = extractGoMajor(name);
   const goLatest: GoModuleFetch = (doFetch, proxy, path) => fetchGoLatestOnce(ctx, doFetch, proxy, path);
   const primaryFetch: ProxyFetch = url => fetchWithRetry(ctx, url, {headers: goProxyHeaders});
-  const probeFetch: ProxyFetch = url => ctx.doFetch(url, {signal: AbortSignal.timeout(ctx.goProbeTimeout), headers: goProxyHeaders});
+  // Probes fan out a batch at a time, so a wedged origin here parks the run just as a primary
+  // fetch would. Same deadline, the probe's own budget, and still no retry: a failed probe is a
+  // missing major, which costs nothing.
+  const probeFetch: ProxyFetch = url => fetchWithDeadline(ctx, url, {headers: goProxyHeaders}, ctx.goProbeTimeout);
   const probeWith = (fetchModule: GoModuleFetch) => async (path: string) => {
     try {
       return await fetchModule(probeFetch, base, path);

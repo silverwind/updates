@@ -169,19 +169,21 @@ export async function doFetch(url: string, opts?: RequestInit): Promise<Response
 // their own AbortSignal was built with, so the signal alone cannot be trusted to bound an attempt.
 const timeoutGrace = 500;
 
-async function fetchWithDeadline(ctx: ModeContext, url: string, opts: RequestInit): Promise<Response> {
+export async function fetchWithDeadline(
+  ctx: ModeContext, url: string, opts: RequestInit = {}, timeout: number = ctx.fetchTimeout,
+): Promise<Response> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
-      ctx.doFetch(url, {...opts, signal: AbortSignal.timeout(ctx.fetchTimeout)}),
+      ctx.doFetch(url, {...opts, signal: AbortSignal.timeout(timeout)}),
       // The grace lets the signal win the ordinary race and keep its own error, and is capped by
       // the timeout so a short one stays short.
       new Promise<never>((_, reject) => {
         timer = setTimeout(() => {
-          const error = new Error(`Failed to fetch ${url}: timed out after ${ctx.fetchTimeout}ms`);
+          const error = new Error(`Failed to fetch ${url}: timed out after ${timeout}ms`);
           (error as any).transient = true; // a wedged origin is worth the same retry a socket error gets
           reject(error);
-        }, ctx.fetchTimeout + Math.min(timeoutGrace, ctx.fetchTimeout));
+        }, timeout + Math.min(timeoutGrace, timeout));
       }),
     ]);
   } finally {

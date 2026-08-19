@@ -21,6 +21,7 @@ import {
   fetchActionTags,
   fetchWithEtag,
   fetchWithRetry,
+  fetchWithDeadline,
   fetchImmutable,
   fetchTimeout,
   fetchRetries,
@@ -546,6 +547,12 @@ test("a fetch the runtime never settles still rejects on its own deadline", asyn
   }});
   await expect(fetchWithRetry(ctx, "https://wedged.test/x")).rejects.toThrow(/timed out after 20ms/);
   expect(attempts).toBe(fetchRetries + 1);
+});
+
+// The go major probe reaches doFetch without fetchWithRetry, so it needs the deadline of its own.
+test("a deadline applies to a probe on its own budget, not the run's", async () => {
+  const ctx = modeCtx({noCache: true, fetchTimeout: 5000, doFetch: () => new Promise<never>(() => {})});
+  await expect(fetchWithDeadline(ctx, "https://wedged.test/x", {}, 20)).rejects.toThrow(/timed out after 20ms/);
 });
 
 test("every request shares the run's one socket budget", async () => {
