@@ -52,7 +52,7 @@
     "typescript": "6.0.3",
     "typescript-config-silverwind": "20.0.3",
     "updates-config-silverwind": "4.0.5",
-    "versions": "15.3.4",
+    "versions": "15.3.5",
     "vitest": "4.1.11",
     "vitest-config-silverwind": "11.6.0"
   }
