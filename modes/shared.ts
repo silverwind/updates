@@ -164,6 +164,29 @@ export async function doFetch(url: string, opts?: RequestInit): Promise<Response
   }
 }
 
+// A request the runtime never settles hangs the whole run, since nothing above this has a deadline
+// of its own. Seen under bun, where a saturated origin leaves fetches pending long past the abort
+// their own AbortSignal was built with, so the signal alone cannot be trusted to bound an attempt.
+const timeoutGrace = 500;
+
+async function fetchWithDeadline(ctx: ModeContext, url: string, opts: RequestInit): Promise<Response> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      ctx.doFetch(url, {...opts, signal: AbortSignal.timeout(ctx.fetchTimeout)}),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          const error = new Error(`Failed to fetch ${url}: timed out after ${ctx.fetchTimeout}ms`);
+          (error as any).transient = true; // a wedged origin is worth the same retry a socket error gets
+          reject(error);
+        }, ctx.fetchTimeout + timeoutGrace);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // Retry only transient failures; a fresh AbortSignal is made per attempt since
 // an aborted one can't be reused. Non-ok responses resolve normally, not retried.
 // The slot is taken around the signal so queueing behind the budget is not charged to the timeout,
@@ -174,8 +197,7 @@ export async function fetchWithRetry(
   const limit = getLimiter(ctx);
   for (let attempt = 0; ; attempt++) {
     try {
-      // DEBUG(ci-hang): a fetch outliving its own AbortSignal means the signal never fired.
-      return await limit(() => debugTrack(`fetch t=${ctx.fetchTimeout} ${url}`, ctx.doFetch(url, {...opts, signal: AbortSignal.timeout(ctx.fetchTimeout)})));
+      return await limit(() => debugTrack(`fetch t=${ctx.fetchTimeout} ${url}`, fetchWithDeadline(ctx, url, opts)));
     } catch (err: any) {
       if (attempt >= fetchRetries || !err?.transient) throw err;
     }
