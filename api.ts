@@ -12,7 +12,7 @@ import {
   type PackageRepository, type PackageInfo, type TagEntry,
   fieldSep, normalizeUrl, fetchTimeout, goProbeTimeout, maxSockets,
   doFetch, fetchActionTags, findVersion, findNewVersion, getInfoUrl, getGithubTokens, getLimiter,
-  passesCooldown, stripv, hashRe, isVersionLikeRef, defaultApiUrls,
+  passesCooldown, stripv, hashRe, isVersionLikeRef, defaultApiUrls, debugTrack,
 } from "./modes/shared.ts";
 import {flushCacheWrites} from "./utils/fetchCache.ts";
 import {loadConfig, configMixedToRegexes, patternsToRegexSet, validatePin} from "./config.ts";
@@ -1099,7 +1099,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
       await pMap(Object.keys(modeDeps), async (key) => {
         const [type, name] = key.split(fieldSep);
         try {
-          await lookupDep(key, type, name);
+          await debugTrack(`lookupDep ${mode} ${key.replace(/\0/g, "/")}`, lookupDep(key, type, name)); // DEBUG(ci-hang)
         } catch (err) {
           delete modeDeps[key];
           addError(mode, type, name, err);
@@ -1107,7 +1107,7 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
       }, {concurrency});
 
       await Promise.all(Array.from(npmFollowUps, async ([key, {name, promise}]) => {
-        const followUp = await promise;
+        const followUp = await debugTrack(`npmFollowUp ${key.replace(/\0/g, "/")}`, promise); // DEBUG(ci-hang)
         const dep = modeDeps[key];
         if (!dep) return;
         dep.info = getInfoUrl({repository: followUp.repository, homepage: followUp.homepage}, null, name);
