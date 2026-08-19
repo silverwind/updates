@@ -31,7 +31,26 @@ globalThis.fetch = ((input: any, init?: any) => {
 }) as typeof fetch;
 
 const globalExpect = expect;
-const gzipPromise = (data: string | Buffer) => promisify(gzip)(data, {level: constants.Z_BEST_SPEED});
+const debugStallMs = Number(process.env.UPDATES_DEBUG_STALL_MS || 0);
+const gzipRaw = (data: string | Buffer) => promisify(gzip)(data, {level: constants.Z_BEST_SPEED});
+// DEBUG(ci-hang): zlib runs on the libuv threadpool, so a saturated pool would stall a handler here.
+let gzipSeq = 0;
+let gzipInflight = 0;
+const gzipPromise = async (data: string | Buffer): Promise<Buffer> => {
+  if (!debugStallMs) return gzipRaw(data);
+  const id = gzipSeq++;
+  const at = Date.now();
+  gzipInflight++;
+  const timer = setTimeout(() => console.error(`[gzip] #${id} pending >${debugStallMs}ms, inflight=${gzipInflight}`), debugStallMs);
+  timer.unref?.();
+  try {
+    return await gzipRaw(data);
+  } finally {
+    clearTimeout(timer);
+    gzipInflight--;
+    if (Date.now() - at > debugStallMs) console.error(`[gzip] #${id} settled after ${Date.now() - at}ms`);
+  }
+};
 const testFile = fileURLToPath(new URL("fixtures/npm-test/package.json", import.meta.url));
 const emptyFile = fileURLToPath(new URL("fixtures/npm-empty/package.json", import.meta.url));
 const jsrFile = fileURLToPath(new URL("fixtures/npm-jsr/package.json", import.meta.url));
@@ -71,7 +90,6 @@ function isObject<T = Record<string, any>>(obj: any): obj is T {
 
 // DEBUG(ci-hang): does a wedged request ever reach the server? Received-but-unanswered means the
 // handler stalled; never received means the client never put it on the wire.
-const debugStallMs = Number(process.env.UPDATES_DEBUG_STALL_MS || 0);
 const serverStats = new Map<string, {received: number, responded: number, inflight: Map<number, {url: string, at: number}>}>();
 if (debugStallMs) {
   setInterval(() => {
