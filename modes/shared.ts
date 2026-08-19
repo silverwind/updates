@@ -277,14 +277,34 @@ export type Limiter = <T>(fn: () => Promise<T>) => Promise<T>;
 // saturation, so a limiter reached from inside a slot passes straight through.
 const inSlot = new AsyncLocalStorage<boolean>();
 
+// DEBUG(ci-hang): the slot wait below is the only unbounded await in the fetch path, so a stalled
+// run must be parked there. Dump the limiter state and the acquiring stack when a wait runs long.
+const debugStallMs = Number(env.UPDATES_DEBUG_STALL_MS || 0);
+let debugSeq = 0;
+
 function createLimiter(concurrency: number): Limiter {
   let active = 0;
   let head = 0;
   let waiting: Array<() => void> = [];
+  const stalled = new Set<number>();
   return async <T>(fn: () => Promise<T>): Promise<T> => {
     if (inSlot.getStore()) return fn();
+    const id = debugSeq++;
+    const stack = debugStallMs ? new Error("acquire").stack : "";
+    let timer: any;
     if (active < concurrency) active++;
-    else await new Promise<void>(resolve => { waiting.push(resolve); });
+    else {
+      if (debugStallMs) {
+        timer = setTimeout(() => {
+          stalled.add(id);
+          console.error(`[stall] waiter ${id} blocked >${debugStallMs}ms: active=${active} concurrency=${concurrency} waiting=${waiting.length} head=${head} stalledHere=${stalled.size} inSlot=${inSlot.getStore()}\n${stack}`);
+        }, debugStallMs);
+        timer.unref?.();
+      }
+      await new Promise<void>(resolve => { waiting.push(resolve); });
+      if (timer) clearTimeout(timer);
+      if (stalled.delete(id)) console.error(`[stall] waiter ${id} recovered after the report`);
+    }
     try {
       return await inSlot.run(true, fn);
     } finally {

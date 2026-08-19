@@ -16,6 +16,10 @@ import {parseCliArgs, resolveConfig} from "./cli.ts";
 import {resolutionsBasePackage} from "./modes/npm.ts";
 import type {UpdatesOptions} from "./api.ts";
 
+// DEBUG(ci-hang): a swallowed rejection is why the stalling job reports nothing at all.
+process.on("unhandledRejection", (err: any) => console.error(`[unhandledRejection] ${err?.stack || err}`));
+process.on("uncaughtException", (err: any) => console.error(`[uncaughtException] ${err?.stack || err}`));
+
 const execFileAsync = promisify(execFile);
 
 // Fail loudly if any in-process fetch escapes the loopback mock servers.
@@ -85,7 +89,7 @@ function makeServer(defaultHandler: RouteHandler) {
       await handler(req, res);
     } catch (err) {
       res.statusCode = 500;
-      res.end(err);
+      res.end(String(err)); // an Error makes end() throw, leaving the client to stall until its timeout
     }
   });
 
