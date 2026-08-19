@@ -85,7 +85,7 @@ function makeServer(defaultHandler: RouteHandler) {
       await handler(req, res);
     } catch (err) {
       res.statusCode = 500;
-      res.end(err);
+      res.end(String(err)); // an Error makes end() throw, leaving the client to stall until its timeout
     }
   });
 
