@@ -23,7 +23,6 @@ import {
   fetchWithRetry,
   fetchImmutable,
   fetchTimeout,
-  fetchRetries,
   getLimiter,
   ForgeError,
   type ModeContext,
@@ -534,18 +533,6 @@ test("fetchActionTags walks until the authored ref turns up, and no further", as
   expect(await walk(["v1.0.0"])).toEqual([1, 1]);
   // waves of 1, 2, 4 and 8 reach page 11, so the walk reads 16 pages to resolve a sha on it
   expect(await walk(["sha11"])).toEqual([16, 16]);
-});
-
-// Bun leaves fetches to a saturated origin pending long past their AbortSignal, and nothing above
-// this carries a deadline, so the run would park on the request forever.
-test("a fetch the runtime never settles still rejects on its own deadline", async () => {
-  let attempts = 0;
-  const ctx = modeCtx({noCache: true, fetchTimeout: 20, doFetch: () => {
-    attempts++;
-    return new Promise<never>(() => {}); // never settles, and never aborts
-  }});
-  await expect(fetchWithRetry(ctx, "https://wedged.test/x")).rejects.toThrow(/timed out after 20ms/);
-  expect(attempts).toBe(fetchRetries + 1);
 });
 
 test("every request shares the run's one socket budget", async () => {

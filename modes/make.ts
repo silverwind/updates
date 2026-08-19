@@ -1,5 +1,5 @@
 import {env} from "node:process";
-import {type ModeContext, stripv, formatVersionPrecision, findNewVersion, getExecFile, fetchWithRetry} from "./shared.ts";
+import {type ModeContext, stripv, formatVersionPrecision, findNewVersion, fetchWithRetry} from "./shared.ts";
 import {longestFirstAlternation, tryOrNull} from "../utils/utils.ts";
 import {goModulePathForVersion, fetchGoLatestOnce, fetchGoProxyInfo, getGoInfoUrl, isGoNoProxy, goProxyHeaders} from "./go.ts";
 import {
@@ -101,9 +101,8 @@ export function moduleRootFromMajor(installPath: string): string | null {
 // address whose failure would silently drop every tool in the file.
 async function probeGoModuleRoot(candidate: string, goCwd: string, ctx: ModeContext, useVcs: boolean): Promise<boolean> {
   if (useVcs) {
-    const execFile = await getExecFile();
     // `go list` exits non-zero for a path that is no module and for an unreachable host alike.
-    return await tryOrNull(execFile("go", ["list", "-m", "-json", `${candidate}@latest`], {timeout: ctx.fetchTimeout, cwd: goCwd, env})) !== null;
+    return await tryOrNull(ctx.execFile("go", ["list", "-m", "-json", `${candidate}@latest`], {timeout: ctx.fetchTimeout, cwd: goCwd, env})) !== null;
   }
   // The root decides which module the tool tracks, so this is the lookup itself, sharing its request
   // through fetchGoLatestOnce and its retries. null is a 404/410, a throw a 429 or 5xx on the tool.

@@ -3,7 +3,7 @@ import {join, dirname} from "node:path";
 import {readFileSync, globSync} from "node:fs";
 import {
   type Deps, type GoProxyEntry, type ModeContext, type PackageInfo, dedupe, fieldSep, stripv, getSubDir, normalizeUrl,
-  fetchWithRetry, defaultApiUrls, getExecFile, isGoPseudoVersion, isVersionPrerelease,
+  fetchWithRetry, defaultApiUrls, isGoPseudoVersion, isVersionPrerelease,
   throwFetchError,
 } from "./shared.ts";
 import {gt, valid} from "../utils/semver.ts";
@@ -279,8 +279,7 @@ async function fetchGoVcsInfo(name: string, type: string, currentVersion: string
   // `go list` with the same exit, and nothing follows `direct`, so any failure is the dep's error.
   const goListQuery = async (modulePath: string, timeout: number): Promise<ProbeResult> => {
     try {
-      const execFile = await getExecFile();
-      const {stdout} = await execFile("go", ["list", "-m", "-json", `${modulePath}@latest`], {timeout, cwd: goCwd, env});
+      const {stdout} = await ctx.execFile("go", ["list", "-m", "-json", `${modulePath}@latest`], {timeout, cwd: goCwd, env});
       const data = JSON.parse(stdout) as {Version: string, Time?: string};
       return {Version: data.Version, Time: data.Time || "", path: modulePath};
     } catch (err: any) {
