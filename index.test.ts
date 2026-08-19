@@ -69,12 +69,35 @@ function isObject<T = Record<string, any>>(obj: any): obj is T {
   return Object.prototype.toString.call(obj) === "[object Object]";
 }
 
-function makeServer(defaultHandler: RouteHandler) {
+// DEBUG(ci-hang): does a wedged request ever reach the server? Received-but-unanswered means the
+// handler stalled; never received means the client never put it on the wire.
+const debugStallMs = Number(process.env.UPDATES_DEBUG_STALL_MS || 0);
+const serverStats = new Map<string, {received: number, responded: number, inflight: Map<number, {url: string, at: number}>}>();
+if (debugStallMs) {
+  setInterval(() => {
+    const now = Date.now();
+    for (const [name, st] of serverStats) {
+      const stuck = st.inflight.values().filter(r => now - r.at > debugStallMs).toArray();
+      console.error(`[server] ${name} received=${st.received} responded=${st.responded} inflight=${st.inflight.size} stuck=${stuck.length}`);
+      for (const r of stuck.slice(0, 5)) console.error(`[server-stuck] ${name} ${r.url} unanswered for ${now - r.at}ms`);
+    }
+  }, debugStallMs).unref?.();
+}
+
+let serverSeq = 0;
+function makeServer(defaultHandler: RouteHandler, label = `srv${serverSeq++}`) {
   const routes = new Map<string, RouteHandler>();
+  const stats = {received: 0, responded: 0, inflight: new Map<number, {url: string, at: number}>()};
+  serverStats.set(label, stats);
+  let reqSeq = 0;
 
   const server = createServer(async (req, res) => {
     const url = (req.url || "/").split("?")[0];
     const handler = routes.get(url) || defaultHandler;
+    const id = reqSeq++;
+    stats.received++;
+    stats.inflight.set(id, {url, at: Date.now()});
+    res.on("close", () => { stats.inflight.delete(id); stats.responded++; });
 
     (res as any).send = (data: Buffer) => {
       res.setHeader("Content-Encoding", "gzip");
@@ -151,13 +174,13 @@ let dockerUrl: string;
 let cargoUrl: string;
 
 beforeAll(async () => {
-  npmServer = makeServer(defaultRoute);
-  githubServer = makeServer(defaultRoute);
-  pypiServer = makeServer(defaultRoute);
-  jsrServer = makeServer(defaultRoute);
-  goProxyServer = makeServer(defaultRoute);
-  dockerServer = makeServer(defaultRoute);
-  cargoServer = makeServer(defaultRoute);
+  npmServer = makeServer(defaultRoute, "npm");
+  githubServer = makeServer(defaultRoute, "github");
+  pypiServer = makeServer(defaultRoute, "pypi");
+  jsrServer = makeServer(defaultRoute, "jsr");
+  goProxyServer = makeServer(defaultRoute, "goProxy");
+  dockerServer = makeServer(defaultRoute, "docker");
+  cargoServer = makeServer(defaultRoute, "cargo");
 
   const [commits, tags] = await Promise.all([
     readFile(fileURLToPath(new URL("fixtures/github/updates-commits.json", import.meta.url)), "utf8"),

@@ -20,7 +20,7 @@ lint-fix: node_modules
 .PHONY: test
 test: node_modules build
 	pnpm exec vitest
-	bun test --timeout 180000 --only-failures --concurrent
+	UPDATES_DEBUG_STALL_MS=15000 bun test --timeout 90000 --only-failures --concurrent
 
 .PHONY: test-update
 test-update: node_modules build
