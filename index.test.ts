@@ -2326,6 +2326,14 @@ test("pypi dotted group names are collected, a declined rewrite is not reported"
   }
 });
 
+// Bug: no pin, override or per-dep flag ever matched a pypi dep.
+test("a pypi pin holds, keyed by the authored spelling or the normalized one", async ({expect = globalExpect}: any = {}) => {
+  for (const key of ["PyYAML", "pyyaml"]) {
+    const {pypi} = (await updates(apiOpts({files: [uvFile], modes: ["pypi"], include: ["PyYAML"], pin: {[key]: "<6.0"}}))).results;
+    expect(pypi["dependency-groups.dev"].PyYAML.new).toBe("5.4.1");
+  }
+});
+
 // Bug: two non-workspace manifests of the same mode shared single mode-keyed
 // slots, so only the last file was written and same name+type deps collided.
 test("two non-workspace package.json: both updated, no dep loss", async ({expect = globalExpect}: any = {}) => {

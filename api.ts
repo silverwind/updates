@@ -139,6 +139,7 @@ const normalizePep503 = (name: string) => name.toLowerCase().replace(/[-_.]+/g, 
 function depNames(name: string, kind: string): Array<string> {
   if (kind === "go") return [name, shortenGoModule(name)];
   if (kind === "docker") return dockerImageNames(name);
+  if (kind === "pypi") return [name, normalizePep503(name)];
   return [name];
 }
 

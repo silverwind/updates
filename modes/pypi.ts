@@ -20,7 +20,9 @@ export async function fetchPypiInfo(name: string, ctx: ModeContext): Promise<Pac
   const result = await fetchWithEtag(url, ctx, {
     headers: {"accept-encoding": "gzip, deflate, br"},
   }, reduceJson(reducePypiDoc));
-  if ("body" in result) return [JSON.parse(result.body), null];
+  // A pypi document names itself under `info`, so the resolved name is restored where every
+  // other mode puts it. Post-parse, as small bodies never reach `reducePypiDoc`.
+  if ("body" in result) return [{...JSON.parse(result.body), name}, null];
   throwFetchError(result.res, url, name, ctx.pypiApiUrl);
 }
 

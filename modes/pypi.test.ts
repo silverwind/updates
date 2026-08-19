@@ -73,7 +73,7 @@ test("fetchPypiInfo happy path", async () => {
     doFetch: () => Promise.resolve({ok: true, json: () => Promise.resolve(mockData)}),
   } as unknown as ModeContext;
   const result = await fetchPypiInfo("requests", ctx);
-  expect(result).toEqual([mockData, null]);
+  expect(result).toEqual([{...mockData, name: "requests"}, null]);
 });
 
 test("fetchPypiInfo keeps yanked flags through the size reducer", async () => {
