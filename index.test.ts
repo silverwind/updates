@@ -466,7 +466,7 @@ test("version resolves the source and built package layouts", async ({expect = g
   const source = await readFile(sourceScript, "utf8");
   await Promise.all([
     writeFile(join(parentDir, "package.json"), JSON.stringify({version: "wrong"})),
-    writeFile(join(sourceDir, "package.json"), JSON.stringify({version: "1.2.3"})),
+    writeFile(join(sourceDir, "package.json"), JSON.stringify({version: "1.2.3", type: "module"})),
     writeFile(join(sourceDir, "index.ts"), source),
     writeFile(join(distDir, "index.ts"), source),
   ]);
