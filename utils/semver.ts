@@ -195,7 +195,10 @@ function upperComparator(major: number, minor: number, patch: number): Comparato
 }
 
 function partialBounds(partial: PartialVersion, op: string): Array<Comparator> | null {
-  if (partial.major === null) return partial.minor === null && partial.patch === null ? [] : null;
+  if (partial.major === null) {
+    if (partial.minor !== null || partial.patch !== null) return null;
+    return op === ">" || op === "<" ? comparators(upperComparator(0, 0, 0)) : [];
+  }
   const major = partial.major;
   const minor = partial.minor ?? 0;
   const patch = partial.patch ?? 0;

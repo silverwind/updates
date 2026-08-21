@@ -43,6 +43,19 @@ test("filterDepsForMember", () => {
   });
 });
 
+test("filterDepsForMember preserves dependency identities", () => {
+  const directIdentity = JSON.stringify(["overrides", "prismjs"]);
+  const nestedIdentity = JSON.stringify(["overrides", "parent", "prismjs"]);
+  const allDeps = {
+    [`overrides|./app${fieldSep}prismjs${fieldSep}${directIdentity}`]: {old: "1.29.0", new: "1.30.0"},
+    [`overrides|./app${fieldSep}prismjs${fieldSep}${nestedIdentity}`]: {old: "1.28.0", new: "1.30.0"},
+  };
+  expect(filterDepsForMember(allDeps, "./app")).toEqual({
+    [`overrides${fieldSep}prismjs${fieldSep}${directIdentity}`]: allDeps[`overrides|./app${fieldSep}prismjs${fieldSep}${directIdentity}`],
+    [`overrides${fieldSep}prismjs${fieldSep}${nestedIdentity}`]: allDeps[`overrides|./app${fieldSep}prismjs${fieldSep}${nestedIdentity}`],
+  });
+});
+
 test("resolveWorkspaceMembers resolves literals, globs and exclusions", async () => {
   const literalDir = makeWorkspace({
     "crate-a/Cargo.toml": "[package]\nname = \"a\"",
@@ -68,8 +81,21 @@ test("resolveWorkspaceMembers resolves literals, globs and exclusions", async ()
 test("resolveWorkspaceMembers skips missing", async () => {
   const dir = makeWorkspace();
   expect(await resolveWorkspaceMembers(["nonexistent"], dir, "Cargo.toml")).toEqual([]);
+});
+
+test("resolveWorkspaceMembers skips unreadable manifests", async () => {
+  const dir = makeWorkspace();
   mkdirSync(join(dir, "member"));
-  await expect(resolveWorkspaceMembers(["member"], dir, ".")).rejects.toMatchObject({code: "EISDIR"});
+  expect(await resolveWorkspaceMembers(["member"], dir, ".")).toEqual([]);
+});
+
+test("resolveWorkspaceMembers resolves symlinked glob directories", async () => {
+  const dir = makeWorkspace({"internal/app/package.json": "{\"name\": \"app\"}"});
+  mkdirSync(join(dir, "packages"));
+  symlinkSync("../internal/app", join(dir, "packages/app"), "dir");
+  expect((await resolveWorkspaceMembers(["packages/*"], dir, "package.json")).map(({memberPath}) => memberPath))
+    .toEqual(["./packages/app"]);
+  expect(await resolveWorkspaceMembers(["packages/*", "!packages/*"], dir, "package.json")).toEqual([]);
 });
 
 test("resolveWorkspaceMembers rejects traversal and escaping symlinks", async () => {
@@ -88,6 +114,11 @@ test("parsePnpmWorkspace", () => {
   expect(parsePnpmWorkspace('packages:\n  - "packages/with space"\n')).toEqual(["packages/with space"]);
   expect(parsePnpmWorkspace("")).toEqual([]);
   expect(parsePnpmWorkspace("packages:\n  # comment\n  - libs/*\nnodeLinker: hoisted\n")).toEqual(["libs/*"]);
+});
+
+test("parsePnpmWorkspace parses quoted patterns with inline comments", () => {
+  expect(parsePnpmWorkspace("packages:\n  - \"packages/*\" # app packages\n  - 'libs/*'  # libs\n  - plain/*\n"))
+    .toEqual(["packages/*", "libs/*", "plain/*"]);
 });
 
 test("parse pnpm registry config", () => {

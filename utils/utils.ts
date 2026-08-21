@@ -338,8 +338,8 @@ function parseGlob(pattern: string): {source: string, tokens: Array<GlobToken>} 
           tokens.push({kind: "span", slash: true});
         }
       } else {
-        source += "[^/]*";
-        tokens.push({kind: "span", slash: false});
+        source += ".*";
+        tokens.push({kind: "span", slash: true});
       }
     } else if (char === "?" && pattern[i + 1] !== "(") {
       addChar("[^/]");

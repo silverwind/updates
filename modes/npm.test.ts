@@ -239,6 +239,28 @@ test.each([
   }
 });
 
+test("fetchNpmInfo prefers a scoped npmrc registry over a native default", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "updates-registry-specificity-"));
+  let fetchedUrl = "";
+  let authorization: string | null = null;
+  const ctx = modeCtx({noCache: true, doFetch: (url: string, opts: RequestInit) => {
+    fetchedUrl = url;
+    authorization = new Headers(opts.headers).get("authorization");
+    return textRes({});
+  }});
+  try {
+    writeFileSync(join(dir, "pnpm-workspace.yaml"), "registry: https://registry.npmjs.org\n");
+    writeFileSync(join(dir, ".npmrc"), "@company:registry=https://npm.company.example\n//npm.company.example/:_authToken=secret\n");
+    await fetchNpmInfo("@company/pkg", "dependencies", {}, {}, ctx, dir);
+    expect([fetchedUrl, authorization]).toEqual([
+      "https://npm.company.example/@company%2fpkg",
+      "Bearer secret",
+    ]);
+  } finally {
+    rmSync(dir, {recursive: true});
+  }
+});
+
 test("fetchNpmInfo never sends unscoped _auth to a repository registry", async () => {
   const dir = mkdtempSync(join(tmpdir(), "updates-auth-"));
   const home = join(dir, "home");
@@ -314,7 +336,7 @@ test("checkUrlDep parses refs and refreshes hashes", async () => {
     fetches++;
     return textRes([{sha: "def5678901234", commit: {committer: {date: "2025-03-01"}}}]);
   }});
-  const result = await checkUrlDep("key", {old: "github:user/repo#1234567", new: ""}, hashCtx);
+  const result = await checkUrlDep("key", {old: "github:user/repo#abc4567", new: ""}, hashCtx);
   expect(result).not.toBeNull();
   expect(result!.newRange).toBe("github:user/repo#def5678");
   expect(result!.newRef).toBe("def5678");
@@ -335,4 +357,14 @@ test.each([
   const tags = [{name: "v1.2.3", commit: {sha: "abc"}}, {name: "v2.0.0", commit: {sha: "def"}}];
   const ctx = forgeCtx({noCache: true, doFetch: (url: string) => jsonRes(url.includes("/releases?") ? [] : tags)});
   expect((await checkUrlDep("key", {old, new: ""}, ctx))?.newRange).toBe(expected);
+});
+
+test("checkUrlDep updates GitHub path refs at their trailing occurrence", async () => {
+  const tags = [{name: "v1.2.3", commit: {sha: "abc"}}, {name: "v2.0.0", commit: {sha: "def"}}];
+  const ctx = forgeCtx({noCache: true, doFetch: (url: string) => url.endsWith("/commits") ?
+    textRes([{sha: "def5678901234", commit: {}}]) : jsonRes(url.includes("/releases?") ? [] : tags)});
+  expect((await checkUrlDep("key", {old: "https://github.com/user/repo-v1.2.3/tarball/v1.2.3", new: ""}, ctx))?.newRange)
+    .toBe("https://github.com/user/repo-v1.2.3/tarball/v2.0.0");
+  expect((await checkUrlDep("key", {old: "https://github.com/user/repo/abc1234", new: ""}, ctx))?.newRange)
+    .toBe("https://github.com/user/repo/def5678");
 });

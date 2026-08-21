@@ -69,9 +69,9 @@ test.each([
   ["preserves CRLF", "AIR := github.com/air-verse/air@v1.0.0\r\nFOO := bar\r\n",
     [{oldSpec: "github.com/air-verse/air@v1.0.0", newSpec: "github.com/air-verse/air@v1.1.0"}],
     "AIR := github.com/air-verse/air@v1.1.0\r\nFOO := bar\r\n"],
-  ["rewrites quoted and comment-adjacent specs", "QUOTED := \"koalaman/app:1.0.0\"\nCOMMENTED := koalaman/app:1.0.0#pinned\n",
-    [{oldSpec: "koalaman/app:1.0.0", newSpec: "koalaman/app:1.1.0"}],
-    "QUOTED := \"koalaman/app:1.1.0\"\nCOMMENTED := koalaman/app:1.1.0#pinned\n"],
+  ["rewrites quoted and comment-adjacent specs", "QUOTED := koalaman/\"shellcheck:v0.9.0\"\nCOMMENTED := koalaman/shellcheck:v0.9.0#pinned\n",
+    [{oldSpec: "koalaman/shellcheck:v0.9.0", newSpec: "koalaman/shellcheck:v0.11.0"}],
+    "QUOTED := koalaman/\"shellcheck:v0.11.0\"\nCOMMENTED := koalaman/shellcheck:v0.11.0#pinned\n"],
   ["rewrites every spec on a line",
     "\tgo install github.com/air-verse/air@v1.60.0 github.com/golangci/golangci-lint/cmd/golangci-lint@v1.60.0  # tools\n",
     [
@@ -227,7 +227,7 @@ test("parseMakeDockerImages extracts only namespaced Hub images, skipping commen
     `SHELLCHECK_IMAGE ?= docker.io/koalaman/shellcheck:v0.11.0@${digestA}  # renovate: datasource=docker`,
     "PLAIN := koalaman/shellcheck:0.9.0",
     "IMAGES += \\",
-    "  \"koalaman/shellcheck:0.10.0\" koalaman/shellcheck:0.11.0",
+    "  koalaman/\"shellcheck:0.10.0\" koalaman/shellcheck:0.11.0",
     "MYSQL_HOST ?= mysql:3306",
     `# DISABLED := koalaman/shellcheck:0.1.0@${digestB}`,
   ].join("\n");

@@ -21,10 +21,10 @@ export function filterDepsForMember(allDeps: Deps, memberPath: string): Deps {
   const byMember = getOrSet(depsByMember, allDeps, () => {
     const result = new Map<string, Array<[string, Deps[string]]>>();
     for (const [key, dep] of Object.entries(allDeps)) {
-      const [type, name] = key.split(fieldSep);
+      const [type, ...parts] = key.split(fieldSep);
       const separator = type.indexOf("|");
       const path = separator === -1 ? "." : type.slice(separator + 1);
-      pushTo(result, path, [`${baseType(type)}${fieldSep}${name}`, dep]);
+      pushTo(result, path, [[baseType(type), ...parts].join(fieldSep), dep]);
     }
     return result;
   });
@@ -35,7 +35,7 @@ const globChars = /[*?{[]/;
 
 function globDirectories(pattern: string, cwd: string): Array<string> {
   return globSync(pattern, {cwd, withFileTypes: true})
-    .filter(entry => entry.isDirectory())
+    .filter(entry => entry.isDirectory() || entry.isSymbolicLink())
     .map(entry => resolve(entry.parentPath, entry.name));
 }
 
@@ -65,9 +65,8 @@ export async function resolveWorkspaceMembers(patterns: string[], workspaceDir: 
       const rel = relative(workspaceRoot, absPath);
       if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) return null;
       return {absPath, content: await readFile(absPath, "utf8"), memberPath};
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
-      throw error;
+    } catch {
+      return null;
     }
   }, {concurrency});
   return reads.filter((m): m is WorkspaceMember => m !== null);
@@ -143,8 +142,9 @@ function yamlScalar(content: string): {value: string, valueIndex: number} | null
   if (!trimmed) return null;
   const quote = trimmed[0];
   if (quote === '"' || quote === "'") {
-    if (!trimmed.endsWith(quote)) return null;
-    return {value: trimmed.slice(1, -1), valueIndex: leading + 1};
+    const end = trimmed.indexOf(quote, 1); // anything past the closing quote is a comment
+    if (end === -1) return null;
+    return {value: trimmed.slice(1, end), valueIndex: leading + 1};
   }
   const commentIndex = trimmed.search(/\s#/);
   return {value: (commentIndex === -1 ? trimmed : trimmed.slice(0, commentIndex)).trimEnd(), valueIndex: leading};

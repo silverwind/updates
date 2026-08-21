@@ -62,7 +62,8 @@ const hubRegistryRe = /^(?:(?:index|registry-1)\.)?docker\.io$/;
 function parseImageParts(imagePart: string): {registry: string | null, namespace: string, repo: string} {
   const parts = imagePart.split("/");
   if (parts.length > 1 && hubRegistryRe.test(parts[0])) parts.shift();
-  const registry = parts.length > 1 && (parts[0] === "localhost" || parts[0].includes(".") || parts[0].includes(":")) ?
+  const registry = parts.length > 2 ||
+    parts.length > 1 && (parts[0] === "localhost" || parts[0].includes(".") || parts[0].includes(":")) ?
     parts.shift()! : null;
   return {registry, namespace: parts.length === 1 ? "library" : parts.slice(0, -1).join("/"), repo: parts.at(-1)!};
 }
@@ -199,9 +200,8 @@ export async function fetchDockerTagDigest(
   const result = await fetchWithEtag(url, ctx, {headers: {"accept-encoding": "gzip, deflate, br"}},
     reduceJson(data => ({digest: data.digest})));
   if ("body" in result) {
-    const data = JSON.parse(result.body);
-    if (typeof data?.digest !== "string") throw new Error(`Malformed Docker Hub tag response: ${namespace}/${repo}:${tag}`);
-    return data.digest;
+    const digest = JSON.parse(result.body)?.digest; // absent on tags pushed before Docker Hub recorded manifest digests
+    return typeof digest === "string" ? digest : null;
   }
   if (!noTagsStatus.has(result.res?.status as number)) throwFetchError(result.res, url, `${namespace}/${repo}:${tag}`, ctx.dockerApiUrl);
   return null;
@@ -310,7 +310,8 @@ export function findDockerVersion(
 
     const coerced = coerceDockerVersion(parsed.version);
     if (!coerced) continue;
-    const candidate = parse(dockerSemver(coerced, parsed.prerelease))!;
+    const candidate = parse(dockerSemver(coerced, parsed.prerelease));
+    if (!candidate) continue;
     if (parsed.prerelease && skipsPrerelease(candidate)) continue;
     if (pinnedRange && !satisfies(coerced, pinnedRange)) continue;
 

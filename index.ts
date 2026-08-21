@@ -151,8 +151,8 @@ async function main(): Promise<void> {
 
   if (hasFlag(rawArgs, "version", "v")) {
     let packageJson: string;
-    try { packageJson = readFileSync(new URL("../package.json", import.meta.url), "utf8"); } catch {
-      packageJson = readFileSync(new URL("package.json", import.meta.url), "utf8");
+    try { packageJson = readFileSync(new URL("package.json", import.meta.url), "utf8"); } catch {
+      packageJson = readFileSync(new URL("../package.json", import.meta.url), "utf8");
     }
     console.info(JSON.parse(packageJson).version);
     await end();

@@ -1,5 +1,5 @@
 import {env} from "node:process";
-import {dirname, isAbsolute, join, relative, resolve, sep} from "node:path";
+import {dirname, join, resolve} from "node:path";
 import {globSync, readFileSync, realpathSync} from "node:fs";
 import {
   type Deps, type GoProxyEntry, type ModeContext, type PackageInfo, dedupe, fieldSep, stripv, getSubDir, normalizeUrl,
@@ -407,8 +407,8 @@ export function updateGoMod(pkgStr: string, deps: Deps): [string, Record<string,
   const majorVersionRewrites: Record<string, string> = {};
   const entries = Object.entries(deps);
   if (!entries.length) return [pkgStr, majorVersionRewrites];
-  const newline = pkgStr.includes("\r\n") ? "\r\n" : "\n";
-  const lines = pkgStr.split(newline);
+  const lineEndings = pkgStr.match(/\r?\n/g) ?? [];
+  const lines = pkgStr.split(/\r?\n/);
   const rewriteLines = (lineNumbers: Array<number> | undefined, pattern: RegExp, replacement: string): boolean => {
     let rewritten = false;
     for (const lineNumber of lineNumbers ?? []) {
@@ -477,7 +477,7 @@ export function updateGoMod(pkgStr: string, deps: Deps): [string, Record<string,
       );
     }
   }
-  return [lines.join(newline), majorVersionRewrites];
+  return [lines.map((line, index) => `${line}${lineEndings[index] ?? ""}`).join(""), majorVersionRewrites];
 }
 
 const goTokenRe = /\s+|\/\/[^\n]*(?:\n|$)|\/\*[\s\S]*?(?:\*\/|$)|[A-Za-z_][A-Za-z0-9_]*|"(?:\\[\s\S]|[^"\\])*(?:"|$)|`[^`]*(?:`|$)|'(?:\\[\s\S]|[^'\\])*(?:'|$)|./g;
@@ -552,12 +552,9 @@ export function parseGoWork(content: string): {use: string[], replace: Record<st
 export function resolveGoWorkModule(workspaceDir: string, usePath: string): string | null {
   try {
     const root = realpathSync(resolve(workspaceDir));
-    const manifest = realpathSync(join(root, usePath, "go.mod"));
-    const relPath = relative(root, manifest);
-    return relPath === ".." || relPath.startsWith(`..${sep}`) || isAbsolute(relPath) ? null : manifest;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
-    throw error;
+    return realpathSync(join(root, usePath, "go.mod"));
+  } catch {
+    return null;
   }
 }
 

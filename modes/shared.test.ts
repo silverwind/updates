@@ -100,9 +100,9 @@ test("parseTags transforms tag data, commit or not", () => {
   ]);
 });
 
-test("hashRe only recognizes npm commit lengths", () => {
-  expect(["deadbee", "1234567", "a".repeat(40)].every(value => hashRe.test(value))).toBe(true);
-  expect(["abc123", "deadbeef", "a".repeat(39), "a".repeat(41), "b".repeat(64)].some(value => hashRe.test(value))).toBe(false);
+test("hashRe recognizes plausible GitHub commit hashes", () => {
+  expect(["deadbee", "deadbeef", "a".repeat(40)].every(value => hashRe.test(value))).toBe(true);
+  expect(["abc123", "2024010", "a".repeat(41), "b".repeat(64)].some(value => hashRe.test(value))).toBe(false);
 });
 
 test("throwFetchError names the status, or the package when there is none", () => {

@@ -18,7 +18,7 @@ test.each([
   ["docker.io", "docker.io/library/node:18", {registry: null, namespace: "library", repo: "node", tag: "18", fullImage: "docker.io/library/node"}],
   ["index.docker.io", "index.docker.io/myorg/myapp:1.0.0", {registry: null, namespace: "myorg", repo: "myapp", tag: "1.0.0", fullImage: "index.docker.io/myorg/myapp"}],
   ["registry-1.docker.io", "registry-1.docker.io/node:18", {registry: null, namespace: "library", repo: "node", tag: "18", fullImage: "registry-1.docker.io/node"}],
-  ["a deep Hub path", "org/team/image:1.2.3", {registry: null, namespace: "org/team", repo: "image", tag: "1.2.3", fullImage: "org/team/image"}],
+  ["a registry without a domain suffix", "org/team/image:1.2.3", {registry: "org", namespace: "team", repo: "image", tag: "1.2.3", fullImage: "org/team/image"}],
   ["localhost registry", "localhost/owner/image:1.2.3", {registry: "localhost", namespace: "owner", repo: "image", tag: "1.2.3", fullImage: "localhost/owner/image"}],
   ["a tag with suffix", "node:18-alpine", {registry: null, namespace: "library", repo: "node", tag: "18-alpine", fullImage: "node"}],
   ["full semver with suffix", "node:18.19.1-bookworm", {registry: null, namespace: "library", repo: "node", tag: "18.19.1-bookworm", fullImage: "node"}],
@@ -41,6 +41,7 @@ test("dockerImageNames", () => {
   expect(dockerImageNames("index.docker.io/library/mysql")).toEqual(["index.docker.io/library/mysql", ...hub]);
   expect(dockerImageNames("grafana/grafana")).toEqual(["grafana/grafana", "docker.io/grafana/grafana"]);
   expect(dockerImageNames("ghcr.io/foo/bar")).toEqual(["ghcr.io/foo/bar"]);
+  expect(dockerImageNames("REGISTRY/team/image")).toEqual(["REGISTRY/team/image"]);
 });
 
 test.each([
@@ -178,6 +179,7 @@ test("findDockerVersion ignores tags from another versioning scheme", () => {
   expect(findDockerVersion(tagMap, "3", allSemvers)).toBeNull();
   expect(findDockerVersion(tagMap, "20251224", allSemvers)).toEqual({newTag: "20260127", date: "2026-01-28"});
   expect(findDockerVersion({"9": "2020-01-01", "10": "2020-06-01"}, "9", allSemvers)).toEqual({newTag: "10", date: "2020-06-01"});
+  expect(findDockerVersion({"20260127": "2026-01-27", "9999999999999999999": "2026-02-01"}, "20260127", allSemvers)).toBeNull();
 });
 
 test("findDockerVersion cooldown needs a timestamp", () => {
@@ -358,8 +360,7 @@ test("fetchDockerTagDigest returns the registry digest and reports failures", as
   await expect(fetchDockerTagDigest("library", "node", "20", hubCtx(() => Promise.resolve({
     ok: false, status: 429, statusText: "Too Many Requests",
   })))).rejects.toThrow("Received 429 Too Many Requests");
-  await expect(fetchDockerTagDigest("library", "node", "20", hubCtx(hubBody({}))))
-    .rejects.toThrow("Malformed Docker Hub tag response");
+  await expect(fetchDockerTagDigest("library", "node", "20", hubCtx(hubBody({})))).resolves.toBe(null);
 });
 
 test("fetchDockerInfo library image", async () => {

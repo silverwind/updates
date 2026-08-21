@@ -1,6 +1,6 @@
 import {env} from "node:process";
 import {type ModeContext, fetchWithRetry} from "./shared.ts";
-import {longestFirstAlternation} from "../utils/utils.ts";
+import {esc} from "../utils/utils.ts";
 import {fetchFromGoProxyChain, fetchGoLatestOnce, isGoNoProxy, goProxyHeaders} from "./go.ts";
 import {type DockerImageRef, parseDockerImageRef} from "./docker.ts";
 
@@ -153,6 +153,14 @@ export type MakeRewrite = {oldSpec: string, newSpec: string};
 export function updateMakefile(content: string, rewrites: Array<MakeRewrite>): string {
   const bySpec = new Map(rewrites.map(({oldSpec, newSpec}) => [oldSpec, newSpec]));
   if (!bySpec.size) return content;
-  const specRe = new RegExp(`(?<![\\w./@:-])(${longestFirstAlternation(bySpec.keys())})(?=[\\s#"']|$)`, "g");
-  return content.replace(/^[^#\n]*/gm, code => code.replace(specRe, spec => bySpec.get(spec)!));
+  const specs = Array.from(bySpec.keys()).sort((a, b) => b.length - a.length)
+    .map(spec => Array.from(spec, char => esc(char)).join(`["']*`)).join("|");
+  const specRe = new RegExp(`(?<![\\w./@:-])(${specs})(?=[\\s#"']|$)`, "g");
+  return content.replace(/^[^#\n]*/gm, code => code.replace(specRe, authoredSpec => {
+    const oldSpec = authoredSpec.replace(/["']/g, "");
+    const newSpec = bySpec.get(oldSpec)!;
+    let newIndex = 0;
+    const result = authoredSpec.replace(/[^"']/g, () => newSpec[newIndex++] ?? "");
+    return result + newSpec.slice(newIndex);
+  }));
 }
