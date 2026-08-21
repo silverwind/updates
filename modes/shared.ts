@@ -206,7 +206,7 @@ export type Limiter = <T>(fn: () => Promise<T>) => Promise<T>;
 
 const inSlot = new AsyncLocalStorage<boolean>();
 
-const effectiveConcurrency = (ctx: ModeContext): number => Math.max(ctx.concurrency || maxSockets, 1);
+export const effectiveConcurrency = (ctx: ModeContext): number => Math.max(ctx.concurrency || maxSockets, 1);
 
 const limiterByCtx = new WeakMap<ModeContext, Limiter>();
 
@@ -687,16 +687,17 @@ export async function fetchForgeTags(
 export async function fetchActionTags(
   apiUrl: string, owner: string, repo: string, ctx: ModeContext, oldRefs: Array<string> = [], includeStability = true,
 ): Promise<Array<TagEntry>> {
-  const tags = await fetchForgeTags(apiUrl, owner, repo, ctx, oldRefs);
-  if (apiUrl === githubApiUrl && includeStability) {
-    try {
-      const stability = await fetchReleaseStability(owner, repo, ctx);
-      for (const tag of tags) if (stability.has(tag.name)) tag.isStable = stability.get(tag.name);
-    } catch (err) {
-      if (!(err instanceof ForgeError)) throw err;
-    }
+  if (apiUrl !== githubApiUrl || !includeStability) return fetchForgeTags(apiUrl, owner, repo, ctx, oldRefs);
+  const [tagsResult, stability] = await Promise.allSettled([
+    fetchForgeTags(apiUrl, owner, repo, ctx, oldRefs),
+    fetchReleaseStability(owner, repo, ctx),
+  ]);
+  if (tagsResult.status === "rejected") throw tagsResult.reason;
+  if (stability.status === "rejected" && !(stability.reason instanceof ForgeError)) throw stability.reason;
+  if (stability.status === "fulfilled") {
+    for (const tag of tagsResult.value) if (stability.value.has(tag.name)) tag.isStable = stability.value.get(tag.name);
   }
-  return tags;
+  return tagsResult.value;
 }
 
 export type CheckResult = {key: string, newRange: string, user: string, repo: string, oldRef: string, newRef: string,

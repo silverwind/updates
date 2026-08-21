@@ -1,7 +1,7 @@
 import {join} from "node:path";
 import {readFile} from "node:fs/promises";
 import {validRange} from "./semver.ts";
-import {walkUp, patternToRegex, esc} from "./utils.ts";
+import {walkUp, patternToRegex, esc, getOrSet} from "./utils.ts";
 import type {Config} from "../config.ts";
 
 const durationUnits: Record<string, number> = {
@@ -121,9 +121,12 @@ export type RenovateVersionRule = {
   cooldownDays?: number;
 };
 
+const matcherRegexes = new Map<Matcher, RegExp>();
+const matcherRegex = (pattern: Matcher) => getOrSet(matcherRegexes, pattern, () => patternToRegex(pattern));
+
 const matchesRuleList = (value: string, include?: Array<Matcher>, exclude?: Array<Matcher>) =>
-  (!include?.length || include.some(pattern => patternToRegex(pattern).test(value))) &&
-  (!exclude?.length || exclude.every(pattern => !patternToRegex(pattern).test(value)));
+  (!include?.length || include.some(pattern => matcherRegex(pattern).test(value))) &&
+  (!exclude?.length || exclude.every(pattern => !matcherRegex(pattern).test(value)));
 
 export function matchesRenovateRule(rule: RenovateVersionRule, packageName: string, depName: string): boolean {
   return matchesRuleList(packageName, rule.matchPackageNames, rule.excludePackageNames) &&

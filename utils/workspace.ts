@@ -1,8 +1,8 @@
-import {dirname, isAbsolute, join, relative, resolve, sep} from "node:path";
+import {isAbsolute, join, relative, resolve, sep} from "node:path";
 import {globSync, readFileSync} from "node:fs";
 import {readFile, realpath} from "node:fs/promises";
 import {type Deps, fieldSep} from "../modes/shared.ts";
-import {getOrSet, pMap, pushTo} from "./utils.ts";
+import {getOrSet, pMap, pushTo, walkUpSync} from "./utils.ts";
 
 export type WorkspaceMember = {
   absPath: string,
@@ -196,14 +196,15 @@ export function parsePnpmRegistryConfig(content: string): NpmRegistryConfig {
 }
 
 function readConfigUp(filename: string, startDir: string): string | null {
-  for (let dir = resolve(startDir); ; dir = dirname(dir)) {
+  const found = walkUpSync(resolve(startDir), dir => {
     try {
-      return readFileSync(join(dir, filename), "utf8");
+      return {content: readFileSync(join(dir, filename), "utf8")};
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
-    if (dirname(dir) === dir) return null;
-  }
+    return null;
+  });
+  return found ? found.content : null;
 }
 
 const nativeRegistryCache = new Map<string, NpmRegistryConfig>();

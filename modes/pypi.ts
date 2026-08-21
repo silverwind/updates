@@ -1,10 +1,14 @@
 import {
-  type Deps, type ModeContext, type PackageInfo, fieldSep, fetchWithEtag, reduceJson, throwFetchError,
+  type Deps, type ModeContext, type PackageInfo, dedupe, fieldSep, fetchWithEtag, reduceJson, throwFetchError,
 } from "./shared.ts";
 import {type Pep440, comparePep440, parsePep440} from "../utils/semver.ts";
 import {type Pep508Specifier, anchorSpecifier, esc, getOrSet, parsePep508, serializePep508} from "../utils/utils.ts";
 
+const pypiNameSeparatorRe = /[-_.]+/g;
+
 type PypiFile = {upload_time_iso_8601?: string, yanked?: boolean};
+
+const pypiDataByCtx = new WeakMap<ModeContext, Map<string, Promise<Record<string, any>>>>();
 
 function reducePypiReleases(data: Record<string, any>): Record<string, Array<PypiFile>> {
   const releases: Record<string, Array<PypiFile>> = {};
@@ -18,18 +22,21 @@ function reducePypiReleases(data: Record<string, any>): Record<string, Array<Pyp
 }
 
 export async function fetchPypiInfo(name: string, ctx: ModeContext): Promise<PackageInfo> {
-  const url = `${ctx.pypiApiUrl}/pypi/${name.toLowerCase().replace(/[-_.]+/g, "-")}/json`;
-  const result = await fetchWithEtag(url, ctx, {
-    headers: {"accept-encoding": "gzip, deflate, br"},
-  }, reduceJson(data => {
-    const {name: reducedName, version, project_urls} = data.info ?? {};
-    return {info: {name: reducedName, version, project_urls}, releases: reducePypiReleases(data.releases)};
-  }));
-  if ("body" in result) {
-    const data = JSON.parse(result.body);
-    return [{...data, releases: reducePypiReleases(data.releases), name}, null];
-  }
-  throwFetchError(result.res, url, name, ctx.pypiApiUrl);
+  const url = `${ctx.pypiApiUrl}/pypi/${name.toLowerCase().replace(pypiNameSeparatorRe, "-")}/json`;
+  const data = await dedupe(pypiDataByCtx, ctx, url, async () => {
+    const result = await fetchWithEtag(url, ctx, {
+      headers: {"accept-encoding": "gzip, deflate, br"},
+    }, reduceJson(data => {
+      const {name: reducedName, version, project_urls} = data.info ?? {};
+      return {info: {name: reducedName, version, project_urls}, releases: reducePypiReleases(data.releases)};
+    }));
+    if ("body" in result) {
+      const responseData = JSON.parse(result.body);
+      return {...responseData, releases: reducePypiReleases(responseData.releases)};
+    }
+    throwFetchError(result.res, url, name, ctx.pypiApiUrl);
+  });
+  return [{...data, name}, null];
 }
 
 function specifierAllows(version: Pep440, {op, version: text}: Pep508Specifier): boolean {

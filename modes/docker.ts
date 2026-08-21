@@ -1,8 +1,8 @@
 import {parse, satisfies, semverVersioning} from "../utils/semver.ts";
-import {longestFirstAlternation} from "../utils/utils.ts";
+import {longestFirstAlternation, pMap} from "../utils/utils.ts";
 import {
-  type Deps, type ModeContext, type PackageInfo, dedupe, fieldSep, fetchWithEtag, isSameVersionScheme,
-  passesCooldown, prereleaseOpts, reduceJson, stripv, throwFetchError, formatVersionPrecision,
+  type Deps, type ModeContext, type PackageInfo, dedupe, effectiveConcurrency, fieldSep, fetchWithEtag,
+  isSameVersionScheme, passesCooldown, prereleaseOpts, reduceJson, stripv, throwFetchError, formatVersionPrecision,
 } from "./shared.ts";
 
 export type DockerImageRef = {
@@ -165,25 +165,49 @@ export function fetchDockerHubTags(namespace: string, repo: string, ctx: ModeCon
         })),
       })));
       if ("body" in result) {
-        const page = JSON.parse(result.body);
-        for (const tag of page?.results ?? []) tags[tag.name] = tag.tag_last_pushed || tag.last_updated || "";
-        return page;
+        return JSON.parse(result.body);
       }
       if (!noTagsStatus.has(result.res?.status as number)) throwFetchError(result.res, url, `${namespace}/${repo}`, ctx.dockerApiUrl);
       return null;
     };
+    const take = (page: any): void => {
+      for (const tag of page?.results ?? []) tags[tag.name] = tag.tag_last_pushed || tag.last_updated || "";
+    };
 
     const firstPage = await fetchPage(pageUrl(1));
     if (!firstPage) return tags;
+    take(firstPage);
     const seen = new Set<string>();
     let page = firstPage;
-    for (let pageNumber = 2; pageNumber <= maxDockerTagPages &&
-      (page.next || pageNumber <= Math.ceil((firstPage.count || 0) / 1000)); pageNumber++) {
-      const nextUrl = page.next ? new URL(page.next, baseUrl).href : pageUrl(pageNumber);
+    let pageNumber = 2;
+    if (firstPage.count) {
+      const pageUrls: Array<string> = [];
+      for (; pageNumber <= maxDockerTagPages && pageNumber <= Math.ceil(firstPage.count / 1000); pageNumber++) {
+        const nextUrl = pageUrl(pageNumber);
+        seen.add(nextUrl);
+        pageUrls.push(nextUrl);
+      }
+      const pages = await pMap(pageUrls, async nextUrl => {
+        try {
+          return {value: await fetchPage(nextUrl)};
+        } catch (reason) {
+          return {reason};
+        }
+      }, {concurrency: effectiveConcurrency(ctx)});
+      for (const result of pages) {
+        if ("reason" in result) throw result.reason;
+        if (!result.value) return tags;
+        take(result.value);
+        page = result.value;
+      }
+    }
+    for (; pageNumber <= maxDockerTagPages && page.next; pageNumber++) {
+      const nextUrl = new URL(page.next, baseUrl).href;
       if (new URL(nextUrl).origin !== new URL(baseUrl).origin || seen.has(nextUrl)) break;
       seen.add(nextUrl);
       const result = await fetchPage(nextUrl);
       if (!result) break;
+      take(result);
       page = result;
     }
     return tags;

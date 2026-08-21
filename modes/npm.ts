@@ -80,6 +80,7 @@ const npmPackageUrl = (registry: string, name: string, version?: string): string
 const npmDataByCtx = new WeakMap<ModeContext, Map<string, Promise<Record<string, any>>>>();
 const npmVersionInfoByCtx = new WeakMap<ModeContext, Map<string, Promise<NpmVersionInfo>>>();
 const npmFullDataByCtx = new WeakMap<ModeContext, Map<string, Promise<Record<string, any> | null>>>();
+const jsrDataByCtx = new WeakMap<ModeContext, Map<string, Promise<Record<string, any>>>>();
 
 const docCacheKey = (url: string, needsDates: boolean) => `${url}\0v2${needsDates ? "-dates" : ""}`;
 
@@ -178,22 +179,25 @@ export async function fetchJsrInfo(packageName: string, ctx: ModeContext): Promi
   if (!jsrScopedNameRe.test(packageName)) throw new Error(`Invalid JSR package name: ${packageName}`);
   const url = `${ctx.jsrApiUrl}/${packageName}/meta.json`;
 
-  const result = await fetchWithEtag(url, ctx, {
-    headers: {"accept-encoding": "gzip, deflate, br"},
-  }, reduceJson(data => ({
-    latest: data.latest,
-    versions: Object.fromEntries(Object.entries(data.versions ?? {}).map(([version, meta]) => [version, {createdAt: (meta as Record<string, any>)?.createdAt}])),
-  })));
-  if (!("body" in result)) throwFetchError(result.res, url, packageName, "JSR");
+  const data = await dedupe(jsrDataByCtx, ctx, url, async () => {
+    const result = await fetchWithEtag(url, ctx, {
+      headers: {"accept-encoding": "gzip, deflate, br"},
+    }, reduceJson(data => ({
+      latest: data.latest,
+      versions: Object.fromEntries(Object.entries(data.versions ?? {}).map(([version, meta]) => [version, {createdAt: (meta as Record<string, any>)?.createdAt}])),
+    })));
+    if (!("body" in result)) throwFetchError(result.res, url, packageName, "JSR");
 
-  const data = JSON.parse(result.body);
-  const versions: Record<string, any> = {};
-  const time: Record<string, string> = {};
-  for (const [version, metadata] of Object.entries((data.versions ?? {}) as Record<string, any>)) {
-    versions[version] = {version, time: metadata.createdAt};
-    time[version] = metadata.createdAt;
-  }
-  return [{name: packageName, "dist-tags": {latest: data.latest}, versions, time}, ctx.jsrApiUrl];
+    const responseData = JSON.parse(result.body);
+    const versions: Record<string, any> = {};
+    const time: Record<string, string> = {};
+    for (const [version, metadata] of Object.entries((responseData.versions ?? {}) as Record<string, any>)) {
+      versions[version] = {version, time: metadata.createdAt};
+      time[version] = metadata.createdAt;
+    }
+    return {name: packageName, "dist-tags": {latest: responseData.latest}, versions, time};
+  });
+  return [data, ctx.jsrApiUrl];
 }
 
 export function updatePackageJson(pkgStr: string, deps: Deps): string {

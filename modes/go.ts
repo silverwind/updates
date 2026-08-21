@@ -230,16 +230,25 @@ export function parseGoMod(content: string) {
 
 type GoExcludes = Map<string, Set<string>>;
 
-function getGoExcludes(goCwd: string, type: string): GoExcludes {
+const goExcludesByCtx = new WeakMap<ModeContext, Map<string, GoExcludes | null>>();
+
+function getGoExcludes(goCwd: string, type: string, ctx: ModeContext): GoExcludes {
   const suffix = type.includes("|") ? type.slice(type.indexOf("|") + 1) : "";
   // multi-root workspaces prefix the member with `<relWorkspaceFile>:`
   const memberPath = suffix.includes(":") ? suffix.slice(suffix.indexOf(":") + 1) : suffix;
+  const byManifest = getOrSet(goExcludesByCtx, ctx, () => new Map<string, GoExcludes | null>());
   for (const manifest of memberPath ? [join(goCwd, memberPath, "go.mod"), join(goCwd, "go.mod")] : [join(goCwd, "go.mod")]) {
-    try {
-      return new Map(Object.entries(parseGoMod(readFileSync(manifest, "utf8")).exclude ?? {}).map(
-        ([name, versions]) => [name, new Set(versions)],
-      ));
-    } catch {}
+    const manifestPath = resolve(manifest);
+    const excludes = getOrSet(byManifest, manifestPath, (): GoExcludes | null => {
+      try {
+        return new Map(Object.entries(parseGoMod(readFileSync(manifestPath, "utf8")).exclude ?? {}).map(
+          ([name, versions]) => [name, new Set(versions)],
+        ));
+      } catch {
+        return null;
+      }
+    });
+    if (excludes) return excludes;
   }
   return new Map();
 }
@@ -389,7 +398,7 @@ async function fetchGoProxyModule(
 }
 
 export async function fetchGoProxyInfo(name: string, type: string, currentVersion: string, goCwd: string, ctx: ModeContext, goNoProxy: Array<string>): Promise<PackageInfo> {
-  const excludes = getGoExcludes(goCwd, type);
+  const excludes = getGoExcludes(goCwd, type, ctx);
   if (isGoNoProxy(name, goNoProxy)) return fetchGoVcsInfo(name, currentVersion, goCwd, ctx, excludes);
 
   const info = await fetchFromGoProxyChain(ctx.goProxyChain, async url => {

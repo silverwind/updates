@@ -1,6 +1,7 @@
 import {readFileSync, statSync} from "node:fs";
-import {join, dirname} from "node:path";
+import {join} from "node:path";
 import {env, platform, cwd} from "node:process";
+import {walkUpSync} from "./utils.ts";
 
 export function parseIni(content: string): Record<string, string> {
   if (/^\s*\{/.test(content)) {
@@ -28,17 +29,13 @@ function readConfigFile(filePath: string): Record<string, string> | undefined {
 }
 
 function findUp(filename: string, startDir: string): string | undefined {
-  let dir = startDir;
-  while (true) {
+  return walkUpSync(startDir, dir => {
     const filePath = join(dir, filename);
     try {
       if (statSync(filePath).isFile()) return filePath;
     } catch {}
-    const parent = dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  return undefined;
+    return null;
+  }) ?? undefined;
 }
 
 export function parseEnvVars(prefix: string): Record<string, any> {

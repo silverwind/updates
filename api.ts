@@ -6,7 +6,11 @@ import {readFile} from "node:fs/promises";
 import {parseToml} from "./utils/toml.ts";
 import {coerce, githubActionsVersioning, satisfies, validRange} from "./utils/semver.ts";
 import {timerel} from "timerel";
-import {npmTypes, uvTypes, goTypes, cargoTypes, cargoTargetTypes, expandDepTypes, parseUvDependencies, nonPackageEngines, parseDuration, parsePositiveInt, matchesAny, memoizeAsync, timestamp, forgeDirs, modeByFileName, pMap, tryOrNull} from "./utils/utils.ts";
+import {
+  npmTypes, uvTypes, goTypes, cargoTypes, cargoTargetTypes, expandDepTypes, parseUvDependencies, nonPackageEngines,
+  parseDuration, parsePositiveInt, matchesAny, memoizeAsync, timestamp, forgeDirs, modeByFileName, pMap, tryOrNull,
+  walkUpSync, getOrSet,
+} from "./utils/utils.ts";
 import {
   type Dep, type Deps, type DepsByMode, type Limiter, type Output as ModeOutput, type ModeContext,
   type PackageRepository, type TagEntry,
@@ -53,6 +57,8 @@ import {
   updatePnpmWorkspace, type WorkspaceMember,
 } from "./utils/workspace.ts";
 
+const allowedVersionsRe = /^(!?)\/(.*)\/(i?)$/;
+
 /** A dependency whose lookup failed. Every other dependency is still resolved and written. */
 export type DepError = {
   mode: string,
@@ -86,16 +92,13 @@ const jsrSpecifierRe = /^(npm:@jsr\/[^@]+@|jsr:@[^@]+@)(.+)$/;
 function findUpSync(filenames: string[], dir: string): Map<string, string> {
   const found = new Map<string, string>();
   const remaining = new Set(filenames);
-  let cur = dir;
-  while (remaining.size) {
+  walkUpSync(dir, cur => {
     for (const filename of remaining) {
       const path = join(cur, filename);
       try { accessSync(path); found.set(filename, path); remaining.delete(filename); } catch {}
     }
-    const parent = dirname(cur);
-    if (parent === cur) break;
-    cur = parent;
-  }
+    return remaining.size ? null : found;
+  });
   return found;
 }
 
@@ -272,27 +275,30 @@ function buildOutput(deps: DepsByMode): Output {
   return output;
 }
 
-function versionAllowed(mode: string, version: string, allowedVersions: string | undefined): boolean {
-  if (!allowedVersions) return true;
-  const regex = /^(!?)\/(.*)\/(i?)$/.exec(allowedVersions);
+function versionAllowedPredicate(mode: string, allowedVersions: string | undefined): (version: string) => boolean {
+  if (!allowedVersions) return () => true;
+  const regex = allowedVersionsRe.exec(allowedVersions);
   if (regex) {
-    const matches = new RegExp(regex[2], regex[3]).test(version);
-    return regex[1] ? !matches : matches;
+    const versionRe = new RegExp(regex[2], regex[3]);
+    return regex[1] ? version => !versionRe.test(version) : version => versionRe.test(version);
   }
-  if (mode === "docker") return satisfies(coerce(parseDockerTag(version)?.version ?? "")?.version ?? "", allowedVersions);
-  if (mode === "pypi") return pypiSatisfies(version, allowedVersions);
-  return satisfies(version, allowedVersions);
+  if (mode === "docker") {
+    return version => satisfies(coerce(parseDockerTag(version)?.version ?? "")?.version ?? "", allowedVersions);
+  }
+  if (mode === "pypi") return version => pypiSatisfies(version, allowedVersions);
+  return version => satisfies(version, allowedVersions);
 }
 
 function filterVersionData(data: Record<string, any>, mode: string, allowedVersions: string | undefined) {
   if (!allowedVersions) return data;
+  const isVersionAllowed = versionAllowedPredicate(mode, allowedVersions);
   const filterRecord = (record: Record<string, any>) => Object.fromEntries(Object.entries(record)
-    .filter(([version]) => versionAllowed(mode, version, allowedVersions)));
+    .filter(([version]) => isVersionAllowed(version)));
   if (mode === "go") return {
     ...data,
     ...(data.versions && {versions: filterRecord(data.versions)}),
-    new: typeof data.new === "string" && versionAllowed(mode, data.new, allowedVersions) ? data.new : "",
-    sameMajorNew: typeof data.sameMajorNew === "string" && versionAllowed(mode, data.sameMajorNew, allowedVersions) ?
+    new: typeof data.new === "string" && isVersionAllowed(data.new) ? data.new : "",
+    sameMajorNew: typeof data.sameMajorNew === "string" && isVersionAllowed(data.sameMajorNew) ?
       data.sameMajorNew : "",
   };
   const key = mode === "pypi" ? "releases" : mode === "docker" ? "tags" : "versions";
@@ -360,6 +366,17 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
       return res;
     }),
     noCache: Boolean(config.noCache),
+  };
+  const dockerTagDigestPromises = new Map<string, Promise<string | null>>();
+  const resolveDockerTagDigest = async (namespace: string, repo: string, tag: string): Promise<string | null> => {
+    const key = `${namespace}${fieldSep}${repo}${fieldSep}${tag}`;
+    const digestPromise = getOrSet(dockerTagDigestPromises, key, () => fetchDockerTagDigest(namespace, repo, tag, ctx));
+    try {
+      return await digestPromise;
+    } catch (err) {
+      if (dockerTagDigestPromises.get(key) === digestPromise) dockerTagDigestPromises.delete(key);
+      throw err;
+    }
   };
 
   for (const mode of config.modes ?? []) {
@@ -1287,7 +1304,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
             range: oldRef, semvers, useGreatest, usePre, useRel, allowDowngrade: allowDown, versioning: githubActionsVersioning,
             pinnedRange, pinNoDowngrade,
             cooldownDays: actionCooldownDays || undefined, now: actionCooldownDays ? now : undefined,
-          }, allowedVersions ? versions.filter(version => versionAllowed("actions", version, allowedVersions)) : versions);
+          }, allowedVersions ? versions.filter(versionAllowedPredicate("actions", allowedVersions)) : versions);
           if (!result) { delete deps.actions[key]; return; }
           const {tag: newTag, commitSha: newCommitSha, date} = result;
 
@@ -1343,7 +1360,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
           return;
         }
 
-        for (const info of infos) {
+        await pMap(infos, async (info) => {
           const dep = deps.docker[info.key];
           const oldTag = dep.oldOrig || dep.old;
           const {semvers, usePre, useRel, allowedVersions, pinnedRange, cooldownDays: dockerCooldownDays} =
@@ -1356,20 +1373,20 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
           ) : null;
           const newTag = result?.newTag ?? oldTag;
           if (info.ref.digest) {
-            const newDigest = await fetchDockerTagDigest(info.ref.namespace, info.ref.repo, newTag, ctx);
-            if (!newDigest || newDigest === info.ref.digest && !result) { delete deps.docker[info.key]; continue; }
+            const newDigest = await resolveDockerTagDigest(info.ref.namespace, info.ref.repo, newTag);
+            if (!newDigest || newDigest === info.ref.digest && !result) { delete deps.docker[info.key]; return; }
             dep.oldDigest = info.ref.digest;
             dep.newDigest = newDigest;
             dep.digestOnly = info.ref.digestOnly;
           } else if (!result) {
             delete deps.docker[info.key];
-            continue;
+            return;
           }
 
           dep.new = newTag;
           dep.info = getDockerInfoUrl(info.ref);
           setDepAge(dep, result?.date);
-        }
+        }, {concurrency});
       }, {concurrency});
 
       if (!Object.keys(deps.docker).length) delete deps.docker;
@@ -1417,9 +1434,8 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
               opts.pinnedRange, opts.usePre, opts.useRel,
             );
             if (!dockerUpdate) { delete deps.make[info.key]; return; }
-            const newDigest = info.image.digest ? await fetchDockerTagDigest(
-              info.image.ref.namespace, info.image.ref.repo, dockerUpdate.newTag, ctx,
-            ) : null;
+            const newDigest = info.image.digest ?
+              await resolveDockerTagDigest(info.image.ref.namespace, info.image.ref.repo, dockerUpdate.newTag) : null;
             if (info.image.digest && !newDigest) { delete deps.make[info.key]; return; }
             info.newSpec = formatMakeImageSpec(info.image.writtenImage, dockerUpdate.newTag, newDigest);
             dep.new = dockerUpdate.newTag;

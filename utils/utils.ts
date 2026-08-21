@@ -475,6 +475,17 @@ export async function walkUp<T>(startDir: string, probe: (dir: string) => Promis
   }
 }
 
+export function walkUpSync<T>(startDir: string, probe: (dir: string) => T | null): T | null {
+  let dir = startDir;
+  while (true) {
+    const found = probe(dir);
+    if (found) return found;
+    const parent = dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
+
 export function pushTo<K, V>(map: Map<K, Array<V>>, key: K, value: V): void {
   const list = map.get(key);
   if (list) {
