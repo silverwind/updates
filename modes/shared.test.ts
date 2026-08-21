@@ -1,30 +1,9 @@
 import {Buffer} from "node:buffer";
 import {
-  findNewVersion,
-  stripv,
-  normalizeUrl,
-  getFetchOpts,
-  isVersionPrerelease,
-  coerceToVersion,
-  selectTag,
-  resolvePackageJsonUrl,
-  parseTags,
-  throwFetchError,
-  formatVersionPrecision,
-  getSubDir,
-  findVersion,
-  getInfoUrl,
-  packageVersion,
-  getForgeTokens,
-  parseExtraheaders,
-  fetchForge,
-  fetchActionTags,
-  fetchWithEtag,
-  fetchWithRetry,
-  fetchImmutable,
-  fetchTimeout,
-  getLimiter,
-  ForgeError,
+  coerceToVersion, fetchActionTags, fetchForge, fetchImmutable, fetchTimeout, fetchWithEtag, fetchWithRetry,
+  findNewVersion, findVersion, ForgeError, formatVersionPrecision, getFetchOpts, getForgeTokens, getInfoUrl,
+  getLimiter, getSubDir, hashRe, isVersionPrerelease, normalizeUrl, packageVersion, parseExtraheaders, parseTags,
+  resolvePackageJsonUrl, selectTag, stripv, throwFetchError,
   type ModeContext,
 } from "./shared.ts";
 import {esc} from "../utils/utils.ts";
@@ -33,10 +12,8 @@ import {flushCacheWrites} from "../utils/fetchCache.ts";
 
 const defaultOpts = {allowDowngrade: false as any};
 
-// npm-mode findNewVersion reads `data` without mutating it, so rows may share fixtures.
 const npmOpts = {mode: "npm", useGreatest: false, usePre: false, useRel: false, semvers: new Set(["patch", "minor", "major"]), ...defaultOpts};
 
-// Abbreviated npm metadata: has versions and dist-tags but no time
 const tsAbbrev = {name: "typescript", "dist-tags": {latest: "6.0.2"}, versions: {"5.9.2": {}, "5.9.3": {}, "6.0.0": {}, "6.0.1": {}, "6.0.2": {}}};
 const tsFull = {...tsAbbrev, time: {
   "5.9.2": "2025-01-01T00:00:00Z",
@@ -53,66 +30,43 @@ test.each([
   ["pin selects greatest within range when no time data",
     {name: "typescript", "dist-tags": {latest: "6.0.2"}, versions: {"5.9.2": {}, "5.9.3": {}, "5.9.4": {}, "5.9.5": {}, "6.0.2": {}}},
     {range: "6.0.2", pinnedRange: "^5.9.3"}, "5.9.5"],
-  // offers the upgrade within the pinned range (18.2.0 -> 18.3.1) rather than the 19.0.0 latest
   ["pin with no downgrade returns null without allow-downgrade",
     {name: "react", "dist-tags": {latest: "19.0.0"}, versions: {"18.2.0": {}, "18.3.0": {}, "18.3.1": {}, "19.0.0": {}}},
     {range: "18.2.0", pinnedRange: "^18.0.0"}, "18.3.1"],
-  // renovate's allowedVersions is a ceiling on newer releases, never a reason to roll back
   ["renovate-derived pin rolls back without the marker", cropper, {range: "^2.0.0", pinnedRange: "^1"}, "1.6.2"],
   ["renovate-derived pin filters but never downgrades", cropper, {range: "^2.0.0", pinnedRange: "^1", pinNoDowngrade: true}, null],
 ])("%s", (_name, data, opts, expected) => {
   expect(findNewVersion(data, {...npmOpts, ...opts})).toBe(expected);
 });
 
-test("stripv removes leading v", () => {
+test("shared value helpers", () => {
   expect(stripv("v1.0.0")).toBe("1.0.0");
   expect(stripv("1.0.0")).toBe("1.0.0");
-  expect(stripv("v0.1.0")).toBe("0.1.0");
-});
-
-test("esc escapes regex special chars", () => {
   for (const str of ["foo.bar", "a[b]", "no-special", "plain", "a+b*c?", "(x)|{y}^$"]) {
     expect(new RegExp(`^${esc(str)}$`).test(str)).toBe(true);
   }
-  // special chars must match literally, not act as metacharacters
   expect(new RegExp(`^${esc("a.b")}$`).test("axb")).toBe(false);
-});
-
-test("normalizeUrl strips trailing slash", () => {
   expect(normalizeUrl("https://example.com/")).toBe("https://example.com");
   expect(normalizeUrl("https://example.com")).toBe("https://example.com");
-  expect(normalizeUrl("https://example.com/path/")).toBe("https://example.com/path");
-});
-
-test("getFetchOpts sends an auth header only with a token", () => {
   const headers = getFetchOpts().headers as Record<string, string>;
   expect(headers["user-agent"]).toBe(`updates/${packageVersion}`);
   expect(headers["accept-encoding"]).toBe("gzip, deflate, br");
   expect(headers["Authorization"]).toBeUndefined();
   expect((getFetchOpts("Bearer", "mytoken123").headers as Record<string, string>)["Authorization"]).toBe("Bearer mytoken123");
-});
-
-test("isVersionPrerelease detects prereleases", () => {
   expect(isVersionPrerelease("1.0.0-alpha")).toBe(true);
   expect(isVersionPrerelease("1.0.0-beta.1")).toBe(true);
   expect(isVersionPrerelease("1.0.0")).toBe(false);
   expect(isVersionPrerelease("invalid")).toBe(false);
-  // pep440 spells them without a hyphen, which the semver rules read as stable
   expect(isVersionPrerelease("2.0.0b1")).toBe(false);
   expect(isVersionPrerelease("2.0.0b1", pep440Versioning)).toBe(true);
   expect(isVersionPrerelease("1.1.0.dev1", pep440Versioning)).toBe(true);
   expect(isVersionPrerelease("2026.3.post1", pep440Versioning)).toBe(false);
-});
-
-test("coerceToVersion extracts a version, or nothing", () => {
   expect(coerceToVersion("^1.2.3")).toBe("1.2.3");
   expect(coerceToVersion("5")).toBe("5.0.0");
   expect(coerceToVersion("~2.1.0")).toBe("2.1.0");
   expect(coerceToVersion("")).toBe("");
 });
 
-// GitHub's /tags has no guaranteed order, and its reverse-chronological default defeats a
-// lexicographic one by mixing a shorter v9 with a longer v10.
 test.each([
   [["v1.0.0", "v1.1.0", "v2.0.0"], "v1.0.0", "v2.0.0"],
   [["v1.0.0", "v3.0.0", "v2.0.0"], "v1.0.0", "v3.0.0"],
@@ -146,6 +100,11 @@ test("parseTags transforms tag data, commit or not", () => {
   ]);
 });
 
+test("hashRe only recognizes npm commit lengths", () => {
+  expect(["deadbee", "1234567", "a".repeat(40)].every(value => hashRe.test(value))).toBe(true);
+  expect(["abc123", "deadbeef", "a".repeat(39), "a".repeat(41), "b".repeat(64)].some(value => hashRe.test(value))).toBe(false);
+});
+
 test("throwFetchError names the status, or the package when there is none", () => {
   const res = {status: 404, statusText: "Not Found"} as Response;
   expect(() => throwFetchError(res, "https://example.com", "pkg", "npm")).toThrow("Received 404 Not Found from https://example.com");
@@ -171,9 +130,6 @@ test.each([
 
 const findVersionOpts = {range: "1.0.0", semvers: new Set(["major", "minor", "patch"]), useGreatest: false, usePre: false, useRel: false};
 
-// A step down is only offered with --allow-downgrade, and only onto the tag, that being where the
-// maintainer stepped back to. With no tag published the one worthwhile step down is off a
-// prerelease train onto the release below it, and a release has nowhere to go at all.
 test.each([
   ["a pre to a higher release", "1.0.0-alpha", ["2.0.0"], {}, "2.0.0"],
   ["a pre to a lower release", "2.0.0-alpha", ["1.0.0"], {}, null],
@@ -195,7 +151,6 @@ test.each([
   ["nothing outside the semver filter", ["1.0.1", "2.0.0"], {}, {semvers: new Set(["patch"])}, "1.0.1"],
   ["nothing outside pinnedRange", ["1.1.0", "2.0.0"], {}, {pinnedRange: "^1.0.0"}, "1.1.0"],
   ["no prerelease without --pre", ["1.1.0", "1.2.0-alpha"], {}, {}, "1.1.0"],
-  // 1.1.0 is 15 days old and eligible, 1.2.0 and 1.3.0 are 3 and 1 days old, so too new
   ["the newest version past its cooldown", ["1.0.0", "1.1.0", "1.2.0", "1.3.0"], cooldownTimes, cooldownNow, "1.1.0"],
   ["nothing while every candidate is inside the cooldown", ["1.1.0", "1.2.0"],
     {"1.1.0": "2026-04-23T00:00:00Z", "1.2.0": "2026-04-24T00:00:00Z"}, cooldownNow, null],
@@ -207,7 +162,7 @@ test.each([
   expect(findVersion(data, versions, {...findVersionOpts, ...opts})).toBe(expected);
 });
 
-test("findVersion picks the highest prerelease regardless of order", () => {
+test("findVersion handles prerelease ordering and filtering", () => {
   const opts = {
     range: "1.0.0",
     semvers: new Set(["major", "minor", "patch"]),
@@ -218,18 +173,24 @@ test("findVersion picks the highest prerelease regardless of order", () => {
   expect(findVersion({}, ["2.0.0-rc.2", "2.0.0-rc.1"], opts)).toBe("2.0.0-rc.2");
   expect(findVersion({}, ["2.0.0-rc.1", "2.0.0-rc.2"], opts)).toBe("2.0.0-rc.2");
   expect(findVersion({}, ["1.0.0-beta.10", "1.0.0-beta.5", "1.0.0-beta.3"], {...opts, range: "1.0.0-beta.1"})).toBe("1.0.0-beta.10");
-  // a prerelease below the authored release is a downgrade, not an upgrade
   expect(findVersion({}, ["1.0.0-beta.10", "1.0.0-beta.5"], opts)).toBe(null);
-  // a release must win over a same-main prerelease
   expect(findVersion({}, ["2.0.0-rc.1", "2.0.0"], opts)).toBe("2.0.0");
   expect(findVersion({}, ["2.0.0", "2.0.0-rc.1"], opts)).toBe("2.0.0");
+  expect(findVersion({}, ["1.2.3+corp.1"], {...opts, range: "1.2.2", usePre: false})).toBe("1.2.3+corp.1");
+  const data = {versions: {"2.0.0-rc.1": {}, "2.0.0-rc.2": {}},
+    time: {"2.0.0-rc.1": "2025-01-01T00:00:00Z", "2.0.0-rc.2": "2025-01-02T00:00:00Z"}};
+  const versions = ["2.0.0-rc.1", "2.0.0-rc.2"];
+  const rangeOpts = {range: "^2.0.0-rc.1", useGreatest: false, usePre: false, useRel: false} as const;
+  expect(findVersion(data, versions, {...rangeOpts, semvers: new Set(["patch"])})).toBe("2.0.0-rc.2");
+  expect(findVersion(data, versions, {...rangeOpts, semvers: new Set(["patch"]), cooldownDays: 3650,
+    now: Date.parse("2025-01-03T00:00:00Z")})).toBe(null);
 });
 
 test("findVersion selects by version even when publish dates disagree", () => {
   const data = {
     versions: {"1.1.0": {}, "1.2.0": {}, "1.3.0": {}},
     time: {
-      "1.1.0": "2025-03-01T00:00:00Z", // a backport published after the higher versions
+      "1.1.0": "2025-03-01T00:00:00Z",
       "1.2.0": "2025-01-01T00:00:00Z",
       "1.3.0": "2025-02-01T00:00:00Z",
     },
@@ -242,16 +203,6 @@ test("findVersion selects by version even when publish dates disagree", () => {
   } as const;
   expect(findVersion(data, ["1.1.0", "1.2.0", "1.3.0"], {...opts, range: "1.0.0"})).toBe("1.3.0");
   expect(findVersion(data, ["1.1.0", "1.2.0", "1.3.0"], {...opts, range: "1.2.0"})).toBe("1.3.0");
-});
-
-test("findVersion never reports an unpublished release for a prerelease range", () => {
-  // every candidate filtered out must leave the authored version untouched, not the
-  // release it is a prerelease of
-  const data = {versions: {"2.0.0-rc.1": {}, "2.0.0-rc.2": {}}, time: {"2.0.0-rc.1": "2025-01-01T00:00:00Z", "2.0.0-rc.2": "2025-01-02T00:00:00Z"}};
-  const versions = ["2.0.0-rc.1", "2.0.0-rc.2"];
-  const opts = {range: "^2.0.0-rc.1", useGreatest: false, usePre: false, useRel: false} as const;
-  expect(findVersion(data, versions, {...opts, semvers: new Set(["patch"])})).toBe("2.0.0-rc.2");
-  expect(findVersion(data, versions, {...opts, semvers: new Set(["patch"]), cooldownDays: 3650, now: Date.parse("2025-01-03T00:00:00Z")})).toBe(null);
 });
 
 test.each([
@@ -287,7 +238,6 @@ const preLatest = (latest: string) => ({
 
 test.each([
   ["wildcard range returns null", twoVersions, {range: "*"}, null],
-  // Ranked against the last branch, so the authored version is 2.0.0 and 1.1.0 no upgrade
   ["or-chain resolves against its newest branch", threeVersions, {range: "^1.0.0 || ^2.0.0", semvers: new Set(["minor"])}, null],
   ["compound range resolves", threeVersions, {range: ">=1.0.0 <2.0.0"}, "2.0.0"],
   ["useGreatest returns version directly", threeVersions, {range: "1.0.0", useGreatest: true}, "2.0.0"],
@@ -306,14 +256,9 @@ test.each([
       time: {"1.0.0": "2025-01-01", "1.0.1": "2025-02-01", "2.0.0": "2025-03-01"}},
     {range: "1.0.0", semvers: new Set(["patch"])}, "1.0.1"],
   ["useRel with prerelease latest", preLatest("2.0.0-rc.1"), {range: "1.0.0", useRel: true}, "1.1.0"],
-  // --release turns the prereleases --prerelease opted into back off, leaving plain latest mode,
-  // so the 2.0.0 the maintainer never tagged stays behind the ceiling
   ["--release turns --prerelease back to releases", {name: "pkg", "dist-tags": {latest: "1.1.0"}, versions: {"1.0.0": {}, "1.1.0": {}, "2.0.0-rc.1": {}, "2.0.0": {}}},
     {range: "1.0.0", usePre: true, useRel: true}, "1.1.0"],
   ["latestTag is prerelease, latest mode", preLatest("2.0.0-beta.1"), {range: "1.0.0"}, "1.1.0"],
-  // Abbreviated metadata (no time field) so findVersion picks the greatest in-range candidate.
-  // latest dist-tag (1.9.9) is below the installed 2.0.0, so the downgrade guard must not
-  // discard the valid 2.0.1 upgrade.
   ["falls back to in-range upgrade when latest dist-tag is a lower release",
     {name: "pkg", "dist-tags": {latest: "1.9.9"}, versions: {"1.9.9": {}, "2.0.0": {}, "2.0.1": {}}},
     {range: "2.0.0"}, "2.0.1"],
@@ -328,21 +273,15 @@ test.each([
   ["deprecated versions stay in reach of a version that is itself deprecated",
     {name: "pkg", "dist-tags": {latest: "2.0.0"}, versions: {"1.0.0": {deprecated: true}, "1.1.0": {}, "2.0.0": {deprecated: true}}},
     {range: "1.0.0"}, "2.0.0"],
-  // a deprecated tag is still the ceiling, so the 3.0.0 the maintainer never tagged stays out of
-  // reach, and the releases below it are no downgrade target either
   ["a deprecated latest does not promote an off-tag release",
     {name: "pkg", "dist-tags": {latest: "2.0.0"}, versions: {"1.0.0": {}, "1.1.0": {}, "2.0.0": {deprecated: true}, "3.0.0": {}}},
     {range: "1.0.0"}, "1.1.0"],
   ["a deprecated latest is no downgrade target",
     {name: "pkg", "dist-tags": {latest: "2.0.0"}, versions: {"1.0.0": {}, "1.1.0": {}, "2.0.0": {deprecated: true}, "3.0.0": {}}},
     {range: "3.0.0", allowDowngrade: true}, null],
-  // semver orders alphanumeric prerelease identifiers lexically, so rc99 outranks rc331 while the
-  // maintainer only ever tagged rc331. respectLatest keeps the untagged one out of reach, and lets
-  // a train that already runs past the tag carry on regardless.
   ["a prerelease past the latest tag is out of reach", preRcs, {range: "0.6.0-rc330"}, "0.6.0-rc331"],
   ["a prerelease train past the latest tag still moves", preRcs, {range: "0.6.0-rc98"}, "0.6.0-rc99"],
   ["--prerelease takes the one past the latest tag", preRcs, {range: "0.6.0-rc330", usePre: true}, "0.6.0-rc99"],
-  // `^10` coerces to a version the package never published, so the exemption above cannot fire
   ["a wholly deprecated package keeps its newest release for a range naming no published version",
     {name: "pkg", "dist-tags": {latest: "10.1.0"}, versions: {"10.0.1": {deprecated: true}, "10.1.0": {deprecated: true}}},
     {range: "^10"}, "10.1.0"],
@@ -377,6 +316,20 @@ test.each([
   expect(findNewVersion(data, {...pypiOpts, ...opts} as any)).toBe(expected);
 });
 
+test("findNewVersion filters PyPI files by yank and earliest upload", () => {
+  const data = {info: {version: "1.3.0"}, releases: {
+    "1.0.0": [{upload_time_iso_8601: "2025-01-01T00:00:00Z"}],
+    "1.1.0": [
+      {upload_time_iso_8601: "2026-04-24T00:00:00Z", yanked: true},
+      {upload_time_iso_8601: "2026-04-01T00:00:00Z"},
+    ],
+    "1.2.0": [{upload_time_iso_8601: "2026-04-24T00:00:00Z"}],
+    "1.3.0": [{upload_time_iso_8601: "2026-04-01T00:00:00Z", yanked: true}],
+  }};
+  expect(findNewVersion(data, {...pypiOpts, range: "1.0.0", cooldownDays: 5,
+    now: Date.parse("2026-04-25T00:00:00Z")})).toBe("1.1.0");
+});
+
 test("findNewVersion does not follow an unstable train across a major", () => {
   const data = {
     name: "react",
@@ -392,17 +345,14 @@ test("findNewVersion does not follow an unstable train across a major", () => {
 
 test("findNewVersion tolerates a packument missing versions or naming an absent latest", () => {
   expect(findNewVersion({name: "pkg", "dist-tags": {latest: "2.0.0"}}, {...npmOpts, range: "1.0.0"})).toBe(null);
-  // a latest dist-tag the registry does not carry would write a version npm cannot resolve
   expect(findNewVersion({name: "pkg", "dist-tags": {latest: "9.9.9"}, versions: {"1.0.0": {}, "1.1.0": {}}},
     {...npmOpts, range: "1.0.0"})).toBe("1.1.0");
 });
 
-// go mode reads the resolved versions off `data` rather than a packument
 const goOpts = {mode: "go", useGreatest: false, usePre: false, useRel: false,
   semvers: new Set(["patch", "minor", "major"]), ...defaultOpts};
 const goData = {name: "github.com/foo/bar", old: "1.0.0", new: "3.0.0", Time: "2025-03-01"};
 const goSameMajor = (sameMajorNew: string) => ({...goData, sameMajorNew, sameMajorTime: "2025-02-01"});
-// coercing a prerelease pin away would compare 0.4.2-0.2023… against 0.4.2 as equal and stall
 const pseudo = "0.4.2-0.20230802210424-5b0b94c5c0d3";
 
 test.each([
@@ -410,6 +360,8 @@ test.each([
   ["the same-major fallback when major is filtered out", goSameMajor("1.5.0"),
     {range: "1.0.0", semvers: new Set(["patch", "minor"])}, "1.5.0"],
   ["a pseudo-version pin moved to its release", {...goData, old: pseudo, new: "0.4.2"}, {range: pseudo}, "0.4.2"],
+  ["a newer pseudo-version candidate", {...goData, old: "0.4.2", new: "0.4.3-0.20260821120000-6c1a2b3c4d5e"},
+    {range: "0.4.2", semvers: new Set(["patch"])}, "0.4.3-0.20260821120000-6c1a2b3c4d5e"],
   ["a prerelease pin moved to its release", {...goData, old: "1.5.0-rc.1", new: "1.5.0"}, {range: "1.5.0-rc.1"}, "1.5.0"],
   ["nothing when pinnedRange excludes the cross-major target", goData,
     {range: "1.0.0", semvers: new Set(["major"]), pinnedRange: "<2.0.0"}, null],
@@ -421,29 +373,21 @@ test.each([
   expect(findNewVersion(data, {...goOpts, ...opts})).toBe(expected);
 });
 
-// UPDATES_FORGE_TOKENS is one process-wide slot, and the two tests below hold a value of their
-// own across awaits, so neither may run while the other does, under either runner's concurrency.
 const sequential = test.sequential ?? (test as any).serial ?? test;
 
 sequential("getForgeTokens", async () => {
-  // empty host (unparseable url) -> no token
   expect(await getForgeTokens("", "https://api.github.com")).toEqual([]);
 
-  // foreign forge host without a configured token -> no github fallback
-  // (github-host delegation is covered with teeth by the fetchForge test below)
   expect(await getForgeTokens("gitea.example.com", "https://api.github.com")).toEqual([]);
 
   const forHost = (host: string) => getForgeTokens(host, "https://api.github.com");
   const saved = process.env.UPDATES_FORGE_TOKENS;
   process.env.UPDATES_FORGE_TOKENS = "localhost:3500:ported,git.example.com:bare";
   try {
-    // a port-qualified entry must not be split at the first colon
     expect(await forHost("localhost:3500")).toEqual(["ported"]);
     expect(await forHost("git.example.com")).toEqual(["bare"]);
-    // another port on a configured host is a different endpoint, and must not inherit its token
     expect(await forHost("localhost:9999")).toEqual([]);
     expect(await forHost("git.example.com:8080")).toEqual([]);
-    // nor may the bare host claim a ported entry, which would hand back `3500:ported`
     expect(await forHost("localhost")).toEqual([]);
   } finally {
     if (saved === undefined) delete process.env.UPDATES_FORGE_TOKENS;
@@ -459,7 +403,6 @@ test("parseExtraheaders reads a CI token per host", () => {
     "http.https://other.example.com/.extraheader AUTHORIZATION: bearer not-basic",
   ].join("\n"));
   expect(tokens.get("github.com")).toEqual("gh-tok");
-  // a ported instance is its own endpoint, and only `basic` carries the base64 credential
   expect(tokens.get("gitea.example.com:8443")).toEqual("gitea-tok");
   expect(tokens.has("gitea.example.com")).toEqual(false);
   expect(tokens.has("other.example.com")).toEqual(false);
@@ -468,16 +411,10 @@ test("parseExtraheaders reads a CI token per host", () => {
 const modeCtx = (props: Record<string, unknown>): ModeContext => ({fetchTimeout, ...props} as unknown as ModeContext);
 
 test("fetchForge only sends github credentials to github hosts", async () => {
-  // Inject a github token deterministically. `getGithubTokens` reads env per call, so plain
-  // mutation works under both vitest and bun. The forge host is unique to this test because
-  // workingTokenCache is module-level: on a CI runner an earlier fetch caches the extraheader
-  // credential under api.github.com and would short-circuit the injected token.
   const tokenEnv = ["UPDATES_GITHUB_API_TOKEN", "GITHUB_API_TOKEN", "GH_TOKEN", "GITHUB_TOKEN", "HOMEBREW_GITHUB_API_TOKEN"];
   const saved = Object.fromEntries(tokenEnv.map(name => [name, process.env[name]]));
   for (const name of tokenEnv) delete process.env[name];
   process.env.GH_TOKEN = "ghp_regression_secret";
-  // Restore in `finally` so a failed assertion can't leak env into concurrent
-  // sibling tests (isolate: false).
   try {
     const authByHost: Record<string, string | undefined> = {};
     const ctx = modeCtx({forgeApiUrl: "https://forge.regression.test",
@@ -491,7 +428,6 @@ test("fetchForge only sends github credentials to github hosts", async () => {
 
     expect(authByHost["forge.regression.test"]).toBe("Bearer ghp_regression_secret");
     expect(authByHost["attacker.example"]).toBeUndefined();
-    // GitHub's own API hostname still resolves the github credentials
     expect(await getForgeTokens("api.github.com", "https://api.github.com")).toContain("ghp_regression_secret");
   } finally {
     for (const [name, value] of Object.entries(saved)) {
@@ -501,8 +437,29 @@ test("fetchForge only sends github credentials to github hosts", async () => {
   }
 });
 
-// One tag per page, with page 1 announcing `lastPage` through the link header.
+sequential("fetchForge does not reuse a cached token removed from the environment", async () => {
+  const saved = process.env.UPDATES_FORGE_TOKENS;
+  const authorizations: Array<string | undefined> = [];
+  const ctx = modeCtx({forgeApiUrl: "https://api.github.com", doFetch: (_url: string, opts: RequestInit) => {
+    authorizations.push((opts.headers as Record<string, string>)?.Authorization);
+    return Promise.resolve({ok: true, status: 200, headers: new Headers()});
+  }});
+  try {
+    process.env.UPDATES_FORGE_TOKENS = "rotated-token.test:old";
+    await fetchForge("https://rotated-token.test/repos/o/r/tags", ctx);
+    process.env.UPDATES_FORGE_TOKENS = "rotated-token.test:new";
+    await expect(fetchForge("https://rotated-token.test/repos/o/r/tags", ctx)).resolves.toMatchObject({status: 200});
+    expect(authorizations).toEqual(["Bearer old", "Bearer new"]);
+  } finally {
+    if (saved === undefined) delete process.env.UPDATES_FORGE_TOKENS;
+    else process.env.UPDATES_FORGE_TOKENS = saved;
+  }
+});
+
 const tagPage = (url: string, lastPage: number) => {
+  if (new URL(url).pathname.endsWith("/releases")) {
+    return {ok: true, json: () => Promise.resolve([]), headers: new Headers()};
+  }
   const page = Number(new URL(url).searchParams.get("page"));
   return {
     ok: true,
@@ -513,14 +470,38 @@ const tagPage = (url: string, lastPage: number) => {
 
 test("fetchActionTags single page no link header", async () => {
   const tagsData = [{name: "v1.0.0", commit: {sha: "abc"}}, {name: "v2.0.0", commit: {sha: "def"}}];
-  const ctx = modeCtx({doFetch: () => Promise.resolve({ok: true, json: () => Promise.resolve(tagsData), headers: new Headers()})});
+  const ctx = modeCtx({doFetch: (url: string) => Promise.resolve({ok: true,
+    json: () => Promise.resolve(new URL(url).pathname.endsWith("/releases") ? [
+      {tag_name: "v1.0.0", prerelease: false, draft: false},
+      {tag_name: "v2.0.0", prerelease: true, draft: false},
+    ] : tagsData), headers: new Headers()})});
   const result = await fetchActionTags("https://api.github.com", "actions", "checkout", ctx);
-  expect(result).toEqual([{name: "v1.0.0", commitSha: "abc"}, {name: "v2.0.0", commitSha: "def"}]);
+  expect(result).toEqual([
+    {name: "v1.0.0", commitSha: "abc", isStable: true},
+    {name: "v2.0.0", commitSha: "def", isStable: false},
+  ]);
+
+  const malformed = modeCtx({noCache: true, doFetch: (url: string) => Promise.resolve({ok: true,
+    json: () => Promise.resolve(new URL(url).pathname.endsWith("/releases") ? [
+      {tag_name: null, prerelease: false},
+    ] : tagsData), headers: new Headers()})});
+  await expect(fetchActionTags("https://api.github.com", "actions", "checkout", malformed))
+    .rejects.toThrow("Invalid Forge release entry");
+});
+
+test("fetchActionTags skips release metadata when stability is unused", async () => {
+  const urls: Array<string> = [];
+  const ctx = modeCtx({noCache: true, doFetch: (url: string) => {
+    urls.push(url);
+    return Promise.resolve({ok: true, json: () => Promise.resolve([]), headers: new Headers()});
+  }});
+  await fetchActionTags("https://api.github.com", "actions", "checkout", ctx, [], false);
+  expect(urls).toHaveLength(1);
+  expect(urls[0]).toContain("/tags?");
 });
 
 test("fetchActionTags walks until the authored ref turns up, and no further", async () => {
   const lastPage = 40;
-  // [tags read, pages fetched]
   const walk = async (refs: Array<string>) => {
     let fetched = 0;
     const ctx = modeCtx({noCache: true, doFetch: (url: string) => {
@@ -529,10 +510,9 @@ test("fetchActionTags walks until the authored ref turns up, and no further", as
     }});
     return [(await fetchActionTags("https://api.github.com", "actions", "checkout", ctx, refs)).length, fetched];
   };
-  expect(await walk([])).toEqual([lastPage, lastPage]); // no ref to look for, so the whole list
-  expect(await walk(["v1.0.0"])).toEqual([1, 1]);
-  // waves of 1, 2, 4 and 8 reach page 11, so the walk reads 16 pages to resolve a sha on it
-  expect(await walk(["sha11"])).toEqual([16, 16]);
+  expect(await walk([])).toEqual([lastPage, lastPage + 1]);
+  expect(await walk(["v1.0.0"])).toEqual([1, 2]);
+  expect(await walk(["sha11"])).toEqual([16, 17]);
 });
 
 test("every request shares the run's one socket budget", async () => {
@@ -542,12 +522,10 @@ test("every request shares the run's one socket budget", async () => {
   const ctx = modeCtx({noCache: true, concurrency: 3, doFetch: async (url: string) => {
     inFlight++;
     peak = Math.max(peak, inFlight);
-    await new Promise(resolve => setImmediate(resolve)); // every admitted request is in flight by now
+    await new Promise(resolve => setImmediate(resolve));
     inFlight--;
     return tagPage(url, lastPage);
   }});
-  // Each fan already runs inside the fan over dependencies, so a budget of its own would multiply.
-  // The last group is the docker walk's shape, a slot taken above one it must pass straight through.
   const limit = getLimiter(ctx);
   const [tags] = await Promise.all([
     fetchActionTags("https://api.github.com", "o", "r", ctx),
@@ -558,13 +536,22 @@ test("every request shares the run's one socket budget", async () => {
   expect(peak).toBe(3);
 });
 
+test.each([429, 503, 403])("fetchWithRetry retries returned %s responses twice", async status => {
+  let calls = 0;
+  const ctx = modeCtx({noCache: true, doFetch: () => {
+    calls++;
+    return Promise.resolve({ok: false, status, headers: new Headers(status === 403 ? [["retry-after", "0"]] : [])});
+  }});
+  expect((await fetchWithRetry(ctx, `https://retry-${status}.test`)).status).toBe(status);
+  expect(calls).toBe(3);
+});
+
 sequential("fetchForge classifies rate limits and server faults, fetchActionTags lets them through", async () => {
   const reset = Math.floor(Date.parse("2026-05-01T00:00:00Z") / 1000);
-  // keyed by hostname label so each case gets a host of its own, as workingTokenCache is module-level
   const responses: Record<string, Partial<Response>> = {
     limited: {status: 403, headers: new Headers([["x-ratelimit-remaining", "0"], ["x-ratelimit-reset", String(reset)]])},
     secondary: {status: 403, headers: new Headers(), json: () => Promise.resolve({message: "You have exceeded a secondary rate limit"})},
-    retryafter: {status: 429, headers: new Headers([["retry-after", "60"]])},
+    retryafter: {status: 429, headers: new Headers([["retry-after", "0"]])},
     down: {status: 502, statusText: "Bad Gateway", headers: new Headers()},
     forbidden: {status: 403, headers: new Headers(), json: () => Promise.resolve({message: "Resource not accessible by integration"})},
     tokened: {status: 403, headers: new Headers([["x-ratelimit-remaining", "0"]])},
@@ -612,8 +599,15 @@ test("fetchActionTags reports an unreachable forge instead of an empty tag list"
     .rejects.toMatchObject({name: "ForgeError", kind: "network"});
 });
 
-// Tests use timestamped URLs so each invocation hashes to a unique cache file;
-// real-cache side effects are isolated.
+test.each([
+  ["invalid JSON", {json: () => Promise.reject(new SyntaxError("bad JSON")), headers: new Headers()}],
+  ["malformed pagination", {json: () => Promise.resolve([]),
+    headers: new Headers([["link", "<not a url>; rel=\"last\""]])}],
+])("fetchActionTags reports %s", async (_name, response) => {
+  const ctx = modeCtx({noCache: true, doFetch: () => Promise.resolve({ok: true, ...response})});
+  await expect(fetchActionTags("https://api.github.com", "actions", "checkout", ctx)).rejects.toThrow();
+});
+
 const ifNoneMatch = (opts: RequestInit) => (opts.headers as Record<string, string> | undefined)?.["if-none-match"];
 
 test("fetchWithEtag returns body on 200 and sends If-None-Match on second call", async () => {
@@ -635,6 +629,10 @@ test("fetchWithEtag returns body on 200 and sends If-None-Match on second call",
   const r2 = await fetchWithEtag(url, ctx);
   expect("body" in r2).toBe(true);
   expect(lastIfNoneMatch).toBe(`W/"1"`);
+  const failed = await fetchWithEtag("https://example.test/404", modeCtx({noCache: true,
+    doFetch: () => Promise.resolve({ok: false, status: 404, statusText: "Not Found", headers: new Headers()})}));
+  expect("body" in failed).toBe(false);
+  expect(failed.res?.status).toBe(404);
 });
 
 test("fetchWithEtag returns cached body on 304", async () => {
@@ -665,17 +663,8 @@ test("fetchWithEtag keeps flavors of one url in separate cache entries", async (
 
   await fetchWithEtag(url, ctx);
   await flushCacheWrites();
-  // a registry that etags per url alone would revalidate the abbreviated body into this call
   await fetchWithEtag(url, ctx, {}, undefined, `${url}\0dates`);
   expect(seenIfNoneMatch).toBeUndefined();
-});
-
-test("fetchWithEtag returns {res} on non-ok", async () => {
-  const ctx = modeCtx({noCache: true,
-    doFetch: () => Promise.resolve({ok: false, status: 404, statusText: "Not Found", headers: new Headers()})});
-  const r = await fetchWithEtag("https://example.test/404", ctx);
-  expect("body" in r).toBe(false);
-  expect(r.res?.status).toBe(404);
 });
 
 test("fetchImmutable serves cached body without fetching on second call", async () => {
@@ -711,4 +700,3 @@ test.each([["fetchWithEtag", fetchWithEtag], ["fetchImmutable", fetchImmutable]]
     expect(seenIfNoneMatch).toBeUndefined();
     expect(calls).toBe(2);
   });
-

@@ -10,12 +10,13 @@ test("line comments", () => {
     // top
     "a": 1 // trailing
   }`)).toEqual({a: 1});
-  // the newline closing a line comment still separates the tokens around it
   expect(() => parseJsonish("[1// c\n2]")).toThrow();
 });
 
 test("block comments", () => {
   expect(parseJsonish(`{ /* x */ "a": /* y */ 1 }`)).toEqual({a: 1});
+  expect(() => parseJsonish("[1/* c */2]")).toThrow();
+  expect(() => parseJsonish("1/* c */0")).toThrow();
 });
 
 test("trailing commas", () => {

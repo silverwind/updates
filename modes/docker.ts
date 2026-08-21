@@ -1,6 +1,9 @@
-import {coerce, diff, gt, parse, satisfies} from "../utils/semver.ts";
+import {parse, satisfies, semverVersioning} from "../utils/semver.ts";
 import {longestFirstAlternation} from "../utils/utils.ts";
-import {type Deps, type ModeContext, type PackageInfo, dedupe, fieldSep, fetchWithEtag, effectiveConcurrency, getLimiter, isSameVersionScheme, passesCooldown, prereleaseOpts, reduceJson, stripv, throwFetchError, formatVersionPrecision, maxTagPages} from "./shared.ts";
+import {
+  type Deps, type ModeContext, type PackageInfo, dedupe, fieldSep, fetchWithEtag, isSameVersionScheme,
+  passesCooldown, prereleaseOpts, reduceJson, stripv, throwFetchError, formatVersionPrecision,
+} from "./shared.ts";
 
 export type DockerImageRef = {
   registry: string | null,
@@ -8,40 +11,62 @@ export type DockerImageRef = {
   repo: string,
   tag: string,
   fullImage: string,
+  digest?: string,
+  digestOnly?: boolean,
 };
+type DockerTag = {version: string, prerelease: string, suffix: string};
 
-// Match semver or semver-prefix tags, with an optional prerelease glued to the version and an
-// optional suffix like -alpine. A hyphen starts the suffix, so `1.27-rc` is the `-rc` variant while
-// `1.27rc3` is a prerelease of 1.27, the same split renovate's docker versioning makes.
-// Examples: "18", "18.19", "v1.2.3", "18-alpine", "1.27rc3", "1.27rc3-alpine"
-const dockerTagRe = /^(v?\d+(?:\.\d+){0,2})([a-z][a-z0-9]*)?(-.+)?$/i;
+const dockerTagRe = /^(v?\d+(?:\.\d+)*)([a-z][a-z0-9]*)?(-.+)?$/i;
 
-// Extraction regexes
-// Dockerfile instructions are case-insensitive
-export const dockerfileFromRe = /^\s*FROM\s+(?:--platform=\S+\s+)?(\S+)/gim;
-export const composeImageRe = /^\s*image:\s*['"]?([^\s'"#]+)['"]?/gm;
-// Matches shorthand `container: image:tag` (not object form with `{`)
-export const workflowContainerRe = /^\s*container:\s*['"]?([^\s'"#{}]+:[^\s'"#{}:]+)['"]?\s*$/gm;
-// Matches `uses: docker://image:tag`
-export const workflowDockerUsesRe = /^\s*(?:-\s*)?uses:\s*['"]?docker:\/\/([^'"#\s]+)['"]?/gm;
+export const dockerfileFromRe = /^[ \t]*FROM\b[^\r\n]*(?:(?<=\\)[ \t]*\r?\n[^\r\n]*)*/gim;
+export const composeImageRe = /^[ \t]*image:\s*['"]?([^\s'"#]+)['"]?/gm;
+const dockerArgRe = /^[ \t]*ARG\s+(\w+)(?:[ =](\S*))?/i;
+const dockerFromInstructionRe = /^[ \t]*FROM\s+(?:--platform=\S+\s+)?(\S+)/i;
+const unfoldDockerInstruction = (instruction: string) => instruction.replace(/\\[ \t]*\r?\n[ \t]*/g, " ");
 
-// docker.io and index.docker.io are Docker Hub itself, not a third-party registry.
-const hubRegistryRe = /^(?:index\.)?docker\.io$/;
+function resolveDockerVariables(value: string, getValue: (name: string) => string | undefined): string {
+  return value.replace(/\$\{(\w+)\}|\$(\w+)/g, (variable, braced, bare) => {
+    const resolved = getValue(braced || bare);
+    return resolved === undefined ? variable : resolved;
+  });
+}
+
+type DockerArg = {value: string, resolved: string, start: number};
+
+function *dockerfileFromInstructions(content: string, recursive = false): Generator<{
+  instruction: RegExpMatchArray, args: Map<string, DockerArg>, from: RegExpExecArray, resolved: string,
+}> {
+  const args = new Map<string, DockerArg>();
+  let sawFrom = false;
+  for (const instruction of content.matchAll(/^[ \t]*(?:ARG|FROM)\b[^\r\n]*(?:(?<=\\)[ \t]*\r?\n[^\r\n]*)*/gim)) {
+    const unfolded = unfoldDockerInstruction(instruction[0]);
+    const arg = dockerArgRe.exec(unfolded);
+    if (arg) {
+      if (!sawFrom) {
+        const value = arg[2]?.replace(/^(['"])(.*)\1$/, "$2") ?? "";
+        const relativeStart = instruction[0].lastIndexOf(value);
+        args.set(arg[1], {value, resolved: resolveDockerVariables(value, name => args.get(name)?.resolved),
+          start: relativeStart < 0 ? -1 : instruction.index + relativeStart});
+      }
+      continue;
+    }
+    sawFrom = true;
+    const from = dockerFromInstructionRe.exec(unfolded);
+    if (from) yield {instruction, args, from,
+      resolved: resolveDockerVariables(from[1], name => args.get(name)?.[recursive ? "resolved" : "value"])};
+  }
+}
+
+const hubRegistryRe = /^(?:(?:index|registry-1)\.)?docker\.io$/;
 
 function parseImageParts(imagePart: string): {registry: string | null, namespace: string, repo: string} {
   const parts = imagePart.split("/");
   if (parts.length > 1 && hubRegistryRe.test(parts[0])) parts.shift();
-  if (parts.length === 1) {
-    return {registry: null, namespace: "library", repo: parts[0]};
-  } else if (parts.length === 2 && !parts[0].includes(".") && !parts[0].includes(":")) {
-    return {registry: null, namespace: parts[0], repo: parts[1]};
-  } else {
-    return {registry: parts[0], namespace: parts.slice(1, -1).join("/"), repo: parts[parts.length - 1]};
-  }
+  const registry = parts.length > 1 && (parts[0] === "localhost" || parts[0].includes(".") || parts[0].includes(":")) ?
+    parts.shift()! : null;
+  return {registry, namespace: parts.length === 1 ? "library" : parts.slice(0, -1).join("/"), repo: parts.at(-1)!};
 }
 
-// Hub images are addressable with or without the `docker.io/` registry and `library/`
-// namespace, so a user-supplied name in any of those spellings matches the image.
 export function dockerImageNames(image: string): Array<string> {
   const {registry, namespace, repo} = parseImageParts(image);
   if (registry) return [image];
@@ -52,23 +77,23 @@ export function dockerImageNames(image: string): Array<string> {
 export function parseDockerImageRef(ref: string): DockerImageRef | null {
   ref = ref.replace(/^docker:\/\//, "");
 
-  if (ref.includes("@")) return null; // digest-pinned, skip
+  const [taggedRef, digest, ...extra] = ref.split("@");
+  if (extra.length || digest && !/^[a-z][a-z0-9+._-]*:[0-9a-f]+$/i.test(digest)) return null;
 
-  const colonIndex = ref.lastIndexOf(":");
-  if (colonIndex === -1 || ref.lastIndexOf("/") > colonIndex) {
-    return null; // no tag specified, skip
-  }
+  const colonIndex = taggedRef.lastIndexOf(":");
+  const hasTag = colonIndex !== -1 && taggedRef.lastIndexOf("/") < colonIndex;
+  if (!hasTag && !digest) return null;
 
-  const imagePart = ref.substring(0, colonIndex);
-  const tag = ref.substring(colonIndex + 1);
+  const imagePart = hasTag ? taggedRef.substring(0, colonIndex) : taggedRef;
+  const tag = hasTag ? taggedRef.substring(colonIndex + 1) : "latest";
 
-  if (!tag || !dockerTagRe.test(tag)) return null; // non-semver tag
+  if (hasTag && !digest && (!tag || !dockerTagRe.test(tag))) return null;
 
   const {registry, namespace, repo} = parseImageParts(imagePart);
-  return {registry, namespace, repo, tag, fullImage: imagePart};
+  return {registry, namespace, repo, tag, fullImage: imagePart, ...(digest && {digest}), ...(!hasTag && {digestOnly: true})};
 }
 
-export function parseDockerTag(tag: string): {version: string, prerelease: string, suffix: string} | null {
+export function parseDockerTag(tag: string): DockerTag | null {
   const match = dockerTagRe.exec(tag);
   if (!match) return null;
   return {version: match[1], prerelease: match[2] || "", suffix: match[3] || ""};
@@ -82,89 +107,106 @@ export function formatDockerVersion(newSemver: string, oldTag: string, prereleas
 
 export function extractDockerRefs(content: string, regex: RegExp): Array<{ref: DockerImageRef, match: string}> {
   const results: Array<{ref: DockerImageRef, match: string}> = [];
+  if (regex === dockerfileFromRe) {
+    for (const {from, resolved} of dockerfileFromInstructions(content, true)) {
+      const ref = parseDockerImageRef(resolved);
+      if (ref) results.push({ref, match: from[1]});
+    }
+    return results;
+  }
+  const locallyBuilt = regex === composeImageRe ? locallyBuiltImages(content) : null;
   for (const m of content.matchAll(regex)) {
+    if (locallyBuilt?.has(m.index + m[0].indexOf("image:"))) continue;
     const ref = parseDockerImageRef(m[1]);
     if (ref) results.push({ref, match: m[1]});
   }
   return results;
 }
 
-// A Dockerfile and a Makefile can reference the same image from independent fetch tasks, which
-// would double the requests and race the cache writes. Keyed by ctx so each run starts fresh.
+function locallyBuiltImages(content: string): Set<number> {
+  const result = new Set<number>();
+  const scopes = new Map<number, {built: boolean, images: Array<number>}>();
+  for (const line of content.matchAll(/^.*$/gm)) {
+    if (!line[0].trim()) continue;
+    const indent = /^[ \t]*/.exec(line[0])![0].length;
+    for (const level of scopes.keys()) {
+      if (level > indent) scopes.delete(level);
+    }
+    const scope = scopes.get(indent) ?? {built: false, images: []};
+    scopes.set(indent, scope);
+    if (/^[ \t]*build\s*:/.test(line[0])) {
+      scope.built = true;
+      for (const offset of scope.images) result.add(offset);
+    } else if (/^[ \t]*image\s*:/.test(line[0])) {
+      const offset = line.index + indent;
+      if (scope.built) result.add(offset);
+      else scope.images.push(offset);
+    }
+  }
+  return result;
+}
+
 const hubTagsByCtx = new WeakMap<ModeContext, Map<string, Promise<Record<string, string>>>>();
+const noTagsStatus = new Set([401, 403, 404]);
+const maxDockerTagPages = 20;
 
 export function fetchDockerHubTags(namespace: string, repo: string, ctx: ModeContext): Promise<Record<string, string>> {
-  return dedupe(hubTagsByCtx, ctx, `${namespace}/${repo}`, () =>
-    fetchDockerHubTagsUncached(namespace, repo, ctx));
-}
+  return dedupe(hubTagsByCtx, ctx, `${namespace}/${repo}`, async () => {
+    const tags: Record<string, string> = {};
+    const baseUrl = `${ctx.dockerApiUrl}/v2/repositories/${namespace}/${repo}/tags`;
+    const pageUrl = (page: number) => `${baseUrl}?page_size=1000&ordering=last_updated&page=${page}`;
+    const fetchPage = async (url: string): Promise<any | null> => {
+      const result = await fetchWithEtag(url, ctx, {headers: {"accept-encoding": "gzip, deflate, br"}}, reduceJson(data => ({
+        count: data.count,
+        next: data.next,
+        results: (data.results || []).map((tag: Record<string, any>) => ({
+          name: tag.name, tag_last_pushed: tag.tag_last_pushed, last_updated: tag.last_updated,
+        })),
+      })));
+      if ("body" in result) {
+        const page = JSON.parse(result.body);
+        for (const tag of page?.results ?? []) tags[tag.name] = tag.tag_last_pushed || tag.last_updated || "";
+        return page;
+      }
+      if (!noTagsStatus.has(result.res?.status as number)) throwFetchError(result.res, url, `${namespace}/${repo}`, ctx.dockerApiUrl);
+      return null;
+    };
 
-// "Nothing to offer" rather than "the registry is unwell": an unknown repo, and the 401/403 an
-// anonymous read of a private one gets, which renovate also swallows.
-const noTagsStatus = new Set([401, 403, 404]);
-
-const tagDate = (result: Record<string, any>): string => result.tag_last_pushed || result.last_updated || "";
-
-async function fetchDockerHubTagsUncached(namespace: string, repo: string, ctx: ModeContext): Promise<Record<string, string>> {
-  const tags: Record<string, string> = {};
-  const baseUrl = `${ctx.dockerApiUrl}/v2/repositories/${namespace}/${repo}/tags`;
-  const pageUrl = (page: number) => `${baseUrl}?page_size=100&ordering=last_updated&page=${page}`;
-  const pageOpts = {headers: {"accept-encoding": "gzip, deflate, br"}};
-
-  // Hub tag pages carry per-architecture image lists; only name and push date are read.
-  const reduceTagsPage = (data: Record<string, any>) => ({
-    count: data.count,
-    results: (data.results || []).map((r: Record<string, any>) => ({
-      name: r.name, tag_last_pushed: r.tag_last_pushed, last_updated: r.last_updated,
-    })),
+    const firstPage = await fetchPage(pageUrl(1));
+    if (!firstPage) return tags;
+    const seen = new Set<string>();
+    let page = firstPage;
+    for (let pageNumber = 2; pageNumber <= maxDockerTagPages &&
+      (page.next || pageNumber <= Math.ceil((firstPage.count || 0) / 1000)); pageNumber++) {
+      const nextUrl = page.next ? new URL(page.next, baseUrl).href : pageUrl(pageNumber);
+      if (new URL(nextUrl).origin !== new URL(baseUrl).origin || seen.has(nextUrl)) break;
+      seen.add(nextUrl);
+      const result = await fetchPage(nextUrl);
+      if (!result) break;
+      page = result;
+    }
+    return tags;
   });
-
-  const fetchPage = async (page: number): Promise<any | null> => {
-    const url = pageUrl(page);
-    const result = await fetchWithEtag(url, ctx, pageOpts, reduceJson(reduceTagsPage));
-    if ("body" in result) return JSON.parse(result.body);
-    // Everything else is a host problem, and a rate-limited or broken registry read as up to date
-    // hides the updates the run exists to find. Renovate raises ExternalHostError for those.
-    if (!noTagsStatus.has(result.res?.status as number)) throwFetchError(result.res, url, `${namespace}/${repo}`, ctx.dockerApiUrl);
-    return null;
-  };
-
-  const addPage = (page: any) => {
-    for (const result of page?.results || []) tags[result.name] = tagDate(result);
-  };
-
-  const limit = getLimiter(ctx);
-  const firstPage = await limit(() => fetchPage(1));
-  if (!firstPage) return tags;
-  addPage(firstPage);
-  // Every page is walked: `ordering=last_updated` is a push order, so a backport or an unevenly
-  // rebuilt tag puts a higher version behind an older page and no date bounds the walk. Hub reports
-  // the total up front, so the rest go out a wave at a time, doubling up to the socket budget.
-  const totalPages = Math.min(Math.ceil((firstPage.count || 0) / 100), maxTagPages);
-  const maxWave = effectiveConcurrency(ctx);
-  for (let next = 2, wave = 1; next <= totalPages; next += wave, wave = Math.min(wave * 2, maxWave)) {
-    const pages = await Promise.all(
-      Array.from({length: Math.min(wave, totalPages - next + 1)}, (_, idx) => limit(() => fetchPage(next + idx))),
-    );
-    for (const page of pages) addPage(page);
-  }
-  return tags;
 }
 
-// Resolve the manifest digest for a single tag (used to keep `image:tag@sha256:…` pins in sync).
-export async function fetchDockerTagDigest(namespace: string, repo: string, tag: string, ctx: ModeContext): Promise<string | null> {
+export async function fetchDockerTagDigest(
+  namespace: string,
+  repo: string,
+  tag: string,
+  ctx: ModeContext,
+): Promise<string | null> {
   const url = `${ctx.dockerApiUrl}/v2/repositories/${namespace}/${repo}/tags/${tag}`;
-  try {
-    const result = await fetchWithEtag(url, ctx, {headers: {"accept-encoding": "gzip, deflate, br"}}, reduceJson(data => ({digest: data.digest})));
-    if (!("body" in result)) return null;
-    const digest = JSON.parse(result.body).digest;
-    return typeof digest === "string" ? digest : null;
-  } catch { return null; }
+  const result = await fetchWithEtag(url, ctx, {headers: {"accept-encoding": "gzip, deflate, br"}},
+    reduceJson(data => ({digest: data.digest})));
+  if ("body" in result) {
+    const data = JSON.parse(result.body);
+    if (typeof data?.digest !== "string") throw new Error(`Malformed Docker Hub tag response: ${namespace}/${repo}:${tag}`);
+    return data.digest;
+  }
+  if (!noTagsStatus.has(result.res?.status as number)) throwFetchError(result.res, url, `${namespace}/${repo}:${tag}`, ctx.dockerApiUrl);
+  return null;
 }
 
-// Ubuntu numbers a release after the year and month it ships in, so only an even-year `.04` is ever
-// an LTS, and Hub publishes the development series under its future number months before it ships.
-// Renovate reads both facts out of bundled distro-info data. The number alone dates the release, at
-// the start of the following month because a release lands in the second half of its own.
 const ubuntuLtsRe = /^\d?[02468]\.04$/;
 
 function isStableUbuntuVersion(version: string, now: number): boolean {
@@ -173,9 +215,6 @@ function isStableUbuntuVersion(version: string, now: number): boolean {
   return now >= Date.UTC(2000 + Number(year), Number(month));
 }
 
-// Images renovate gives a distro versioning to in its dockerfile manager. Keyed by repo so any
-// namespace matches, as renovate's `depName === 'ubuntu' || depName.endsWith('/ubuntu')` does.
-// Debian needs no entry: Hub only ever numbers a released Debian.
 const imageStability: Record<string, (version: string, now: number) => boolean> = {
   ubuntu: isStableUbuntuVersion,
 };
@@ -200,9 +239,32 @@ export async function fetchDockerInfo(name: string, ctx: ModeContext): Promise<P
   return [{tags: filterStableTags(repo, tags), name}, null];
 }
 
-// A tag's prerelease rides along with its coerced version so the shared semver rules order it:
-// `1.27rc3` becomes `1.27.0-rc3`, which sorts below `1.27.0` and above `1.27.0-rc2`.
 const dockerSemver = (coerced: string, prerelease: string) => prerelease ? `${coerced}-${prerelease}` : coerced;
+
+function coerceDockerVersion(version: string): string | null {
+  const parts = stripv(version).split(".").slice(0, 3);
+  if (!parts.length || parts.some(part => !/^\d+$/.test(part))) return null;
+  return [...parts.map(part => String(Number(part))), ...new Array(3 - parts.length).fill("0")].join(".");
+}
+
+function compareExtendedDockerTags(left: DockerTag, right: DockerTag): number {
+  const leftParts = stripv(left.version).split(".").map(Number);
+  const rightParts = stripv(right.version).split(".").map(Number);
+  for (let index = 0; index < leftParts.length; index++) {
+    if (leftParts[index] !== rightParts[index]) return leftParts[index] - rightParts[index];
+  }
+  if (!left.prerelease && right.prerelease) return 1;
+  if (left.prerelease && !right.prerelease) return -1;
+  return left.prerelease.localeCompare(right.prerelease);
+}
+
+function extendedDockerLevel(left: DockerTag, right: DockerTag): string | null {
+  const leftParts = stripv(left.version).split(".").map(Number);
+  const rightParts = stripv(right.version).split(".").map(Number);
+  const changed = leftParts.findIndex((part, index) => part !== rightParts[index]);
+  if (changed === -1) return left.prerelease === right.prerelease ? null : "patch";
+  return changed === 0 ? "major" : changed === 1 ? "minor" : "patch";
+}
 
 export function findDockerVersion(
   tagMap: Record<string, string>,
@@ -217,39 +279,42 @@ export function findDockerVersion(
   const oldParsed = parseDockerTag(oldTag);
   if (!oldParsed) return null;
 
-  const oldCoerced = coerce(stripv(oldParsed.version))?.version;
+  const oldCoerced = coerceDockerVersion(oldParsed.version);
   if (!oldCoerced) return null;
 
   const oldFields = stripv(oldParsed.version).split(".").length;
-  // Same prerelease policy as every other mode: only --prerelease, or a tag that already names one,
-  // puts prereleases in play, and --release takes them back out.
   const oldSemver = dockerSemver(oldCoerced, oldParsed.prerelease);
   const {effectiveSemvers, skipsPrerelease} = prereleaseOpts(oldSemver, usePre, useRel, semvers);
-
-  let bestVersion = oldSemver;
+  const extended = oldFields > 3;
+  let bestVersion = parse(oldSemver)!;
+  let bestParsed = oldParsed;
   let bestTag = "";
   let bestDate = "";
 
   for (const [tagName, lastUpdated] of Object.entries(tagMap)) {
     const parsed = parseDockerTag(tagName);
-    if (!parsed || parsed.suffix !== oldParsed.suffix) continue;
-    // Only tags of the authored precision are candidates, as renovate's docker isCompatible
-    // requires an equal release length: a floating `1.2` must not become a pinned `1.3.6`.
-    if (stripv(parsed.version).split(".").length !== oldFields) continue;
-    if (!isSameVersionScheme(parsed.version, oldParsed.version)) continue;
-
-    const coerced = coerce(stripv(parsed.version))?.version;
-    if (!coerced) continue;
-    // The tag's own text already says whether it is a prerelease, so only those pay for a parse.
-    if (parsed.prerelease && skipsPrerelease(parse(dockerSemver(coerced, parsed.prerelease)))) continue;
-
-    if (pinnedRange && !satisfies(coerced, pinnedRange)) continue;
-
+    if (!parsed || parsed.suffix !== oldParsed.suffix || stripv(parsed.version).split(".").length !== oldFields ||
+      !isSameVersionScheme(parsed.version, oldParsed.version)) continue;
     if (!passesCooldown(lastUpdated, cooldownDays, now)) continue;
 
-    const candidate = dockerSemver(coerced, parsed.prerelease);
-    if (candidate === bestVersion) {
-      // duplicate tags coerce to the same version — keep the most recently pushed one
+    if (extended) {
+      if (parsed.prerelease && (!usePre && !oldParsed.prerelease || useRel)) continue;
+      if (compareExtendedDockerTags(parsed, bestParsed) <= 0) continue;
+      const level = extendedDockerLevel(oldParsed, parsed);
+      if (!level || !semvers.has(level)) continue;
+      bestParsed = parsed;
+      bestTag = tagName;
+      bestDate = lastUpdated;
+      continue;
+    }
+
+    const coerced = coerceDockerVersion(parsed.version);
+    if (!coerced) continue;
+    const candidate = parse(dockerSemver(coerced, parsed.prerelease))!;
+    if (parsed.prerelease && skipsPrerelease(candidate)) continue;
+    if (pinnedRange && !satisfies(coerced, pinnedRange)) continue;
+
+    if (candidate.version === bestVersion.version) {
       if (bestTag && Date.parse(lastUpdated) > Date.parse(bestDate)) {
         bestTag = tagName;
         bestDate = lastUpdated;
@@ -257,73 +322,109 @@ export function findDockerVersion(
       continue;
     }
 
-    const d = diff(bestVersion, candidate);
+    const d = semverVersioning.diff(bestVersion, candidate);
     if (!d || !effectiveSemvers.has(d)) continue;
 
-    if (gt(candidate, bestVersion)) {
+    if (semverVersioning.compare(candidate, bestVersion) > 0) {
       bestVersion = candidate;
       bestTag = tagName;
       bestDate = lastUpdated;
     }
   }
 
-  if (!bestTag || bestVersion === oldSemver) return null;
-  // The formatted tag is synthesized from a coerced version, so keep the real Hub tag when the
-  // registry does not publish that spelling, as `26.04` coerces and formats back to `26.4`.
-  // Neither half of a dockerSemver holds a `-`, so the winner splits back apart without parsing.
-  const [bestRelease, bestPre = ""] = bestVersion.split("-");
+  if (extended) return bestTag ? {newTag: bestTag, date: bestDate} : null;
+  if (!bestTag || bestVersion.version === oldSemver) return null;
+  const [bestRelease, bestPre = ""] = bestVersion.version.split("-");
   const formatted = formatDockerVersion(bestRelease, oldTag, bestPre);
   const newTag = formatted in tagMap ? formatted : bestTag;
   if (newTag === oldTag) return null;
   return {newTag, date: bestDate};
 }
 
-// Ends a tag match. Excludes `@` and `+` on top of tag characters so a digest-pinned or
-// build-suffixed occurrence, which the extractor skips, is never rewritten to a bare tag
-// the digest then contradicts.
 const tagEnd = "(?![\\w.@+-])";
 
-// One pass per pattern over an alternation of every authored `image:tag`, longest first so
-// `node:18-alpine` wins over `node:18`. Keys carry the authored case, as a tag is case-sensitive
-// and only the Dockerfile instruction keyword needs a case-insensitive match.
-function replaceImageRefs(content: string, deps: Deps, patterns: Array<(refs: string) => RegExp>): string {
+function imageReplacements(deps: Deps): Map<string, string> {
   const byRef = new Map<string, string>();
   for (const [key, dep] of Object.entries(deps)) {
     const name = key.split(fieldSep)[1];
-    byRef.set(`${name}:${dep.oldOrig || dep.old}`, `${name}:${dep.new}`);
+    if (!dep.oldDigest) byRef.set(`${name}:${dep.oldOrig || dep.old}`, `${name}:${dep.new}`);
+    else if (dep.newDigest) byRef.set(dep.digestOnly ? `${name}@${dep.oldDigest}` :
+      `${name}:${dep.oldOrig || dep.old}@${dep.oldDigest}`, dep.digestOnly ? `${name}@${dep.newDigest}` :
+      `${name}:${dep.new}@${dep.newDigest}`);
   }
+  return byRef;
+}
+
+function replaceImageRefs(
+  content: string,
+  byRef: Map<string, string>,
+  prefixes: Array<string>,
+  canReplace: (offset: number) => boolean = () => true,
+): string {
   if (!byRef.size) return content;
 
   const refs = longestFirstAlternation(byRef.keys());
   let newContent = content;
-  for (const makeRegex of patterns) {
-    // A ref that case-insensitively matched some other dep's spelling is left alone.
-    newContent = newContent.replace(makeRegex(refs), (_, prefix, ref) => `${prefix}${byRef.get(ref) ?? ref}`);
+  for (const prefix of prefixes) {
+    newContent = newContent.replace(new RegExp(`(${prefix})(${refs})${tagEnd}`, "g"), (match, start, ref, offset) =>
+      canReplace(offset) ? `${start}${byRef.get(ref) ?? ref}` : match);
   }
   return newContent;
 }
 
 export function updateDockerfile(content: string, deps: Deps): string {
-  return replaceImageRefs(content, deps, [
-    refs => new RegExp(`(FROM\\s+(?:--platform=\\S+\\s+)?)(${refs})${tagEnd}`, "gi"),
-  ]);
+  const separator = "(?:[ \\t]+|\\\\[ \\t]*\\r?\\n[ \\t]*)";
+  const replacements = imageReplacements(deps);
+  const refs = longestFirstAlternation(replacements.keys());
+  const updated = replacements.size ? content.replace(
+    new RegExp(`(FROM${separator}+(?:--platform=\\S+${separator}+)?)(${refs})${tagEnd}`, "gi"),
+    (_match, prefix, ref) => `${prefix}${replacements.get(ref) ?? ref}`,
+  ) : content;
+  const edits = new Map<number, {end: number, value: string}>();
+  for (const {instruction, args, from, resolved} of dockerfileFromInstructions(updated)) {
+    const replacement = replacements.get(resolved);
+    if (!replacement) continue;
+    const oldDigest = resolved.slice(resolved.lastIndexOf("@") + 1);
+    const newDigest = replacement.slice(replacement.lastIndexOf("@") + 1);
+    const replacesDigest = resolved.includes("@") && replacement.includes("@") && oldDigest !== newDigest;
+    if (replacesDigest) {
+      const relativeDigest = instruction[0].lastIndexOf(oldDigest);
+      if (relativeDigest !== -1) edits.set(instruction.index! + relativeDigest, {
+        end: instruction.index! + relativeDigest + oldDigest.length, value: newDigest,
+      });
+    }
+    for (const variable of from[1].matchAll(/\$(?:\{(\w+)\}|(\w+))/g)) {
+      const argValue = args.get(variable[1] || variable[2]);
+      const prefix = resolveDockerVariables(from[1].slice(0, variable.index), name => args.get(name)?.value);
+      let suffix = resolveDockerVariables(from[1].slice(variable.index + variable[0].length), name => args.get(name)?.value);
+      if (replacesDigest) suffix = suffix.replace(oldDigest, newDigest);
+      if (!argValue || argValue.start < 0 || !replacement.startsWith(prefix) || !replacement.endsWith(suffix)) continue;
+      edits.set(argValue.start, {
+        end: argValue.start + argValue.value.length,
+        value: replacement.slice(prefix.length, suffix ? -suffix.length : undefined),
+      });
+    }
+  }
+  let result = updated;
+  for (const [start, edit] of [...edits].sort(([left], [right]) => right - left)) {
+    result = `${result.slice(0, start)}${edit.value}${result.slice(edit.end)}`;
+  }
+  return result;
 }
 
 export function updateComposeFile(content: string, deps: Deps): string {
-  return replaceImageRefs(content, deps, [
-    refs => new RegExp(`(image:\\s*['"]?)(${refs})${tagEnd}`, "g"),
-  ]);
+  const locallyBuilt = locallyBuiltImages(content);
+  return replaceImageRefs(content, imageReplacements(deps), [String.raw`image:\s*['"]?`],
+    offset => !locallyBuilt.has(offset));
 }
 
 export function updateWorkflowDockerImages(content: string, deps: Deps): string {
-  return replaceImageRefs(content, deps, [
-    refs => new RegExp(`((?:container|image):\\s*['"]?)(${refs})${tagEnd}`, "g"),
-    refs => new RegExp(`(uses:\\s*['"]?docker://)(${refs})${tagEnd}`, "g"),
+  return replaceImageRefs(content, imageReplacements(deps), [
+    String.raw`(?:container|image):\s*['"]?`,
+    String.raw`uses:\s*['"]?docker://`,
   ]);
 }
 
-// Exact filenames for auto-discovery via findUpSync, which cannot glob. Deliberately
-// narrower than isDockerFileName, which every entry must still satisfy.
 export const dockerExactFileNames = [
   "Dockerfile",
   "compose.yml",
@@ -333,7 +434,6 @@ export const dockerExactFileNames = [
 ];
 
 export function isComposeFile(filename: string): boolean {
-  // `compose` is the canonical Compose Spec name; `docker-` also covers swarm stack files
   return /^(?:docker-|compose).*\.ya?ml$/.test(filename);
 }
 

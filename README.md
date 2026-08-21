@@ -63,7 +63,7 @@ A failed lookup is reported on its own, does not hold back the other results and
 
 ## Config File
 
-Configure via `updates.config.{ts,js,mjs,mts}` in your repo root. CLI arguments win over it, except `include`, `exclude` and `pin`, which merge.
+Configure via `updates.config.{ts,js,mjs,mts}`. Each manifest uses the nearest config above it, and workspace members use the workspace root config. CLI arguments win over configured values, including `include`, `exclude` and `pin`.
 
 ```ts
 import type {Config} from "updates";
@@ -103,7 +103,7 @@ export default {
 
 ### Renovate config
 
-A [Renovate](https://docs.renovatebot.com/) config is picked up automatically, inheriting `ignoreDeps`, `enabled` and `allowedVersions` in `packageRules` as `include`/`exclude`/`pin`. `minimumReleaseAge` is not inherited unless opted in:
+A [Renovate](https://docs.renovatebot.com/) `renovate.json` is picked up automatically, inheriting `ignoreDeps`, `enabled` and `allowedVersions` from matching `packageRules` as `include`/`exclude`/`pin`. Exact-name `allowedVersions` ranges become pin ceilings that never downgrade. Configs using `extends` are rejected. `minimumReleaseAge` is not inherited unless opted in:
 
 ```ts
 export default {

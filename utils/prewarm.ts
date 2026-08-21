@@ -1,86 +1,113 @@
-import {readFileSync, readdirSync} from "node:fs";
-import {join} from "node:path";
-import {isDockerFileName} from "../modes/docker.ts";
-import {isMakeFileName} from "../modes/make.ts";
-import {resolveGoProxyChain} from "../modes/go.ts";
-import {defaultApiUrls} from "../modes/shared.ts";
-import {forgeDirs, modeByFileName} from "./utils.ts";
-import {parseIni} from "./rc.ts";
-import {parseMixedArg, type Arg} from "../config.ts";
+import {readFileSync, readdirSync, statSync} from "node:fs";
+import {basename, join, resolve} from "node:path";
 
-function npmrcRegistry(dir: string): string | undefined {
-  try {
-    return parseIni(readFileSync(join(dir, ".npmrc"), "utf8")).registry;
-  } catch {
-    return undefined;
-  }
-}
+const defaults = {
+  registry: "https://registry.npmjs.org",
+  jsrapi: "https://jsr.io",
+  forgeapi: "https://api.github.com",
+  pypiapi: "https://pypi.org",
+  cargoapi: "https://crates.io",
+  dockerapi: "https://hub.docker.com",
+  goproxy: "https://proxy.golang.org",
+} as const;
 
-// The origin of the override when set (so tests and custom registries warm the host actually
-// contacted), of the default otherwise, null when unparsable.
-function resolveOrigin(override: unknown, defaultUrl: string): string | null {
-  try {
-    return `${new URL(typeof override === "string" && override ? override : defaultUrl).origin}/`;
-  } catch {
-    return null;
-  }
-}
+const dependencyFields = ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies", "resolutions"];
+const modeByName = (filename: string) => filename === "package.json" || filename === "pnpm-workspace.yaml" ? "npm" :
+  filename === "pyproject.toml" ? "pypi" : filename === "Cargo.toml" ? "cargo" :
+    filename === "go.mod" || filename === "go.work" ? "go" :
+      /^Dockerfile(?:\..+)?$/.test(filename) || /^(?:docker-|compose).*\.ya?ml$/.test(filename) ? "docker" :
+        ["Makefile", "makefile", "GNUmakefile"].includes(filename) || filename.endsWith(".mk") ? "make" :
+          /\.ya?ml$/.test(filename) ? "actions" : "";
 
-// Which APIs each mode contacts, named by their override flag so the URLs live in
-// defaultApiUrls alone. Keyed by mode rather than by filename, so giving a mode another
-// manifest or another API has one place to update — prewarm.test.ts fails on a missing mode.
-const apisByMode: Record<string, Array<keyof typeof defaultApiUrls>> = {
-  npm: ["registry", "jsrapi", "forgeapi"],
-  pypi: ["pypiapi"],
-  cargo: ["cargoapi"],
-  go: ["goproxy"],
-  docker: ["dockerapi"],
-  actions: ["forgeapi", "dockerapi"], // workflows carry action refs and docker images
-  make: ["goproxy", "dockerapi"], // Makefiles carry `go install` tools and docker images
-};
-
-// The mode that claims a file, mirroring resolveFiles so prewarming cannot warm a different
-// set of origins than the run goes on to contact.
-function modeForFile(filename: string): string | undefined {
-  if (modeByFileName[filename]) return modeByFileName[filename];
-  if (isDockerFileName(filename)) return "docker";
-  if (isMakeFileName(filename)) return "make";
-  return undefined;
-}
-
-// Detect which registry origins should have a TLS keep-alive socket pre-warmed
-// based on files present in `dir`, honoring the API override flags in `args`.
-// Registry overrides from the config file are not seen here: it loads later.
 export function prewarmOrigins(dir: string, args: Record<string, unknown>): string[] {
-  const modes = new Set<string>();
-  // `-M` only: a config-file `modes` has not loaded yet, as with the registry overrides below.
-  const cliModes = parseMixedArg(args.modes as Arg);
-  const enabled = (mode: string) => !(cliModes instanceof Set) || cliModes.has(mode);
-  try {
-    for (const entry of readdirSync(dir, {withFileTypes: true})) {
-      if (entry.isFile()) {
-        const mode = modeForFile(entry.name);
-        if (mode && enabled(mode)) modes.add(mode);
-      } else if (entry.isDirectory() && forgeDirs.some(forgeDir => forgeDir === entry.name)) {
-        // Bare forge dir, matching resolveFiles' auto-discovery: workflows also live
-        // outside `workflows/` as `<forge>/**/action.yml`. A workflow's docker images are
-        // read with docker alone enabled, so that mode claims the dir when actions is off.
-        if (enabled("actions")) modes.add("actions");
-        else if (enabled("docker")) modes.add("docker");
+  const enabledModes = Array.isArray(args.modes) ? new Set(args.modes) : typeof args.modes === "string" ?
+    new Set(args.modes.split(",")) : null;
+  const resources = new Set<string>();
+  const candidates = new Set<string>();
+  const paths = Array.isArray(args.files) && args.files.length ? args.files.filter(path => typeof path === "string") : [dir];
+  for (const input of paths) {
+    const path = resolve(input);
+    try {
+      if (statSync(path).isFile()) {
+        candidates.add(path);
+        continue;
       }
-    }
-  } catch {}
+      for (const entry of readdirSync(path, {withFileTypes: true})) {
+        if (entry.isFile()) candidates.add(join(path, entry.name));
+        else if ([".github", ".gitea", ".forgejo"].includes(entry.name)) {
+          try {
+            for (const workflow of readdirSync(join(path, entry.name, "workflows"), {withFileTypes: true})) {
+              if (workflow.isFile() && /\.ya?ml$/.test(workflow.name)) candidates.add(join(path, entry.name, "workflows", workflow.name));
+            }
+          } catch {}
+        }
+      }
+    } catch {}
+  }
+
+  for (const path of candidates) {
+    const filename = basename(path);
+    const mode = modeByName(filename);
+    if (!mode || enabledModes && !enabledModes.has(mode) && !(mode === "actions" && enabledModes.has("docker"))) continue;
+    try {
+      const content = readFileSync(path, "utf8");
+      if (filename === "package.json") {
+        let data: Record<string, any>;
+        try { data = JSON.parse(content); } catch { continue; }
+        const specs = dependencyFields.flatMap(field => Object.values(data[field] ?? {}));
+        if (typeof data.packageManager === "string") specs.push(data.packageManager.split("@", 1)[0]);
+        for (const spec of specs) {
+          if (typeof spec !== "string" || /^(?:file|link|workspace):/.test(spec)) continue;
+          if (/^(?:jsr:|npm:@jsr\/)/.test(spec)) resources.add("jsrapi");
+          else if (/^(?:git(?:\+https?|\+ssh)?:|https?:\/\/[^/]*(?:github|gitea|forgejo)|github:|gitea:|forgejo:)/.test(spec)) {
+            resources.add("forgeapi");
+          } else resources.add("registry");
+        }
+      } else if (filename === "pnpm-workspace.yaml") {
+        if (/\b(?:jsr:|npm:@jsr\/)/.test(content)) resources.add("jsrapi");
+        if (/\b(?:catalogs?|overrides):|:\s*["']?[~^<>=]*\d/.test(content)) resources.add("registry");
+      } else if (filename === "pyproject.toml") {
+        if (/^[ \t]*["'][A-Za-z0-9][\w.-]*(?:\[[^\]]+\])?\s*(?:[<>=!~]|@)/m.test(content)) resources.add("pypiapi");
+      } else if (filename === "Cargo.toml") {
+        if (/^\s*\[(?:target\.[^\]]+\.)?(?:dev-|build-)?dependencies\]/m.test(content)) resources.add("cargoapi");
+      } else if (filename === "go.mod" || filename === "go.work") {
+        if (/^\s*(?:require\s+)?\S+\s+v\d/m.test(content)) resources.add("goproxy");
+      } else if (/^Dockerfile(?:\..+)?$/.test(filename) || /^(?:docker-|compose).*\.ya?ml$/.test(filename)) {
+        if (/^\s*(?:FROM\s+(?:--\S+\s+)*|image\s*:\s*)[^\s#]+[:@]/im.test(content)) resources.add("dockerapi");
+      } else if (["Makefile", "makefile", "GNUmakefile"].includes(filename) || filename.endsWith(".mk")) {
+        if (/\bgo\s+install\s+\S+@v\d/.test(content)) resources.add("goproxy");
+        if (/\b(?:docker|image)\b[^\n]*[\w./-]+:[\w.-]+/i.test(content)) resources.add("dockerapi");
+      } else {
+        let blockIndent = -1;
+        for (const line of content.split(/\r?\n/)) {
+          const indent = line.search(/\S|$/);
+          if (blockIndent !== -1 && (!line.trim() || indent > blockIndent)) continue;
+          blockIndent = /:\s*[|>](?:[1-9][+-]?|[+-][1-9]?)?\s*(?:#.*)?$/.test(line) ? indent : -1;
+          if ((!enabledModes || enabledModes.has("actions")) &&
+            /^\s*(?:-\s*)?uses\s*:\s*["']?(?!\.\/|docker:\/\/)[^\s#]+@/.test(line)) resources.add("forgeapi");
+          if ((!enabledModes || enabledModes.has("docker")) &&
+            /^\s*(?:(?:container|image)\s*:\s*["']?[^\s#]+[:@]|(?:-\s*)?uses\s*:\s*["']?docker:\/\/)/.test(line)) {
+            resources.add("dockerapi");
+          }
+        }
+      }
+    } catch {}
+  }
 
   const origins = new Set<string>();
-  for (const mode of modes) {
-    for (const api of apisByMode[mode] ?? []) {
-      // the npm registry is the only one that can also come from a file
-      const override = api === "registry" && typeof args.registry !== "string" ? npmrcRegistry(dir) : args[api];
-      // GOPROXY, not the default, is where go lookups go, and its `off` and `direct` parse as no
-      // URL, so they warm nothing.
-      const origin = resolveOrigin(override, api === "goproxy" ? resolveGoProxyChain()[0].url : defaultApiUrls[api]);
-      if (origin) origins.add(origin);
+  for (const resource of resources) {
+    let value = args[resource];
+    if (resource === "registry" && typeof value !== "string") {
+      try { value = /^\s*registry\s*=\s*(\S+)\s*$/m.exec(readFileSync(join(dir, ".npmrc"), "utf8"))?.[1]; } catch {}
+    } else if (resource === "goproxy" && typeof value !== "string") {
+      value = process.env.GOPROXY;
     }
+    let origin = typeof value === "string" && value ? value : defaults[resource as keyof typeof defaults];
+    if (resource === "goproxy") {
+      origin = origin.split(/[|,]/, 1)[0].trim();
+      if (origin === "off" || origin === "direct") continue;
+    }
+    try { origins.add(`${new URL(origin).origin}/`); } catch {}
   }
   return Array.from(origins);
 }

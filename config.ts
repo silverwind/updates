@@ -4,7 +4,8 @@ import {access} from "node:fs/promises";
 import type {ParseArgsOptionsConfig} from "node:util";
 import {validRange} from "./utils/semver.ts";
 import {commaSeparatedToArray, patternToRegex, walkUp, memoizeAsync} from "./utils/utils.ts";
-import type {PresetFetchOptions, RenovateImportOptions} from "./utils/renovate.ts";
+import type {RenovateImportOptions} from "./utils/renovate.ts";
+import {loadRenovateConfig} from "./utils/renovate.ts";
 
 export type Config = {
   /** Array of dependencies to include */
@@ -93,6 +94,7 @@ export type Override = {
 };
 
 export type Arg = string | boolean | Array<string | boolean> | undefined;
+export const cliBaseConfig = Symbol("cliBaseConfig");
 
 export const options: ParseArgsOptionsConfig = {
   "allow-downgrade": {short: "d", type: "string", multiple: true},
@@ -131,7 +133,7 @@ export const options: ParseArgsOptionsConfig = {
 };
 
 export function parseMixedArg(arg: Arg): boolean | Set<string> {
-  if (Array.isArray(arg) && arg.every(a => a === true)) {
+  if (Array.isArray(arg) && arg.every(val => val === true)) {
     return true;
   } else if (Array.isArray(arg)) {
     return new Set(arg.filter(val => typeof val === "string").flatMap(commaSeparatedToArray));
@@ -162,8 +164,6 @@ export function parseArgList(arg: Arg): Array<string> {
   return [];
 }
 
-// An unparsable range satisfies nothing, so dropping it would either discard the pin or freeze the
-// dependency forever. Renovate likewise rejects an allowedVersions it cannot parse.
 export function validatePin(pin: Config["pin"]): void {
   for (const [pkg, range] of Object.entries(pin ?? {})) {
     if (!validRange(range)) throw new Error(`Invalid pin range for ${pkg}: ${range}`);
@@ -173,7 +173,7 @@ export function validatePin(pin: Config["pin"]): void {
 export function parsePinArg(arg: Arg): Record<string, string> {
   const result: Record<string, string> = {};
   for (const val of Array.isArray(arg) ? arg : [arg]) {
-    if (typeof val !== "string") continue; // a flag recovered from a swallowed value arrives as `true`
+    if (typeof val !== "string") continue;
     const eq = val.indexOf("=");
     if (eq < 1) throw new Error(`Invalid pin: ${val}, expected <dep>=<range>`);
     result[val.slice(0, eq)] = val.slice(eq + 1);
@@ -188,51 +188,34 @@ export function configMixedToRegexes(val: boolean | Array<string | RegExp> | und
   return patternsToRegexSet(val);
 }
 
-type FoundConfig = {configDir: string, default: Config};
-
-// Try to load any updates.config.* in dir. Returns the first that imports
-// successfully. If none imports but at least one parsed-and-failed, throws
-// the first parse error so a broken sibling next to a valid one does not
-// block the valid one.
-async function tryLoadInDir(dir: string): Promise<FoundConfig | null> {
-  const exts = ["js", "ts", "mjs", "mts"];
-  const results = await Promise.all(exts.map(async (ext): Promise<FoundConfig | Error | null> => {
+const findConfigUp = memoizeAsync((startDir: string) => walkUp(startDir, async dir => {
+  for (const ext of ["js", "ts", "mjs", "mts"]) {
     const filename = `updates.config.${ext}`;
     const fullPath = join(dir, filename);
     try {
       await access(fullPath);
-    } catch {
-      return null;
+    } catch (err: any) {
+      if (err?.code === "ENOENT") continue;
+      throw new Error(`Unable to load config file ${filename}: ${err?.message ?? err}`);
     }
     try {
       const mod = await import(pathToFileURL(fullPath).href);
-      return {configDir: dir, default: mod.default ?? {}};
+      return mod.default ?? {};
     } catch (err: any) {
-      return new Error(`Unable to parse config file ${filename}: ${err?.message ?? err}`);
+      throw new Error(`Unable to parse config file ${filename}: ${err?.message ?? err}`);
     }
-  }));
-  for (const r of results) if (r && !(r instanceof Error)) return r;
-  for (const r of results) if (r instanceof Error) throw r;
+  }
   return null;
-}
+}));
 
-const findConfigUp = memoizeAsync((startDir: string) => walkUp(startDir, tryLoadInDir));
-
-export async function loadConfig(startDir: string, presetFetch: PresetFetchOptions = {}): Promise<Config> {
-  const found = await findConfigUp(startDir);
-  const raw: Config = found?.default ?? {};
-  const {loadRenovateConfig, makePresetFetcher} = await import("./utils/renovate.ts");
-  const fetchText = makePresetFetcher(presetFetch);
-  const renovateConfig = await loadRenovateConfig(found?.configDir ?? startDir, raw.inherit?.renovate, fetchText);
+export async function loadConfig(startDir: string): Promise<Config> {
+  const raw = await findConfigUp(startDir) ?? {};
+  const renovateConfig = await loadRenovateConfig(startDir, raw.inherit?.renovate);
   const config: Config = {...renovateConfig, ...raw};
-  // `pin` merges per key, so an authored pin for one dependency keeps the ceilings inherited for
-  // the others. An authored entry may downgrade, so the marker keeps only the names renovate owns.
   if (renovateConfig.pin) {
     config.pin = {...renovateConfig.pin, ...raw.pin};
     config.pinNoDowngrade = Object.keys(renovateConfig.pin).filter(name => !raw.pin?.[name]);
   }
-  // Overrides concatenate for the same reason, with the authored ones last so they win the
-  // last-match-wins pass in api.ts rather than discarding what renovate contributed.
   if (renovateConfig.overrides?.length) config.overrides = [...renovateConfig.overrides, ...(raw.overrides ?? [])];
   validatePin(config.pin);
   return config;

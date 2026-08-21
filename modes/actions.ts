@@ -1,7 +1,9 @@
 import {resolve, join} from "node:path";
 import {readdirSync} from "node:fs";
 import {parse} from "../utils/semver.ts";
-import {type ModeContext, ForgeError, stripv, hashRe, fetchForge, formatVersionPrecision, githubApiUrl, parseCommitDate} from "./shared.ts";
+import {
+  type ModeContext, commitHashRe, ForgeError, stripv, fetchForge, formatVersionPrecision, githubApiUrl, parseCommitDate,
+} from "./shared.ts";
 import {getCache, setCache} from "../utils/fetchCache.ts";
 import {forgeDirs, longestFirstAlternation} from "../utils/utils.ts";
 
@@ -27,20 +29,15 @@ export function parseActionRef(uses: string): ActionRef | null {
   const segments = pathPart.split("/");
   if (segments.length < 2) return null;
   const name = host ? `${host}/${pathPart}` : pathPart;
-  return {host, owner: segments[0], repo: segments[1], ref, name, isHash: hashRe.test(ref)};
+  return {host, owner: segments[0], repo: segments[1], ref, name, isHash: commitHashRe.test(ref)};
 }
 
-// A host spelled out in the ref wins over the configured forge, so `https://gitea.com/o/r@v1`
-// resolves against gitea.com even when the run defaults to GitHub. A bare `o/r@v1` has no host
-// to go on and follows the default.
 export function getForgeApiBaseUrl(host: string | null, forgeApiUrl: string): string {
   if (!host) return forgeApiUrl;
   return host === "github.com" ? githubApiUrl : `https://${host}/api/v1`;
 }
 
-// "" is a commit with no date, which holds a cooldown candidate back, undefined is a failed request.
 export async function fetchActionTagDate(apiUrl: string, owner: string, repo: string, commitSha: string, ctx: ModeContext): Promise<string | undefined> {
-  // Commit data is immutable — cache the resolved date forever keyed by URL.
   const url = `${apiUrl}/repos/${owner}/${repo}/git/commits/${commitSha}`;
   if (!ctx.noCache) {
     const cached = await getCache(url);
@@ -48,13 +45,12 @@ export async function fetchActionTagDate(apiUrl: string, owner: string, repo: st
   }
   try {
     const res = await fetchForge(url, ctx);
-    if (res.status === 404) return ""; // the commit is gone, so no date will ever exist
+    if (res.status === 404) return "";
     if (!res.ok) return undefined;
     const date = parseCommitDate(await res.json());
     if (date && !ctx.noCache) setCache(url, "immutable", date);
     return date;
   } catch (err) {
-    // A classified forge failure is the dependency's result, a malformed body is worth degrading over.
     if (err instanceof ForgeError) throw err;
     return undefined;
   }
@@ -65,34 +61,26 @@ export function formatActionVersion(newFullVersion: string, oldRef: string): str
   return formatVersionPrecision(newParsed?.version ?? stripv(newFullVersion), oldRef);
 }
 
-// Reader and writer share this, so the writer can never reach a `uses:` the reader did not extract,
-// like a commented-out step or one quoted inside a `run:` script.
-const usesLineRe = /^(\s*(?:-\s*)?uses:\s*)([^\n]*)$/;
+const yamlPairRe = /^(\s*)(?:-\s*)?(?:"([^"]+)"|'([^']+)'|([^\s:#][^:#]*)):\s*([^\r\n]*)\r?$/;
 
-// The version a trailing comment names, behind the `renovate:`, `pin `, `tag=` and `ratchet:`
-// prefixes a pinned sha's comment carries. Mirrors renovate's pinTokenRe.
-const pinTokenRe = /^\s*(?:(?:renovate\s*:\s*)?(?:pin\s+|tag\s*=\s*)?|ratchet:[\w-]+\/[.\w-]+)@?((?:[\w-]*[-/])?v?\d+(?:\.\d+(?:\.\d+)?)?(?:-[a-zA-Z0-9.]+)?)/;
+const pinTokenRe = /^\s*(?:(?:renovate\s*:\s*)?(?:pin\s+|tag\s*=\s*)?|ratchet:[\w-]+\/[.\w-]+(?:\/[.\w-]+)*)@?((?:[\w-]*[-/])?v?\d+(?:\.\d+(?:\.\d+)?)?(?:-[a-zA-Z0-9.]+)?)/;
 
 export type UsesLine = {
-  prefix: string, // indentation, the list dash and `uses:` with its trailing space
-  quote: string, // the quote around the value, empty when it is unquoted
-  value: string, // the `[scheme://]owner/repo[/path]@ref` text, unquoted
-  gap: string, // whatever sits between the value and the comment
-  comment: string, // the comment including its `#`, empty when the line has none
-  pinnedVersion: string, // the version the comment names, empty when it names none
-  pinnedEnd: number, // offset into `comment` just past the token that named it
+  prefix: string,
+  quote: string,
+  value: string,
+  gap: string,
+  comment: string,
+  pinnedVersion: string,
+  pinnedEnd: number,
 };
 
 export function parseUsesLine(line: string): UsesLine | null {
-  const match = usesLineRe.exec(line);
+  const match = /^(\s*(?:-\s*)?uses:\s*)(?:(["'])(.*?)\2|((?!["'])[^\s#]+))([^\n]*)$/.exec(line);
   if (!match) return null;
-  const [, prefix, remainder] = match;
-  const quote = remainder[0] === "'" || remainder[0] === '"' ? remainder[0] : "";
-  const quoteEnd = quote ? remainder.indexOf(quote, 1) : 0;
-  if (quoteEnd === -1) return null;
-  const value = quote ? remainder.slice(1, quoteEnd) : /^[^\s#]*/.exec(remainder)![0];
+  const [, prefix, quote = "", quotedValue, plainValue, rest] = match;
+  const value = quotedValue ?? plainValue;
   if (!value) return null;
-  const rest = remainder.slice(quote ? quoteEnd + 1 : value.length);
   const hash = rest.indexOf("#");
   const comment = hash === -1 ? "" : rest.slice(hash);
   const pin = comment ? pinTokenRe.exec(comment.slice(1)) : null;
@@ -105,19 +93,40 @@ export function parseUsesLine(line: string): UsesLine | null {
   };
 }
 
+export type ActionUpdate = {name: string, oldRef: string, newRef: string, oldComment?: string, newComment?: string};
+
 const schemeRe = /^https?:\/\//;
 
-export function updateWorkflowFile(content: string, actionDeps: Array<{name: string, oldRef: string, newRef: string, newComment?: string}>): string {
-  const depByUses = new Map(actionDeps.map(dep => [`${dep.name}@${dep.oldRef}`, dep]));
+export function updateWorkflowFile(content: string, actionDeps: Array<ActionUpdate>): string {
+  const depByUses = new Map(actionDeps.map(dep => [`${dep.name}@${dep.oldRef}${dep.oldComment ? `#${dep.oldComment}` : ""}`, dep]));
+  const yamlPath: Array<{indent: number, key: string}> = [];
+  let blockIndent = -1;
   return content.split("\n").map(line => {
+    if (blockIndent !== -1) {
+      if (!line.trim() || line.length - line.trimStart().length > blockIndent) return line;
+      blockIndent = -1;
+    }
+    const pair = yamlPairRe.exec(line);
+    if (!pair) return line;
+    const indent = pair[1].length;
+    while (yamlPath.length && yamlPath.at(-1)!.indent >= indent) yamlPath.pop();
+    const key = (pair[2] ?? pair[3] ?? pair[4]).trim();
+    const isUses = key === "uses" && (
+      yamlPath[0]?.key === "jobs" && yamlPath.length === 3 && yamlPath[2].key === "steps" ||
+      yamlPath[0]?.key === "runs" && yamlPath.length === 2 && yamlPath[1].key === "steps"
+    );
+    const pairValue = pair[5].replace(/(?:^|\s)#.*$/, "").trim();
+    if (!pairValue) yamlPath.push({indent, key});
+    if (/^[>|](?:[+-]?\d?|\d[+-]?)$/.test(pairValue)) { blockIndent = indent; return line; }
+    if (!isUses) return line;
     const parsed = parseUsesLine(line);
     if (!parsed) return line;
     const {prefix, quote, value, gap, comment, pinnedVersion, pinnedEnd} = parsed;
     const scheme = schemeRe.exec(value)?.[0] ?? "";
-    const dep = depByUses.get(value.slice(scheme.length));
+    const oldComment = pinnedVersion || /^#\s*(\S+)\s*$/.exec(comment)?.[1] || "";
+    const dep = depByUses.get(`${value.slice(scheme.length)}${oldComment ? `#${oldComment}` : ""}`) ??
+      depByUses.get(value.slice(scheme.length));
     if (!dep) return line;
-    // A sha pin's trailing comment names the version and would otherwise keep naming the old one.
-    // Renovate rewrites it to the version alone, dropping any `tag=`/`pin`/`ratchet:` prefix.
     const newComment = dep.newComment && pinnedVersion ? `# ${dep.newComment}${comment.slice(pinnedEnd)}` : comment;
     return `${prefix}${quote}${scheme}${dep.name}@${dep.newRef}${quote}${gap}${newComment}`;
   }).join("\n");
@@ -144,4 +153,3 @@ export function resolveWorkflowFiles(forgeDir: string): Array<string> {
   } catch {}
   return Array.from(found);
 }
-

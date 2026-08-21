@@ -1,27 +1,79 @@
 #!/usr/bin/env node
-import {stdout, stderr, exit, platform, versions} from "node:process";
-import {stripVTControlCharacters, styleText} from "node:util";
-import {updates} from "./api.ts";
-import {parseCliArgs, resolveConfig, resolveFileArgs} from "./cli.ts";
-import {packageVersion, fetchTimeout, maxSockets} from "./modes/shared.ts";
-import {highlightDiff, textTable} from "./utils/utils.ts";
-import {shortenGoModule} from "./modes/go.ts";
-import {prewarmOrigins} from "./utils/prewarm.ts";
+import {argv, stdout, stderr, exit, platform, versions} from "node:process";
+import {readFileSync, statSync} from "node:fs";
+import {dirname, join, resolve} from "node:path";
+import {pathToFileURL} from "node:url";
 import type {Output} from "./api.ts";
-
-const {args, positionals} = parseCliArgs();
-
-if (!args.help && !args.version) {
-  for (const url of prewarmOrigins(resolveFileArgs(args, positionals).startDir, args)) {
-    (async () => { try { await fetch(url, {method: "HEAD"}); } catch {} })();
-  }
-}
 
 let red: (text: string | number) => string = String;
 let green: (text: string | number) => string = String;
-// Seeded from the flag so an error raised before the config loads still honours -j, then widened
-// to the effective setting below, so the config file's `json` reaches the error path too.
-let jsonOutput = Boolean(args.json);
+let jsonOutput = false;
+
+const stringShortOptions = new Set("deflCpgPtmsTriM");
+
+function hasFlag(args: Array<string>, long: string, short: string): boolean {
+  if (args.includes(`--${long}`)) return true;
+  for (const arg of args) {
+    if (!/^-[^-]/.test(arg)) continue;
+    const options = arg.slice(1);
+    const index = options.indexOf(short);
+    if (index !== -1 && Array.from(options.slice(0, index)).every(option => !stringShortOptions.has(option))) return true;
+  }
+  return false;
+}
+
+const valueOptions: Record<string, string> = {
+  d: "allow-downgrade", e: "exclude", f: "file", l: "pin", C: "cooldown", p: "prerelease", R: "release",
+  g: "greatest", t: "types", P: "patch", m: "minor", s: "sockets", T: "timeout", r: "registry", i: "include",
+  M: "modes", forgeapi: "forgeapi", pypiapi: "pypiapi", jsrapi: "jsrapi", goproxy: "goproxy",
+  cargoapi: "cargoapi", dockerapi: "dockerapi", file: "file", modes: "modes", registry: "registry",
+};
+
+async function startPrewarm(rawArgs: Array<string>): Promise<void> {
+  const args: Record<string, unknown> = {};
+  let firstPositional: string | undefined;
+  for (let index = 0; index < rawArgs.length; index++) {
+    const arg = rawArgs[index];
+    if (!arg.startsWith("-")) {
+      firstPositional ??= arg;
+      continue;
+    }
+    const long = /^--([^=]+)(?:=(.*))?$/.exec(arg);
+    const short = /^-([A-Za-z])(.*)$/.exec(arg);
+    const option = long ? valueOptions[long[1]] : short ? valueOptions[short[1]] : undefined;
+    if (!option) continue;
+    const inline = long ? long[2] : short?.[2];
+    const value = inline || rawArgs[index + 1]?.startsWith("-") === false ? inline || rawArgs[++index] : undefined;
+    if (value === undefined) continue;
+    if (option === "file" || option === "modes") {
+      ((args[option] ??= []) as Array<string>).push(...value.split(","));
+    } else args[option] = value;
+  }
+  const first = (args.file as Array<string> | undefined)?.[0] ?? firstPositional;
+  const firstPath = first ? resolve(first) : process.cwd();
+  let startDir = first ? dirname(firstPath) : firstPath;
+  try { if (statSync(firstPath).isDirectory()) startDir = firstPath; } catch {}
+
+  let config: Record<string, unknown> = {};
+  configSearch:
+  for (let dir = startDir; ; dir = dirname(dir)) {
+    for (const extension of ["js", "ts", "mjs", "mts"]) {
+      const path = join(dir, `updates.config.${extension}`);
+      try {
+        if (!statSync(path).isFile()) continue;
+        config = (await import(pathToFileURL(path).href)).default ?? {};
+        break configSearch;
+      } catch {}
+    }
+    if (dirname(dir) === dir) break;
+  }
+  config = {...config, ...args};
+  const files = Array.isArray(config.file) ? config.file : config.files;
+  const {prewarmOrigins} = await import("./utils/prewarm.ts");
+  for (const origin of prewarmOrigins(startDir, {...config, files})) {
+    (async () => { try { await fetch(origin, {method: "HEAD"}); } catch {} })();
+  }
+}
 
 async function end(err?: Error | void, exitCode?: number): Promise<void> {
   if (err) {
@@ -45,7 +97,9 @@ async function main(): Promise<void> {
     (stream as any)?._handle?.setBlocking?.(true);
   }
 
-  if (args.help) {
+  const rawArgs = argv.slice(2);
+  jsonOutput = hasFlag(rawArgs, "json", "j");
+  if (hasFlag(rawArgs, "help", "h")) {
     stdout.write(`usage: updates [options] [files...]
 
   Options:
@@ -63,8 +117,8 @@ async function main(): Promise<void> {
     -P, --patch [<dep,...>]            Consider only up to semver-patch
     -m, --minor [<dep,...>]            Consider only up to semver-minor
     -d, --allow-downgrade [<dep,...>]  Allow downgrading onto a lower latest tag
-    -s, --sockets <num>                Maximum number of parallel HTTP sockets opened. Default: ${maxSockets}
-    -T, --timeout <ms>                 Network request timeout in ms (go probes use half). Default: ${fetchTimeout}
+    -s, --sockets <num>                Maximum number of parallel HTTP sockets opened. Default: 25
+    -T, --timeout <ms>                 Network request timeout in ms (go probes use half). Default: 5000
     -r, --registry <url>               Override npm registry URL
     -I, --indirect                     Include indirect Go dependencies
     -E, --error-on-outdated            Exit with code 2 when updates are available and 0 when not
@@ -95,12 +149,23 @@ async function main(): Promise<void> {
     await end();
   }
 
-  if (args.version) {
-    console.info(packageVersion);
+  if (hasFlag(rawArgs, "version", "v")) {
+    let packageJson: string;
+    try { packageJson = readFileSync(new URL("../package.json", import.meta.url), "utf8"); } catch {
+      packageJson = readFileSync(new URL("package.json", import.meta.url), "utf8");
+    }
+    console.info(JSON.parse(packageJson).version);
     await end();
   }
 
+  try { await startPrewarm(rawArgs); } catch {}
+  const {parseCliArgs, resolveConfig} = await import("./cli.ts");
+  const {args, positionals} = parseCliArgs();
   const config = await resolveConfig(args, positionals);
+  const [{updates}, {highlightDiff, textTable}, {shortenGoModule}, {stripVTControlCharacters, styleText}] =
+    await Promise.all([
+      import("./api.ts"), import("./utils/utils.ts"), import("./modes/go.ts"), import("node:util"),
+    ]);
 
   const useColor = !config.noColor && (config.color || stdout.isTTY);
   if (useColor) {
@@ -124,36 +189,29 @@ async function main(): Promise<void> {
   } else if (output.message) {
     console.info(output.message);
   } else if (hasResults) {
-    console.info(formatOutput(output));
+    console.info(formatOutput(output, shortenGoModule, highlightDiff, textTable, stripVTControlCharacters));
   }
 
-  if (config.update && hasResults && !config.json) {
-    for (const [mode, modeResults] of Object.entries(output.results)) {
-      if (Object.values(modeResults).some(deps => Object.keys(deps).length)) {
-        console.info(green(`✨ ${mode} updated`));
-      }
-    }
+  if (config.update && !config.json) {
+    for (const mode of Object.keys(output.results)) console.info(green(`✨ ${mode} updated`));
   }
 
   if (!config.json) {
     for (const {mode, name, error} of errors) console.info(red(`${mode} ${name}: ${error}`));
   }
 
-  // A run that could not look everything up is neither outdated nor up to date, so -E/-U yield to it.
-  if (errors.length) {
-    await end(undefined, 1);
-  } else if (config.errorOnOutdated) {
-    await end(undefined, hasResults ? 2 : 0);
-  } else if (config.errorOnUnchanged) {
-    await end(undefined, hasResults ? 0 : 2);
-  } else {
-    await end();
-  }
+  const exitCode = errors.length ? 1 : config.errorOnOutdated ? (hasResults ? 2 : 0) :
+    config.errorOnUnchanged ? (hasResults ? 0 : 2) : 0;
+  await end(undefined, exitCode);
 }
 
-const ansiLen = (str: string): number => stripVTControlCharacters(str).length;
-
-function formatOutput(output: Output): string {
+function formatOutput(
+  output: Output,
+  shortenGoModule: (value: string) => string,
+  highlightDiff: (left: string, right: string, colorFn: (text: string) => string) => string,
+  textTable: (rows: Array<Array<string>>, lengthFn: (value: string) => number) => string,
+  stripVTControlCharacters: (value: string) => string,
+): string {
   const modes = Object.keys(output.results);
   const hasMultipleModes = modes.length > 1;
 
@@ -164,12 +222,8 @@ function formatOutput(output: Output): string {
   const seen = new Set<string>();
 
   for (const mode of modes) {
-    // Rows sort across the whole mode, where the JSON keeps its dep-type sections to sort within.
     const rows = Object.values(output.results[mode]).flatMap(typeDeps => Object.entries(typeDeps));
     for (const [name, data] of rows.sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) {
-      // Key on the visible columns (incl. versions) so the same dep at
-      // different versions across dep-sections/workspace members keeps a row
-      // each; only truly identical rows collapse.
       const id = `${mode}|${name}|${data.old}|${data.new}`;
       if (seen.has(id)) continue;
       seen.add(id);
@@ -184,7 +238,7 @@ function formatOutput(output: Output): string {
     }
   }
 
-  return textTable(arr, ansiLen);
+  return textTable(arr, str => stripVTControlCharacters(str).length);
 }
 
 try {

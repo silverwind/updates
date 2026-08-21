@@ -1,14 +1,9 @@
-// Minimal TOML parser for pyproject.toml files.
-// Supports: tables, dotted keys, basic strings, literal strings,
-// arrays of strings, booleans, integers, floats, inline tables.
-
 type TomlValue = string | number | boolean | Array<TomlValue> | TomlObject;
 type TomlObject = {[key: string]: TomlValue};
 
 const arrayTableRe = /^\[\[([^\]]+)\]\]$/;
 const tableRe = /^\[([^[\]]+)\]$/;
 
-// A `__proto__` table is a plain key of the document, never a write into Object.prototype.
 const emptyTable = (): TomlObject => Object.create(null);
 
 export function parseToml(input: string): TomlObject {
@@ -21,7 +16,6 @@ export function parseToml(input: string): TomlObject {
     const line = stripComment(raw).trim();
     if (!line) continue;
 
-    // Array of tables: [[name]]
     const arrayTableMatch = arrayTableRe.exec(line);
     if (arrayTableMatch) {
       let target: TomlObject = root;
@@ -43,25 +37,22 @@ export function parseToml(input: string): TomlObject {
       continue;
     }
 
-    // Table header
     const tableMatch = tableRe.exec(line);
     if (tableMatch) {
       current = descend(root, splitDottedKey(tableMatch[1]));
       continue;
     }
 
-    // Key = value
-    const eqIdx = indexOfUnquoted(line, "=");
+    const eqIdx = unquotedIndex(line, "=");
     if (eqIdx < 0) continue;
     const rawKey = line.slice(0, eqIdx).trim();
     const rawVal = line.slice(eqIdx + 1).trim();
     const keys = splitDottedKey(rawKey);
     const target = descend(current, keys.slice(0, -1));
     const finalKey = keys[keys.length - 1];
-    const mlDelim = multilineStringDelim(rawVal);
+    const mlDelim = ['"""', "'''"].find(delimiter =>
+      rawVal.startsWith(delimiter) && !rawVal.includes(delimiter, 3)) ?? "";
 
-    // Multi-line array or inline table: gather lines until the outer "]"/"}" (depth-aware), then
-    // parse the full text with parseValue so nested arrays and inline tables stay intact.
     if ((rawVal.startsWith("[") || rawVal.startsWith("{")) && !inlineTableClosed(rawVal)) {
       let body = rawVal;
       let j = i + 1;
@@ -72,8 +63,6 @@ export function parseToml(input: string): TomlObject {
       i = j;
       target[finalKey] = parseValue(body);
     } else if (mlDelim) {
-      // Multi-line basic/literal string: gather raw lines up to the closing delimiter, then
-      // re-wrap and hand to parseValue so escaping/literal handling stays in one place.
       let body = rawVal.slice(3);
       let j = i + 1;
       for (; j < lines.length; j++) {
@@ -94,17 +83,10 @@ export function parseToml(input: string): TomlObject {
   return root;
 }
 
-// Returns the opening delimiter if raw starts a multi-line string that does not close on the same line, else "".
-function multilineStringDelim(raw: string): string {
-  const delim = raw.slice(0, 3);
-  if (delim !== '"""' && delim !== "'''") return "";
-  return raw.includes(delim, 3) ? "" : delim;
-}
-
 function parseValue(raw: string): TomlValue {
   if (raw.startsWith("[")) {
     const items: Array<TomlValue> = [];
-    const closeIdx = lastIndexOfUnquoted(raw, "]");
+    const closeIdx = raw.lastIndexOf("]");
     for (const part of splitTopLevel(raw.slice(1, closeIdx < 0 ? raw.length : closeIdx))) {
       const clean = part.trim();
       if (clean) items.push(parseValue(clean));
@@ -114,11 +96,9 @@ function parseValue(raw: string): TomlValue {
   if (raw.startsWith("{")) {
     return parseInlineTable(raw);
   }
-  // Multi-line basic string
   if (raw.startsWith('"""')) {
     return unescapeString(raw.slice(3, raw.lastIndexOf('"""')));
   }
-  // Multi-line literal string
   if (raw.startsWith("'''")) {
     return raw.slice(3, raw.lastIndexOf("'''"));
   }
@@ -128,10 +108,6 @@ function parseValue(raw: string): TomlValue {
   if (raw.startsWith("'")) {
     return raw.slice(1, raw.lastIndexOf("'"));
   }
-  return inferScalar(raw);
-}
-
-function inferScalar(raw: string): TomlValue {
   if (raw === "true") return true;
   if (raw === "false") return false;
   if (/^[+-]?\d+(\.\d+)?$/.test(raw)) return Number(raw);
@@ -151,10 +127,11 @@ function parseInlineTable(raw: string): TomlObject {
   return obj;
 }
 
-// True once the brackets/braces in `s` balance out — i.e. the inline table that opened with "{" has closed.
-function inlineTableClosed(s: string): boolean {
+function scanValue(s: string, split: boolean): Array<string> | null {
+  const parts: Array<string> = [];
   let depth = 0;
   let inStr: string | null = null;
+  let start = 0;
   for (let k = 0; k < s.length; k++) {
     const ch = s[k];
     if (inStr) {
@@ -166,35 +143,23 @@ function inlineTableClosed(s: string): boolean {
       depth++;
     } else if (ch === "}" || ch === "]") {
       depth--;
-      if (depth === 0) return true;
+      if (!split && depth === 0) return parts;
+    } else if (split && ch === "," && depth === 0) {
+      parts.push(s.slice(start, k));
+      start = k + 1;
     }
   }
-  return false;
+  if (!split) return null;
+  if (start < s.length) parts.push(s.slice(start));
+  return parts;
+}
+
+function inlineTableClosed(s: string): boolean {
+  return scanValue(s, false) !== null;
 }
 
 function splitTopLevel(s: string): Array<string> {
-  const parts: Array<string> = [];
-  let depth = 0;
-  let inStr: string | null = null;
-  let start = 0;
-  for (let i = 0; i < s.length; i++) {
-    const ch = s[i];
-    if (inStr) {
-      if (ch === "\\" && inStr === '"') { i++; continue; }
-      if (ch === inStr) inStr = null;
-    } else if (ch === '"' || ch === "'") {
-      inStr = ch;
-    } else if (ch === "[" || ch === "{") {
-      depth++;
-    } else if (ch === "]" || ch === "}") {
-      depth--;
-    } else if (ch === "," && depth === 0) {
-      parts.push(s.slice(start, i));
-      start = i + 1;
-    }
-  }
-  if (start < s.length) parts.push(s.slice(start));
-  return parts;
+  return scanValue(s, true)!;
 }
 
 function splitDottedKey(key: string): Array<string> {
@@ -219,11 +184,11 @@ function splitDottedKey(key: string): Array<string> {
 }
 
 function stripComment(line: string): string {
-  const idx = indexOfUnquoted(line, "#");
-  return idx < 0 ? line : line.slice(0, idx);
+  const index = unquotedIndex(line, "#");
+  return index < 0 ? line : line.slice(0, index);
 }
 
-function* unquotedIndices(s: string, target: string): Generator<number> {
+function unquotedIndex(s: string, target: string): number {
   let inStr: string | null = null;
   for (let i = 0; i < s.length; i++) {
     const ch = s[i];
@@ -233,19 +198,10 @@ function* unquotedIndices(s: string, target: string): Generator<number> {
     } else if (ch === '"' || ch === "'") {
       inStr = ch;
     } else if (ch === target) {
-      yield i;
+      return i;
     }
   }
-}
-
-function indexOfUnquoted(s: string, target: string): number {
-  return unquotedIndices(s, target).next().value ?? -1;
-}
-
-function lastIndexOfUnquoted(s: string, target: string): number {
-  let last = -1;
-  for (const i of unquotedIndices(s, target)) last = i;
-  return last;
+  return -1;
 }
 
 function descend(target: TomlObject, keys: Array<string>): TomlObject {
