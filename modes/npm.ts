@@ -58,13 +58,14 @@ function resolveNpmRegistry(name: string, config: Config, args: Record<string, a
     config.registry || npmrcConfig.registry || defaultRegistry);
   const scope = name.startsWith("@") ? name.split("/")[0] : "";
   const nativeRegistry = dir ? resolveNativeNpmRegistry(name, dir) : null;
-  return getOrSet(authCache, `${dir ?? ""}${fieldSep}${scope}:${registry}:${nativeRegistry ?? ""}`, () => {
+  const nativeDefaultRegistry = scope && dir ? resolveNativeNpmRegistry("", dir) : null;
+  return getOrSet(authCache, `${dir ?? ""}${fieldSep}${scope}:${registry}:${nativeRegistry ?? ""}:${nativeDefaultRegistry ?? ""}`, () => {
     let resolvedRegistry = nativeRegistry ? normalizeUrl(nativeRegistry) : registry;
-    const scoped = !nativeRegistry && scope && npmrcConfig[`${scope}:registry`];
+    const scoped = nativeRegistry === nativeDefaultRegistry && scope && npmrcConfig[`${scope}:registry`]; // Specificity wins across sources.
     if (scoped) {
       try {
         const url = normalizeUrl(scoped);
-        if (url !== registry) resolvedRegistry = url;
+        if (url !== resolvedRegistry) resolvedRegistry = url;
       } catch {}
     }
     return {auth: getRegistryAuthToken(resolvedRegistry, npmrcConfig), registry: resolvedRegistry};
@@ -344,9 +345,9 @@ type GitHubSpec = {user: string, repo: string, ref: string, selector: string | n
 
 function parseGitHubSpec(value: string): GitHubSpec | null {
   const hash = value.lastIndexOf("#");
-  if (hash < 1 || hash === value.length - 1) return null;
-  let source = value.slice(0, hash).replace(/^git\+/i, "");
-  const fragment = value.slice(hash + 1);
+  if (hash === value.length - 1) return null;
+  let source = value.slice(0, hash === -1 ? value.length : hash).replace(/^git\+/i, "");
+  let fragment = hash === -1 ? "" : value.slice(hash + 1);
   if (/^github:/i.test(source)) source = source.slice(7);
   else if (/^git@github\.com:/i.test(source)) source = source.replace(/^git@github\.com:/i, "");
   else if (/^(?:https?|git|ssh):/i.test(source)) {
@@ -355,6 +356,12 @@ function parseGitHubSpec(value: string): GitHubSpec | null {
     source = match[1];
   } else if (source.includes(":")) {
     return null;
+  }
+  if (!fragment) {
+    const match = /^([^/]+\/[^/]+)\/(?:.*\/)?([0-9a-f]+|v?[0-9]+\.[0-9]+\.[0-9]+)$/i.exec(source);
+    if (!match) return null;
+    source = match[1];
+    fragment = match[2];
   }
   source = source.replace(/\.git$/i, "");
   const parts = source.split("/");
@@ -370,8 +377,8 @@ export async function checkUrlDep(key: string, dep: Dep, ctx: ModeContext): Prom
   const {user, repo, ref: oldRef, selector} = parsed;
 
   const replaceRef = (ref: string) => {
-    const index = dep.old.lastIndexOf("#") + 1;
-    return `${dep.old.slice(0, index)}${selector ? `semver:${ref}` : ref}`;
+    const index = dep.old.lastIndexOf(oldRef);
+    return `${dep.old.slice(0, index)}${ref}${dep.old.slice(index + oldRef.length)}`;
   };
 
   if (hashRe.test(oldRef)) {

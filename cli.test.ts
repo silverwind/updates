@@ -14,4 +14,15 @@ test("recovers swallowed short option clusters", () => {
   expect(args.update).toBe(true);
   expect(args.greatest).toEqual(["react"]);
   expect(positionals).toEqual(["package.json"]);
+
+  const ordered = parseCliArgs([
+    "-g", "-ulreact=*", "-l", "react=<19",
+    "-g", "-uT1000", "-T", "2000",
+    "-g", "-ufcluster.json", "-f", "explicit.json",
+    "package.json",
+  ]);
+  expect(ordered.args.pin).toEqual(["react=*", "react=<19"]);
+  expect(ordered.args.timeout).toBe("2000");
+  expect(ordered.args.file).toEqual(["cluster.json", "explicit.json"]);
+  expect(ordered.positionals).toEqual(["package.json"]);
 });

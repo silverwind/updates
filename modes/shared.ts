@@ -561,7 +561,7 @@ export function resolvePackageJsonUrl(url: string): string {
 
 const commitHashPattern = "(?:[0-9a-f]{6,7}|[0-9a-f]{40}|[0-9a-f]{64})";
 export const commitHashRe = new RegExp(`^${commitHashPattern}$`, "i");
-export const hashRe = /^(?:[0-9a-f]{7}|[0-9a-f]{40})$/i;
+export const hashRe = /^(?=.*[a-f])[0-9a-f]{7,40}$/i;
 
 export function isVersionLikeRef(ref: string): boolean {
   return /^v?\d+(?:\.\d+)*(?:[-+][\w.-]+)?$/.test(ref);

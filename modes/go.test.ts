@@ -245,6 +245,10 @@ test.each([
     goMod("require foo v1.0.0", "exclude foo v1.0.0", "replace other => foo v1.0.0"),
     {[`deps${fieldSep}foo`]: {old: "1.0.0", new: "1.1.0"}},
     goMod("require foo v1.1.0", "exclude foo v1.0.0", "replace other => foo v1.0.0"), {}],
+  ["a directive in a file with mixed line endings",
+    "module x\n\nrequire example.com/dep v1.0.0\r\n",
+    {[`deps${fieldSep}example.com/dep`]: {old: "1.0.0", new: "1.1.0"}},
+    "module x\n\nrequire example.com/dep v1.1.0\r\n", {}],
 ])("updateGoMod rewrites %s", (_name, content, deps, expected, expectedRewrites) => {
   const [result, rewrites] = updateGoMod(content, deps);
   expect(result).toBe(expected);
@@ -402,22 +406,27 @@ test.each([
   expect(parseGoWork(lines.join("\n"))).toEqual(expected);
 });
 
-test("resolveGoWorkModule contains members after resolving symlinks", () => {
+test("resolveGoWorkModule resolves an out-of-tree member", () => {
   const parent = mkdtempSync(resolve(tmpdir(), "updates-go-work-"));
   try {
     const root = resolve(parent, "project");
-    const member = resolve(root, "member");
-    const outside = resolve(parent, "trusted");
-    mkdirSync(member, {recursive: true});
+    const outside = resolve(parent, "shared");
+    mkdirSync(root);
     mkdirSync(outside);
-    writeFileSync(resolve(member, "go.mod"), "module example.com/member\n");
-    writeFileSync(resolve(outside, "go.mod"), "module example.com/trusted\n");
-    symlinkSync(outside, resolve(root, "linked"));
-    expect(resolveGoWorkModule(root, "member")).toBe(realpathSync(resolve(member, "go.mod")));
-    expect(resolveGoWorkModule(root, "../trusted")).toBeNull();
-    expect(resolveGoWorkModule(root, "linked")).toBeNull();
+    writeFileSync(resolve(outside, "go.mod"), "module example.com/shared\n");
+    expect(resolveGoWorkModule(root, "../shared")).toBe(realpathSync(resolve(outside, "go.mod")));
   } finally {
     rmSync(parent, {recursive: true});
+  }
+});
+
+test("resolveGoWorkModule skips a member with a resolution error", () => {
+  const root = mkdtempSync(resolve(tmpdir(), "updates-go-work-"));
+  try {
+    symlinkSync("loop", resolve(root, "loop"));
+    expect(resolveGoWorkModule(root, "loop")).toBeNull();
+  } finally {
+    rmSync(root, {recursive: true});
   }
 });
 

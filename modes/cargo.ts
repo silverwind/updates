@@ -189,8 +189,9 @@ export function updateCargoToml(pkgStr: string, deps: Deps): string {
     const oldEsc = esc(oldValue);
     const typePath: Array<string> = typeKey.startsWith("[") ? JSON.parse(jsonStringArrayRe.exec(typeKey)![0]) :
       typeKey.split("|", 1)[0].split(".");
-    const sectionEsc = typePath.map(tomlKey).join("\\.");
-    const ownRe = new RegExp(`^${sectionEsc}\\.${nameEsc}$`);
+    const dottedSeparator = "[ \\t]*\\.[ \\t]*";
+    const sectionEsc = typePath.map(tomlKey).join(dottedSeparator);
+    const ownRe = new RegExp(`^${sectionEsc}${dottedSeparator}${nameEsc}$`);
     const sectionRe = new RegExp(`^${sectionEsc}$`);
     const ownSpan = spans.find(entry => ownRe.test(entry.path));
     const span = ownSpan ?? spans.find(entry => sectionRe.test(entry.path));

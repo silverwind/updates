@@ -60,6 +60,7 @@ const pnpmWorkspaceFile = fileURLToPath(new URL("fixtures/pnpm-workspace/pnpm-wo
 
 const testPkg = JSON.parse(readFileSync(testFile, "utf8"));
 const testDir = mkdtempSync(join(tmpdir(), "updates-"));
+const sourceScript = fileURLToPath(new URL("index.ts", import.meta.url));
 const script = fileURLToPath(new URL("dist/index.js", import.meta.url));
 
 // An awaiting handler holds the request open, which the client sees as a response that never comes.
@@ -457,6 +458,26 @@ test("version info fallback", async ({expect = globalExpect}: any = {}) => {
   expect(noty.age).toBeTruthy();
 });
 
+test("version resolves the source and built package layouts", async ({expect = globalExpect}: any = {}) => {
+  const parentDir = join(testDir, "version-layouts");
+  const sourceDir = join(parentDir, "updates");
+  const distDir = join(sourceDir, "dist");
+  mkdirSync(distDir, {recursive: true});
+  const source = await readFile(sourceScript, "utf8");
+  await Promise.all([
+    writeFile(join(parentDir, "package.json"), JSON.stringify({version: "wrong"})),
+    writeFile(join(sourceDir, "package.json"), JSON.stringify({version: "1.2.3"})),
+    writeFile(join(sourceDir, "index.ts"), source),
+    writeFile(join(distDir, "index.ts"), source),
+  ]);
+
+  for (const entry of [join(sourceDir, "index.ts"), join(distDir, "index.ts")]) {
+    const {stdout, stderr} = await execFileAsync(execPath, [entry, "--version"]);
+    expect(stderr).toEqual("");
+    expect(stdout).toBe("1.2.3\n");
+  }
+});
+
 test("empty", async ({expect = globalExpect}: any = {}) => {
   const {stdout, stderr} = await execFileAsync(execPath, [
     script, "-n", ...apiArgs(), "-f", emptyFile,
@@ -560,6 +581,7 @@ const latestRows: Array<[string, string, string, ReturnType<typeof dep>]> = [
   ["npm", "dependencies", "prismjs", dep("https://github.com/LeaVerou/prism", "1.17.1", "1.0.0")],
   ["npm", "dependencies", "react", dep("https://github.com/facebook/react/tree/HEAD/packages/react", "18.2", "18.0")],
   ["npm", "dependencies", "styled-components", dep("https://github.com/styled-components/styled-components", "4.4.1", "2.5.0-1")],
+  ["npm", "dependencies", "updates", dep("https://github.com/silverwind/updates", "537ccb7", "6941e05")],
   ["npm", "overrides", "noty", dep("https://github.com/needim/noty", "3.1.4", "3.1.0")],
   ["npm", "overrides", "prismjs:overrides.@babel/preset-env.prismjs", dep("https://github.com/LeaVerou/prism", "1.17.1", "1.0.0")],
   ["npm", "overrides", "prismjs:overrides.prismjs", dep("https://github.com/LeaVerou/prism", "1.17.1", "1.0.0")],
@@ -584,6 +606,7 @@ test("prerelease", async ({expect = globalExpect}: any = {}) => {
     ["npm", "dependencies", "prismjs", dep("https://github.com/LeaVerou/prism", "1.17.1", "1.0.0")],
     ["npm", "dependencies", "react", dep("https://github.com/facebook/react/tree/HEAD/packages/react", "18.3.0-next-fecc288b7-20221025", "18.0")],
     ["npm", "dependencies", "styled-components", dep("https://github.com/styled-components/styled-components", "5.0.0-regexrehydrate", "2.5.0-1")],
+    ["npm", "dependencies", "updates", dep("https://github.com/silverwind/updates", "537ccb7", "6941e05")],
     ["npm", "overrides", "noty", dep("https://github.com/needim/noty", "3.2.0-beta", "3.1.0")],
     ["npm", "overrides", "prismjs:overrides.@babel/preset-env.prismjs", dep("https://github.com/LeaVerou/prism", "1.17.1", "1.0.0")],
     ["npm", "overrides", "prismjs:overrides.prismjs", dep("https://github.com/LeaVerou/prism", "1.17.1", "1.0.0")],
@@ -616,6 +639,7 @@ test("patch", async ({expect = globalExpect}: any = {}) => {
     ["npm", "dependencies", "gulp-sourcemaps", dep("https://github.com/floridoo/gulp-sourcemaps", "2.0.1", "2.0.0")],
     ["npm", "dependencies", "html-webpack-plugin", dep("https://github.com/jantimon/html-webpack-plugin", "4.0.0-beta.11", "4.0.0-alpha.2")],
     ["npm", "dependencies", "noty", dep("https://github.com/needim/noty", "3.1.4", "3.1.0")],
+    ["npm", "dependencies", "updates", dep("https://github.com/silverwind/updates", "537ccb7", "6941e05")],
     ["npm", "overrides", "noty", dep("https://github.com/needim/noty", "3.1.4", "3.1.0")],
     ["npm", "packageManager", "npm", dep("https://github.com/npm/cli", "11.6.2", "11.6.0")],
     ["npm", "resolutions", "versions/updates", dep("https://github.com/silverwind/updates", "^1.0.6", "^1.0.0")],
@@ -1438,11 +1462,22 @@ test.each([
   ["workflow", dockerActionsDir, "ci.yaml", {
     node: {old: "18", new: "22"}, postgres: {old: "15", new: "17"}, redis: {old: "7", new: "8"},
   }],
-])("docker %s basic", async (_name, file, suffix, expected, {expect = globalExpect}: any = {}) => {
+])("docker %s basic", async (name, file, suffix, expected, {expect = globalExpect}: any = {}) => {
   const {stdout, stderr} = await runCliExec(dockerArgs("-j", "-f", file));
   expect(stderr).toEqual("");
   const docker = JSON.parse(stdout).results.docker;
-  expect(docker[Object.keys(docker).find(key => key.endsWith(suffix))!]).toMatchObject(expected);
+  const dependencies = docker[Object.keys(docker).find(key => key.endsWith(suffix))!];
+  expect(dependencies).toMatchObject(expected);
+  if (name === "workflow") {
+    const crlfDir = join(testDir, "docker-actions-crlf", ".github", "workflows");
+    const crlfFile = join(crlfDir, "ci.yaml");
+    mkdirSync(crlfDir, {recursive: true});
+    await writeFile(crlfFile, (await readFile(join(file, suffix), "utf8")).replaceAll("\n", "\r\n"));
+    const crlfOutput = await runCliExec(dockerArgs("-j", "-f", crlfFile));
+    expect(crlfOutput.stderr).toEqual("");
+    const crlfDocker = JSON.parse(crlfOutput.stdout).results.docker;
+    expect(crlfDocker[Object.keys(crlfDocker).find(key => key.endsWith(suffix))!]).toEqual(dependencies);
+  }
 });
 
 test("docker allowedVersions compares floating tags with Docker semantics", async ({expect = globalExpect}: any = {}) => {
@@ -1612,7 +1647,7 @@ function configTest(config: string, args: string): Promise<{stdout: string, stde
 test("config exit-code options", async ({expect = globalExpect}: any = {}) => {
   for (const [config, args, output] of [
     ["{ errorOnOutdated: true }", "-j -i noty", "noty"],
-    ["{ errorOnUnchanged: true }", "-j -i updates", "All dependencies are up to date."],
+    ["{ errorOnUnchanged: true }", "-j -i svgstore", "All dependencies are up to date."],
   ]) {
     try {
       await configTest(config, args);

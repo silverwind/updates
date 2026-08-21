@@ -41,12 +41,21 @@ export function parseCliArgs(argv?: Array<string>): {args: Record<string, Arg>, 
     ...(argv !== undefined && {args: argv}),
   });
 
-  const values = result.values as Record<string, Arg>;
+  const values = Object.create(null) as Record<string, Arg>;
   const consumedPositionals = new Set<number>();
   let positionalsSeen = 0;
   for (const [index, token] of result.tokens.entries()) {
     if (token.kind === "positional") positionalsSeen++;
-    if (token.kind !== "option" || token.inlineValue || !token.value?.startsWith("-")) continue;
+    if (token.kind !== "option") continue;
+    if (token.inlineValue || !token.value?.startsWith("-")) {
+      if (options[token.name]?.multiple) {
+        const list = (values[token.name] ??= []) as Array<string | boolean>;
+        list.push(token.value ?? true);
+      } else {
+        values[token.name] = token.value ?? true;
+      }
+      continue;
+    }
     const longOption = token.value.startsWith("--");
     const next = result.tokens[index + 1];
     const nextPositional = next?.kind === "positional" ? next.value : undefined;
@@ -77,11 +86,17 @@ export function parseCliArgs(argv?: Array<string>): {args: Record<string, Arg>, 
         }
       }
     }
-    if (!recoveredOptions.length) continue;
-    const swallowed = values[token.name];
-    if (Array.isArray(swallowed)) {
-      const position = swallowed.indexOf(token.value);
-      if (position !== -1) swallowed.splice(position, 1);
+    if (!recoveredOptions.length) {
+      if (options[token.name]?.multiple) {
+        const list = (values[token.name] ??= []) as Array<string | boolean>;
+        list.push(token.value);
+      } else {
+        values[token.name] = token.value;
+      }
+      continue;
+    }
+    if (options[token.name]?.multiple) {
+      values[token.name] ??= [];
     } else {
       values[token.name] = true;
     }

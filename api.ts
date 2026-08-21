@@ -758,7 +758,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
       fileData[relPath] = {absPath: file, content, fileType: "workflow", workflowLines};
       const yamlPath: Array<{indent: number, key: string}> = [];
 
-      for (const [lineNumber, line] of content.split("\n").entries()) {
+      for (const [lineNumber, line] of content.split(/\r?\n/).entries()) {
         if (actionsEnabled) {
           const parsed = parseUsesLine(line);
           const action = parsed && parseActionRef(parsed.value);

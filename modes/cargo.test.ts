@@ -26,6 +26,8 @@ test.each([
     `dependencies${fieldSep}serde`, {old: "1.0.0", new: "1.1.0"}, `[dependencies]\nserde = { version = "1.1.0", features = ["derive"] }\n`],
   [`extended table [dependencies.name]`, `[dependencies.serde]\nversion = "1.0.0"\nfeatures = ["derive"]\n`,
     `dependencies${fieldSep}serde`, {old: "1.0.0", new: "1.2.0"}, `[dependencies.serde]\nversion = "1.2.0"\nfeatures = ["derive"]\n`],
+  [`spaced dotted workspace table`, `[workspace . dependencies]\nserde = "1.0.0"\n`,
+    `workspace.dependencies${fieldSep}serde`, {old: "1.0.0", new: "1.0.1"}, `[workspace . dependencies]\nserde = "1.0.1"\n`],
   [`extended table skips comments and multiline strings`, `[dependencies.serde]\n# version = "1.0.0" was old\nnote = """\nversion = "1.0.0"\n"""\nversion = "1.0.0"\n`,
     `dependencies${fieldSep}serde`, {old: "1.0.0", new: "1.1.0"}, `[dependencies.serde]\n# version = "1.0.0" was old\nnote = """\nversion = "1.0.0"\n"""\nversion = "1.1.0"\n`],
   [`extended table beside a same-named dev entry`, `[dependencies.serde]\nversion = "1.0.0"\n\n[dev-dependencies]\nserde = "1.0.0"\n`,
@@ -170,7 +172,7 @@ test("target sections", () => {
     `[target.'cfg(feature = "foo.bar")'.dependencies]`,
     `libc = "0.2.0"`,
     ``,
-    `[target.x86_64-pc-windows-msvc.dependencies.winapi]`,
+    `[target . x86_64-pc-windows-msvc . dependencies . winapi]`,
     `version = "0.3.0"`,
     ``,
     `[target.'cfg(windows)'.build-dependencies.cc]`,
@@ -190,7 +192,7 @@ test("target sections", () => {
   };
   const result = updateCargoToml(input, deps);
   expect(result).toContain(`libc = "0.2.1"`);
-  expect(result).toContain(`[target.x86_64-pc-windows-msvc.dependencies.winapi]\nversion = "0.3.9"`);
+  expect(result).toContain(`[target . x86_64-pc-windows-msvc . dependencies . winapi]\nversion = "0.3.9"`);
   expect(result).toContain(`[target.'cfg(windows)'.build-dependencies.cc]\nversion = "1.1.0"`);
   expect(result).toContain(`[dev-dependencies]\nlibc = "0.2.0"`);
 });
