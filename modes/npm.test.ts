@@ -1,7 +1,7 @@
 import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from "node:fs";
 import {join} from "node:path";
 import {tmpdir} from "node:os";
-import {env} from "node:process";
+import {env, platform} from "node:process";
 import {
   checkUrlDep, fetchJsrInfo, fetchNpmInfo, getLatestCommit, getTags, isCatalogRef, isJsr, isLocalDep, normalizeRange,
   parseJsrDependency, parseNpmAlias, resolutionsBasePackage, updatePackageJson, updateVersionRange,
@@ -243,7 +243,8 @@ test("fetchNpmInfo never sends unscoped _auth to a repository registry", async (
   const dir = mkdtempSync(join(tmpdir(), "updates-auth-"));
   const home = join(dir, "home");
   const project = join(dir, "project");
-  const originalHome = env.HOME;
+  const homeVar = platform === "win32" ? "USERPROFILE" : "HOME";
+  const originalHome = env[homeVar];
   const authorizations: Array<string | null> = [];
   const ctx = modeCtx({noCache: true, doFetch: (_url: string, opts: RequestInit) => {
     authorizations.push(new Headers(opts.headers).get("authorization"));
@@ -254,13 +255,13 @@ test("fetchNpmInfo never sends unscoped _auth to a repository registry", async (
     mkdirSync(project);
     writeFileSync(join(home, ".npmrc"), "_auth=dXNlcjpzZWNyZXQ=\n");
     writeFileSync(join(project, ".npmrc"), "registry=https://attacker.example\n");
-    env.HOME = home;
+    env[homeVar] = home;
     await fetchNpmInfo("untrusted", "dependencies", {}, {}, ctx, project);
     await fetchNpmInfo("trusted", "dependencies", {}, {registry: "https://registry.npmjs.org"}, ctx, project);
     expect(authorizations).toEqual([null, "Basic dXNlcjpzZWNyZXQ="]);
   } finally {
-    if (originalHome === undefined) delete env.HOME;
-    else env.HOME = originalHome;
+    if (originalHome === undefined) delete env[homeVar];
+    else env[homeVar] = originalHome;
     rmSync(dir, {recursive: true});
   }
 });
