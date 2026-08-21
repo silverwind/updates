@@ -7,7 +7,6 @@ type SparseIndexRecord = {vers?: string; yanked?: boolean; pubtime?: string};
 
 const cratesIoByCtx = new WeakMap<ModeContext, Map<string, Promise<Record<string, any>>>>();
 
-// The index is sharded by lowercased name length: `1/a`, `2/ab`, `3/a/abc`, `se/rd/serde`.
 function indexSuffix(name: string): string {
   const lower = name.toLowerCase();
   if (lower.length <= 2) return `${lower.length}/${lower}`;
@@ -15,17 +14,11 @@ function indexSuffix(name: string): string {
   return `${lower.slice(0, 2)}/${lower.slice(2, 4)}/${lower}`;
 }
 
-// The HTTP API caps a page at 100 versions and carries no etag, the sparse index answers with the
-// whole crate in one revalidatable request. Only crates.io splits the two, so an override is an
-// index root.
 function indexUrl(cratesIoUrl: string, name: string): string {
   const base = normalizeUrl(cratesIoUrl);
   return `${base === "https://crates.io" ? "https://index.crates.io" : base}/${indexSuffix(name)}`;
 }
 
-// Index records carry the crate's whole dependency list, features and checksum, none of which is
-// read. A line that is not a record is kept verbatim, so a body of nothing but those still reads
-// as the malformed response it is.
 function reduceSparseIndex(body: string): string {
   return body.split("\n").map(line => {
     if (!line) return line;
@@ -41,14 +34,11 @@ function reduceSparseIndex(body: string): string {
 export async function fetchCratesIoInfo(name: string, ctx: ModeContext): Promise<PackageInfo> {
   const url = indexUrl(ctx.cratesIoUrl, name);
 
-  // dedup in-flight/completed requests per run; disk-cache staleness is gated by ctx.noCache inside fetchWithEtag
   const data = await dedupe(cratesIoByCtx, ctx, url, async () => {
     const result = await fetchWithEtag(url, ctx, getFetchOpts(), reduceSparseIndex);
     if (!("body" in result)) throwFetchError(result.res, url, name, ctx.cratesIoUrl);
     const versions: Record<string, Record<string, never>> = {};
     const time: Record<string, string> = {};
-    // crates.io has no maintainer-set tag, so its "max stable version" stands in: the highest
-    // release, prereleases counting only for a crate that has published nothing else.
     let latest = "";
     let latestPre = "";
     let parsedLines = 0;
@@ -62,7 +52,6 @@ export async function fetchCratesIoInfo(name: string, ctx: ModeContext): Promise
       }
       parsedLines++;
       if (!record?.vers || record.yanked) continue;
-      // Build metadata (`0.14.7+wasi-0.2.4`) is no part of a range, and renovate's crate datasource drops it too.
       const version = record.vers.split("+")[0];
       versions[version] = {};
       if (record.pubtime) time[version] = record.pubtime;
@@ -94,48 +83,46 @@ export function parseCargoLock(lockStr: string): Map<string, string[]> {
   return map;
 }
 
-// Cargo treats bare version strings as caret ranges (e.g. "1.0" = "^1.0").
 const startsWithDigitRe = /^\d/;
-// A wildcard requirement is not one of those: `1.0.*` caps at 1.0.x where `^1.0` would not.
-// Cargo normalizes `1.x` and `1.*.*` to `1.*`, so both spellings have to be recognized.
 const wildcardRe = /^(\d+(?:\.\d+)*)((?:\.[*xX])+)$/;
-const commaRe = /\s*,\s*/g;
-const commaSplitRe = /(\s*,\s*)/;
+const trimRe = /^(\s*)(.*?)(\s*)$/s;
 
-// npm range syntax has no comma, so a comparator list travels whitespace-separated and gets its
-// authored separators back in updateCargoRange.
-export const cargoToNpmRange = (range: string): string => range.includes(",") ? range.replace(commaRe, " ") : range;
-
-const toNpmRange = (range: string): string =>
-  cargoToNpmRange(startsWithDigitRe.test(range) && !wildcardRe.test(range) ? `^${range}` : range);
+export const cargoToNpmRange = (range: string): string => range.split(/\s*,\s*/)
+  .map(part => {
+    const value = part.trim();
+    return startsWithDigitRe.test(value) && !wildcardRe.test(value) ? `^${value}` : value;
+  })
+  .join(" ");
 
 function updateComparator(comparator: string, newVersion: string): string {
-  // An upper bound the new version already clears stays as authored, as renovate leaves a matching range alone.
-  if (comparator.startsWith("<") && satisfies(newVersion, comparator)) return comparator;
+  const [, leading, value, trailing] = trimRe.exec(comparator)!;
+  if (value.startsWith("<") && satisfies(newVersion, value)) return comparator;
 
-  const wildcard = wildcardRe.exec(comparator);
+  const wildcard = wildcardRe.exec(value);
+  let updated: string;
   if (wildcard) {
-    const [, digits, stars] = wildcard;
-    return `${newVersion.split(/[-+]/)[0].split(".").slice(0, digits.split(".").length).join(".")}${stars}`;
+    if (parse(newVersion)?.prerelease.length) {
+      updated = newVersion;
+    } else {
+      const [, digits, stars] = wildcard;
+      updated = `${newVersion.split(/[-+]/)[0].split(".").slice(0, digits.split(".").length).join(".")}${stars}`;
+    }
+  } else if (startsWithDigitRe.test(value)) {
+    updated = updateVersionRange(normalizeRange(`^${value}`), newVersion, `^${value}`).replace(/^\^/, "");
+  } else {
+    updated = updateVersionRange(normalizeRange(value), newVersion, value);
   }
-  if (startsWithDigitRe.test(comparator)) {
-    return updateVersionRange(normalizeRange(`^${comparator}`), newVersion, `^${comparator}`).replace(/^\^/, "");
-  }
-  return updateVersionRange(normalizeRange(comparator), newVersion, comparator);
+  return `${leading}${updated}${trailing}`;
 }
 
 export function updateCargoRange(oldOrig: string, newVersion: string): string {
-  if (!oldOrig.includes(",")) return updateComparator(oldOrig, newVersion);
-  // Splitting on a capturing separator keeps the authored spacing for the rejoin.
-  const parts = oldOrig.split(commaSplitRe);
-  for (let i = 0; i < parts.length; i += 2) parts[i] = updateComparator(parts[i], newVersion);
-  return parts.join("");
+  return oldOrig.split(/(\s*,\s*)/).map((part, idx) => idx % 2 ? part : updateComparator(part, newVersion)).join("");
 }
 
 export function findLockedVersion(allVersions: Map<string, string[]>, name: string, range: string): string | undefined {
   const versions = allVersions.get(name);
   if (!versions) return undefined;
-  const npmRange = toNpmRange(range);
+  const npmRange = cargoToNpmRange(range);
   let best: string | undefined;
   for (const version of versions) {
     if (satisfies(version, npmRange) && (!best || gt(version, best))) {
@@ -145,39 +132,47 @@ export function findLockedVersion(allVersions: Map<string, string[]>, name: stri
   return best;
 }
 
-// A TOML key may be written bare, "quoted" or 'quoted' and the parser hands back the bare name, so
-// a key matched back in the source has to accept all three spellings.
 const tomlKey = (key: string) => `(?:${esc(key)}|"${esc(key)}"|'${esc(key)}')`;
+const jsonStringArrayRe = /^\[(?:"(?:\\.|[^"\\])*"(?:,"(?:\\.|[^"\\])*")*)?\]/;
 
-// `[x]` or `[[x]]`, with the indentation and trailing comment TOML permits around it.
 const tableHeaderRe = /^[ \t]*\[(\[?)[ \t]*([^[\]]+?)[ \t]*\]\1[ \t]*(?:#.*)?[ \t\r]*$/;
 
-// An odd count opens a multi-line string, inside which a bracketed line is text, not a header.
-function multilineDelim(line: string): string {
-  for (const delim of [`"""`, `'''`]) {
-    if (line.split(delim).length % 2 === 0) return delim;
+function multilineDelim(line: string, delimiter: string): string {
+  for (let index = 0; index < line.length; index++) {
+    const char = line[index];
+    if (delimiter.length === 3) {
+      let backslashes = 0;
+      while (line[index - backslashes - 1] === `\\`) backslashes++;
+      if (line.startsWith(delimiter, index) && !(delimiter === `"""` && backslashes % 2)) {
+        index += 2;
+        delimiter = "";
+      }
+    } else if (delimiter) {
+      if (delimiter === `"` && char === `\\`) index++;
+      else if (char === delimiter) delimiter = "";
+    } else if (char === "#") {
+      break;
+    } else if ((char === `"` || char === `'`) && line.startsWith(char.repeat(3), index)) {
+      delimiter = char.repeat(3); index += 2;
+    } else if (char === `"` || char === `'`) { delimiter = char; }
   }
-  return "";
+  return delimiter.length === 3 ? delimiter : "";
 }
 
-// The span each table occupies, its header line included. An array of tables holds no dependency
-// but still ends the table before it, so it takes part with a path nothing matches.
-function tableSpans(str: string): Array<{path: string, start: number, end: number}> {
-  const spans: Array<{path: string, start: number, end: number}> = [];
-  let delim = "";
+type CargoRewrite = {simpleRe: RegExp, inlineRe: RegExp, versionRe?: RegExp, newValue: string};
+type CargoTable = {path: string, start: number, end: number, rewrites: Array<CargoRewrite>};
+
+function tableSpans(str: string): Array<CargoTable> {
+  const spans: Array<CargoTable> = [];
+  let delimiter = "";
   let pos = 0;
   for (const line of str.split("\n")) {
-    if (delim) {
-      if (line.includes(delim)) delim = "";
+    const header = delimiter ? null : tableHeaderRe.exec(line);
+    if (header) {
+      if (spans.length) spans.at(-1)!.end = pos;
+      spans.push({path: header[1] ? "" : header[2], start: pos, end: str.length, rewrites: []});
     } else {
-      const header = tableHeaderRe.exec(line);
-      if (header) {
-        const previous = spans.at(-1);
-        if (previous) previous.end = pos;
-        spans.push({path: header[1] ? "" : header[2], start: pos, end: str.length});
-      } else {
-        delim = multilineDelim(line);
-      }
+      delimiter = multilineDelim(line, delimiter);
     }
     pos += line.length + 1;
   }
@@ -185,35 +180,45 @@ function tableSpans(str: string): Array<{path: string, start: number, end: numbe
 }
 
 export function updateCargoToml(pkgStr: string, deps: Deps): string {
-  let newPkgStr = pkgStr;
+  const spans = tableSpans(pkgStr);
   for (const [key, dep] of Object.entries(deps)) {
     const [typeKey, name] = key.split(fieldSep);
     const oldValue = dep.oldOrig || dep.old;
     const newValue = dep.new;
     const nameEsc = tomlKey(name);
     const oldEsc = esc(oldValue);
-    // Built from the dep's own type so `[target.'cfg(unix)'.dependencies]` and any other configured
-    // section work. Workspace members carry a `|path` suffix on the type.
-    const sectionEsc = typeKey.split("|")[0].split(".").map(tomlKey).join("\\.");
-
-    // The forms that name no table of their own stay inside the table the dependency was read from,
-    // as the same name at the same version may well sit in another one too. Its own `[section.name]`
-    // wins, or the bare `[section]` above it would claim the rewrite, and a table neither pattern
-    // finds leaves the whole file as the scope rather than losing the rewrite.
+    const typePath: Array<string> = typeKey.startsWith("[") ? JSON.parse(jsonStringArrayRe.exec(typeKey)![0]) :
+      typeKey.split("|", 1)[0].split(".");
+    const sectionEsc = typePath.map(tomlKey).join("\\.");
     const ownRe = new RegExp(`^${sectionEsc}\\.${nameEsc}$`);
     const sectionRe = new RegExp(`^${sectionEsc}$`);
-    const rewrite = (scope: string) => scope
-      // Simple form: name = "version" or name = 'version'
-      .replace(new RegExp(`^(\\s*${nameEsc}\\s*=\\s*["'])${oldEsc}(["'].*)$`, "gm"), `$1${newValue}$2`)
-      // Inline table: name = { ..., version = "x.y.z", ... } (version need not be the first key)
-      .replace(new RegExp(`^(\\s*${nameEsc}\\s*=\\s*\\{(?:"[^"\\n]*"|'[^'\\n]*'|[^"'}\\n])*?\\bversion\\s*=\\s*["'])${oldEsc}(["'])`, "gm"), `$1${newValue}$2`)
-      // Extended table: [section.name] with version = "x.y.z", which the scope above is that table
-      .replace(new RegExp(`(\\[${sectionEsc}\\.${nameEsc}\\](?:(?!\\n\\[)[\\s\\S])*?version\\s*=\\s*["'])${oldEsc}(["'])`, "g"), `$1${newValue}$2`);
-    const spans = tableSpans(newPkgStr);
-    const span = spans.find(entry => ownRe.test(entry.path)) ?? spans.find(entry => sectionRe.test(entry.path));
-    newPkgStr = span ?
-      newPkgStr.slice(0, span.start) + rewrite(newPkgStr.slice(span.start, span.end)) + newPkgStr.slice(span.end) :
-      rewrite(newPkgStr);
+    const ownSpan = spans.find(entry => ownRe.test(entry.path));
+    const span = ownSpan ?? spans.find(entry => sectionRe.test(entry.path));
+    if (!span) throw new Error(`Unable to locate Cargo table for ${typeKey}.${name}`);
+    span.rewrites.push({
+      simpleRe: new RegExp(`^(\\s*${nameEsc}\\s*=\\s*["'])${oldEsc}(["'].*)$`),
+      inlineRe: new RegExp(`^(\\s*${nameEsc}\\s*=\\s*\\{(?:"[^"\\n]*"|'[^'\\n]*'|[^"'}\\n])*?\\bversion\\s*=\\s*["'])${oldEsc}(["'])`),
+      ...(ownSpan && {versionRe: new RegExp(`^(\\s*version\\s*=\\s*["'])${oldEsc}(["'].*)$`)}),
+      newValue,
+    });
   }
-  return newPkgStr;
+  let result = pkgStr;
+  for (const span of spans.reverse()) {
+    if (!span.rewrites.length) continue;
+    let delimiter = "";
+    const scope = pkgStr.slice(span.start, span.end).replace(/^.*$/gm, originalLine => {
+      let line = originalLine;
+      if (!delimiter) {
+        for (const rewrite of span.rewrites) {
+          line = line.replace(rewrite.simpleRe, `$1${rewrite.newValue}$2`)
+            .replace(rewrite.inlineRe, `$1${rewrite.newValue}$2`);
+          if (rewrite.versionRe) line = line.replace(rewrite.versionRe, `$1${rewrite.newValue}$2`);
+        }
+      }
+      delimiter = multilineDelim(line, delimiter);
+      return line;
+    });
+    result = result.slice(0, span.start) + scope + result.slice(span.end);
+  }
+  return result;
 }

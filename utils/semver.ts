@@ -5,10 +5,15 @@ export type SemVer = {
   minor: number;
   patch: number;
   prerelease: ReadonlyArray<string | number>;
+  build: ReadonlyArray<string>;
+  raw: string;
   version: string;
 };
 
-const semverRe = /^v?(\d+)\.(\d+)\.(\d+)(?:-([a-zA-Z0-9_-]+(?:\.[a-zA-Z0-9_-]+)*))?(?:\+[a-zA-Z0-9._-]+)?$/;
+const numericIdentifier = "0|[1-9]\\d*";
+const numericIdentifierRe = /^(?:0|[1-9]\d*)$/;
+const prereleaseIdentifier = "0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*";
+const semverRe = new RegExp(`^v?(${numericIdentifier})\\.(${numericIdentifier})\\.(${numericIdentifier})(?:-((?:${prereleaseIdentifier})(?:\\.(?:${prereleaseIdentifier}))*))?(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$`);
 
 const parseCache = new Map<string, SemVer | null>();
 
@@ -20,20 +25,26 @@ function parseVersion(v: string): SemVer | null {
     const major = Number(m[1]);
     const minor = Number(m[2]);
     const patch = Number(m[3]);
+    if (!Number.isSafeInteger(major) || !Number.isSafeInteger(minor) || !Number.isSafeInteger(patch)) return null;
     const prerelease: Array<string | number> = m[4] ?
-      m[4].split(".").map(p => /^\d+$/.test(p) ? Number(p) : p) :
+      m[4].split(".").map(part => /^\d+$/.test(part) && Number(part) < Number.MAX_SAFE_INTEGER ? Number(part) : part) :
       [];
+    const build = m[5]?.split(".") ?? [];
     const version = `${major}.${minor}.${patch}${prerelease.length ? `-${prerelease.join(".")}` : ""}`;
-    return {major, minor, patch, prerelease, version};
+    return {major, minor, patch, prerelease, build, raw: v, version};
   });
 }
 
 function compareIdentifiers(a: string | number, b: string | number): number {
-  const aNum = typeof a === "number";
-  const bNum = typeof b === "number";
-  if (aNum && bNum) return a - b;
-  if (aNum) return -1; // numbers sort before strings
-  if (bNum) return 1;
+  const aNumeric = typeof a === "number" || /^\d+$/.test(a);
+  const bNumeric = typeof b === "number" || /^\d+$/.test(b);
+  if (aNumeric && bNumeric) {
+    const aString = String(a);
+    const bString = String(b);
+    return aString.length - bString.length || (aString < bString ? -1 : aString > bString ? 1 : 0);
+  }
+  if (aNumeric) return -1;
+  if (bNumeric) return 1;
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
@@ -41,18 +52,14 @@ function compareMain(a: SemVer, b: SemVer): number {
   return (a.major - b.major) || (a.minor - b.minor) || (a.patch - b.patch);
 }
 
-// Compare pre-parsed versions, letting hot loops skip the parse-cache lookups.
 function compareParsed(a: SemVer, b: SemVer): number {
   const main = compareMain(a, b);
   if (main !== 0) return main;
   const aHasPre = a.prerelease.length > 0;
   const bHasPre = b.prerelease.length > 0;
-  // no prerelease on either => equal
   if (!aHasPre && !bHasPre) return 0;
-  // prerelease has lower precedence than release
   if (aHasPre && !bHasPre) return -1;
   if (!aHasPre && bHasPre) return 1;
-  // both have prerelease
   const len = Math.max(a.prerelease.length, b.prerelease.length);
   for (let i = 0; i < len; i++) {
     if (a.prerelease[i] === undefined) return -1;
@@ -89,7 +96,6 @@ export function diff(v1: string, v2: string): string | null {
   return diffParsed(a, b);
 }
 
-// Lets hot loops pass already-parsed inputs and skip the parseVersion cache lookup.
 function diffParsed(a: SemVer, b: SemVer): string | null {
   if (a.version === b.version) return null;
 
@@ -99,7 +105,6 @@ function diffParsed(a: SemVer, b: SemVer): string | null {
   const highHasPre = highVersion.prerelease.length > 0;
   const lowHasPre = lowVersion.prerelease.length > 0;
 
-  // Special case: going from prerelease to release
   if (lowHasPre && !highHasPre) {
     if (!lowVersion.patch && !lowVersion.minor) return "major";
     if (compareMain(lowVersion, highVersion) === 0) {
@@ -125,23 +130,52 @@ export function gt(v1: string, v2: string): boolean {
   return (compare(v1, v2) ?? -1) > 0;
 }
 
-// --- Range parsing ---
-
 type Comparator = {
-  op: string; // >=, <=, >, <, = (empty means =)
+  op: string;
   semver: SemVer;
 };
 
-function parseComparator(comp: string): Comparator | null {
-  const m = /^(>=|<=|>|<|=)?\s*v?(\d+)(?:\.(\d+))?(?:\.(\d+))?((?:-[a-zA-Z0-9_-]+(?:\.[a-zA-Z0-9_-]+)*)?)$/.exec(comp.trim());
-  if (!m) return null;
-  const major = m[2];
-  const minor = m[3] ?? "0";
-  const patch = m[4] ?? "0";
-  const pre = m[5] || "";
-  const sv = parseVersion(`${major}.${minor}.${patch}${pre}`);
-  if (!sv) return null;
-  return {op: m[1] || "=", semver: sv};
+type PartialVersion = {
+  major: number | null;
+  minor: number | null;
+  patch: number | null;
+  suffix: string;
+};
+
+function parsePartial(value: string): PartialVersion | null {
+  const match = /^v?([^.+-]+(?:\.[^.+-]+){0,2})(-[0-9a-zA-Z.-]+)?(\+[0-9a-zA-Z.-]+)?$/.exec(value);
+  if (!match) return null;
+  const parts = match[1].split(".");
+  const parsed: Array<number | null> = [];
+  let wildcard = false;
+  for (const part of parts) {
+    if (/^[xX*]$/.test(part)) {
+      wildcard = true;
+      parsed.push(null);
+    } else {
+      if (wildcard || !numericIdentifierRe.test(part)) return null;
+      const number = Number(part);
+      if (!Number.isSafeInteger(number)) return null;
+      parsed.push(number);
+    }
+  }
+  while (parsed.length < 3) parsed.push(null);
+  if ((match[2] || match[3]) && parsed.some(part => part === null)) return null;
+  if (match[2] || match[3]) {
+    const complete = `${parsed.join(".")}${match[2] ?? ""}${match[3] ?? ""}`;
+    if (!parseVersion(complete)) return null;
+  }
+  return {major: parsed[0], minor: parsed[1], patch: parsed[2], suffix: `${match[2] ?? ""}${match[3] ?? ""}`};
+}
+
+function comparator(op: string, major: number, minor: number, patch: number, suffix = ""): Comparator | null {
+  const semver = parseVersion(`${major}.${minor}.${patch}${suffix}`);
+  return semver ? {op, semver} : null;
+}
+
+function comparators(...values: Array<Comparator | null>): Array<Comparator> | null {
+  const result = values.filter((value): value is Comparator => value !== null);
+  return result.length === values.length ? result : null;
 }
 
 function testComparator(v: SemVer, comp: Comparator): boolean {
@@ -152,194 +186,93 @@ function testComparator(v: SemVer, comp: Comparator): boolean {
     case ">": return cmp > 0;
     case "<": return cmp < 0;
     case "=": return cmp === 0;
-    default: return cmp === 0;
+    default: return false;
   }
 }
 
-// Returns upper bound with -0 appended for exclusive upper bounds
-function upperBound(major: number, minor: number, patch: number): string {
-  return `${major}.${minor}.${patch}-0`;
+function upperComparator(major: number, minor: number, patch: number): Comparator | null {
+  return comparator("<", major, minor, patch, "-0");
 }
 
-// ~1.2.3 := >=1.2.3 <1.3.0-0    ^1.2.3 := >=1.2.3 <2.0.0-0
-// ~1.2   := >=1.2.0 <1.3.0-0    ^0.2.3 := >=0.2.3 <0.3.0-0
-// ~1     := >=1.0.0 <2.0.0-0    ^0.0.3 := >=0.0.3 <0.0.4-0
-//                               ^0.0   := >=0.0.0 <0.1.0-0
-//                               ^0     := >=0.0.0 <1.0.0-0
-// Trailing wildcard segments (e.g. ~1.x, ^1.2.x) are consumed and treated as omitted.
-function expandTildeCaret(range: string): string {
-  return range.replace(/([~^])\s*v?(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:\.[xX*])*((?:-[a-zA-Z0-9._-]+)?)/g, (_, op, rawMajor, rawMinor, rawPatch, rawPre) => {
-    const major = Number(rawMajor);
-    const minor = rawMinor !== undefined ? Number(rawMinor) : 0;
-    const patch = rawPatch !== undefined ? Number(rawPatch) : 0;
-    // The prerelease is kept only when the segment it belongs to was given: ~ needs a minor, ^ a patch.
-    const pre = (op === "~" ? rawMinor : rawPatch) !== undefined ? rawPre : "";
-    let upper: string;
-    if (rawMinor === undefined) upper = upperBound(major + 1, 0, 0);
-    else if (op === "~") upper = upperBound(major, minor + 1, 0);
-    else if (major !== 0) upper = upperBound(major + 1, 0, 0);
-    else if (rawPatch !== undefined && minor === 0) upper = upperBound(0, 0, patch + 1);
-    else upper = upperBound(0, minor + 1, 0);
-    return `>=${major}.${minor}.${patch}${pre} <${upper}`;
-  });
-}
-
-function expandHyphen(range: string): string {
-  // A - B  :=  >=A <=B
-  // 1.2.3 - 2.3.4 := >=1.2.3 <=2.3.4
-  // 1.2 - 2.3.4 := >=1.2.0 <=2.3.4
-  // 1.2.3 - 2.3 := >=1.2.3 <2.4.0-0
-  // 1.2.3 - 2 := >=1.2.3 <3.0.0-0
-  return range.replace(/v?(\d+)(?:\.(\d+))?(?:\.(\d+))?((?:-[a-zA-Z0-9._-]+)?)\s+-\s+v?(\d+)(?:\.(\d+))?(?:\.(\d+))?((?:-[a-zA-Z0-9._-]+)?)/g,
-    (_, aM, am, ap, aPre, bM, bm, bp, bPre) => {
-      const fromM = Number(aM);
-      const fromm = am !== undefined ? Number(am) : 0;
-      const fromp = ap !== undefined ? Number(ap) : 0;
-      const fromPre = aPre || "";
-      const toM = Number(bM);
-
-      let upper: string;
-      if (bp !== undefined) {
-        const tom = Number(bm);
-        const top = Number(bp);
-        const toPre = bPre || "";
-        upper = `<=${toM}.${tom}.${top}${toPre}`;
-      } else if (bm !== undefined) {
-        const tom = Number(bm);
-        upper = `<${upperBound(toM, tom + 1, 0)}`;
-      } else {
-        upper = `<${upperBound(toM + 1, 0, 0)}`;
-      }
-      return `>=${fromM}.${fromm}.${fromp}${fromPre} ${upper}`;
-    });
-}
-
-// Expands an x-range component (e.g. 1.2.x or 1.x), honoring a leading comparison operator the way
-// node-semver does: a bare/`=` x-range becomes a `>=lo <hi` pair, while an operator-prefixed one
-// collapses to a single bound (e.g. >=1.2.x := >=1.2.0, >1.2.x := >=1.3.0, <=1.2.x := <1.3.0-0).
-function expandXRangeComparator(op: string | undefined, major: number, minor: number, wildMinor: boolean): string {
+function partialBounds(partial: PartialVersion, op: string): Array<Comparator> | null {
+  if (partial.major === null) return partial.minor === null && partial.patch === null ? [] : null;
+  const major = partial.major;
+  const minor = partial.minor ?? 0;
+  const patch = partial.patch ?? 0;
+  if (op === "^" || op === "~") {
+    const lower = comparator(">=", major, minor, patch, partial.suffix);
+    if (partial.minor === null) return comparators(lower, upperComparator(major + 1, 0, 0));
+    if (op === "~") return comparators(lower, upperComparator(major, minor + 1, 0));
+    if (major !== 0) return comparators(lower, upperComparator(major + 1, 0, 0));
+    if (partial.patch !== null && minor === 0) return comparators(lower, upperComparator(0, 0, patch + 1));
+    return comparators(lower, upperComparator(0, minor + 1, 0));
+  }
+  if (partial.minor !== null && partial.patch !== null) return comparators(comparator(op || "=", major, minor, patch, partial.suffix));
   if (!op || op === "=") {
-    return wildMinor ?
-      `>=${major}.0.0 <${upperBound(major + 1, 0, 0)}` :
-      `>=${major}.${minor}.0 <${upperBound(major, minor + 1, 0)}`;
+    return partial.minor === null ?
+      comparators(comparator(">=", major, 0, 0), upperComparator(major + 1, 0, 0)) :
+      comparators(comparator(">=", major, minor, 0), upperComparator(major, minor + 1, 0));
   }
-  if (op === ">") {
-    // >1 := >=2.0.0, >1.2 := >=1.3.0
-    return wildMinor ? `>=${major + 1}.0.0` : `>=${major}.${minor + 1}.0`;
-  }
-  if (op === "<=") {
-    // <=1.x := <2.0.0-0, <=1.2.x := <1.3.0-0 (any matching patch should pass)
-    return wildMinor ? `<${upperBound(major + 1, 0, 0)}` : `<${upperBound(major, minor + 1, 0)}`;
-  }
-  if (op === "<") {
-    return wildMinor ? `<${major}.0.0-0` : `<${major}.${minor}.0-0`;
-  }
-  // >=
-  return wildMinor ? `>=${major}.0.0` : `>=${major}.${minor}.0`;
+  if (op === ">") return partial.minor === null ? comparators(comparator(">=", major + 1, 0, 0)) : comparators(comparator(">=", major, minor + 1, 0));
+  if (op === "<=") return partial.minor === null ? comparators(upperComparator(major + 1, 0, 0)) : comparators(upperComparator(major, minor + 1, 0));
+  if (op === "<") return partial.minor === null ? comparators(upperComparator(major, 0, 0)) : comparators(upperComparator(major, minor, 0));
+  return comparators(comparator(">=", major, minor, 0));
 }
 
-function expandXRanges(range: string): string {
-  // *, x, X -> >=0.0.0
-  // 1.x, 1.*, 1 -> >=1.0.0 <2.0.0-0
-  // 1.2.x, 1.2.*, 1.2 -> >=1.2.0 <1.3.0-0
-
-  // Handle standalone wildcard
-  if (/^\s*[*xX]\s*$/.test(range)) {
-    return ">=0.0.0";
+function parseHyphen(fromValue: string, toValue: string): Array<Comparator> | null {
+  const from = parsePartial(fromValue);
+  const to = parsePartial(toValue);
+  if (!from || !to) return null;
+  const result: Array<Comparator> = [];
+  if (from.major !== null) {
+    const lower = comparator(">=", from.major, from.minor ?? 0, from.patch ?? 0, from.suffix);
+    if (!lower) return null;
+    result.push(lower);
   }
+  if (to.major === null) return result;
+  const upper = to.minor === null ? upperComparator(to.major + 1, 0, 0) :
+    to.patch === null ? upperComparator(to.major, to.minor + 1, 0) :
+      comparator("<=", to.major, to.minor, to.patch, to.suffix);
+  if (!upper) return null;
+  result.push(upper);
+  return result;
+}
 
-  // Handle patterns like 1.2.x, 1.2.* (before the 2-part rule below, which would otherwise mis-match these)
-  // wildMinor=false: minor is fixed (1.2.x), so the implied range spans one minor. true: minor is wild (1.x).
-  range = range.replace(/(>=|<=|>|<|=)?\s*v?(\d+)\.(\d+)\.[xX*]/g, (_, op, major, minor) =>
-    expandXRangeComparator(op, Number(major), Number(minor), false));
-
-  // Handle patterns like 1.x, 1.*, 1.X, 1.x.x etc.
-  range = range.replace(/(>=|<=|>|<|=)?\s*v?(\d+)\.[xX*](?:\.[xX*])?/g, (_, op, major) =>
-    expandXRangeComparator(op, Number(major), 0, true));
-
-  // Handle bare partials "1.2" and "1", honoring a leading comparison operator the same way
-  // the x-range passes above do (e.g. >1.2 := >=1.3.0, <=1 := <2.0.0-0). A bare/`=` partial
-  // collapses to the `>=lo <hi` pair via expandXRangeComparator's first branch.
-  range = range.replace(/(^|[\s|])(>=|<=|>|<|=)?\s*v?(\d+)\.(\d+)(?=\s|$)/g, (_, prefix, op, major, minor) =>
-    `${prefix}${expandXRangeComparator(op, Number(major), Number(minor), false)}`);
-
-  range = range.replace(/(^|[\s|])(>=|<=|>|<|=)?\s*v?(\d+)(?=\s|$)/g, (_, prefix, op, major) =>
-    `${prefix}${expandXRangeComparator(op, Number(major), 0, true)}`);
-
-  return range;
+function parseComparatorSet(group: string): Array<Comparator> | null {
+  const hyphen = /^(\S+)\s+-\s+(\S+)$/.exec(group);
+  if (hyphen) return parseHyphen(hyphen[1], hyphen[2]);
+  const normalized = group.replace(/~\s*>\s*/g, "~").replace(/(>=|<=|>|<|=|~|\^)\s+/g, "$1");
+  const result: Array<Comparator> = [];
+  for (const token of normalized.split(/\s+/).filter(Boolean)) {
+    const match = /^(>=|<=|>|<|=|~|\^)?(.+)$/.exec(token);
+    const partial = match && parsePartial(match[2]);
+    const bounds = partial ? partialBounds(partial, match?.[1] ?? "") : null;
+    if (!bounds) return null;
+    result.push(...bounds);
+  }
+  return result;
 }
 
 const rangeCache = new Map<string, Array<Array<Comparator>> | null>();
 
 function parseRange(range: string): Array<Array<Comparator>> | null {
   return getOrSet(rangeCache, range, () => {
-    const orGroups = range.split("||").map(g => g.trim());
-    const result: Array<Array<Comparator>> = [];
-
-    for (let group of orGroups) {
-      if (!group) {
-        // Empty group in || means match anything
-        result.push([]);
-        continue;
-      }
-
-      // Expand in order: hyphen -> caret/tilde -> x-range
-      group = expandHyphen(group);
-      group = expandTildeCaret(group);
-      group = expandXRanges(group);
-
-      // Merge operators with their following version (handle spaces like ">= 3.1").
-      // Must run before the normalize pass below, else ">= 1.0.0" gets an "=" inserted.
-      group = group.replace(/(>=|<=|>|<|=)\s+/g, "$1");
-
-      // Normalize = prefix for exact versions
-      group = group.replace(/(^|[\s])v?(\d+\.\d+\.\d+(?:-[a-zA-Z0-9_-]+(?:\.[a-zA-Z0-9_-]+)*)?)\b/g,
-        (_, prefix, version) => `${prefix}=${version}`);
-
-      const comparators: Array<Comparator> = [];
-      for (const part of group.split(/\s+/).filter(Boolean)) {
-        const comp = parseComparator(part);
-        if (!comp) return null;
-        comparators.push(comp);
-      }
-
-      if (comparators.length === 0) return null;
-      result.push(comparators);
-    }
-
-    return result.length ? result : null;
+    const groups = range.split("||").map(group => parseComparatorSet(group.trim()));
+    return groups.some(group => group === null) ? null : groups as Array<Array<Comparator>>;
   });
 }
 
 function testWithPrerelease(version: SemVer, comparators: Array<Comparator>): boolean {
-  // All comparators in the AND group must pass
   if (comparators.some(comp => !testComparator(version, comp))) return false;
-
-  // Prerelease filtering: if version has prerelease tags,
-  // at least one comparator must share the same [major, minor, patch]
-  // and also have a prerelease tag
-  if (version.prerelease.length > 0) {
-    return comparators.some(comp =>
-      comp.semver.prerelease.length > 0 &&
-      comp.semver.major === version.major &&
-      comp.semver.minor === version.minor &&
-      comp.semver.patch === version.patch);
-  }
-
-  return true;
+  return !version.prerelease.length || comparators.some(comp => comp.semver.prerelease.length > 0 &&
+    comp.semver.major === version.major && comp.semver.minor === version.minor && comp.semver.patch === version.patch);
 }
 
 export function satisfies(version: string, range: string): boolean {
   const v = parseVersion(version);
   if (!v) return false;
   const parsed = parseRange(range);
-  if (!parsed) return false;
-
-  for (const group of parsed) {
-    if (group.length === 0) return true; // empty group matches all
-    if (testWithPrerelease(v, group)) return true;
-  }
-  return false;
+  return Boolean(parsed?.some(group => testWithPrerelease(v, group)));
 }
 
 export function validRange(range: string): string | null {
@@ -357,9 +290,6 @@ export type Pep440 = {
   version: string;
 };
 
-// https://peps.python.org/pep-0440/#appendix-b-parsing-version-strings-with-regular-expressions
-// 1 epoch, 2 release, 3-4 pre letter/number, 5 implicit post number, 6-7 post letter/number,
-// 8-9 dev marker/number, 10 local.
 const pep440Pattern = "v?(?:(\\d+)!)?(\\d+(?:\\.\\d+)*)(?:[-_.]?(a|b|c|rc|alpha|beta|pre|preview)[-_.]?(\\d+)?)?(?:-(\\d+)|[-_.]?(post|rev|r)[-_.]?(\\d+)?)?(?:[-_.]?(dev)[-_.]?(\\d+)?)?(?:\\+([a-z0-9]+(?:[-_.][a-z0-9]+)*))?";
 const pep440Re = new RegExp(`^${pep440Pattern}$`, "i");
 const pep440SearchRe = new RegExp(pep440Pattern, "i");
@@ -385,14 +315,12 @@ export function parsePep440(v: string): Pep440 | null {
   });
 }
 
-// A pypi range is authored as a bare version, but a comparator may still be glued to it.
 function parsePep440Range(range: string): Pep440 | null {
   return parsePep440(range) ?? parsePep440(pep440SearchRe.exec(range)?.[0] ?? "");
 }
 
 const isPep440Prerelease = (v: Pep440): boolean => Boolean(v.pre || v.dev);
 
-// Alphanumeric local segments sort before numeric ones, shorter before longer.
 function compareLocal(a: Array<string | number> | null, b: Array<string | number> | null): number {
   if (!a || !b) return a ? 1 : b ? -1 : 0;
   const len = Math.min(a.length, b.length);
@@ -407,13 +335,11 @@ function compareLocal(a: Array<string | number> | null, b: Array<string | number
 
 export function comparePep440(a: Pep440, b: Pep440): number {
   if (a.epoch !== b.epoch) return a.epoch - b.epoch;
-  // Trailing zeros are insignificant, so 1.0 and 1.0.0 are the same version.
   const len = Math.max(a.release.length, b.release.length);
   for (let i = 0; i < len; i++) {
     const cmp = (a.release[i] ?? 0) - (b.release[i] ?? 0);
     if (cmp) return cmp;
   }
-  // A bare dev release precedes every pre-release of the same version, which precede the release.
   const aRank = a.pre ? 0 : a.post === null && a.dev !== null ? -1 : 1;
   const bRank = b.pre ? 0 : b.post === null && b.dev !== null ? -1 : 1;
   if (aRank !== bRank) return aRank - bRank;
@@ -428,8 +354,6 @@ export function comparePep440(a: Pep440, b: Pep440): number {
   return compareLocal(a.local, b.local);
 }
 
-// Release segments beyond the third are the pypi norm (2.32.0.20250602), and renovate buckets
-// every change below the minor as a patch, so the fourth segment does not get its own level.
 function releaseLevel(a: Pep440, b: Pep440): string | null {
   if (a.epoch !== b.epoch) return "major";
   const len = Math.max(a.release.length, b.release.length);
@@ -447,10 +371,8 @@ export function diffPep440(a: Pep440, b: Pep440): string | null {
   return level ?? "patch";
 }
 
-// The scheme-specific operations version selection needs, mirroring renovate's VersioningApi.
 export type Versioning<T extends {version: string} = any> = {
   parse: (version: string) => T | null;
-  // Pulls the authored version out of a range, prerelease included.
   parseRange: (range: string) => T | null;
   compare: (a: T, b: T) => number;
   diff: (a: T, b: T) => string | null;
@@ -467,22 +389,17 @@ export const semverVersioning: Versioning<SemVer> = {
   compare: compareParsed,
   diff: diffParsed,
   isPrerelease: parsed => parsed.prerelease.length > 0,
-  // can not use coerce here because it ignores prerelease tags
   isRangePrerelease: range => /[0-9]+\.[0-9]+\.[0-9]+-.+/.test(range),
   satisfiesRange: (parsed, range) => satisfies(parsed.version, range),
 };
 
-// Actions are tagged with floating majors and minors (`v3`, `v3.19`) as often as with full
-// versions, and plain semver rejects both. Ported from renovate's github-actions versioning.
 const actionsParseCache = new Map<string, SemVer | null>();
 
 function parseActionsVersion(v: string): SemVer | null {
   return getOrSet(actionsParseCache, v, () => {
     const stripped = v.trim().replace(/^v/i, "");
-    // `major.minor-prerelease` (`2.2-rc.1`) normalizes onto `major.minor.0-prerelease`
     const parsed = parse(stripped) ?? parse(stripped.replace(/^(\d+\.\d+)(-.+)$/, "$1.0$2"));
     if (parsed) return parsed;
-    // without the guard, coerce reads a foreign tag scheme like `codeql-bundle-v2.20.3` as a version
     if (!/^\d/.test(stripped)) return null;
     return parse(coerce(stripped)?.version ?? "");
   });
@@ -505,6 +422,5 @@ export const pep440Versioning: Versioning<Pep440> = {
     const parsed = parsePep440Range(range);
     return Boolean(parsed && isPep440Prerelease(parsed));
   },
-  // --pin takes a semver range, so match it against the first three release segments.
   satisfiesRange: ({release}, range) => satisfies(`${release[0] ?? 0}.${release[1] ?? 0}.${release[2] ?? 0}`, range),
 };

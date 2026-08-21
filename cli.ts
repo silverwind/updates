@@ -2,8 +2,7 @@ import {cwd} from "node:process";
 import {parseArgs} from "node:util";
 import {dirname, isAbsolute, resolve} from "node:path";
 import {statSync} from "node:fs";
-import {options, parseMixedArg, getOptionKey, parseArgList, parsePinArg, loadConfig} from "./config.ts";
-import {fetchTimeout} from "./modes/shared.ts";
+import {cliBaseConfig, options, parseMixedArg, getOptionKey, parseArgList, parsePinArg, loadConfig} from "./config.ts";
 import {parsePositiveInt} from "./utils/utils.ts";
 import type {Arg} from "./config.ts";
 import type {UpdatesOptions} from "./api.ts";
@@ -27,16 +26,12 @@ function deriveStartDir(first: string | undefined): string {
   return isDir ? abs : dirname(abs);
 }
 
-// Flatten -f/--file plus positionals into the target list, and derive the
-// directory config discovery walks up from. Shared by the binary's prewarm
-// path and resolveConfig, which both need it before any config is loaded.
 export function resolveFileArgs(args: Record<string, Arg>, positionals: Array<string>): {filesList: Array<string>, startDir: string} {
   const fileSet = parseMixedArg(args.file);
   const filesList = [...(fileSet instanceof Set ? fileSet : []), ...positionals];
   return {filesList, startDir: deriveStartDir(filesList[0])};
 }
 
-// Parse argv into option values, fixing the parseArgs "-a -b" → {a: "-b"} defect.
 export function parseCliArgs(argv?: Array<string>): {args: Record<string, Arg>, positionals: Array<string>} {
   const result = parseArgs({
     strict: false,
@@ -51,97 +46,110 @@ export function parseCliArgs(argv?: Array<string>): {args: Record<string, Arg>, 
   let positionalsSeen = 0;
   for (const [index, token] of result.tokens.entries()) {
     if (token.kind === "positional") positionalsSeen++;
-    // An inline value (`--exclude=-u`, `-i-g`) was written deliberately, so only a separately
-    // parsed one can be a flag parseArgs swallowed.
     if (token.kind !== "option" || token.inlineValue || !token.value?.startsWith("-")) continue;
-    const dashes = token.value.startsWith("--") ? 2 : 1;
-    const key = getOptionKey(token.value.substring(dashes));
-    if (!key) continue;
+    const longOption = token.value.startsWith("--");
     const next = result.tokens[index + 1];
-    // The flag was wrongly swallowed as this option's value; drop only that bogus
-    // value (the dash-prefixed token.value, which may not be the last element)
-    // rather than discarding the whole accumulated array, so other repeats like
-    // `-i react -i -g -i vue` keep both `react` and `vue`.
+    const nextPositional = next?.kind === "positional" ? next.value : undefined;
+    const recoveredOptions: Array<{key: string, value: string | boolean}> = [];
+    const raw = token.value.substring(longOption ? 2 : 1);
+    let consumesPositional = false;
+    if (longOption) {
+      const key = getOptionKey(raw);
+      if (key) {
+        consumesPositional = options[key].type === "string" && nextPositional !== undefined;
+        recoveredOptions.push({key, value: consumesPositional ? nextPositional! : true});
+      }
+    } else {
+      for (let offset = 0; offset < raw.length;) {
+        const key = getOptionKey(raw[offset]);
+        if (!key) { recoveredOptions.length = 0; break; }
+        if (options[key].type === "boolean") {
+          recoveredOptions.push({key, value: true});
+          offset++;
+        } else {
+          const inlineValue = raw.substring(offset + 1);
+          consumesPositional = !inlineValue && nextPositional !== undefined;
+          recoveredOptions.push({
+            key,
+            value: inlineValue || (consumesPositional ? nextPositional! : true),
+          });
+          offset = raw.length;
+        }
+      }
+    }
+    if (!recoveredOptions.length) continue;
     const swallowed = values[token.name];
     if (Array.isArray(swallowed)) {
-      const pos = swallowed.indexOf(token.value);
-      if (pos !== -1) swallowed.splice(pos, 1);
+      const position = swallowed.indexOf(token.value);
+      if (position !== -1) swallowed.splice(position, 1);
     } else {
       values[token.name] = true;
     }
-    const recovered = next?.kind === "positional" && next.value ? next.value : true;
-    // a recovered positional is that option's value, so it must not stay in the file list too
-    if (typeof recovered === "string") consumedPositionals.add(positionalsSeen);
-    if (options[key]?.multiple) {
-      const list = (values[key] ??= []) as Array<string | boolean>;
-      list.push(recovered);
-    } else {
-      // non-multiple options expect a scalar; an array shape is rejected by the typeof string consumers
-      values[key] = recovered;
+    if (consumesPositional) consumedPositionals.add(positionalsSeen);
+    for (const {key, value} of recoveredOptions) {
+      if (options[key].multiple) {
+        const list = (values[key] ??= []) as Array<string | boolean>;
+        list.push(value);
+      } else {
+        values[key] = value;
+      }
     }
   }
 
   return {args: values, positionals: result.positionals.filter((_val, index) => !consumedPositionals.has(index))};
 }
 
-// Overlay parsed CLI args onto the config file. Shared by the binary and tests.
 export async function resolveConfig(
   args: Record<string, Arg>,
   positionals: Array<string>,
 ): Promise<UpdatesOptions> {
   const {filesList, startDir} = resolveFileArgs(args, positionals);
 
-  const cliTimeout = typeof args.timeout === "string" ? parsePositiveInt(args.timeout, "timeout") : undefined;
+  const fileConfig = await loadConfig(startDir);
 
-  const fileConfig = await loadConfig(startDir, {
-    noCache: Boolean(args["no-cache"]),
-    timeout: cliTimeout ?? fetchTimeout,
-  });
-
-  // `pin` is dropped so it reaches the run as a per-directory pin rather than an authored one:
-  // a renovate-inherited ceiling in the global pin would gain the right to downgrade (api.ts).
-  const config: UpdatesOptions = {...fileConfig, pin: undefined};
-  if (args.json) config.json = true;
-  if (args.verbose) config.verbose = true;
-  if (args["no-cache"]) config.noCache = true;
-  if (args.update) config.update = true;
-  if (args.indirect) config.indirect = true;
-  if (args["error-on-outdated"]) config.errorOnOutdated = true;
-  if (args["error-on-unchanged"]) config.errorOnUnchanged = true;
-  // each color flag clears the other so a CLI flag beats both file values, -n applied last so it wins
-  if (args.color) {config.color = true; config.noColor = false;}
-  if (args["no-color"]) {config.color = false; config.noColor = true;}
-  if (cliTimeout !== undefined) config.timeout = cliTimeout;
-  if (typeof args.sockets === "string") config.sockets = parsePositiveInt(args.sockets, "sockets");
-  if (typeof args.registry === "string") config.registry = args.registry;
-  if (typeof args.cooldown === "string") config.cooldown = Number(args.cooldown) || args.cooldown;
+  const cliConfig: Partial<UpdatesOptions> = {};
+  if (args.json) cliConfig.json = true;
+  if (args.verbose) cliConfig.verbose = true;
+  if (args["no-cache"]) cliConfig.noCache = true;
+  if (args.update) cliConfig.update = true;
+  if (args.indirect) cliConfig.indirect = true;
+  if (args["error-on-outdated"]) cliConfig.errorOnOutdated = true;
+  if (args["error-on-unchanged"]) cliConfig.errorOnUnchanged = true;
+  if (args.color) {cliConfig.color = true; cliConfig.noColor = false;}
+  if (args["no-color"]) {cliConfig.color = false; cliConfig.noColor = true;}
+  if (typeof args.timeout === "string") cliConfig.timeout = parsePositiveInt(args.timeout, "timeout");
+  if (typeof args.sockets === "string") cliConfig.sockets = parsePositiveInt(args.sockets, "sockets");
+  if (typeof args.registry === "string") cliConfig.registry = args.registry;
+  if (typeof args.cooldown === "string") cliConfig.cooldown = Number(args.cooldown) || args.cooldown;
 
   const cliInclude = parseArgList(args.include).map(cliPatternToRegex);
   const cliExclude = parseArgList(args.exclude).map(cliPatternToRegex);
-  if (cliInclude.length) config.include = cliInclude;
-  if (cliExclude.length) config.exclude = cliExclude;
+  if (cliInclude.length) cliConfig.include = cliInclude;
+  if (cliExclude.length) cliConfig.exclude = cliExclude;
 
   const cliTypes = parseArgList(args.types);
-  if (cliTypes.length) config.types = cliTypes;
+  if (cliTypes.length) cliConfig.types = cliTypes;
 
   const cliPin = parsePinArg(args.pin);
-  if (Object.keys(cliPin).length) config.pin = cliPin;
+  if (Object.keys(cliPin).length) cliConfig.pin = cliPin;
 
   const cliModes = parseMixedArg(args.modes);
-  if (cliModes instanceof Set) config.modes = Array.from(cliModes);
+  if (cliModes instanceof Set) cliConfig.modes = Array.from(cliModes);
 
   for (const key of ["greatest", "prerelease", "release", "patch", "minor"] as const) {
     const val = argToConfigMixed(args[key]);
-    if (val !== undefined) config[key] = val;
+    if (val !== undefined) cliConfig[key] = val;
   }
   const allowDowngrade = argToConfigMixed(args["allow-downgrade"]);
-  if (allowDowngrade !== undefined) config.allowDowngrade = allowDowngrade;
+  if (allowDowngrade !== undefined) cliConfig.allowDowngrade = allowDowngrade;
 
-  if (filesList.length) config.files = filesList;
+  if (filesList.length) cliConfig.files = filesList;
 
   for (const key of ["forgeapi", "pypiapi", "jsrapi", "goproxy", "cargoapi", "dockerapi"] as const) {
-    if (typeof args[key] === "string") config[key] = args[key];
+    if (typeof args[key] === "string") cliConfig[key] = args[key];
   }
 
+  const config: UpdatesOptions = {...fileConfig, pin: undefined, ...cliConfig};
+  Object.defineProperty(config, cliBaseConfig, {value: {fileConfig, cliKeys: Object.keys(cliConfig)}});
   return config;
 }

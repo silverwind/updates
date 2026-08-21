@@ -11,7 +11,7 @@
 - `pyproject.toml` - uv dependencies
 - `go.mod`, `go.work` - go dependencies
 - `Cargo.toml` - rust dependencies, including workspaces
-- `.{github,gitea,forgejo}/workflows` - actions and docker images
+- `.{github,gitea,forgejo}/workflows/*.{yml,yaml}`, nested `action.{yml,yaml}` manifests - actions and docker images
 - `Dockerfile*`, `compose*.{yml,yaml}`, `docker-*.{yml,yaml}` - docker images
 - `Makefile`, `*.mk` - go tool versions in `go install` paths and docker image tags
 
@@ -63,7 +63,7 @@ A failed lookup is reported on its own, does not hold back the other results and
 
 ## Config File
 
-Configure via `updates.config.{ts,js,mjs,mts}` in your repo root. CLI arguments win over it, except `include`, `exclude` and `pin`, which merge.
+Configure via `updates.config.{ts,js,mjs,mts}`. Each selected manifest uses the nearest config found while walking up from its directory. Workspace members use the workspace root config. CLI arguments win over configured values, including `include`, `exclude` and `pin`. Authored `pin` entries merge by name with inherited Renovate values.
 
 ```ts
 import type {Config} from "updates";
@@ -103,7 +103,7 @@ export default {
 
 ### Renovate config
 
-A [Renovate](https://docs.renovatebot.com/) config is picked up automatically, inheriting `ignoreDeps`, `enabled` and `allowedVersions` in `packageRules` as `include`/`exclude`/`pin`. `minimumReleaseAge` is not inherited unless opted in:
+A literal [Renovate](https://docs.renovatebot.com/) `renovate.json` config is picked up automatically. `ignoreDeps`, `enabled` and `allowedVersions` are inherited from matching `packageRules`. Exact-name `allowedVersions` ranges also become non-downgrading pin ceilings. Configs using `extends` are rejected. `minimumReleaseAge` is not inherited unless opted in:
 
 ```ts
 export default {

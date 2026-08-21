@@ -4,17 +4,21 @@ import {
   getForgeApiBaseUrl,
   formatActionVersion,
   isWorkflowFile,
-  updateWorkflowFile,
+  updateWorkflowFile as updateWorkflowContent,
   fetchActionTagDate,
   resolveWorkflowFiles,
   parseUsesLine,
 } from "./actions.ts";
-import {type ModeContext, fetchTimeout, hashRe, isVersionLikeRef} from "./shared.ts";
+import {type ModeContext, commitHashRe, fetchTimeout, isVersionLikeRef} from "./shared.ts";
 
-// parseActionRef
+const workflowPrefix = "runs:\n  steps:\n";
+const updateWorkflowFile = (content: string, updates: Parameters<typeof updateWorkflowContent>[1]) =>
+  updateWorkflowContent(workflowPrefix + content, updates).slice(workflowPrefix.length);
+
 test.each([
   ["standard ref", "actions/checkout@v4", {host: null, owner: "actions", repo: "checkout", ref: "v4", name: "actions/checkout", isHash: false}],
-  ["hash ref", "actions/checkout@abc1234567890", {host: null, owner: "actions", repo: "checkout", ref: "abc1234567890", name: "actions/checkout", isHash: true}],
+  ["hash ref", "actions/checkout@abc1234", {host: null, owner: "actions", repo: "checkout", ref: "abc1234", name: "actions/checkout", isHash: true}],
+  ["hex tag", "actions/checkout@deadbeef", {host: null, owner: "actions", repo: "checkout", ref: "deadbeef", name: "actions/checkout", isHash: false}],
   ["sub-path", "actions/cache/restore@v4", {host: null, owner: "actions", repo: "cache", ref: "v4", name: "actions/cache/restore", isHash: false}],
   ["URL with host", "https://gitea.example.com/owner/repo@v1", {host: "gitea.example.com", owner: "owner", repo: "repo", ref: "v1", name: "gitea.example.com/owner/repo", isHash: false}],
   ["docker prefix", "docker://node:18", null],
@@ -25,7 +29,6 @@ test.each([
   expect(parseActionRef(uses)).toEqual(expected);
 });
 
-// getForgeApiBaseUrl
 test.each([
   ["falls back to the configured forge without a host", null, "https://gitea.example.com/api/v1", "https://gitea.example.com/api/v1"],
   ["lets a github host win over the configured forge", "github.com", "https://gitea.example.com/api/v1", "https://api.github.com"],
@@ -41,11 +44,10 @@ test.each([
   expect(formatActionVersion(newVersion, oldRef)).toBe(expected);
 });
 
-// isWorkflowFile
 test.each([
   [".github/workflows/ci.yml", true],
   [".github/workflows/deploy.yaml", true],
-  [".github\\workflows\\ci.yml", true], // windows backslashes
+  [".github\\workflows\\ci.yml", true],
   [".github/actions/my-action/action.yml", true],
   [".github/actions/my-action/action.yaml", true],
   [".github/actions/group/sub/action.yml", true],
@@ -56,13 +58,12 @@ test.each([
   [".forgejo/actions/my-action/action.yml", true],
   ["ci.yml", false],
   [".github/ci.yml", false],
-  [".github/actions/my-action/other.yml", false], // only action.yml counts as a composite action
-  ["actions/my-action/action.yml", false], // and only inside a forge dir
+  [".github/actions/my-action/other.yml", false],
+  ["actions/my-action/action.yml", false],
 ])("isWorkflowFile %s", (path, expected) => {
   expect(isWorkflowFile(path)).toBe(expected);
 });
 
-// updateWorkflowFile
 test.each([
   ["a plain ref", {name: "actions/checkout", oldRef: "v3", newRef: "v4"},
     "    uses: actions/checkout@v3\n", "    uses: actions/checkout@v4\n"],
@@ -77,21 +78,24 @@ test.each([
   expect(updateWorkflowFile(content, [replacement])).toBe(expected);
 });
 
-test("updateWorkflowFile multiple replacements", () => {
+test("updateWorkflowFile handles multiple, comment-qualified and CRLF replacements", () => {
   const content = "    uses: actions/checkout@v3\n    uses: actions/setup-node@v3\n";
   const result = updateWorkflowFile(content, [
     {name: "actions/checkout", oldRef: "v3", newRef: "v4"},
     {name: "actions/setup-node", oldRef: "v3", newRef: "v4"},
   ]);
   expect(result).toBe("    uses: actions/checkout@v4\n    uses: actions/setup-node@v4\n");
-});
-
-test("updateWorkflowFile moves the version comment along with the sha", () => {
-  const content = "    uses: actions/checkout@11bd719 # v4.2.2\n    uses: actions/checkout@11bd719\n";
-  const result = updateWorkflowFile(content, [
+  expect(updateWorkflowFile("    uses: actions/checkout@11bd719 # v4.2.2\n    uses: actions/checkout@11bd719\n", [
     {name: "actions/checkout", oldRef: "11bd719", newRef: "3d3c42e", newComment: "v7.0.1"},
-  ]);
-  expect(result).toBe("    uses: actions/checkout@3d3c42e # v7.0.1\n    uses: actions/checkout@3d3c42e\n");
+  ])).toBe("    uses: actions/checkout@3d3c42e # v7.0.1\n    uses: actions/checkout@3d3c42e\n");
+  const oldRef = "11bd719";
+  expect(updateWorkflowFile(`    uses: actions/checkout@${oldRef} # main\n    uses: actions/checkout@${oldRef} # release\n`, [
+    {name: "actions/checkout", oldRef, oldComment: "main", newRef: "aaaaaaa"},
+    {name: "actions/checkout", oldRef, oldComment: "release", newRef: "bbbbbbb"},
+  ])).toBe("    uses: actions/checkout@aaaaaaa # main\n    uses: actions/checkout@bbbbbbb # release\n");
+  expect(updateWorkflowFile("    uses: actions/checkout@11bd719 # v4.2.2\r\n    uses: actions/checkout@11bd719\r\n", [
+    {name: "actions/checkout", oldRef: "11bd719", newRef: "3d3c42e", newComment: "v7.0.1"},
+  ])).toBe("    uses: actions/checkout@3d3c42e # v7.0.1\r\n    uses: actions/checkout@3d3c42e\r\n");
 });
 
 test.each([
@@ -101,12 +105,13 @@ test.each([
   ["pin prefix", "actions/checkout@11bd719 # pin v4.2.2", "actions/checkout@3d3c42e # v7.0.1"],
   ["renovate prefix", "actions/checkout@11bd719 # renovate: tag=v4.2.2", "actions/checkout@3d3c42e # v7.0.1"],
   ["ratchet prefix", "actions/checkout@11bd719 # ratchet:actions/checkout@v4.2.2", "actions/checkout@3d3c42e # v7.0.1"],
+  ["subpath ratchet prefix", "actions/cache/restore@11bd719 # ratchet:actions/cache/restore@v4.2.2", "actions/cache/restore@3d3c42e # v7.0.1"],
   ["no space before hash", "actions/checkout@11bd719 #v4.2.2", "actions/checkout@3d3c42e # v7.0.1"],
   ["text after the version", "actions/checkout@11bd719 # v4.2.2 (keep me)", "actions/checkout@3d3c42e # v7.0.1 (keep me)"],
   ["comment naming no version", "actions/checkout@11bd719 # ratchet:exclude", "actions/checkout@3d3c42e # ratchet:exclude"],
 ])("updateWorkflowFile rewrites the comment of a %s", (_name, oldLine, newLine) => {
   const result = updateWorkflowFile(`      - uses: ${oldLine}\n`, [
-    {name: "actions/checkout", oldRef: "11bd719", newRef: "3d3c42e", newComment: "v7.0.1"},
+    {name: oldLine.startsWith("actions/cache/") ? "actions/cache/restore" : "actions/checkout", oldRef: "11bd719", newRef: "3d3c42e", newComment: "v7.0.1"},
   ]);
   expect(result).toBe(`      - uses: ${newLine}\n`);
 });
@@ -119,12 +124,23 @@ test.each([
   expect(updateWorkflowFile(`${line}\n`, [{name: "actions/checkout", oldRef: "v3", newRef: "v4"}])).toBe(`${line}\n`);
 });
 
-test("updateWorkflowFile keeps crlf line endings", () => {
-  const content = "    uses: actions/checkout@11bd719 # v4.2.2\r\n    uses: actions/checkout@11bd719\r\n";
-  const result = updateWorkflowFile(content, [
-    {name: "actions/checkout", oldRef: "11bd719", newRef: "3d3c42e", newComment: "v7.0.1"},
-  ]);
-  expect(result).toBe("    uses: actions/checkout@3d3c42e # v7.0.1\r\n    uses: actions/checkout@3d3c42e\r\n");
+test("updateWorkflowFile skips uses lines inside YAML block scalars", () => {
+  const content = `    - run: |
+        cat > generated.yml <<EOF
+        uses: actions/checkout@v1
+        EOF
+    - uses: actions/checkout@v1
+other:
+  uses: actions/checkout@v1
+`;
+  expect(updateWorkflowFile(content, [{name: "actions/checkout", oldRef: "v1", newRef: "v4"}])).toBe(`    - run: |
+        cat > generated.yml <<EOF
+        uses: actions/checkout@v1
+        EOF
+    - uses: actions/checkout@v4
+other:
+  uses: actions/checkout@v1
+`);
 });
 
 test("parseUsesLine splits a quoted sha pin from its prefixed comment", () => {
@@ -137,14 +153,10 @@ test("parseUsesLine splits a quoted sha pin from its prefixed comment", () => {
     pinnedVersion: "v4.2.2",
     pinnedEnd: 12,
   });
-});
-
-test("parseUsesLine ignores lines the reader ignores", () => {
   expect(parseUsesLine("      - run: echo uses: actions/checkout@v3")).toBeNull();
   expect(parseUsesLine("      # uses: actions/checkout@v3")).toBeNull();
 });
 
-// isVersionLikeRef
 test("isVersionLikeRef separates versions from branches and other tag schemes", () => {
   expect(isVersionLikeRef("v4")).toBe(true);
   expect(isVersionLikeRef("4.1.2")).toBe(true);
@@ -154,14 +166,12 @@ test("isVersionLikeRef separates versions from branches and other tag schemes", 
   expect(isVersionLikeRef("main")).toBe(false);
 });
 
-// hashRe
-test("hashRe accepts short shas but not all-numeric tags", () => {
-  expect(hashRe.test("3d3c42")).toBe(true);
-  expect(hashRe.test("11bd71901bbe5b1630ceea73d27597364c9af683")).toBe(true);
-  expect(hashRe.test("20240115")).toBe(false);
+test("commitHashRe accepts short shas but not all-numeric tags", () => {
+  expect(commitHashRe.test("3d3c42")).toBe(true);
+  expect(commitHashRe.test("11bd71901bbe5b1630ceea73d27597364c9af683")).toBe(true);
+  expect(commitHashRe.test("20240115")).toBe(false);
 });
 
-// fetchActionTagDate
 test.each([
   ["returns committer date", "https://api.github.com",
     () => Promise.resolve({ok: true, json: () => Promise.resolve({committer: {date: "2025-01-01T00:00:00Z"}, author: {date: "2024-12-01T00:00:00Z"}})}),
@@ -183,7 +193,6 @@ test.each([
   expect(await fetchActionTagDate(apiUrl, "actions", "checkout", "abc123", ctx)).toBe(expected);
 });
 
-// Passing a forge failure off as an unknown date would let a cooldown read it as "held back".
 test.each([
   ["a server fault", () => Promise.resolve({ok: false, status: 500, statusText: "Server Error"}), /Received 500/],
   ["a network failure", () => Promise.reject(new Error("network error")), /network error/],
@@ -192,7 +201,6 @@ test.each([
   await expect(fetchActionTagDate("https://api.github.com", "actions", "checkout", "abc123", ctx)).rejects.toThrow(expected);
 });
 
-// resolveWorkflowFiles
 test.each([
   ["yaml files", "fixtures/docker-actions/.github", ["workflows/ci.yaml"]],
   ["composite actions", "fixtures/actions-composite/.github",

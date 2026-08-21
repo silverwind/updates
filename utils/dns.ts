@@ -1,60 +1,82 @@
-// DNS cache to avoid ENOTFOUND errors from parallel lookups
-// TODO: Use undici once https://github.com/nodejs/node/issues/43187 is resolved
 import dns from "node:dns";
 
-// Hand a lookup result to one waiter, honoring a requested address family when the
-// result has a match and falling back to the first address otherwise.
-function deliver(callback: (...args: any[]) => void, options: any, addresses: {address: string, family: number}[]) {
-  if (options.all) {
-    callback(null, addresses);
-  } else {
-    const addr = addresses.find(({family}) => family === options.family) ?? addresses[0];
-    callback(null, addr.address, addr.family);
-  }
-}
+const maxEntries = 512;
+const ttl = 60000;
+let active: {lookup: typeof dns.lookup, original: typeof dns.lookup, users: number} | null = null;
 
-export function enableDnsCache() {
-  const dnsCache = new Map<string, {address: string, family: number}[]>();
-  const dnsInflight = new Map<string, Array<{options: any, callback: (...args: any[]) => void}>>();
+export function enableDnsCache(): () => void {
+  if (active) {
+    if (dns.lookup === active.lookup) {
+      active.users++;
+      return disable(active);
+    }
+    active = null;
+  }
+
+  const dnsCache = new Map<string, {expires: number, result: Array<any>}>();
+  const dnsInflight = new Map<string, Array<(...args: any[]) => void>>();
   const origLookup = dns.lookup as any;
 
-  dns.lookup = function(hostname: string, ...rest: any[]) {
-    let options: any = {};
-    let callback: (...args: any[]) => void;
-    if (typeof rest[0] === "function") {
-      callback = rest[0];
-    } else {
-      options = typeof rest[0] === "number" ? {family: rest[0]} : (rest[0] || {});
-      callback = rest[1];
-    }
+  const lookup = function(hostname: string, ...rest: any[]) {
+    const hasOptions = typeof rest[0] !== "function";
+    const lookupOptions = hasOptions ? rest[0] : undefined;
+    const options = typeof lookupOptions === "number" ? {family: lookupOptions} : lookupOptions || {};
+    const callback: (...args: any[]) => void = hasOptions ? rest[1] : rest[0];
+    if (typeof callback !== "function") return origLookup.call(dns, hostname, ...rest);
+    const key = JSON.stringify([
+      hostname, options.family ?? 0, options.hints ?? 0, Boolean(options.all),
+      options.order ?? "", options.verbatim ?? "",
+    ]);
 
-    const cached = dnsCache.get(hostname);
+    const cached = dnsCache.get(key);
     if (cached) {
-      deliver(callback, options, cached);
-      return;
-    }
-
-    if (dnsInflight.has(hostname)) {
-      dnsInflight.get(hostname)!.push({options, callback});
-      return;
-    }
-
-    dnsInflight.set(hostname, [{options, callback}]);
-    origLookup.call(dns, hostname, {all: true}, (err: any, addresses: any) => {
-      const waiters = dnsInflight.get(hostname)!;
-      dnsInflight.delete(hostname);
-      if (!err && addresses?.length) {
-        dnsCache.set(hostname, addresses);
+      if (cached.expires > Date.now()) {
+        queueMicrotask(() => callback(null, ...cached.result));
+        return;
       }
-      // A success with no addresses would crash the non-`all` branch on addr.address; treat it as a failure.
-      const lookupErr = err || (addresses?.length ? null : Object.assign(new Error(`getaddrinfo ENOTFOUND ${hostname}`), {code: "ENOTFOUND", hostname}));
-      for (const {options: opts, callback: cb} of waiters) {
-        if (lookupErr) {
-          cb(lookupErr);
-        } else {
-          deliver(cb, opts, addresses);
+      dnsCache.delete(key);
+    }
+
+    const inflight = dnsInflight.get(key);
+    if (inflight) {
+      inflight.push(callback);
+      return;
+    }
+
+    dnsInflight.set(key, [callback]);
+    const complete = (err: any, ...result: Array<any>) => {
+      queueMicrotask(() => {
+        const waiters = dnsInflight.get(key)!;
+        dnsInflight.delete(key);
+        if (!err) {
+          if (dnsCache.size >= maxEntries) dnsCache.delete(dnsCache.keys().next().value!);
+          dnsCache.set(key, {expires: Date.now() + ttl, result});
         }
-      }
-    });
-  } as any;
+        for (const waiter of waiters) waiter(err, ...result);
+      });
+    };
+    try {
+      if (hasOptions) origLookup.call(dns, hostname, lookupOptions, complete);
+      else origLookup.call(dns, hostname, complete);
+    } catch (err) {
+      dnsInflight.delete(key);
+      throw err;
+    }
+  } as typeof dns.lookup;
+
+  dns.lookup = lookup;
+  active = {lookup, original: origLookup, users: 1};
+  return disable(active);
+}
+
+function disable(state: NonNullable<typeof active>): () => void {
+  let disabled = false;
+  return () => {
+    if (disabled) return;
+    disabled = true;
+    state.users--;
+    if (state.users) return;
+    if (dns.lookup === state.lookup) dns.lookup = state.original;
+    if (active === state) active = null;
+  };
 }

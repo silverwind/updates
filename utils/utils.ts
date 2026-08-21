@@ -4,14 +4,12 @@ export function highlightDiff(a: string, b: string, colorFn: (str: string) => st
   if (a === b) return a;
   let i = 0;
   while (i < a.length && i < b.length && a[i] === b[i]) i++;
-  // Back up to a version part boundary to avoid splitting numbers
   if (i > 0 && a[i - 1] !== "." && a[i - 1] !== "-") {
     let j = i - 1;
     while (j >= 0 && a[j] !== "." && a[j] !== "-") j--;
     if (j >= 0) {
       i = j + 1;
     } else {
-      // No separator found, preserve non-digit prefix (v, ^, >=, ~)
       let d = 0;
       while (d < i) {
         const code = a.charCodeAt(d);
@@ -25,16 +23,10 @@ export function highlightDiff(a: string, b: string, colorFn: (str: string) => st
   return diff ? a.substring(0, i) + colorFn(diff) : a;
 }
 
-// Name, optional extras and everything up to the marker, spacing captured for re-serializing.
 const pep508Re = /^(\s*)([A-Za-z0-9][A-Za-z0-9._-]*)(\s*)((?:\[[^\]]*\])?)(\s*)(.*)$/;
-const pep508ParenRe = /^(\s*\()([^)]*)(\)\s*)$/; // `packaging (==20.0.0)`
-// The version is anything non-blank, so a cap or exclusion is recognized even as a wildcard.
+const pep508ParenRe = /^(\s*\()([^)]*)(\)\s*)$/;
 const pep440SpecifierRe = /^(\s*)(===|==|!=|~=|<=|>=|<|>)(\s*)(\S+)(\s*)$/;
-// Only a lower bound states the version the project is on. `<`, `<=`, `!=` and `>` exclude versions,
-// so bumping one would change what the spec allows. Renovate leaves `>` as authored too, which
-// makes a `>`-only requirement unbumpable.
 const lowerBoundOps = new Set(["===", "==", ">=", "~="]);
-// A wildcard (`==1.4.*`) or arbitrary equality on a non-version (`===foo`) has nothing to bump.
 const plainVersionRe = /^v?\d[0-9a-z.!+_-]*$/i;
 
 export type Pep508Specifier = {lead: string, op: string, sep: string, version: string, trail: string};
@@ -42,10 +34,8 @@ export type Pep508Specifier = {lead: string, op: string, sep: string, version: s
 export type Pep508 = {
   name: string;
   extras: string;
-  /** null when the set does not parse in full, so a writer never rewrites what it did not read. */
   specifiers: Array<Pep508Specifier> | null;
-  marker: string; // the environment marker with its `;`, verbatim
-  // Verbatim spacing, name, extras and parens, so serializePep508 reproduces an untouched requirement.
+  marker: string;
   head: string;
   open: string;
   close: string;
@@ -62,7 +52,6 @@ function parseSpecifiers(text: string): Array<Pep508Specifier> | null {
   return specifiers;
 }
 
-/** Parse one PEP 508 requirement. https://peps.python.org/pep-0508/ */
 export function parsePep508(text: string): Pep508 | null {
   const semi = text.indexOf(";");
   const match = pep508Re.exec(semi === -1 ? text : text.slice(0, semi));
@@ -85,8 +74,6 @@ export function serializePep508({head, open, close, marker}: Pep508, specifiers:
   return `${head}${open}${set}${close}${marker}`;
 }
 
-// The specifier a requirement's version is read from, and the only one a writer bumps: anchoring
-// elsewhere would move a specifier the reported version never came from.
 export function anchorSpecifier(specifiers: Array<Pep508Specifier>): Pep508Specifier | undefined {
   return specifiers.find(({op, version}) => lowerBoundOps.has(op) && plainVersionRe.test(version));
 }
@@ -94,7 +81,7 @@ export function anchorSpecifier(specifiers: Array<Pep508Specifier>): Pep508Speci
 export function parseUvDependencies(specs: Array<unknown>) {
   const ret: Array<{name: string, version: string, spec: string}> = [];
   for (const spec of specs) {
-    if (typeof spec !== "string") continue; // PEP 735 `{include-group = "..."}` and other tables
+    if (typeof spec !== "string") continue;
     const parsed = parsePep508(spec);
     if (!parsed?.specifiers) continue;
     const anchor = anchorSpecifier(parsed.specifiers);
@@ -109,6 +96,8 @@ export const npmTypes = [
   "peerDependencies",
   "optionalDependencies",
   "resolutions",
+  "overrides",
+  "pnpm.overrides",
   "packageManager",
 ];
 
@@ -118,12 +107,8 @@ export const nonPackageEngines = [
   "bun",
 ];
 
-// Forge config directories holding workflow files, in discovery order.
 export const forgeDirs = [".github", ".gitea", ".forgejo"] as const;
 
-// Manifest filenames that select a mode. Also drives which registry origins get
-// a socket pre-warmed, so a new entry must be handled in prewarmOrigins too —
-// utils/prewarm.test.ts fails if one is missed.
 export const modeByFileName: Record<string, string> = {
   "pnpm-workspace.yaml": "npm",
   "package.json": "npm",
@@ -153,29 +138,25 @@ export const cargoTypes = [
   "workspace.dependencies",
 ];
 
-// Target names are arbitrary (`cfg(unix)`, `x86_64-pc-windows-msvc`), so these need a manifest.
 export const cargoTargetTypes = [
   "target.*.dependencies",
   "target.*.dev-dependencies",
   "target.*.build-dependencies",
 ];
 
-// Resolve dep type paths against a parsed manifest, so `*` segments take group and target names
-// from the document. Each path comes back with the table it resolved to, so a key that legally
-// contains a dot (`[project.optional-dependencies."extra.one"]`) is never re-split and lost.
 export function expandDepTypes(types: Array<string>, doc: Record<string, any>): Array<[string, any]> {
   const ret: Array<[string, any]> = [];
-  const walk = (segments: Array<string>, index: number, path: string, value: any) => {
+  const walk = (segments: Array<string>, index: number, path: Array<string>, value: any, structured: boolean) => {
     if (index === segments.length) {
-      if (value !== undefined) ret.push([path, value]);
+      if (value !== undefined) ret.push([structured ? JSON.stringify(path) : path.join("."), value]);
       return;
     }
     if (!value || typeof value !== "object") return;
     const segment = segments[index];
     const keys = segment !== "*" ? [segment] : Array.isArray(value) ? [] : Object.keys(value);
-    for (const key of keys) walk(segments, index + 1, path ? `${path}.${key}` : key, value[key]);
+    for (const key of keys) walk(segments, index + 1, [...path, key], value[key], structured);
   };
-  for (const type of types) walk(type.split("."), 0, "", doc);
+  for (const type of types) walk(type.split("."), 0, [], doc, type.startsWith("target.*."));
   return ret;
 }
 
@@ -192,11 +173,10 @@ export function commaSeparatedToArray(str: string): Array<string> {
 
 export function timestamp(): string {
   const now = new Date();
-  // Shifting by the offset makes the UTC fields of toISOString read as local time.
   return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().replace("T", " ").slice(0, -1);
 }
 
-export function textTable(rows: Array<Array<string>>, ansiLen: (str: string) => number, hsep = " "): string {
+export function textTable(rows: Array<Array<string>>, ansiLen: (str: string) => number): string {
   const colSizes = new Array(rows[0].length).fill(0);
   const lens = new Array<Array<number>>(rows.length);
   for (let r = 0; r < rows.length; r++) {
@@ -214,7 +194,7 @@ export function textTable(rows: Array<Array<string>>, ansiLen: (str: string) => 
     const row = rows[r];
     const lastCol = row.length - 1;
     for (let c = 0; c <= lastCol; c++) {
-      if (c > 0) ret += hsep;
+      if (c > 0) ret += " ";
       ret += row[c];
       if (c !== lastCol) {
         const pad = colSizes[c] - lens[r][c];
@@ -228,7 +208,6 @@ export function textTable(rows: Array<Array<string>>, ansiLen: (str: string) => 
 
 const durationUnits: Record<string, number> = {y: 365, m: 30, w: 7, d: 1, h: 1 / 24, s: 1 / 86400};
 
-/** Parse a duration string (e.g. "7d", "2w", "1y") into days. Without unit, the value is treated as days. */
 export function parseDuration(str: string): number {
   const match = /^(\d+(?:\.\d+)?)\s*([a-z])$/i.exec(str);
   if (match) {
@@ -260,7 +239,6 @@ export async function pMap<T, R>(iterable: Iterable<T>, mapper: (item: T) => Pro
   return results;
 }
 
-// Resolve a promise to its value, or null if it rejects.
 export async function tryOrNull<T>(promise: Promise<T>): Promise<T | null> {
   try {
     return await promise;
@@ -269,24 +247,221 @@ export async function tryOrNull<T>(promise: Promise<T>): Promise<T | null> {
   }
 }
 
-// RegExp.escape needs Node 24; fall back to a manual escape on Node 22. The
-// feature check runs once, not on every call.
 export const esc: (str: string) => string = RegExp.escape ?
   (str) => RegExp.escape(str) :
   (str) => str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-// Longest first, so a key that is a prefix of another cannot shadow it. One alternation also
-// keeps a rewrite to a single pass, where per-key passes would re-match what a key just wrote.
 export function longestFirstAlternation(keys: Iterable<string>): string {
   return Array.from(keys).sort((a, b) => b.length - a.length).map(esc).join("|");
 }
 
-// A string pattern is a case-insensitive glob, a RegExp is taken as authored. CLI `/regex/` strings
-// are already RegExp objects by the time they arrive here.
+const predicateTests = new WeakMap<RegExp, (value: string) => boolean>();
+
+class PredicateRegExp extends RegExp {
+  constructor(source: string, predicate: (value: string) => boolean, flags?: string) {
+    super(source, flags);
+    predicateTests.set(this, predicate);
+  }
+
+  override test(value: string): boolean {
+    return predicateTests.get(this)!(value);
+  }
+}
+
+function splitGlobAlternatives(value: string): Array<string> {
+  const alternatives: Array<string> = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < value.length; i++) {
+    if (value[i] === "(" || value[i] === "{") depth++;
+    else if (value[i] === ")" || value[i] === "}") depth--;
+    else if ((value[i] === "|" || value[i] === ",") && depth === 0) {
+      alternatives.push(value.slice(start, i));
+      start = i + 1;
+    }
+  }
+  alternatives.push(value.slice(start));
+  return alternatives;
+}
+
+function closingIndex(value: string, start: number, open: string, close: string): number {
+  let depth = 0;
+  for (let i = start; i < value.length; i++) {
+    if (value[i] === open) depth++;
+    else if (value[i] === close && --depth === 0) return i;
+  }
+  return -1;
+}
+
+function braceAlternatives(value: string): Array<string> {
+  const range = /^(-?\d+|[A-Za-z])\.\.(-?\d+|[A-Za-z])(?:\.\.(-?\d+))?$/.exec(value);
+  if (!range) return splitGlobAlternatives(value);
+  const numeric = /^-?\d+$/.test(range[1]) && /^-?\d+$/.test(range[2]);
+  let current = numeric ? Number(range[1]) : range[1].codePointAt(0)!;
+  const end = numeric ? Number(range[2]) : range[2].codePointAt(0)!;
+  const step = Math.abs(Number(range[3]) || 1) * (current <= end ? 1 : -1);
+  const alternatives: Array<string> = [];
+  while ((step > 0 ? current <= end : current >= end) && alternatives.length < 1000) {
+    alternatives.push(numeric ? String(current) : String.fromCodePoint(current));
+    current += step;
+  }
+  return alternatives;
+}
+
+type GlobToken =
+  {kind: "char", matcher: RegExp} |
+  {kind: "span", slash: boolean} |
+  {kind: "globstarSlash"} |
+  {kind: "alternatives", alternatives: Array<Array<GlobToken>>, minimum: 0 | 1, repeat: boolean} |
+  {kind: "negative", alternatives: Array<Array<GlobToken>>};
+
+function parseGlob(pattern: string): {source: string, tokens: Array<GlobToken>} {
+  let source = "";
+  const tokens: Array<GlobToken> = [];
+  const addChar = (charSource: string) => {
+    source += charSource;
+    tokens.push({kind: "char", matcher: new RegExp(`^(?:${charSource})$`, "i")});
+  };
+  for (let i = 0; i < pattern.length; i++) {
+    const char = pattern[i];
+    if (char === "\\" && i + 1 < pattern.length) {
+      addChar(esc(pattern[++i]));
+    } else if (char === "*" && pattern[i + 1] !== "(") {
+      if (pattern[i + 1] === "*") {
+        while (pattern[i + 1] === "*") i++;
+        if (pattern[i + 1] === "/") {
+          source += "(?:.*/)?";
+          tokens.push({kind: "globstarSlash"});
+          i++;
+        } else {
+          source += ".*";
+          tokens.push({kind: "span", slash: true});
+        }
+      } else {
+        source += "[^/]*";
+        tokens.push({kind: "span", slash: false});
+      }
+    } else if (char === "?" && pattern[i + 1] !== "(") {
+      addChar("[^/]");
+    } else if (char === "[") {
+      const end = pattern.indexOf("]", i + 1);
+      if (end === -1) addChar("\\[");
+      else {
+        let content = pattern.slice(i + 1, end);
+        if (content.startsWith("!")) content = `^${content.slice(1)}`;
+        addChar(`[${content.replaceAll("\\", "\\\\")}]`);
+        i = end;
+      }
+    } else if (char === "{") {
+      const end = closingIndex(pattern, i, "{", "}");
+      if (end === -1) addChar("\\{");
+      else {
+        const alternatives = braceAlternatives(pattern.slice(i + 1, end)).map(parseGlob);
+        source += `(?:${alternatives.map(alternative => alternative.source).join("|")})`;
+        tokens.push({
+          kind: "alternatives",
+          alternatives: alternatives.map(alternative => alternative.tokens),
+          minimum: 1,
+          repeat: false,
+        });
+        i = end;
+      }
+    } else if ("@+?*!".includes(char) && pattern[i + 1] === "(") {
+      const end = closingIndex(pattern, i + 1, "(", ")");
+      if (end === -1) addChar(esc(char));
+      else {
+        const alternatives = splitGlobAlternatives(pattern.slice(i + 2, end)).map(parseGlob);
+        const alternativeSource = alternatives.map(alternative => alternative.source).join("|");
+        source += char === "!" ? `(?!(?:${alternativeSource})(?:/|$))[^/]*` :
+          `(?:${alternativeSource})${char === "@" ? "" : char}`;
+        const alternativeTokens = alternatives.map(alternative => alternative.tokens);
+        tokens.push(char === "!" ? {kind: "negative", alternatives: alternativeTokens} : {
+          kind: "alternatives", alternatives: alternativeTokens, minimum: char === "?" || char === "*" ? 0 : 1,
+          repeat: char === "+" || char === "*",
+        });
+        i = end;
+      }
+    } else {
+      addChar(esc(char));
+    }
+  }
+  return {source, tokens};
+}
+
+function matchGlob(tokens: Array<GlobToken>, value: string): boolean {
+  const memo = new WeakMap<Array<GlobToken>, Map<number, Set<number>>>();
+  const addSpan = (positions: Set<number>, start: number, slash: boolean) => {
+    for (let end = start; ; end++) {
+      positions.add(end);
+      if (end === value.length || !slash && value[end] === "/") break;
+    }
+  };
+  const matchSequence = (sequence: Array<GlobToken>, start: number): Set<number> => {
+    let byStart = memo.get(sequence);
+    if (!byStart) {
+      byStart = new Map();
+      memo.set(sequence, byStart);
+    }
+    const cached = byStart.get(start);
+    if (cached) return cached;
+    let positions = new Set([start]);
+    byStart.set(start, positions);
+    for (const token of sequence) {
+      const next = new Set<number>();
+      for (const position of positions) {
+        if (token.kind === "char") {
+          if (position < value.length && token.matcher.test(value[position])) next.add(position + 1);
+        } else if (token.kind === "span") {
+          addSpan(next, position, token.slash);
+        } else if (token.kind === "globstarSlash") {
+          next.add(position);
+          for (let end = position; end < value.length; end++) if (value[end] === "/") next.add(end + 1);
+        } else if (token.kind === "negative") {
+          const excluded = token.alternatives.some(alternative =>
+            [...matchSequence(alternative, position)].some(end => end === value.length || value[end] === "/"));
+          if (!excluded) addSpan(next, position, false);
+        } else {
+          if (token.minimum === 0) next.add(position);
+          const first = new Set(token.alternatives.flatMap(alternative => [...matchSequence(alternative, position)]));
+          for (const end of first) next.add(end);
+          if (token.repeat) {
+            for (const end of next) {
+              for (const alternative of token.alternatives) {
+                for (const repeatedEnd of matchSequence(alternative, end)) next.add(repeatedEnd);
+              }
+            }
+          }
+        }
+      }
+      positions = next;
+      if (!positions.size) break;
+    }
+    byStart.set(start, positions);
+    return positions;
+  };
+  return matchSequence(tokens, 0).has(value.length);
+}
+
 export function patternToRegex(pattern: string | RegExp): RegExp {
-  if (!(pattern instanceof RegExp)) return new RegExp(`^${esc(pattern).replaceAll("\\*", ".*")}$`, "i");
-  // strip g/y: these matchers are only used with .test(), where a stateful lastIndex flakes
-  return /[gy]/.test(pattern.flags) ? new RegExp(pattern.source, pattern.flags.replace(/[gy]/g, "")) : pattern;
+  if (pattern instanceof RegExp) {
+    return /[gy]/.test(pattern.flags) ? new RegExp(pattern.source, pattern.flags.replace(/[gy]/g, "")) : pattern;
+  }
+  const match = /^(!?)\/(.*)\/(i?)$/.exec(pattern);
+  if (match) {
+    try {
+      const compiled = new RegExp(match[2], match[3]);
+      return match[1] ? new PredicateRegExp(pattern, value => !compiled.test(value)) : compiled;
+    } catch {}
+  }
+  let negateCount = 0;
+  while (pattern[negateCount] === "!" && pattern[negateCount + 1] !== "(") negateCount++;
+  const negated = negateCount % 2 === 1;
+  const glob = pattern.slice(negateCount);
+  const {source, tokens} = parseGlob(glob);
+  const compiled = new RegExp(`^${source}$`, "i");
+  const predicate = (value: string) => matchGlob(tokens, value);
+  return negated ? new PredicateRegExp(pattern, value => !predicate(value)) :
+    new PredicateRegExp(compiled.source, predicate, compiled.flags);
 }
 
 export async function walkUp<T>(startDir: string, probe: (dir: string) => Promise<T | null>): Promise<T | null> {
@@ -300,7 +475,6 @@ export async function walkUp<T>(startDir: string, probe: (dir: string) => Promis
   }
 }
 
-// Append to a Map-of-arrays, creating the bucket on first use.
 export function pushTo<K, V>(map: Map<K, Array<V>>, key: K, value: V): void {
   const list = map.get(key);
   if (list) {
@@ -312,8 +486,6 @@ export function pushTo<K, V>(map: Map<K, Array<V>>, key: K, value: V): void {
 
 type MapLike<K, V> = {has: (key: K) => boolean, get: (key: K) => V | undefined, set: (key: K, value: V) => unknown};
 
-// Read through a memo, filling it on first use. `has` settles only the undefined case, so a
-// cached null still counts.
 export function getOrSet<K, V>(map: MapLike<K, V>, key: K, make: () => V): V {
   const cached = map.get(key);
   if (cached !== undefined || map.has(key)) return cached!;

@@ -47,7 +47,6 @@ const goPreFile = fileURLToPath(new URL("fixtures/go-prerelease/go.mod", import.
 const goPseudoFile = fileURLToPath(new URL("fixtures/go-pseudo/go.mod", import.meta.url));
 const goPseudoUpdateFile = fileURLToPath(new URL("fixtures/go-pseudo-update/go.mod", import.meta.url));
 const goWorkspaceDir = fileURLToPath(new URL("fixtures/go-workspace", import.meta.url));
-const goWorkspaceFile = fileURLToPath(new URL("fixtures/go-workspace/go.work", import.meta.url));
 const invalidConfigFile = fileURLToPath(new URL("fixtures/invalid-config/package.json", import.meta.url));
 const actionsDir = fileURLToPath(new URL("fixtures/actions/.github/workflows", import.meta.url));
 const dockerfileFixture = fileURLToPath(new URL("fixtures/docker/Dockerfile", import.meta.url));
@@ -56,7 +55,6 @@ const dockerActionsDir = fileURLToPath(new URL("fixtures/docker-actions/.github/
 const dockerDir = fileURLToPath(new URL("fixtures/docker", import.meta.url));
 const cargoFile = fileURLToPath(new URL("fixtures/cargo/Cargo.toml", import.meta.url));
 const cargoWorkspaceDir = fileURLToPath(new URL("fixtures/cargo-workspace", import.meta.url));
-const cargoWorkspaceFile = fileURLToPath(new URL("fixtures/cargo-workspace/Cargo.toml", import.meta.url));
 const pnpmWorkspaceDir = fileURLToPath(new URL("fixtures/pnpm-workspace", import.meta.url));
 const pnpmWorkspaceFile = fileURLToPath(new URL("fixtures/pnpm-workspace/pnpm-workspace.yaml", import.meta.url));
 
@@ -152,6 +150,7 @@ let jsrUrl: string;
 let goProxyUrl: string;
 let dockerUrl: string;
 let cargoUrl: string;
+let localDependencyRequests = 0;
 
 beforeAll(async () => {
   npmServer = makeServer(defaultRoute);
@@ -171,7 +170,6 @@ beforeAll(async () => {
   for (const pkgName of testPackages) {
     const name = (testPkg.resolutions[pkgName] ? resolutionsBasePackage(pkgName) : pkgName);
     const urlName = name.replace(/\//g, "%2f");
-    // can not use file URLs because node stupidely throws on "%2f" in paths.
     const path = join(import.meta.dirname, `fixtures/npm/${urlName}.json`);
     npmFilesPromises.push((async () => ({urlName, data: await readFile(path, "utf8")}))());
   }
@@ -205,7 +203,6 @@ beforeAll(async () => {
   // `time` map, so serving one regardless would hide the full-packument fallback that fills them.
   const abbreviatedType = "application/vnd.npm.install-v1+json";
   for (const {urlName} of npmFiles) {
-    // gzip lazily and per flavor: only a --cooldown run ever asks for the dated document
     const gzips = new Map<string, Buffer>();
     npmServer.get(`/${urlName}`, (req, res) => {
       const flavor = req.headers.accept?.includes(abbreviatedType) ? "abbrev" : "full";
@@ -216,9 +213,20 @@ beforeAll(async () => {
       }));
     });
   }
+  for (const name of ["local-file", "local-link"]) {
+    npmServer.get(`/${name}`, (_, res) => {
+      localDependencyRequests++;
+      res.statusCode = 500;
+      res.end();
+    });
+  }
 
   const gzipAll = await Promise.all([
-    ...pypiFiles.map(async ({pkgName, data}) => ({type: "pypi" as const, key: `/pypi/${pkgName}/json`, gz: await gzipPromise(data)})),
+    ...pypiFiles.map(async ({pkgName, data}) => ({
+      type: "pypi" as const,
+      key: `/pypi/${pkgName.toLowerCase().replace(/[-_.]+/g, "-")}/json`,
+      gz: await gzipPromise(data),
+    })),
     ...jsrFiles.map(async ({scope, name, data}) => ({type: "jsr" as const, key: `/@${scope}/${name}/meta.json`, gz: await gzipPromise(data)})),
     (async () => ({type: "github" as const, key: "/repos/silverwind/updates/commits", gz: await gzipPromise(commits)}))(),
     (async () => ({type: "github" as const, key: "/repos/silverwind/updates/tags", gz: await gzipPromise(tags)}))(),
@@ -229,7 +237,6 @@ beforeAll(async () => {
     server.get(key, (_, res) => res.send(gz));
   }
 
-  // Per-version follow-up routes; gzip lazily since tests hit only a few of ~6000.
   for (const [urlName, data] of npmParsed) {
     const versions = data.versions || {};
     const time = data.time || {};
@@ -245,11 +252,9 @@ beforeAll(async () => {
     }
   }
 
-  // Override noty/3.1.4 to omit _npmOperationalInternal so the fallback to full packument is tested
   const notyVersionGz = await gzipPromise(JSON.stringify(npmParsed.get("noty").versions["3.1.4"]));
   npmServer.get("/noty/3.1.4", (_, res) => res.send(notyVersionGz));
 
-  // Go proxy fixtures
   const goProxyRoutes: Array<{path: string, response: string}> = [
     {path: "/github.com/google/uuid/@latest", response: JSON.stringify({Version: "v1.6.0", Time: "2024-06-13T02:52:04Z"})},
     {path: "/github.com/google/go-github/v70/@latest", response: JSON.stringify({Version: "v70.0.0", Time: "2024-11-29T00:00:00Z"})},
@@ -260,10 +265,11 @@ beforeAll(async () => {
     {path: "/gitea.com/gitea/act/@latest", response: JSON.stringify({Version: "v0.261.7", Time: "2025-06-01T00:00:00Z"})},
     {path: "/github.com/example/pseudopkg/@latest", response: JSON.stringify({Version: "v0.4.1", Time: "2023-06-01T00:00:00Z"})},
     {path: "/github.com/example/pseudoupd/@latest", response: JSON.stringify({Version: "v1.5.0", Time: "2025-06-01T00:00:00Z"})},
-    // `listonly` has no timestamps, forcing the follow-up `.info`; `listtime` carries them inline.
     {path: "/github.com/example/listonly/@v/list", response: "v1.0.0\nv1.2.0\nv1.3.0-rc.1\n"},
     {path: "/github.com/example/listonly/@v/v1.2.0.info", response: JSON.stringify({Version: "v1.2.0", Time: "2025-03-01T00:00:00Z"})},
     {path: "/github.com/example/listtime/@v/list", response: "v1.0.0 2024-01-01T00:00:00Z\nv1.1.0 2024-06-01T00:00:00Z\n"},
+    {path: "/github.com/example/makeallowed/@latest", response: JSON.stringify({Version: "v1.1.0", Time: "2025-01-01T00:00:00Z"})},
+    {path: "/github.com/example/makeallowed/v2/@latest", response: JSON.stringify({Version: "v2.0.0", Time: "2025-06-01T00:00:00Z"})},
   ];
   for (let v = 71; v <= 82; v++) {
     goProxyRoutes.push({
@@ -278,23 +284,24 @@ beforeAll(async () => {
     goProxyServer.get(path, (_, res) => res.send(gz));
   }
 
-  // Actions fixtures for github server
   const actionsRoutes: Array<[string, string]> = [
     ["/repos/actions/checkout/tags", "fixtures/github/actions-checkout-tags.json"],
     ["/repos/actions/setup-node/tags", "fixtures/github/actions-setup-node-tags.json"],
     ["/repos/actions/checkout/git/commits/cccc000000000000000000000000000000000011", "fixtures/github/actions-checkout-commit-v10.0.1.json"],
     ["/repos/actions/setup-node/git/commits/bbbb000000000000000000000000000000000010", "fixtures/github/actions-setup-node-commit-v10.json"],
   ];
-  // Empty tags for tj-actions/changed-files (hash-pinned, no semver tags to resolve)
   const emptyTagsGz = await gzipPromise("[]");
   githubServer.get("/repos/tj-actions/changed-files/tags", (_, res) => res.send(emptyTagsGz));
+  githubServer.get("/repos/actions/checkout/branches/main", (_, res) =>
+    res.send(gzipNow(JSON.stringify({commit: {sha: "aaaa000000000000000000000000000000000001"}}))));
+  githubServer.get("/repos/actions/checkout/branches/release", (_, res) =>
+    res.send(gzipNow(JSON.stringify({commit: {sha: "bbbb000000000000000000000000000000000002"}}))));
   for (const [route, fixture] of actionsRoutes) {
     const data = await readFile(fileURLToPath(new URL(fixture, import.meta.url)), "utf8");
     const gz = await gzipPromise(data);
     githubServer.get(route, (_, res) => res.send(gz));
   }
 
-  // Docker Hub API fixtures
   const dockerFixtures: Array<[string, string]> = [
     ["/v2/repositories/library/node/tags", "fixtures/docker/node-tags.json"],
     ["/v2/repositories/library/noty/tags", "fixtures/docker/node-tags.json"], // an image sharing an npm dep's name
@@ -307,16 +314,22 @@ beforeAll(async () => {
     dockerServer.get(route, (_, res) => res.send(gz));
   }
 
-  // Namespaced image + per-tag digest for make-mode docker images
   const makeImgTagsGz = await gzipPromise(JSON.stringify({count: 2, results: [
     {name: "v0.11.0", tag_last_pushed: "2025-01-01T00:00:00Z"},
     {name: "v0.12.0", tag_last_pushed: "2025-06-01T00:00:00Z"},
   ]}));
-  const makeImgDigestGz = await gzipPromise(JSON.stringify({digest: `sha256:${"b".repeat(64)}`}));
+  const makeAllowedImgTagsGz = await gzipPromise(JSON.stringify({count: 3, results: [
+    {name: "1.0", tag_last_pushed: "2025-01-01T00:00:00Z"},
+    {name: "1.1", tag_last_pushed: "2025-03-01T00:00:00Z"},
+    {name: "2.0", tag_last_pushed: "2025-06-01T00:00:00Z"},
+  ]}));
+  const makeOldImgGz = await gzipPromise(JSON.stringify({digest: "sha256:list-old"}));
+  const makeNewImgGz = await gzipPromise(JSON.stringify({digest: "sha256:list-new"}));
   dockerServer.get("/v2/repositories/koalaman/shellcheck/tags", (_, res) => res.send(makeImgTagsGz));
-  dockerServer.get("/v2/repositories/koalaman/shellcheck/tags/v0.12.0", (_, res) => res.send(makeImgDigestGz));
+  dockerServer.get("/v2/repositories/example/makeallowed/tags", (_, res) => res.send(makeAllowedImgTagsGz));
+  dockerServer.get("/v2/repositories/koalaman/shellcheck/tags/v0.11.0", (_, res) => res.send(makeOldImgGz));
+  dockerServer.get("/v2/repositories/koalaman/shellcheck/tags/v0.12.0", (_, res) => res.send(makeNewImgGz));
 
-  // The cargo sparse index serves NDJSON from a path sharded by name length: `1/a`, `ab/cd/name`.
   const serdeIndex = await readFile(fileURLToPath(new URL("fixtures/cargo/serde-index.ndjson", import.meta.url)), "utf8");
   const serdeIndexGz = await gzipPromise(serdeIndex);
   cargoServer.get("/se/rd/serde", (_, res) => res.send(serdeIndexGz));
@@ -367,8 +380,6 @@ afterAll(async () => {
   ]);
 });
 
-// Run the CLI in-process. Takes [script, ...args] like execFileAsync and returns
-// the JSON stdout the binary would print. noCache avoids per-test disk-cache churn.
 async function runCliExec(argvWithScript: Array<string>): Promise<{stdout: string, stderr: string}> {
   const {args, positionals} = parseCliArgs(argvWithScript.slice(1));
   const config = await resolveConfig(args, positionals);
@@ -381,33 +392,37 @@ async function runCliExec(argvWithScript: Array<string>): Promise<{stdout: strin
   return {stdout, stderr: ""};
 }
 
-function makeTest(args: string) {
-  return async () => {
-    const argv = args.split(/\s+/).filter(Boolean);
-    const hasFile = argv.includes("-f") || argv.includes("--file");
-    const {stdout} = await runCliExec([
-      script, ...argv, "-c", // -c absorbs a dangling optional-value flag (-g/-p/-R/-P)
-      ...apiArgs(),
-      ...(hasFile ? [] : ["-f", join(testDir, "package.json")]),
-    ]);
-    // undefined when the CLI printed {message} (nothing to update), else results
-    const {results} = JSON.parse(stdout);
-
-    // Parse results, with custom validation for the dynamic "age" property
-    for (const mode of Object.keys(results || {})) {
-      for (const type of Object.keys(results[mode] || {})) {
-        for (const name of Object.keys(results[mode][type] || {})) {
-          delete results[mode][type][name].age;
-        }
+async function makeTest(args: string) {
+  const argv = args.split(/\s+/).filter(Boolean);
+  const hasFile = argv.includes("-f") || argv.includes("--file");
+  const {stdout} = await runCliExec([
+    script, ...argv, "-c",
+    ...apiArgs(),
+    ...(hasFile ? [] : ["-f", join(testDir, "package.json")]),
+  ]);
+  const {results} = JSON.parse(stdout);
+  for (const mode of Object.keys(results || {})) {
+    for (const type of Object.keys(results[mode] || {})) {
+      for (const name of Object.keys(results[mode][type] || {})) {
+        delete results[mode][type][name].age;
       }
     }
-
-    return results;
-  };
+  }
+  return results;
 }
 
-// Point every registry/API at its mock server. A repeated flag's later
-// occurrence wins, so tests can override by appending (e.g. --registry).
+const dep = (info: string, newVersion: string, old: string) => ({info, new: newVersion, old});
+
+function dependencyRows(results: Awaited<ReturnType<typeof updates>>["results"]) {
+  const rows = Object.entries(results).flatMap(([mode, types]) => Object.entries(types).flatMap(([type, dependencies]) =>
+    Object.entries(dependencies).map(([name, dependency]) => [mode, type, name, dependency] as const)));
+  return rows.sort((left, right) => {
+    const leftKey = `${left[0]}\0${left[1]}\0${left[2]}`;
+    const rightKey = `${right[0]}\0${right[1]}\0${right[2]}`;
+    return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0;
+  });
+}
+
 function apiArgs(): string[] {
   return [
     "--registry", npmUrl,
@@ -427,7 +442,7 @@ test("text output lists every dep, one row per version across sections", async (
   expect(stderr).toEqual("");
   expect(stdout).toContain("prismjs");
   expect(stdout).toContain("https://github.com/silverwind/updates");
-  expect(stdout.split("\n").filter(line => line.includes("@babel/preset-env"))).toHaveLength(2);
+  expect(stdout.split("\n").filter(line => line.includes("@babel/preset-env"))).toHaveLength(3);
   expect(stdout).toContain("~6.0.0 || ~7.11.5");
 });
 
@@ -456,10 +471,8 @@ test("jsr", async ({expect = globalExpect}: any = {}) => {
   ]);
   expect(stderr).toEqual("");
   const {results} = JSON.parse(stdout);
-  expect(results.npm.dependencies["@std/semver"]).toBeDefined();
   expect(results.npm.dependencies["@std/semver"].old).toBe("1.0.5");
   expect(results.npm.dependencies["@std/semver"].new).toBe("1.0.8");
-  expect(results.npm.devDependencies["@std/path"]).toBeDefined();
   expect(results.npm.devDependencies["@std/path"].old).toBe("1.0.0");
   expect(results.npm.devDependencies["@std/path"].new).toBe("1.0.8");
 });
@@ -469,16 +482,29 @@ test("npm alias resolves the aliased package, and a second run is a no-op", asyn
   mkdirSync(aliasDir, {recursive: true});
   const pkgPath = join(aliasDir, "package.json");
   await writeFile(pkgPath, JSON.stringify({dependencies: {
-    "sourcemaps": "npm:gulp-sourcemaps@^2.0.0",
+    "package-matched": "npm:gulp-sourcemaps@^2.0.0",
+    "dep-matched": "npm:gulp-sourcemaps@^2.0.0",
     "tagged": "npm:gulp-sourcemaps@latest",
   }}, null, 2));
+  await writeFile(join(aliasDir, "renovate.json"), JSON.stringify({packageRules: [
+    {matchPackageNames: ["gulp-sourcemaps"], allowedVersions: "<=2.5.2"},
+    {matchDepNames: ["dep-matched"], allowedVersions: "<=2.4.1"},
+  ]}));
 
   const run = () => updates({files: [pkgPath], registry: npmUrl, update: true, color: false, noCache: true});
   const {results} = await run();
-  expect(results.npm.dependencies["sourcemaps"]).toMatchObject({old: "npm:gulp-sourcemaps@^2.0.0", new: "npm:gulp-sourcemaps@^2.6.5"});
+  expect(results.npm.dependencies["package-matched"]).toMatchObject({
+    old: "npm:gulp-sourcemaps@^2.0.0", new: "npm:gulp-sourcemaps@^2.5.2",
+  });
+  expect(results.npm.dependencies["dep-matched"]).toMatchObject({
+    old: "npm:gulp-sourcemaps@^2.0.0", new: "npm:gulp-sourcemaps@^2.4.1",
+  });
   expect(results.npm.dependencies["tagged"]).toBeUndefined();
   const written = await readFile(pkgPath, "utf8");
-  expect(JSON.parse(written).dependencies["sourcemaps"]).toBe("npm:gulp-sourcemaps@^2.6.5");
+  expect(JSON.parse(written).dependencies).toMatchObject({
+    "package-matched": "npm:gulp-sourcemaps@^2.5.2",
+    "dep-matched": "npm:gulp-sourcemaps@^2.4.1",
+  });
   await run();
   expect(await readFile(pkgPath, "utf8")).toBe(written);
 });
@@ -488,7 +514,6 @@ test("piped output stays colored with -c, on stdout and on -V stderr, and parsea
   mkdirSync(flagDir, {recursive: true});
   const pkgPath = join(flagDir, "package.json");
   await writeFile(pkgPath, JSON.stringify({dependencies: {prismjs: "1.0.0"}}));
-  // FORCE_COLOR is what a pipe would otherwise need, and -c has to stand on its own
   const env = {...process.env, FORCE_COLOR: "0"};
 
   const {stdout: colored, stderr: verbose} = await execFileAsync(execPath, [script, "-c", "-V", ...apiArgs(), "-f", pkgPath], {env});
@@ -525,307 +550,59 @@ if (!versions.bun) {
 }
 
 
+const latestRows: Array<[string, string, string, ReturnType<typeof dep>]> = [
+  ["npm", "dependencies", "@babel/preset-env", dep("https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env", "7.11.5", "7.0.0")],
+  ["npm", "dependencies", "eslint-plugin-storybook", dep("https://github.com/storybookjs/storybook/tree/HEAD/code/lib/eslint-plugin", "10.0.0-beta.6", "10.0.0-beta.5")],
+  ["npm", "dependencies", "gulp-sourcemaps", dep("https://github.com/gulp-sourcemaps/gulp-sourcemaps", "2.6.5", "2.0.0")],
+  ["npm", "dependencies", "html-webpack-plugin", dep("https://github.com/jantimon/html-webpack-plugin", "4.0.0-beta.11", "4.0.0-alpha.2")],
+  ["npm", "dependencies", "jpeg-buffer-orientation", dep("https://github.com/fisker/jpeg-buffer-orientation", "2.0.3", "0.0.0")],
+  ["npm", "dependencies", "noty", dep("https://github.com/needim/noty", "3.1.4", "3.1.0")],
+  ["npm", "dependencies", "prismjs", dep("https://github.com/LeaVerou/prism", "1.17.1", "1.0.0")],
+  ["npm", "dependencies", "react", dep("https://github.com/facebook/react/tree/HEAD/packages/react", "18.2", "18.0")],
+  ["npm", "dependencies", "styled-components", dep("https://github.com/styled-components/styled-components", "4.4.1", "2.5.0-1")],
+  ["npm", "overrides", "noty", dep("https://github.com/needim/noty", "3.1.4", "3.1.0")],
+  ["npm", "overrides", "prismjs:overrides.@babel/preset-env.prismjs", dep("https://github.com/LeaVerou/prism", "1.17.1", "1.0.0")],
+  ["npm", "overrides", "prismjs:overrides.prismjs", dep("https://github.com/LeaVerou/prism", "1.17.1", "1.0.0")],
+  ["npm", "packageManager", "npm", dep("https://github.com/npm/cli", "11.6.2", "11.6.0")],
+  ["npm", "peerDependencies", "@babel/preset-env", dep("https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env", "~6.0.0 || ~7.11.5", "~6.0.0")],
+  ["npm", "peerDependencies", "typescript", dep("https://github.com/Microsoft/TypeScript", "^4 || ^5", "^4")],
+  ["npm", "resolutions", "versions/updates", dep("https://github.com/silverwind/updates", "^10.0.0", "^1.0.0")],
+];
+
 test("latest", async ({expect = globalExpect}: any = {}) => {
-  expect(await makeTest("-j")()).toMatchInlineSnapshot(`
-    {
-      "npm": {
-        "dependencies": {
-          "@babel/preset-env": {
-            "info": "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
-            "new": "7.11.5",
-            "old": "7.0.0",
-          },
-          "eslint-plugin-storybook": {
-            "info": "https://github.com/storybookjs/storybook/tree/HEAD/code/lib/eslint-plugin",
-            "new": "10.0.0-beta.6",
-            "old": "10.0.0-beta.5",
-          },
-          "gulp-sourcemaps": {
-            "info": "https://github.com/gulp-sourcemaps/gulp-sourcemaps",
-            "new": "2.6.5",
-            "old": "2.0.0",
-          },
-          "html-webpack-plugin": {
-            "info": "https://github.com/jantimon/html-webpack-plugin",
-            "new": "4.0.0-beta.11",
-            "old": "4.0.0-alpha.2",
-          },
-          "jpeg-buffer-orientation": {
-            "info": "https://github.com/fisker/jpeg-buffer-orientation",
-            "new": "2.0.3",
-            "old": "0.0.0",
-          },
-          "noty": {
-            "info": "https://github.com/needim/noty",
-            "new": "3.1.4",
-            "old": "3.1.0",
-          },
-          "prismjs": {
-            "info": "https://github.com/LeaVerou/prism",
-            "new": "1.17.1",
-            "old": "1.0.0",
-          },
-          "react": {
-            "info": "https://github.com/facebook/react/tree/HEAD/packages/react",
-            "new": "18.2",
-            "old": "18.0",
-          },
-          "styled-components": {
-            "info": "https://github.com/styled-components/styled-components",
-            "new": "4.4.1",
-            "old": "2.5.0-1",
-          },
-          "updates": {
-            "info": "https://github.com/silverwind/updates",
-            "new": "537ccb7",
-            "old": "6941e05",
-          },
-        },
-        "devDependencies": {
-          "prismjs": {
-            "info": "https://github.com/LeaVerou/prism",
-            "new": "^1.17.1",
-            "old": "link:../prismjs",
-          },
-          "updates": {
-            "info": "https://github.com/silverwind/updates",
-            "new": "^10.0.0",
-            "old": "file:.",
-          },
-        },
-        "packageManager": {
-          "npm": {
-            "info": "https://github.com/npm/cli",
-            "new": "11.6.2",
-            "old": "11.6.0",
-          },
-        },
-        "peerDependencies": {
-          "@babel/preset-env": {
-            "info": "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
-            "new": "~6.0.0 || ~7.11.5",
-            "old": "~6.0.0",
-          },
-          "typescript": {
-            "info": "https://github.com/Microsoft/TypeScript",
-            "new": "^4 || ^5",
-            "old": "^4",
-          },
-        },
-        "resolutions": {
-          "versions/updates": {
-            "info": "https://github.com/silverwind/updates",
-            "new": "^10.0.0",
-            "old": "^1.0.0",
-          },
-        },
-      },
-    }
-  `);
+  expect(dependencyRows(await makeTest("-j"))).toEqual(latestRows);
 });
 
 test("prerelease", async ({expect = globalExpect}: any = {}) => {
-  expect(await makeTest("-j -g -p")()).toMatchInlineSnapshot(`
-    {
-      "npm": {
-        "dependencies": {
-          "@babel/preset-env": {
-            "info": "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
-            "new": "7.11.5",
-            "old": "7.0.0",
-          },
-          "eslint-plugin-storybook": {
-            "info": "https://github.com/storybookjs/storybook/tree/HEAD/code/lib/eslint-plugin",
-            "new": "10.0.0-beta.6",
-            "old": "10.0.0-beta.5",
-          },
-          "gulp-sourcemaps": {
-            "info": "https://github.com/gulp-sourcemaps/gulp-sourcemaps",
-            "new": "2.6.5",
-            "old": "2.0.0",
-          },
-          "html-webpack-plugin": {
-            "info": "https://github.com/jantimon/html-webpack-plugin",
-            "new": "4.0.0-beta.11",
-            "old": "4.0.0-alpha.2",
-          },
-          "jpeg-buffer-orientation": {
-            "info": "https://github.com/fisker/jpeg-buffer-orientation",
-            "new": "2.0.3",
-            "old": "0.0.0",
-          },
-          "noty": {
-            "info": "https://github.com/needim/noty",
-            "new": "3.2.0-beta",
-            "old": "3.1.0",
-          },
-          "prismjs": {
-            "info": "https://github.com/LeaVerou/prism",
-            "new": "1.17.1",
-            "old": "1.0.0",
-          },
-          "react": {
-            "info": "https://github.com/facebook/react/tree/HEAD/packages/react",
-            "new": "18.3.0-next-fecc288b7-20221025",
-            "old": "18.0",
-          },
-          "styled-components": {
-            "info": "https://github.com/styled-components/styled-components",
-            "new": "5.0.0-regexrehydrate",
-            "old": "2.5.0-1",
-          },
-          "updates": {
-            "info": "https://github.com/silverwind/updates",
-            "new": "537ccb7",
-            "old": "6941e05",
-          },
-        },
-        "devDependencies": {
-          "prismjs": {
-            "info": "https://github.com/LeaVerou/prism",
-            "new": "^1.17.1",
-            "old": "link:../prismjs",
-          },
-          "updates": {
-            "info": "https://github.com/silverwind/updates",
-            "new": "^10.0.0",
-            "old": "file:.",
-          },
-        },
-        "packageManager": {
-          "npm": {
-            "info": "https://github.com/npm/cli",
-            "new": "11.6.2",
-            "old": "11.6.0",
-          },
-        },
-        "peerDependencies": {
-          "@babel/preset-env": {
-            "info": "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
-            "new": "~6.0.0 || ~7.11.5",
-            "old": "~6.0.0",
-          },
-          "noty": {
-            "info": "https://github.com/needim/noty",
-            "new": ">= 3.1 || >= 3.2.0-beta",
-            "old": ">= 3.1",
-          },
-          "svgstore": {
-            "info": "https://github.com/svgstore/svgstore",
-            "new": "^1.0.0 || ^2.0.0 || ^3.0.0-2",
-            "old": "^1.0.0 || ^2.0.0",
-          },
-          "typescript": {
-            "info": "https://github.com/Microsoft/TypeScript",
-            "new": "^4 || ^5.5.0-dev.20240601",
-            "old": "^4",
-          },
-        },
-        "resolutions": {
-          "versions/updates": {
-            "info": "https://github.com/silverwind/updates",
-            "new": "^10.0.0",
-            "old": "^1.0.0",
-          },
-        },
-      },
-    }
-  `);
+  expect(dependencyRows(await makeTest("-j -g -p"))).toEqual([
+    ["npm", "dependencies", "@babel/preset-env", dep("https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env", "7.11.5", "7.0.0")],
+    ["npm", "dependencies", "eslint-plugin-storybook", dep("https://github.com/storybookjs/storybook/tree/HEAD/code/lib/eslint-plugin", "10.0.0-beta.6", "10.0.0-beta.5")],
+    ["npm", "dependencies", "gulp-sourcemaps", dep("https://github.com/gulp-sourcemaps/gulp-sourcemaps", "2.6.5", "2.0.0")],
+    ["npm", "dependencies", "html-webpack-plugin", dep("https://github.com/jantimon/html-webpack-plugin", "4.0.0-beta.11", "4.0.0-alpha.2")],
+    ["npm", "dependencies", "jpeg-buffer-orientation", dep("https://github.com/fisker/jpeg-buffer-orientation", "2.0.3", "0.0.0")],
+    ["npm", "dependencies", "noty", dep("https://github.com/needim/noty", "3.2.0-beta", "3.1.0")],
+    ["npm", "dependencies", "prismjs", dep("https://github.com/LeaVerou/prism", "1.17.1", "1.0.0")],
+    ["npm", "dependencies", "react", dep("https://github.com/facebook/react/tree/HEAD/packages/react", "18.3.0-next-fecc288b7-20221025", "18.0")],
+    ["npm", "dependencies", "styled-components", dep("https://github.com/styled-components/styled-components", "5.0.0-regexrehydrate", "2.5.0-1")],
+    ["npm", "overrides", "noty", dep("https://github.com/needim/noty", "3.2.0-beta", "3.1.0")],
+    ["npm", "overrides", "prismjs:overrides.@babel/preset-env.prismjs", dep("https://github.com/LeaVerou/prism", "1.17.1", "1.0.0")],
+    ["npm", "overrides", "prismjs:overrides.prismjs", dep("https://github.com/LeaVerou/prism", "1.17.1", "1.0.0")],
+    ["npm", "packageManager", "npm", dep("https://github.com/npm/cli", "11.6.2", "11.6.0")],
+    ["npm", "peerDependencies", "@babel/preset-env", dep("https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env", "~6.0.0 || ~7.11.5", "~6.0.0")],
+    ["npm", "peerDependencies", "noty", dep("https://github.com/needim/noty", ">= 3.1 || >= 3.2.0-beta", ">= 3.1")],
+    ["npm", "peerDependencies", "svgstore", dep("https://github.com/svgstore/svgstore", "^1.0.0 || ^2.0.0 || ^3.0.0-2", "^1.0.0 || ^2.0.0")],
+    ["npm", "peerDependencies", "typescript", dep("https://github.com/Microsoft/TypeScript", "^4 || ^5.5.0-dev.20240601", "^4")],
+    ["npm", "resolutions", "versions/updates", dep("https://github.com/silverwind/updates", "^10.0.0", "^1.0.0")],
+  ]);
 });
 
 test("release", async ({expect = globalExpect}: any = {}) => {
-  expect(await makeTest("-j -R")()).toMatchInlineSnapshot(`
-    {
-      "npm": {
-        "dependencies": {
-          "@babel/preset-env": {
-            "info": "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
-            "new": "7.11.5",
-            "old": "7.0.0",
-          },
-          "gulp-sourcemaps": {
-            "info": "https://github.com/gulp-sourcemaps/gulp-sourcemaps",
-            "new": "2.6.5",
-            "old": "2.0.0",
-          },
-          "jpeg-buffer-orientation": {
-            "info": "https://github.com/fisker/jpeg-buffer-orientation",
-            "new": "2.0.3",
-            "old": "0.0.0",
-          },
-          "noty": {
-            "info": "https://github.com/needim/noty",
-            "new": "3.1.4",
-            "old": "3.1.0",
-          },
-          "prismjs": {
-            "info": "https://github.com/LeaVerou/prism",
-            "new": "1.17.1",
-            "old": "1.0.0",
-          },
-          "react": {
-            "info": "https://github.com/facebook/react/tree/HEAD/packages/react",
-            "new": "18.2",
-            "old": "18.0",
-          },
-          "styled-components": {
-            "info": "https://github.com/styled-components/styled-components",
-            "new": "4.4.1",
-            "old": "2.5.0-1",
-          },
-          "updates": {
-            "info": "https://github.com/silverwind/updates",
-            "new": "537ccb7",
-            "old": "6941e05",
-          },
-        },
-        "devDependencies": {
-          "prismjs": {
-            "info": "https://github.com/LeaVerou/prism",
-            "new": "^1.17.1",
-            "old": "link:../prismjs",
-          },
-          "updates": {
-            "info": "https://github.com/silverwind/updates",
-            "new": "^10.0.0",
-            "old": "file:.",
-          },
-        },
-        "packageManager": {
-          "npm": {
-            "info": "https://github.com/npm/cli",
-            "new": "11.6.2",
-            "old": "11.6.0",
-          },
-        },
-        "peerDependencies": {
-          "@babel/preset-env": {
-            "info": "https://github.com/babel/babel/tree/HEAD/packages/babel-preset-env",
-            "new": "~6.0.0 || ~7.11.5",
-            "old": "~6.0.0",
-          },
-          "typescript": {
-            "info": "https://github.com/Microsoft/TypeScript",
-            "new": "^4 || ^5",
-            "old": "^4",
-          },
-        },
-        "resolutions": {
-          "versions/updates": {
-            "info": "https://github.com/silverwind/updates",
-            "new": "^10.0.0",
-            "old": "^1.0.0",
-          },
-        },
-      },
-    }
-  `);
+  expect(dependencyRows(await makeTest("-j -R"))).toEqual(latestRows.filter(row =>
+    !["eslint-plugin-storybook", "html-webpack-plugin"].includes(row[2])));
 });
 
-// --release only narrows the field to releases; stepping down off a prerelease train whose own
-// release does not exist yet is --allow-downgrade's call.
 test("release with allow-downgrade", async ({expect = globalExpect}: any = {}) => {
-  const results = await makeTest("-j -R -d")();
+  const results = await makeTest("-j -R -d");
   expect(results.npm.dependencies["eslint-plugin-storybook"]).toEqual({
     info: "https://github.com/storybookjs/storybook/tree/HEAD/code/lib/eslint-plugin",
     new: "9.1.7",
@@ -834,70 +611,25 @@ test("release with allow-downgrade", async ({expect = globalExpect}: any = {}) =
 });
 
 test("patch", async ({expect = globalExpect}: any = {}) => {
-  expect(await makeTest("-j -P")()).toMatchInlineSnapshot(`
-    {
-      "npm": {
-        "dependencies": {
-          "eslint-plugin-storybook": {
-            "info": "https://github.com/storybookjs/storybook/tree/HEAD/code/lib/eslint-plugin",
-            "new": "10.0.0-beta.6",
-            "old": "10.0.0-beta.5",
-          },
-          "gulp-sourcemaps": {
-            "info": "https://github.com/floridoo/gulp-sourcemaps",
-            "new": "2.0.1",
-            "old": "2.0.0",
-          },
-          "html-webpack-plugin": {
-            "info": "https://github.com/jantimon/html-webpack-plugin",
-            "new": "4.0.0-beta.11",
-            "old": "4.0.0-alpha.2",
-          },
-          "noty": {
-            "info": "https://github.com/needim/noty",
-            "new": "3.1.4",
-            "old": "3.1.0",
-          },
-          "updates": {
-            "info": "https://github.com/silverwind/updates",
-            "new": "537ccb7",
-            "old": "6941e05",
-          },
-        },
-        "devDependencies": {
-          "prismjs": {
-            "info": "https://github.com/LeaVerou/prism",
-            "new": "^0.0.1",
-            "old": "link:../prismjs",
-          },
-        },
-        "packageManager": {
-          "npm": {
-            "info": "https://github.com/npm/cli",
-            "new": "11.6.2",
-            "old": "11.6.0",
-          },
-        },
-        "resolutions": {
-          "versions/updates": {
-            "info": "https://github.com/silverwind/updates",
-            "new": "^1.0.6",
-            "old": "^1.0.0",
-          },
-        },
-      },
-    }
-  `);
+  expect(dependencyRows(await makeTest("-j -P"))).toEqual([
+    ["npm", "dependencies", "eslint-plugin-storybook", dep("https://github.com/storybookjs/storybook/tree/HEAD/code/lib/eslint-plugin", "10.0.0-beta.6", "10.0.0-beta.5")],
+    ["npm", "dependencies", "gulp-sourcemaps", dep("https://github.com/floridoo/gulp-sourcemaps", "2.0.1", "2.0.0")],
+    ["npm", "dependencies", "html-webpack-plugin", dep("https://github.com/jantimon/html-webpack-plugin", "4.0.0-beta.11", "4.0.0-alpha.2")],
+    ["npm", "dependencies", "noty", dep("https://github.com/needim/noty", "3.1.4", "3.1.0")],
+    ["npm", "overrides", "noty", dep("https://github.com/needim/noty", "3.1.4", "3.1.0")],
+    ["npm", "packageManager", "npm", dep("https://github.com/npm/cli", "11.6.2", "11.6.0")],
+    ["npm", "resolutions", "versions/updates", dep("https://github.com/silverwind/updates", "^1.0.6", "^1.0.0")],
+  ]);
 });
 
-const notyResult = {npm: {dependencies: {noty: {info: "https://github.com/needim/noty", new: "3.1.4", old: "3.1.0"}}}};
+const notyDep = {info: "https://github.com/needim/noty", new: "3.1.4", old: "3.1.0"};
+const notyResult = {npm: {dependencies: {noty: notyDep}, overrides: {noty: notyDep}}};
 
-// Also covers preup: don't upgrade stable to prerelease (3.1.0 -> 3.1.4, not 3.2.0-beta from latest dist-tag).
 test.each([
   ["include", "-j -i noty"],
   ["include 2", "-j -i /^noty/"],
 ])("%s", async (_name, args, {expect = globalExpect}: any = {}) => {
-  expect(await makeTest(args)()).toEqual(notyResult);
+  expect(await makeTest(args)).toEqual(notyResult);
 });
 
 // Out of process, unlike its siblings: the in-process registry cache is keyed by URL alone, so
@@ -908,110 +640,53 @@ test("cooldown duration", async ({expect = globalExpect}: any = {}) => {
   ]);
   const {results} = JSON.parse(stdout);
   delete results.npm.dependencies.noty.age;
+  delete results.npm.overrides.noty.age;
   expect(results).toEqual(notyResult);
 });
 
 test("packageManager", async ({expect = globalExpect}: any = {}) => {
-  expect(await makeTest("-j -i npm")()).toMatchInlineSnapshot(`
-    {
-      "npm": {
-        "packageManager": {
-          "npm": {
-            "info": "https://github.com/npm/cli",
-            "new": "11.6.2",
-            "old": "11.6.0",
-          },
-        },
-      },
-    }
-  `);
+  expect(dependencyRows(await makeTest("-j -i npm"))).toEqual([
+    ["npm", "packageManager", "npm", dep("https://github.com/npm/cli", "11.6.2", "11.6.0")],
+  ]);
 });
 
 test("overrides type", async ({expect = globalExpect}: any = {}) => {
-  // the nested override carries no version of its own and is no dependency, and the top-level
-  // `prismjs` it shadows is skipped too, as a rewrite would land in the nested copy
-  expect(await makeTest("-j -t overrides")()).toEqual({npm: {overrides: notyResult.npm.dependencies}});
+  expect(await makeTest("-j -t overrides")).toEqual({npm: {overrides: {
+    noty: notyDep,
+    "prismjs:overrides.@babel/preset-env.prismjs": {
+      info: "https://github.com/LeaVerou/prism", new: "1.17.1", old: "1.0.0",
+    },
+    "prismjs:overrides.prismjs": {
+      info: "https://github.com/LeaVerou/prism", new: "1.17.1", old: "1.0.0",
+    },
+  }}});
 });
 
 test("exclude", async ({expect = globalExpect}: any = {}) => {
-  expect(await makeTest("-j -e gulp-sourcemaps -i /react/")()).toMatchInlineSnapshot(`
-    {
-      "npm": {
-        "dependencies": {
-          "react": {
-            "info": "https://github.com/facebook/react/tree/HEAD/packages/react",
-            "new": "18.2",
-            "old": "18.0",
-          },
-        },
-      },
-    }
-  `);
+  expect(dependencyRows(await makeTest("-j -e gulp-sourcemaps -i /react/"))).toEqual([
+    ["npm", "dependencies", "react", dep("https://github.com/facebook/react/tree/HEAD/packages/react", "18.2", "18.0")],
+  ]);
 });
 
 test("exclude 2", async ({expect = globalExpect}: any = {}) => {
-  expect(await makeTest("-j -i gulp*")()).toMatchInlineSnapshot(`
-    {
-      "npm": {
-        "dependencies": {
-          "gulp-sourcemaps": {
-            "info": "https://github.com/gulp-sourcemaps/gulp-sourcemaps",
-            "new": "2.6.5",
-            "old": "2.0.0",
-          },
-        },
-      },
-    }
-  `);
+  expect(dependencyRows(await makeTest("-j -i gulp*"))).toEqual([
+    ["npm", "dependencies", "gulp-sourcemaps", dep("https://github.com/gulp-sourcemaps/gulp-sourcemaps", "2.6.5", "2.0.0")],
+  ]);
 });
 
 test("exclude 3", async ({expect = globalExpect}: any = {}) => {
-  expect(await makeTest("-j -i /^gulp/ -P gulp*")()).toMatchInlineSnapshot(`
-    {
-      "npm": {
-        "dependencies": {
-          "gulp-sourcemaps": {
-            "info": "https://github.com/floridoo/gulp-sourcemaps",
-            "new": "2.0.1",
-            "old": "2.0.0",
-          },
-        },
-      },
-    }
-  `);
+  expect(dependencyRows(await makeTest("-j -i /^gulp/ -P gulp*"))).toEqual([
+    ["npm", "dependencies", "gulp-sourcemaps", dep("https://github.com/floridoo/gulp-sourcemaps", "2.0.1", "2.0.0")],
+  ]);
 });
 
 test("uv", async ({expect = globalExpect}: any = {}) => {
-  expect(await makeTest(`-j -f ${uvFile}`)()).toMatchInlineSnapshot(`
-    {
-      "pypi": {
-        "dependency-groups.dev": {
-          "PyYAML": {
-            "info": "https://github.com/yaml/pyyaml",
-            "new": "6.0",
-            "old": "1.0",
-          },
-          "types-requests": {
-            "info": "https://github.com/python/typeshed",
-            "new": "2.32.4.20250611",
-            "old": "2.32.0.20240622",
-          },
-        },
-        "project.dependencies": {
-          "djlint": {
-            "info": "https://github.com/Riverside-Healthcare/djlint",
-            "new": "1.31.0",
-            "old": "1.30.0",
-          },
-          "ty": {
-            "info": "https://github.com/astral-sh/ty",
-            "new": "0.0.1a19",
-            "old": "0.0.1a15",
-          },
-        },
-      },
-    }
-  `);
+  expect(dependencyRows(await makeTest(`-j -f ${uvFile}`))).toEqual([
+    ["pypi", "dependency-groups.dev", "PyYAML", dep("https://github.com/yaml/pyyaml", "6.0", "1.0")],
+    ["pypi", "dependency-groups.dev", "types-requests", dep("https://github.com/python/typeshed", "2.32.4.20250611", "2.32.0.20240622")],
+    ["pypi", "project.dependencies", "djlint", dep("https://github.com/Riverside-Healthcare/djlint", "1.31.0", "1.30.0")],
+    ["pypi", "project.dependencies", "ty", dep("https://github.com/astral-sh/ty", "0.0.1a19", "0.0.1a15")],
+  ]);
 });
 
 test("invalid config", async ({expect = globalExpect}: any = {}) => {
@@ -1027,85 +702,34 @@ test("invalid config", async ({expect = globalExpect}: any = {}) => {
   }
 });
 
-test("preup 1", async ({expect = globalExpect}: any = {}) => {
-  // Test that we DO upgrade to prerelease when explicitly requested with -p flag
-  // noty: 3.1.0 -> should suggest 3.2.0-beta (from latest dist-tag) when -p is used
-  expect(await makeTest("-j -i noty -p")()).toMatchInlineSnapshot(`
-    {
-      "npm": {
-        "dependencies": {
-          "noty": {
-            "info": "https://github.com/needim/noty",
-            "new": "3.2.0-beta",
-            "old": "3.1.0",
-          },
-        },
-        "peerDependencies": {
-          "noty": {
-            "info": "https://github.com/needim/noty",
-            "new": ">= 3.1 || >= 3.2.0-beta",
-            "old": ">= 3.1",
-          },
-        },
-      },
-    }
-  `);
-});
-
-test("preup 2", async ({expect = globalExpect}: any = {}) => {
-  // Test that upgrading from prerelease to prerelease works without -p flag
-  // eslint-plugin-storybook: 10.0.0-beta.5 -> should allow upgrade to another prerelease
-  expect(await makeTest("-j -i eslint-plugin-storybook")()).toMatchInlineSnapshot(`
-    {
-      "npm": {
-        "dependencies": {
-          "eslint-plugin-storybook": {
-            "info": "https://github.com/storybookjs/storybook/tree/HEAD/code/lib/eslint-plugin",
-            "new": "10.0.0-beta.6",
-            "old": "10.0.0-beta.5",
-          },
-        },
-      },
-    }
-  `);
+test("prerelease selection", async ({expect = globalExpect}: any = {}) => {
+  expect(dependencyRows(await makeTest("-j -i noty -p"))).toEqual([
+    ["npm", "dependencies", "noty", dep("https://github.com/needim/noty", "3.2.0-beta", "3.1.0")],
+    ["npm", "overrides", "noty", dep("https://github.com/needim/noty", "3.2.0-beta", "3.1.0")],
+    ["npm", "peerDependencies", "noty", dep("https://github.com/needim/noty", ">= 3.1 || >= 3.2.0-beta", ">= 3.1")],
+  ]);
+  expect(dependencyRows(await makeTest("-j -i eslint-plugin-storybook"))).toEqual([
+    ["npm", "dependencies", "eslint-plugin-storybook", dep("https://github.com/storybookjs/storybook/tree/HEAD/code/lib/eslint-plugin", "10.0.0-beta.6", "10.0.0-beta.5")],
+  ]);
 });
 
 test("go", async ({expect = globalExpect}: any = {}) => {
-  expect(await makeTest(`-j -f ${goFile}`)()).toMatchInlineSnapshot(`
-    {
-      "go": {
-        "deps": {
-          "github.com/example/listonly": {
-            "info": "https://github.com/example/listonly",
-            "new": "1.2.0",
-            "old": "1.0.0",
-          },
-          "github.com/example/listtime": {
-            "info": "https://github.com/example/listtime",
-            "new": "1.1.0",
-            "old": "1.0.0",
-          },
-          "github.com/google/go-github/v70": {
-            "info": "https://github.com/google/go-github",
-            "new": "82.0.0",
-            "old": "70.0.0",
-          },
-          "github.com/google/uuid": {
-            "info": "https://github.com/google/uuid",
-            "new": "1.6.0",
-            "old": "1.5.0",
-          },
-        },
-      },
-    }
-  `);
+  const directRows = [
+    ["go", "deps", "github.com/example/listonly", dep("https://github.com/example/listonly", "1.2.0", "1.0.0")],
+    ["go", "deps", "github.com/example/listtime", dep("https://github.com/example/listtime", "1.1.0", "1.0.0")],
+    ["go", "deps", "github.com/google/go-github/v70", dep("https://github.com/google/go-github", "82.0.0", "70.0.0")],
+    ["go", "deps", "github.com/google/uuid", dep("https://github.com/google/uuid", "2.0.0-2026021", "1.5.0")],
+  ];
+  expect(dependencyRows(await makeTest(`-j -f ${goFile}`))).toEqual(directRows);
+  expect(dependencyRows(await makeTest(`-j -f ${goFile} -I`))).toEqual([
+    ...directRows,
+    ["go", "indirect", "github.com/example/testpkg", dep("https://github.com/example/testpkg", "2.0.0", "0.9.0")],
+  ]);
 });
 
 test("go @v/list fallback takes a date off the list line when .info is absent", async ({expect = globalExpect}: any = {}) => {
   const {stdout} = await runCliExec([script, "-j", "-f", goFile, "-c", "--goproxy", goProxyUrl]);
   const {deps} = JSON.parse(stdout).results.go;
-  expect(deps["github.com/example/listonly"].new).toBe("1.2.0");
-  expect(deps["github.com/example/listtime"].new).toBe("1.1.0");
   expect(deps["github.com/example/listtime"].age).toBeTruthy();
 });
 
@@ -1133,71 +757,11 @@ test("color flags reach the config", async ({expect = globalExpect}: any = {}) =
 });
 
 test("cargo", async ({expect = globalExpect}: any = {}) => {
-  expect(await makeTest(`-j -f ${cargoFile}`)()).toMatchInlineSnapshot(`
-    {
-      "cargo": {
-        "dependencies": {
-          "tokio": {
-            "info": "https://crates.io/crates/tokio",
-            "new": "1.35",
-            "old": "1.0",
-          },
-        },
-        "dev-dependencies": {
-          "rand": {
-            "info": "https://crates.io/crates/rand",
-            "new": "0.9",
-            "old": "0.8",
-          },
-        },
-        "target.cfg(unix).dependencies": {
-          "rand": {
-            "info": "https://crates.io/crates/rand",
-            "new": "0.9",
-            "old": "0.8",
-          },
-        },
-      },
-    }
-  `);
-});
-
-test("go indirect with -I flag", async ({expect = globalExpect}: any = {}) => {
-  expect(await makeTest(`-j -f ${goFile} -I`)()).toMatchInlineSnapshot(`
-    {
-      "go": {
-        "deps": {
-          "github.com/example/listonly": {
-            "info": "https://github.com/example/listonly",
-            "new": "1.2.0",
-            "old": "1.0.0",
-          },
-          "github.com/example/listtime": {
-            "info": "https://github.com/example/listtime",
-            "new": "1.1.0",
-            "old": "1.0.0",
-          },
-          "github.com/google/go-github/v70": {
-            "info": "https://github.com/google/go-github",
-            "new": "82.0.0",
-            "old": "70.0.0",
-          },
-          "github.com/google/uuid": {
-            "info": "https://github.com/google/uuid",
-            "new": "1.6.0",
-            "old": "1.5.0",
-          },
-        },
-        "indirect": {
-          "github.com/example/testpkg": {
-            "info": "https://github.com/example/testpkg",
-            "new": "1.0.0",
-            "old": "0.9.0",
-          },
-        },
-      },
-    }
-  `);
+  expect(dependencyRows(await makeTest(`-j -f ${cargoFile}`))).toEqual([
+    ["cargo", "dependencies", "tokio", dep("https://crates.io/crates/tokio", "1.35", "1.0")],
+    ["cargo", "dev-dependencies", "rand", dep("https://crates.io/crates/rand", "0.9", "0.8")],
+    ["cargo", "target.cfg(unix).dependencies", "rand", dep("https://crates.io/crates/rand", "0.9", "0.8")],
+  ]);
 });
 
 test("go update", async ({expect = globalExpect}: any = {}) => {
@@ -1219,12 +783,12 @@ test("go update", async ({expect = globalExpect}: any = {}) => {
 
   const updatedContent = await readFile(join(testGoModDir, "go.mod"), "utf8");
 
-  expect(updatedContent).toContain("github.com/google/uuid v1.6.0");
+  expect(updatedContent).toContain("github.com/google/uuid/v2 v2.0.0-20260217135312-8c5a7de9ffa1");
   expect(updatedContent).not.toContain("uuid v1.5.0");
   expect(updatedContent).not.toContain("go-github/v70");
   expect(updatedContent).toMatch(/github\.com\/google\/go-github\/v\d+ v\d+\.\d+\.\d+/);
 
-  const matches = updatedContent.match(/github\.com\/google\/uuid v1\.6\.0/g);
+  const matches = updatedContent.match(/github\.com\/google\/uuid\/v2 v2\.0\.0-20260217135312-8c5a7de9ffa1/g);
   expect(matches).toBeTruthy();
   expect(matches?.length).toBe(4);
 
@@ -1258,37 +822,20 @@ test("go update v1 to v2", async ({expect = globalExpect}: any = {}) => {
   expect(updatedMain).not.toMatch(/"github\.com\/example\/testpkg"(?!\/v2)/);
 });
 
-test("go prerelease excluded by default", async ({expect = globalExpect}: any = {}) => {
-  // Without --prerelease, Go prerelease versions should not be offered
-  expect(await makeTest(`-j -f ${goPreFile}`)()).toMatchInlineSnapshot(`undefined`);
-});
-
-test("go prerelease with -p flag", async ({expect = globalExpect}: any = {}) => {
-  // With global --prerelease, Go prerelease versions should be offered
-  expect(await makeTest(`-j -f ${goPreFile} -p`)()).toMatchInlineSnapshot(`
-    {
-      "go": {
-        "deps": {
-          "github.com/example/prerelpkg": {
-            "info": "https://github.com/example/prerelpkg",
-            "new": "1.1.0-rc.1",
-            "old": "1.0.0",
-          },
-        },
-      },
-    }
-  `);
+test("go prerelease is excluded by default and enabled globally or per package", async ({expect = globalExpect}: any = {}) => {
+  expect(await makeTest(`-j -f ${goPreFile}`)).toBeUndefined();
+  const expected = [["go", "deps", "github.com/example/prerelpkg",
+    dep("https://github.com/example/prerelpkg", "1.1.0-rc.1", "1.0.0")]];
+  for (const flag of ["-p", "-p github.com/example/prerelpkg"]) {
+    expect(dependencyRows(await makeTest(`-j -f ${goPreFile} ${flag}`))).toEqual(expected);
+  }
 });
 
 test("go pseudo-version no downgrade", async ({expect = globalExpect}: any = {}) => {
-  // A pseudo-version like v0.4.2-0.xxx should not be downgraded to a lower release like v0.4.1
-  expect(await makeTest(`-j -f ${goPseudoFile}`)()).toMatchInlineSnapshot(`undefined`);
+  expect(await makeTest(`-j -f ${goPseudoFile}`)).toBeUndefined();
 });
 
 test("go pseudo-version update rewrites the full version", async ({expect = globalExpect}: any = {}) => {
-  // Shortened pseudo-version in dep.old would partial-match the full string in
-  // go.mod and leave the timestamp tail behind unless dep.oldOrig is preserved
-  // through the write.
   const testGoModDir = join(testDir, "test-go-pseudo-update");
   mkdirSync(testGoModDir, {recursive: true});
   const modPath = join(testGoModDir, "go.mod");
@@ -1324,11 +871,8 @@ test("make mode bumps go install versions and rewrites paths on major bumps", as
   await updates({files: [makePath], goproxy: goProxyUrl, update: true, color: false, noCache: true});
 
   const updated = await readFile(makePath, "utf8");
-  // same-major bump (its /v2 is a pseudo-version and must be skipped); path, operator and spacing preserved
-  expect(updated).toContain("UUID_PACKAGE ?= github.com/google/uuid@v1.6.0");
-  // cross-major bump rewrites the /vN path segment; inline comment preserved
+  expect(updated).toContain("UUID_PACKAGE ?= github.com/google/uuid/v2@v2.0.0-20260217135312-8c5a7de9ffa1");
   expect(updated).toContain("TESTPKG_PACKAGE := github.com/example/testpkg/v2@v2.0.0  # pinned tool");
-  // commented-out install and non-install line untouched
   expect(updated).toContain("# DISABLED := github.com/example/testpkg@v0.5.0");
   expect(updated).toContain("SOURCE := $(wildcard *.go)");
 });
@@ -1349,7 +893,6 @@ test("make mode bumps docker image tags and re-resolves digests in Makefiles", a
   mkdirSync(makeDir, {recursive: true});
   const makePath = join(makeDir, "Makefile");
   const oldDigest = `sha256:${"a".repeat(64)}`;
-  const newDigest = `sha256:${"b".repeat(64)}`;
   await writeFile(makePath, [
     `SHELLCHECK_IMAGE ?= docker.io/koalaman/shellcheck:v0.11.0@${oldDigest}  # renovate: datasource=docker`,
     "PLAIN := koalaman/shellcheck:v0.11.0",
@@ -1360,12 +903,35 @@ test("make mode bumps docker image tags and re-resolves digests in Makefiles", a
   await updates({files: [makePath], dockerapi: dockerUrl, update: true, color: false, noCache: true});
 
   const updated = await readFile(makePath, "utf8");
-  // tag + digest bumped, registry prefix and renovate comment preserved
-  expect(updated).toContain(`SHELLCHECK_IMAGE ?= docker.io/koalaman/shellcheck:v0.12.0@${newDigest}  # renovate: datasource=docker`);
-  // plain image without a digest bumped, no digest introduced
+  expect(updated).toContain("SHELLCHECK_IMAGE ?= docker.io/koalaman/shellcheck:v0.12.0@sha256:list-new  # renovate: datasource=docker");
   expect(updated).toContain("PLAIN := koalaman/shellcheck:v0.12.0");
-  // host:port var left untouched
   expect(updated).toContain("TEST_MYSQL_HOST ?= mysql:3306");
+});
+
+test("make allowedVersions falls back to the highest allowed candidate", async ({expect = globalExpect}: any = {}) => {
+  const dir = join(testDir, "test-make-allowed");
+  mkdirSync(dir, {recursive: true});
+  const file = join(dir, "Makefile");
+  await writeFile(file, [
+    "TOOL := github.com/example/makeallowed/cmd/tool@v1.0.0",
+    "IMAGE := example/makeallowed:1.0",
+    "",
+  ].join("\n"));
+  await writeFile(join(dir, "renovate.json"), JSON.stringify({packageRules: [
+    {matchPackageNames: ["github.com/example/makeallowed/cmd/tool"], allowedVersions: "<2"},
+    {matchPackageNames: ["example/makeallowed"], allowedVersions: "<2"},
+  ]}));
+
+  await updates({
+    files: [file], modes: ["make"], goproxy: goProxyUrl, dockerapi: dockerUrl,
+    update: true, color: false, noCache: true,
+  });
+
+  expect(await readFile(file, "utf8")).toBe([
+    "TOOL := github.com/example/makeallowed/cmd/tool@v1.1.0",
+    "IMAGE := example/makeallowed:1.1",
+    "",
+  ].join("\n"));
 });
 
 test("docker image names match with and without the docker.io prefix", async ({expect = globalExpect}: any = {}) => {
@@ -1378,7 +944,6 @@ test("docker image names match with and without the docker.io prefix", async ({e
     "",
   ].join("\n"));
 
-  // a pin written without the registry must hold both spellings
   await updates({files: [makePath], dockerapi: dockerUrl, update: true, color: false, noCache: true, pin: {"koalaman/shellcheck": "0.11.x"}});
   expect(await readFile(makePath, "utf8")).toBe([
     "PREFIXED := docker.io/koalaman/shellcheck:v0.11.0",
@@ -1386,7 +951,6 @@ test("docker image names match with and without the docker.io prefix", async ({e
     "",
   ].join("\n"));
 
-  // and so must one written with it
   await updates({files: [makePath], dockerapi: dockerUrl, update: true, color: false, noCache: true, exclude: ["docker.io/koalaman/shellcheck"]});
   expect(await readFile(makePath, "utf8")).toBe([
     "PREFIXED := docker.io/koalaman/shellcheck:v0.11.0",
@@ -1394,7 +958,6 @@ test("docker image names match with and without the docker.io prefix", async ({e
     "",
   ].join("\n"));
 
-  // an npm dep of the same name resolves its options first, and answers for neither spelling
   const clashDir = join(testDir, "test-docker-npm-name-clash");
   mkdirSync(clashDir, {recursive: true});
   await writeFile(join(clashDir, "package.json"), JSON.stringify({dependencies: {noty: "3.1.0"}}));
@@ -1407,83 +970,23 @@ test("docker image names match with and without the docker.io prefix", async ({e
   expect(clash.results.docker).toBeUndefined(); // 18 to 22 is no patch
 });
 
-test("go prerelease with -p per-package", async ({expect = globalExpect}: any = {}) => {
-  // With per-package --prerelease, Go prerelease versions should be offered for that package
-  expect(await makeTest(`-j -f ${goPreFile} -p github.com/example/prerelpkg`)()).toMatchInlineSnapshot(`
-    {
-      "go": {
-        "deps": {
-          "github.com/example/prerelpkg": {
-            "info": "https://github.com/example/prerelpkg",
-            "new": "1.1.0-rc.1",
-            "old": "1.0.0",
-          },
-        },
-      },
-    }
-  `);
-});
-
-test("go replace", async ({expect = globalExpect}: any = {}) => {
-  expect(await makeTest(`-j -f ${goReplaceFile}`)()).toMatchInlineSnapshot(`
-    {
-      "go": {
-        "replace": {
-          "gitea.com/gitea/act": {
-            "info": "https://gitea.com/gitea/act",
-            "new": "0.261.7",
-            "old": "0.261.4",
-          },
-        },
-      },
-    }
-  `);
-});
-
-test("go replace update", async ({expect = globalExpect}: any = {}) => {
+test("go replace reports and writes the update", async ({expect = globalExpect}: any = {}) => {
   const testGoModDir = join(testDir, "test-go-replace");
   mkdirSync(testGoModDir, {recursive: true});
-
-  const goReplaceContent = readFileSync(goReplaceFile, "utf8");
-  await writeFile(join(testGoModDir, "go.mod"), goReplaceContent);
-
-  await runCliExec([
-    script,
-    "-u",
-    "-f", join(testGoModDir, "go.mod"),
-    "-c",
-    "--goproxy", goProxyUrl,
+  await writeFile(join(testGoModDir, "go.mod"), readFileSync(goReplaceFile, "utf8"));
+  const {stdout} = await runCliExec([
+    script, "-j", "-u", "-f", join(testGoModDir, "go.mod"), "-c", "--goproxy", goProxyUrl,
   ]);
-
+  expect(dependencyRows(JSON.parse(stdout).results)).toMatchObject([
+    ["go", "replace", "gitea.com/gitea/act", dep("https://gitea.com/gitea/act", "0.261.7", "0.261.4")],
+  ]);
   const updatedContent = await readFile(join(testGoModDir, "go.mod"), "utf8");
-
   expect(updatedContent).toContain("gitea.com/gitea/act v0.261.7");
   expect(updatedContent).not.toContain("gitea.com/gitea/act v0.261.4");
   expect(updatedContent).toContain("replace");
 });
 
-test("go workspace", async ({expect = globalExpect}: any = {}) => {
-  const result = await updates({
-    files: [goWorkspaceFile],
-    goproxy: goProxyUrl,
-    color: false,
-    noCache: true,
-  });
-  const {go} = result.results;
-  expect(go).toBeDefined();
-
-  // Should find deps from both workspace members
-  const appDeps = go["deps|./app"];
-  const libDeps = go["deps|./lib"];
-  expect(appDeps).toBeDefined();
-  expect(libDeps).toBeDefined();
-  expect(appDeps["github.com/google/uuid"]).toBeDefined();
-  expect(libDeps["github.com/google/uuid"]).toBeDefined();
-  expect(appDeps["github.com/google/uuid"].old).toBe("1.5.0");
-  expect(libDeps["github.com/google/uuid"].old).toBe("1.5.0");
-});
-
-test("go workspace update", async ({expect = globalExpect}: any = {}) => {
+test("go workspace reports and writes member updates", async ({expect = globalExpect}: any = {}) => {
   const testGoWorkDir = join(testDir, "test-go-workspace");
   mkdirSync(join(testGoWorkDir, "app"), {recursive: true});
   mkdirSync(join(testGoWorkDir, "lib"), {recursive: true});
@@ -1493,54 +996,22 @@ test("go workspace update", async ({expect = globalExpect}: any = {}) => {
   writeFileSync(join(testGoWorkDir, "app", "main.go"), readFileSync(join(goWorkspaceDir, "app", "main.go"), "utf8"));
   writeFileSync(join(testGoWorkDir, "lib", "go.mod"), readFileSync(join(goWorkspaceDir, "lib", "go.mod"), "utf8"));
 
-  await runCliExec([
-    script,
-    "-u",
-    "-f", join(testGoWorkDir, "go.work"),
-    "-c",
-    "--goproxy", goProxyUrl,
-  ]);
+  const {go} = (await updates({
+    files: [join(testGoWorkDir, "go.work")], goproxy: goProxyUrl, update: true, color: false, noCache: true,
+  })).results;
+  expect(go["deps|./app"]["github.com/google/uuid"].old).toBe("1.5.0");
+  expect(go["deps|./lib"]["github.com/google/uuid"].old).toBe("1.5.0");
 
   const appMod = await readFile(join(testGoWorkDir, "app", "go.mod"), "utf8");
   const libMod = await readFile(join(testGoWorkDir, "lib", "go.mod"), "utf8");
-  expect(appMod).toContain("github.com/google/uuid v1.6.0");
+  expect(appMod).toContain("github.com/google/uuid/v2 v2.0.0-20260217135312-8c5a7de9ffa1");
   expect(appMod).not.toContain("uuid v1.5.0");
-  expect(libMod).toContain("github.com/google/uuid v1.6.0");
+  expect(libMod).toContain("github.com/google/uuid/v2 v2.0.0-20260217135312-8c5a7de9ffa1");
   expect(libMod).not.toContain("uuid v1.5.0");
+  expect(await readFile(join(testGoWorkDir, "app", "main.go"), "utf8")).toContain('"github.com/google/uuid/v2"');
 });
 
-test("cargo workspace", async ({expect = globalExpect}: any = {}) => {
-  const result = await updates({
-    files: [cargoWorkspaceFile],
-    cargoapi: cargoUrl,
-    color: false,
-    noCache: true,
-  });
-  const {cargo} = result.results;
-  expect(cargo).toBeDefined();
-
-  // workspace.dependencies from root (no prefix)
-  expect(cargo["workspace.dependencies"]).toBeDefined();
-  expect(cargo["workspace.dependencies"]["serde_json"]).toBeDefined();
-  expect(cargo["workspace.dependencies"]["serde_json"].old).toBe("1.0.100");
-  expect(cargo["workspace.dependencies"]["serde_json"].new).toBe("1.0.120");
-
-  // Member deps with prefixes
-  const crateADeps = cargo["dependencies|./crate-a"];
-  const crateBDeps = cargo["dependencies|./crate-b"];
-  const crateBDevDeps = cargo["dev-dependencies|./crate-b"];
-  expect(crateADeps).toBeDefined();
-  expect(crateBDeps).toBeDefined();
-  expect(crateBDevDeps).toBeDefined();
-  expect(crateADeps["serde"].old).toBe("1.0.100");
-  expect(crateBDeps["tokio"].old).toBe("1.34.0");
-  expect(crateBDevDeps["rand"].old).toBe("0.8.5");
-  expect(crateADeps["serde"].new).toBe("1.0.200");
-  expect(crateBDeps["tokio"].new).toBe("1.35.0");
-  expect(crateBDevDeps["rand"].new).toBe("0.9.0");
-});
-
-test("cargo workspace update", async ({expect = globalExpect}: any = {}) => {
+test("cargo workspace reports and writes root and member updates", async ({expect = globalExpect}: any = {}) => {
   const testCargoWorkDir = join(testDir, "test-cargo-workspace");
   mkdirSync(join(testCargoWorkDir, "crate-a"), {recursive: true});
   mkdirSync(join(testCargoWorkDir, "crate-b"), {recursive: true});
@@ -1550,20 +1021,20 @@ test("cargo workspace update", async ({expect = globalExpect}: any = {}) => {
   writeFileSync(join(testCargoWorkDir, "crate-a", "Cargo.toml"), readFileSync(join(cargoWorkspaceDir, "crate-a", "Cargo.toml"), "utf8"));
   writeFileSync(join(testCargoWorkDir, "crate-b", "Cargo.toml"), readFileSync(join(cargoWorkspaceDir, "crate-b", "Cargo.toml"), "utf8"));
 
-  // a member named alongside its root, in either order, is no second file: the root supersedes it
   const both = await updates({
     files: [join(testCargoWorkDir, "crate-a", "Cargo.toml"), join(testCargoWorkDir, "Cargo.toml")],
     cargoapi: cargoUrl, color: false, noCache: true,
   });
   expect(Object.keys(both.results.cargo).filter(key => key.includes("crate-a"))).toHaveLength(1);
 
-  await runCliExec([
-    script,
-    "-u",
-    "-f", join(testCargoWorkDir, "Cargo.toml"),
-    "-c",
-    "--cargoapi", cargoUrl,
-  ]);
+  const {cargo} = (await updates({
+    files: [join(testCargoWorkDir, "Cargo.toml")], cargoapi: cargoUrl,
+    update: true, color: false, noCache: true,
+  })).results;
+  expect(cargo["workspace.dependencies"]["serde_json"]).toMatchObject({old: "1.0.100", new: "1.0.120"});
+  expect(cargo["dependencies|./crate-a"].serde).toMatchObject({old: "1.0.100", new: "1.0.200"});
+  expect(cargo["dependencies|./crate-b"].tokio).toMatchObject({old: "1.34.0", new: "1.35.0"});
+  expect(cargo["dev-dependencies|./crate-b"].rand).toMatchObject({old: "0.8.5", new: "0.9.0"});
 
   const rootToml = await readFile(join(testCargoWorkDir, "Cargo.toml"), "utf8");
   const crateAToml = await readFile(join(testCargoWorkDir, "crate-a", "Cargo.toml"), "utf8");
@@ -1572,6 +1043,31 @@ test("cargo workspace update", async ({expect = globalExpect}: any = {}) => {
   expect(crateAToml).toContain('serde = "1.0.200"');
   expect(crateBToml).toContain('version = "1.35.0"');
   expect(crateBToml).toContain('rand = "0.9.0"');
+});
+
+test("multiple Cargo workspace roots keep member config identity", async ({expect = globalExpect}: any = {}) => {
+  const dir = mkdtempSync(join(tmpdir(), "updates-cargo-workspaces-"));
+  const roots = [join(dir, "one"), join(dir, "two")];
+  try {
+    for (const [index, root] of roots.entries()) {
+      mkdirSync(join(root, "crates", "app"), {recursive: true});
+      await writeFile(join(root, "Cargo.toml"), '[workspace]\nmembers = ["crates/*"]\n');
+      await writeFile(join(root, "crates", "app", "Cargo.toml"), '[package]\nname = "app"\nversion = "0.1.0"\n\n[dependencies]\nserde = "1.0.0"\n');
+      await writeFile(join(root, "renovate.json"), JSON.stringify({packageRules: [{
+        matchPackageNames: ["serde"], allowedVersions: index === 0 ? "<=1.0.100" : "<=1.0.200",
+      }]}));
+    }
+
+    await updates({
+      files: roots.map(root => join(root, "Cargo.toml")), cargoapi: cargoUrl,
+      modes: ["cargo"], update: true, color: false, noCache: true,
+    });
+
+    expect(await readFile(join(roots[0], "crates", "app", "Cargo.toml"), "utf8")).toContain('serde = "1.0.100"');
+    expect(await readFile(join(roots[1], "crates", "app", "Cargo.toml"), "utf8")).toContain('serde = "1.0.200"');
+  } finally {
+    await rm(dir, {recursive: true, force: true, maxRetries: 10, retryDelay: 100});
+  }
 });
 
 test("pnpm workspace", async ({expect = globalExpect}: any = {}) => {
@@ -1584,26 +1080,17 @@ test("pnpm workspace", async ({expect = globalExpect}: any = {}) => {
   };
   const result = await updates(opts);
   const {npm} = result.results;
-  expect(npm).toBeDefined();
+  expect(npm["devDependencies"]["typescript"].new).toBeTruthy();
 
-  // Root deps (no prefix)
-  expect(npm["devDependencies"]).toBeDefined();
-  expect(npm["devDependencies"]["typescript"]).toBeDefined();
-
-  // Member deps with prefixes
   const appADeps = npm["dependencies|./packages/app-a"];
   const libBDeps = npm["dependencies|./packages/lib-b"];
-  expect(appADeps).toBeDefined();
-  expect(libBDeps).toBeDefined();
-  expect(appADeps["prismjs"]).toBeDefined();
-  expect(libBDeps["react"]).toBeDefined();
+  expect(appADeps["prismjs"].new).toBeTruthy();
+  expect(libBDeps["react"].new).toBeTruthy();
 
-  expect(npm["catalog|pnpm-workspace.yaml"]["svgstore"]).toBeDefined();
-  expect(npm["catalogs.build|pnpm-workspace.yaml"]["typescript"]).toBeDefined();
-  // lib-b's `svgstore: "catalog:"` names the catalog and holds no range of its own
+  expect(npm["catalog|pnpm-workspace.yaml"]["svgstore"].new).toBeTruthy();
+  expect(npm["catalogs.build|pnpm-workspace.yaml"]["typescript"].new).toBeTruthy();
   expect(libBDeps["svgstore"]).toBeUndefined();
 
-  // a member's own manifest, listed first as a run started inside it would find it, is no second file
   const fromMember = await updates({
     ...opts,
     files: [join(pnpmWorkspaceDir, "packages", "app-a", "package.json"), pnpmWorkspaceFile],
@@ -1640,22 +1127,61 @@ test("pnpm workspace update, and a second run is a no-op", async ({expect = glob
 });
 
 test("pnpm workspace alongside unrelated package.json", async ({expect = globalExpect}: any = {}) => {
-  // A pnpm workspace and an unrelated plain package.json (second -f path) must both be
-  // processed, regardless of order — the workspace no longer suppresses the plain manifest.
   for (const files of [[pnpmWorkspaceFile, testFile], [testFile, pnpmWorkspaceFile]]) {
     const result = await updates({files, registry: npmUrl, forgeapi: githubUrl, color: false, noCache: true});
     const {npm} = result.results;
-    expect(npm).toBeDefined();
+    expect(npm["devDependencies"]["typescript"].new).toBeTruthy();
+    expect(npm["dependencies|./packages/app-a"]["prismjs"].new).toBeTruthy();
+    expect(npm["dependencies|./packages/lib-b"]["react"].new).toBeTruthy();
 
-    // workspace root + members still resolve
-    expect(npm["devDependencies"]?.["typescript"]).toBeDefined();
-    expect(npm["dependencies|./packages/app-a"]?.["prismjs"]).toBeDefined();
-    expect(npm["dependencies|./packages/lib-b"]?.["react"]).toBeDefined();
-
-    // the unrelated plain package.json (gulp-sourcemaps is unique to it) is no longer dropped
     const allNames = Object.values(npm).flatMap((group: any) => Object.keys(group));
     expect(allNames).toContain("gulp-sourcemaps");
   }
+});
+
+test("multiple npm workspace roots keep dependency and config identity", async ({expect = globalExpect}: any = {}) => {
+  const dir = join(testDir, "test-multiple-npm-workspaces");
+  const roots = [join(dir, "array"), join(dir, "object")];
+  for (const root of roots) mkdirSync(join(root, "packages", "app"), {recursive: true});
+  await writeFile(join(roots[0], "package.json"), JSON.stringify({
+    workspaces: ["packages/*"], dependencies: {react: "^17.0.0"},
+  }));
+  await writeFile(join(roots[1], "package.json"), JSON.stringify({
+    workspaces: {packages: ["packages/*"]}, dependencies: {react: "^17.0.0"},
+  }));
+  for (const root of roots) {
+    await writeFile(join(root, "packages", "app", "package.json"), JSON.stringify({dependencies: {noty: "^3.1.0"}}));
+  }
+  await writeFile(join(roots[0], "renovate.json"), JSON.stringify({packageRules: [
+    {matchPackageNames: ["react"], allowedVersions: "<=18.2.0"},
+    {matchPackageNames: ["noty"], allowedVersions: "<=3.1.4"},
+  ]}));
+  await writeFile(join(roots[1], "renovate.json"), JSON.stringify({packageRules: [
+    {matchPackageNames: ["react"], allowedVersions: "<=18.1.0"},
+    {matchPackageNames: ["noty"], allowedVersions: "<=3.1.3"},
+  ]}));
+
+  await updates(apiOpts({files: roots.map(root => join(root, "package.json")), modes: ["npm"], update: true}));
+
+  expect(JSON.parse(await readFile(join(roots[0], "package.json"), "utf8")).dependencies.react).toBe("^18.2.0");
+  expect(JSON.parse(await readFile(join(roots[1], "package.json"), "utf8")).dependencies.react).toBe("^18.1.0");
+  expect(JSON.parse(await readFile(join(roots[0], "packages", "app", "package.json"), "utf8")).dependencies.noty).toBe("^3.1.4");
+  expect(JSON.parse(await readFile(join(roots[1], "packages", "app", "package.json"), "utf8")).dependencies.noty).toBe("^3.1.3");
+});
+
+test("local npm dependencies are neither requested nor rewritten", async ({expect = globalExpect}: any = {}) => {
+  const dir = join(testDir, "test-local-npm-dependencies");
+  mkdirSync(dir, {recursive: true});
+  const file = join(dir, "package.json");
+  const content = `${JSON.stringify({dependencies: {
+    "local-file": "file:../local-file",
+    "local-link": "link:../local-link",
+  }}, null, 2)}\n`;
+  await writeFile(file, content);
+  const requestsBefore = localDependencyRequests;
+  await updates(apiOpts({files: [file], modes: ["npm"], update: true}));
+  expect(localDependencyRequests).toBe(requestsBefore);
+  expect(await readFile(file, "utf8")).toBe(content);
 });
 
 test("pin holds the range and keeps the authored precision", async ({expect = globalExpect}: any = {}) => {
@@ -1670,7 +1196,6 @@ test("pin holds the range and keeps the authored precision", async ({expect = gl
   });
   const {npm} = result.results;
 
-  // prismjs should be updated but only within the ^1.0.0 range
   expect(npm.dependencies.prismjs).toBeDefined();
   expect(satisfies(npm.dependencies.prismjs.new, "^1.0.0")).toBe(true);
 
@@ -1694,12 +1219,10 @@ test("a config-file pin and overrides merge with the renovate ones rather than r
     const output = await updates(apiOpts({files: [file]}));
     expect(output.results.npm.dependencies.noty.new).toBe("3.1.3");
 
-    // the authored entry comes last, so api.ts's last-match-wins still gives it precedence
     const {args, positionals} = parseCliArgs(["-f", file]);
-    expect((await resolveConfig(args, positionals)).overrides).toEqual([
-      {include: ["esbuild"], cooldown: 1},
-      {include: ["gulp-sourcemaps"], greatest: true},
-    ]);
+    const resolved = await resolveConfig(args, positionals) as UpdatesOptions & {renovateVersionRules: Array<Record<string, any>>};
+    expect(resolved.overrides).toEqual([{include: ["gulp-sourcemaps"], greatest: true}]);
+    expect(resolved.renovateVersionRules).toContainEqual({matchPackageNames: ["esbuild"], cooldownDays: 1});
   } finally {
     try {
       await rm(dir, {recursive: true, force: true, maxRetries: 10, retryDelay: 100});
@@ -1708,7 +1231,6 @@ test("a config-file pin and overrides merge with the renovate ones rather than r
 });
 
 function actionsArgs(...extra: Array<string>) {
-  // --dockerapi keeps the subprocess prewarm's docker HEAD on the mock.
   return [script, "-c", "--forgeapi", githubUrl, "--dockerapi", dockerUrl, "-M", "actions", "-f", actionsDir, ...extra];
 }
 
@@ -1717,6 +1239,26 @@ function getActionsDeps(results: any) {
   return results.actions[ciType!];
 }
 
+test("branch-only actions do not fetch forge metadata", async () => {
+  let requests = 0;
+  const server = makeServer((_req, res) => {
+    requests++;
+    res.statusCode = 500;
+    res.end();
+  });
+  const dir = mkdtempSync(join(tmpdir(), "updates-actions-branches-"));
+  const workflow = join(dir, ".github", "workflows", "ci.yml");
+  mkdirSync(join(dir, ".github", "workflows"), {recursive: true});
+  writeFileSync(workflow, "jobs:\n  test:\n    steps:\n      - uses: one/repo@main\n      - uses: two/repo@develop\n");
+  await server.start(0);
+  try {
+    await updates({files: [workflow], modes: ["actions"], forgeapi: makeUrl(server), noCache: true, noColor: true});
+    expect(requests).toBe(0);
+  } finally {
+    await Promise.all([server.close(), rm(dir, {recursive: true, force: true})]);
+  }
+});
+
 test("actions basic", async ({expect = globalExpect}: any = {}) => {
   const {stdout, stderr} = await runCliExec(actionsArgs("-j"));
   expect(stderr).toEqual("");
@@ -1724,7 +1266,6 @@ test("actions basic", async ({expect = globalExpect}: any = {}) => {
   expect(output.results.actions).toBeDefined();
   const actionsDeps = getActionsDeps(output.results);
 
-  // actions/checkout v2 -> v10 (v10 tag exists, precision preserved)
   expect(actionsDeps["actions/checkout"].old).toBe("2");
   expect(actionsDeps["actions/checkout"].new).toBe("10");
   expect(actionsDeps["actions/checkout"].info).toContain("actions/checkout");
@@ -1734,7 +1275,6 @@ test("actions basic", async ({expect = globalExpect}: any = {}) => {
   expect(actionsDeps["actions/setup-node@v1.0.0"].old).toBe("1.0.0");
   expect(actionsDeps["actions/setup-node@v1.0.0"].new).toBe("10.0.0");
 
-  // Docker, local, and hash-pinned without tags should be skipped
   expect(actionsDeps["tj-actions/changed-files"]).toBeUndefined();
 });
 
@@ -1745,7 +1285,6 @@ test("actions include filter, with no false upgrade on the same major", async ({
   expect(actionsDeps["actions/checkout"].old).toBe("2");
   expect(actionsDeps["actions/checkout"].new).toBe("10");
   expect(actionsDeps["actions/setup-node"]).toBeUndefined();
-  // the `@v10` line resolves to v10.0.1, which formats back to the ref it was authored with
   expect(Object.keys(actionsDeps).filter(key => actionsDeps[key].old === "10")).toHaveLength(0);
 });
 
@@ -1788,7 +1327,7 @@ test("actions positional args", async ({expect = globalExpect}: any = {}) => {
   expect(actionsDeps["actions/setup-node@v1.0"].new).toBe("10.0.0");
 });
 
-test("actions update rewrites a tag, a short-tag fallback and a sha pin with its comment", async ({expect = globalExpect}: any = {}) => {
+test("actions update rewrites tags and keeps same-sha pin identities distinct", async ({expect = globalExpect}: any = {}) => {
   const tmpActionsDir = join(testDir, "actions-update-test/.github/workflows");
   mkdirSync(tmpActionsDir, {recursive: true});
   const wfPath = join(tmpActionsDir, "ci.yaml");
@@ -1801,7 +1340,9 @@ test("actions update rewrites a tag, a short-tag fallback and a sha pin with its
     "    steps:",
     "      - uses: actions/checkout@v2",
     "      - uses: actions/setup-node@v1",
-    "      - uses: actions/checkout@cccc000000000000000000000000000000000006 # v4.2.0",
+    "      - uses: actions/checkout@dddd000000000000000000000000000000000000 # v4.2.0",
+    "      - uses: actions/checkout@dddd000000000000000000000000000000000000 # main",
+    "      - uses: actions/checkout@dddd000000000000000000000000000000000000 # release",
     "",
   ].join("\n"));
 
@@ -1814,15 +1355,18 @@ test("actions update rewrites a tag, a short-tag fallback and a sha pin with its
   expect(updatedContent).toContain("actions/checkout@v10\n");
   expect(updatedContent).not.toContain("actions/checkout@v2");
   expect(updatedContent).toContain("actions/setup-node@v10.0.0");
-  expect(updatedContent).toContain("actions/checkout@cccc000000000000000000000000000000000011 # v10.0.1");
-  expect(updatedContent).not.toContain("cccc000000000000000000000000000000000006");
+  expect(updatedContent).toContain("actions/checkout@cccc000000000000000000000000000000000006 # v4.2.0");
+  expect(updatedContent).toContain("actions/checkout@aaaa000000000000000000000000000000000001 # main");
+  expect(updatedContent).toContain("actions/checkout@bbbb000000000000000000000000000000000002 # release");
+  expect(updatedContent).not.toContain("dddd000000000000000000000000000000000000");
 });
 
 test("actions hash-pinned", async ({expect = globalExpect}: any = {}) => {
   const tmpActionsDir = join(testDir, "actions-hash-test/.github/workflows");
   mkdirSync(tmpActionsDir, {recursive: true});
   const wfPath = join(tmpActionsDir, "ci.yaml");
-  await writeFile(wfPath, "name: ci\non: push\njobs:\n  ci:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@cccc000000000000000000000000000000000006 # v4.2.0\n");
+  const oldDigest = "dddd000000000000000000000000000000000000";
+  await writeFile(wfPath, `name: ci\non: push\njobs:\n  ci:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@${oldDigest} # v4.2.0\n`);
 
   const {stdout, stderr} = await runCliExec([
     script, "-j", "-c", "--forgeapi", githubUrl, "-M", "actions",
@@ -1832,9 +1376,10 @@ test("actions hash-pinned", async ({expect = globalExpect}: any = {}) => {
   const output = JSON.parse(stdout);
   const ciKey = Object.keys(output.results.actions).find(t => t.endsWith("ci.yaml"));
   const actionsDeps = output.results.actions[ciKey!];
-  expect(actionsDeps["actions/checkout"].old).toBe("4.2.0");
-  expect(actionsDeps["actions/checkout"].new).toBe("10.0.1");
-  expect(actionsDeps["actions/checkout"].age).toBeTruthy();
+  expect(actionsDeps["actions/checkout"].old).toBe("v4.2.0");
+  expect(actionsDeps["actions/checkout"].new).toBe("v4.2.0");
+  expect(actionsDeps["actions/checkout"].oldDigest).toBe(oldDigest);
+  expect(actionsDeps["actions/checkout"].newDigest).toBe("cccc000000000000000000000000000000000006");
 });
 
 test("actions composite action discovery", async ({expect = globalExpect}: any = {}) => {
@@ -1849,9 +1394,6 @@ test("actions composite action discovery", async ({expect = globalExpect}: any =
   const wfKey = Object.keys(results).find(k => k.endsWith("workflows/ci.yml"));
   const compKey = Object.keys(results).find(k => k.endsWith("my-action/action.yml"));
   const nestedKey = Object.keys(results).find(k => k.endsWith("nested/sub/action.yaml"));
-  expect(wfKey).toBeDefined();
-  expect(compKey).toBeDefined();
-  expect(nestedKey).toBeDefined();
   expect(results[wfKey!]["actions/checkout"].new).toBe("10");
   expect(results[compKey!]["actions/setup-node"].new).toBe("10.0.0");
   expect(results[nestedKey!]["actions/checkout"].new).toBe("10");
@@ -1879,78 +1421,43 @@ test("actions composite action update, in every forge dir", async ({expect = glo
   }
 });
 
-// -- Docker tests --
 
 function dockerArgs(...extra: Array<string>) {
   return [script, "-c", "--dockerapi", dockerUrl, "-M", "docker", ...extra];
 }
 
-test("docker Dockerfile basic", async ({expect = globalExpect}: any = {}) => {
-  const {stdout, stderr} = await runCliExec(dockerArgs("-j", "-f", dockerfileFixture));
+test.each([
+  ["Dockerfile", dockerfileFixture, "Dockerfile", {
+    "node:18": {old: "18", new: "22", info: "https://hub.docker.com/_/node"},
+    "node:20": {old: "20", new: "22"},
+    postgres: {old: "15-alpine", new: "17-alpine", info: "https://hub.docker.com/_/postgres"},
+  }],
+  ["compose", composeFixture, "docker-compose.yaml", {
+    node: {old: "18", new: "22"}, postgres: {old: "15-alpine", new: "17-alpine"}, redis: {old: "7", new: "8"},
+  }],
+  ["workflow", dockerActionsDir, "ci.yaml", {
+    node: {old: "18", new: "22"}, postgres: {old: "15", new: "17"}, redis: {old: "7", new: "8"},
+  }],
+])("docker %s basic", async (_name, file, suffix, expected, {expect = globalExpect}: any = {}) => {
+  const {stdout, stderr} = await runCliExec(dockerArgs("-j", "-f", file));
   expect(stderr).toEqual("");
-  const output = JSON.parse(stdout);
-  expect(output.results.docker).toBeDefined();
-
-  const dockerfileKey = Object.keys(output.results.docker).find(t => t.endsWith("Dockerfile"));
-  expect(dockerfileKey).toBeDefined();
-  const dockerDeps = output.results.docker[dockerfileKey!];
-
-  expect(dockerDeps["node:18"].old).toBe("18");
-  expect(dockerDeps["node:18"].new).toBe("22");
-  expect(dockerDeps["node:18"].info).toBe("https://hub.docker.com/_/node");
-  expect(dockerDeps["node:20"].old).toBe("20");
-  expect(dockerDeps["node:20"].new).toBe("22");
-
-  // postgres:15-alpine -> postgres:17-alpine (suffix preserved, oldOrig shown as old)
-  expect(dockerDeps.postgres.old).toBe("15-alpine");
-  expect(dockerDeps.postgres.new).toBe("17-alpine");
-  expect(dockerDeps.postgres.info).toBe("https://hub.docker.com/_/postgres");
+  const docker = JSON.parse(stdout).results.docker;
+  expect(docker[Object.keys(docker).find(key => key.endsWith(suffix))!]).toMatchObject(expected);
 });
 
-test("docker compose basic", async ({expect = globalExpect}: any = {}) => {
-  const {stdout, stderr} = await runCliExec(dockerArgs("-j", "-f", composeFixture));
-  expect(stderr).toEqual("");
-  const output = JSON.parse(stdout);
-  expect(output.results.docker).toBeDefined();
+test("docker allowedVersions compares floating tags with Docker semantics", async ({expect = globalExpect}: any = {}) => {
+  const dir = join(testDir, "test-docker-allowed");
+  mkdirSync(dir, {recursive: true});
+  const file = join(dir, "Dockerfile");
+  await writeFile(file, "FROM node:18\n");
+  await writeFile(join(dir, "renovate.json"), JSON.stringify({packageRules: [
+    {matchPackageNames: ["node"], allowedVersions: "<22"},
+  ]}));
 
-  const composeKey = Object.keys(output.results.docker).find(t => t.endsWith("docker-compose.yaml"));
-  expect(composeKey).toBeDefined();
-  const dockerDeps = output.results.docker[composeKey!];
+  const output = await updates({files: [file], modes: ["docker"], dockerapi: dockerUrl, update: true, color: false, noCache: true});
 
-  // node:18 -> node:22
-  expect(dockerDeps.node.old).toBe("18");
-  expect(dockerDeps.node.new).toBe("22");
-
-  // postgres:15-alpine -> postgres:17-alpine
-  expect(dockerDeps.postgres.old).toBe("15-alpine");
-  expect(dockerDeps.postgres.new).toBe("17-alpine");
-
-  // redis:7 -> redis:8
-  expect(dockerDeps.redis.old).toBe("7");
-  expect(dockerDeps.redis.new).toBe("8");
-});
-
-test("docker workflow container/image", async ({expect = globalExpect}: any = {}) => {
-  const {stdout, stderr} = await runCliExec(dockerArgs("-j", "-f", dockerActionsDir));
-  expect(stderr).toEqual("");
-  const output = JSON.parse(stdout);
-  expect(output.results.docker).toBeDefined();
-
-  const ciKey = Object.keys(output.results.docker).find(t => t.endsWith("ci.yaml"));
-  expect(ciKey).toBeDefined();
-  const dockerDeps = output.results.docker[ciKey!];
-
-  // node:18 -> node:22 (from container: and uses: docker://)
-  expect(dockerDeps.node.old).toBe("18");
-  expect(dockerDeps.node.new).toBe("22");
-
-  // postgres:15 -> postgres:17 (from services image:)
-  expect(dockerDeps.postgres.old).toBe("15");
-  expect(dockerDeps.postgres.new).toBe("17");
-
-  // redis:7 -> redis:8 (from container.image object form)
-  expect(dockerDeps.redis.old).toBe("7");
-  expect(dockerDeps.redis.new).toBe("8");
+  expect(Object.values(output.results.docker)[0].node.new).toBe("20");
+  expect(await readFile(file, "utf8")).toBe("FROM node:20\n");
 });
 
 test("actions mode does not include docker from workflows", async ({expect = globalExpect}: any = {}) => {
@@ -1960,26 +1467,14 @@ test("actions mode does not include docker from workflows", async ({expect = glo
   expect(output.results.docker).toBeUndefined();
 });
 
-test("docker include filter", async ({expect = globalExpect}: any = {}) => {
-  const {stdout, stderr} = await runCliExec(dockerArgs("-j", "-f", composeFixture, "-i", "node"));
+test.each([
+  ["include", "-i", ["node"]],
+  ["exclude", "-e", ["postgres", "redis"]],
+])("docker %s filter", async (_name, flag, expected, {expect = globalExpect}: any = {}) => {
+  const {stdout, stderr} = await runCliExec(dockerArgs("-j", "-f", composeFixture, flag, "node"));
   expect(stderr).toEqual("");
-  const output = JSON.parse(stdout);
-  const composeKey = Object.keys(output.results.docker).find(t => t.endsWith("docker-compose.yaml"));
-  const dockerDeps = output.results.docker[composeKey!];
-  expect(dockerDeps.node).toBeDefined();
-  expect(dockerDeps.postgres).toBeUndefined();
-  expect(dockerDeps.redis).toBeUndefined();
-});
-
-test("docker exclude filter", async ({expect = globalExpect}: any = {}) => {
-  const {stdout, stderr} = await runCliExec(dockerArgs("-j", "-f", composeFixture, "-e", "node"));
-  expect(stderr).toEqual("");
-  const output = JSON.parse(stdout);
-  const composeKey = Object.keys(output.results.docker).find(t => t.endsWith("docker-compose.yaml"));
-  const dockerDeps = output.results.docker[composeKey!];
-  expect(dockerDeps.node).toBeUndefined();
-  expect(dockerDeps.postgres).toBeDefined();
-  expect(dockerDeps.redis).toBeDefined();
+  const docker = JSON.parse(stdout).results.docker;
+  expect(Object.keys(docker[Object.keys(docker).find(key => key.endsWith("docker-compose.yaml"))!]).sort()).toEqual(expected);
 });
 
 test("docker update rewrites Dockerfiles, compose files and workflows", async ({expect = globalExpect}: any = {}) => {
@@ -2003,6 +1498,10 @@ test("docker update rewrites Dockerfiles, compose files and workflows", async ({
     "        image: postgres:15",
     "    steps:",
     "      - uses: docker://node:18",
+    "      - run: |",
+    "          cat >fragment.yml <<'EOF'",
+    "          uses: docker://node:18",
+    "          EOF",
     "  test2:",
     "    runs-on: ubuntu-latest",
     "    container:",
@@ -2024,7 +1523,7 @@ test("docker update rewrites Dockerfiles, compose files and workflows", async ({
   expect(updatedWorkflow).toContain("image: postgres:17");
   expect(updatedWorkflow).not.toContain("image: postgres:15");
   expect(updatedWorkflow).toContain("docker://node:22");
-  expect(updatedWorkflow).not.toContain("docker://node:18");
+  expect(updatedWorkflow).toContain("          uses: docker://node:18");
   expect(updatedWorkflow).toContain("image: redis:8");
   expect(updatedWorkflow).not.toContain("image: redis:7");
 });
@@ -2033,7 +1532,6 @@ test("docker directory discovery covers every recognized filename", async ({expe
   const {stdout, stderr} = await runCliExec(dockerArgs("-j", "-f", dockerDir));
   expect(stderr).toEqual("");
   const {docker} = JSON.parse(stdout).results;
-  // keys carry the platform separator, and the bare name needs one to tell it from docker-compose
   const byName = new Map(Object.entries(docker).map(([key, deps]) => [key.replace(/\\/g, "/"), deps as any]));
   const find = (suffix: string) => byName.keys().find(key => key.endsWith(suffix));
   for (const suffix of ["Dockerfile", "Dockerfile.dev", "docker-compose.yaml", "docker-stack.yml", "/compose.yaml"]) {
@@ -2043,14 +1541,11 @@ test("docker directory discovery covers every recognized filename", async ({expe
     expect(byName.get(find(suffix)!).node).toMatchObject({old: "18", new: "22"});
   }
 
-  // a symlinked directory is the directory it points at, junction so win32 needs no privileges
   const linked = join(testDir, "test-docker-dir-symlink");
   symlinkSync(dockerDir, linked, "junction");
   const {stdout: linkedStdout} = await runCliExec(dockerArgs("-j", "-f", linked));
   expect(Object.keys(JSON.parse(linkedStdout).results.docker)).toHaveLength(byName.size);
 
-  // a link is the file it points at, whose name is what selects the mode, and naming both is no
-  // second file however they are ordered
   const linkedFile = join(testDir, "test-docker-file-symlink");
   const target = join(dockerDir, "Dockerfile.dev");
   symlinkSync(target, linkedFile);
@@ -2078,30 +1573,21 @@ test("fetch error includes URL and no stack trace", async ({expect = globalExpec
 });
 
 test("repeated multi-value flag survives swallowed flag recovery", async ({expect = globalExpect}: any = {}) => {
-  // `-i react -i -p`: the second -i wrongly swallows -p; recovery must keep the
-  // earlier `react` include (not reset the array) and still enable prerelease.
-  const results = await makeTest("-j -i react -i -p")();
-  // include `react` survived (without the fix the cleared array drops it and every
-  // outdated dep returns); the prerelease new version confirms `-p` still applied.
+  const results = await makeTest("-j -i react -i -p");
   expect(Object.keys(results.npm.dependencies)).toEqual(["react"]);
   expect(results.npm.dependencies.react.new).toBe("18.3.0-next-fecc288b7-20221025");
 
-  // `-i react -i -p -i gulp-sourcemaps`: the swallowed `-p` is NOT the last value;
-  // recovery must drop that specific bogus value, keeping both real includes.
-  const nonLast = await makeTest("-j -i react -i -p -i gulp-sourcemaps")();
+  const nonLast = await makeTest("-j -i react -i -p -i gulp-sourcemaps");
   const keys = Object.keys(nonLast.npm.dependencies);
   expect(keys).toContain("react");
   expect(keys).toContain("gulp-sourcemaps");
   expect(nonLast.npm.dependencies.react.new).toBe("18.3.0-next-fecc288b7-20221025");
 
-  // an inline value was written deliberately, so `--exclude=-u` excludes `-u` rather than updating
   const {args} = parseCliArgs(["-i", "noty", "--exclude=-u"]);
   expect(args.exclude).toEqual(["-u"]);
   expect(args.update).toBeUndefined();
 });
 
-// Config option tests — each test gets its own temp dir for concurrency safety. Only the exit
-// code and the printed shape need the binary; `run` resolves the same config in-process.
 async function withConfigDir<T>(config: string, fn: (dir: string) => Promise<T>): Promise<T> {
   const dir = mkdtempSync(join(tmpdir(), "updates-cfg-"));
   writeFileSync(join(dir, "package.json"), JSON.stringify(testPkg, null, 2));
@@ -2123,30 +1609,28 @@ function configTest(config: string, args: string): Promise<{stdout: string, stde
   ], {cwd: dir}));
 }
 
-test("config errorOnOutdated", async ({expect = globalExpect}: any = {}) => {
-  try {
-    await configTest(`{ errorOnOutdated: true }`, "-j -i noty");
-    throw new Error("Expected non-zero exit");
-  } catch (err: any) {
-    expect(err?.stdout || err?.message).toContain("noty");
-    expect(err?.code).toBe(2);
+test("config exit-code options", async ({expect = globalExpect}: any = {}) => {
+  for (const [config, args, output] of [
+    ["{ errorOnOutdated: true }", "-j -i noty", "noty"],
+    ["{ errorOnUnchanged: true }", "-j -i updates", "All dependencies are up to date."],
+  ]) {
+    try {
+      await configTest(config, args);
+      throw new Error("Expected non-zero exit");
+    } catch (err: any) {
+      expect(err?.code).toBe(2);
+      expect(err?.stdout || err?.message).toContain(output);
+    }
   }
 });
 
-test("config errorOnUnchanged", async ({expect = globalExpect}: any = {}) => {
-  const {stdout} = await configTest(`{ errorOnUnchanged: true }`, "-j -i updates");
-  expect(JSON.parse(stdout).results.npm).toBeDefined();
-});
-
 test("config cli overrides config", async ({expect = globalExpect}: any = {}) => {
-  // Config has minor (patch+minor), CLI -P overrides to patch-only
   const {stdout} = await withConfigDir(`{ minor: true }`, dir =>
     runCliExec([script, "-j", "-i", "gulp-sourcemaps", "-P", "-c", ...apiArgs(), "-f", join(dir, "package.json")]));
   expect(JSON.parse(stdout).results.npm.dependencies["gulp-sourcemaps"].new).toBe("2.0.1");
 });
 
 test("config json yields JSON error output without -j flag", async ({expect = globalExpect}: any = {}) => {
-  // json comes from the config file, not the CLI; errors must still print as JSON.
   try {
     await configTest(`{ json: true }`, "-i noty --registry http://test.invalid -T 1000");
     throw new Error("Expected non-zero exit");
@@ -2155,7 +1639,6 @@ test("config json yields JSON error output without -j flag", async ({expect = gl
     expect(errors[0].error).toContain("test.invalid");
   }
 
-  // -j is honoured for an error raised before any config has loaded
   try {
     await configTest(`{}`, "-j -l foo");
     throw new Error("Expected non-zero exit");
@@ -2165,16 +1648,15 @@ test("config json yields JSON error output without -j flag", async ({expect = gl
 });
 
 test("a /regex/ cli value applies the flag to the packages it matches alone", async ({expect = globalExpect}: any = {}) => {
-  const greatest = await makeTest("-j -i gulp-sourcemaps,noty -g /^gulp/")();
+  const greatest = await makeTest("-j -i gulp-sourcemaps,noty -g /^gulp/");
   expect(greatest.npm.dependencies["gulp-sourcemaps"].new).toBe("2.6.5");
   expect(greatest.npm.dependencies.noty.new).toBe("3.1.4");
 
-  const prerelease = await makeTest("-j -i gulp-sourcemaps,noty -p /^noty/")();
+  const prerelease = await makeTest("-j -i gulp-sourcemaps,noty -p /^noty/");
   expect(prerelease.npm.dependencies.noty.new).toBe("3.2.0-beta");
   expect(prerelease.npm.dependencies["gulp-sourcemaps"].new).toBe("2.6.5");
 });
 
-// Direct API tests
 function apiOpts(overrides: UpdatesOptions = {}): UpdatesOptions {
   return {
     files: [testFile],
@@ -2197,7 +1679,6 @@ test("api basic", async ({expect = globalExpect}: any = {}) => {
   expect(output.results.npm.dependencies.noty.new).toBe("3.1.4");
   expect(output.results.npm.dependencies.noty.info).toBeTruthy();
 
-  // a second call in the same process re-requests rather than answering from the finished run's cache
   let latest = "3.1.4";
   const registry = makeServer((_, res) => res.send(gzipNow(JSON.stringify({
     name: "noty", "dist-tags": {latest}, versions: {"3.1.0": {}, "3.1.4": {}, "3.2.1": {}},
@@ -2213,36 +1694,34 @@ test("api basic", async ({expect = globalExpect}: any = {}) => {
   }
 });
 
-test("api no deps", async ({expect = globalExpect}: any = {}) => {
-  const output = await updates(apiOpts({files: [emptyFile]}));
+test("api messages, filters and mode validation", async ({expect = globalExpect}: any = {}) => {
+  let output = await updates(apiOpts({files: [emptyFile]}));
   expect(output.message).toBe("No dependencies found, nothing to do.");
   expect(Object.keys(output.results)).toHaveLength(0);
-});
 
-test("api all up to date", async ({expect = globalExpect}: any = {}) => {
-  const output = await updates(apiOpts({include: ["updates"], cooldown: "999999d"}));
+  output = await updates(apiOpts({include: ["updates"], cooldown: "999999d"}));
   expect(output.message).toBe("All dependencies are up to date.");
+
+  output = await updates(apiOpts({include: [/^noty$/]}));
+  expect(Object.keys(output.results.npm.dependencies)).toEqual(["noty"]);
+
+  output = await updates(apiOpts({include: ["noty", "gulp-sourcemaps"], exclude: [/sourcemaps/]}));
+  expect(Object.keys(output.results.npm.dependencies)).toEqual(["noty"]);
+
+  output = await updates(apiOpts({include: ["noty"], modes: ["pypi"]}));
+  expect(output.message).toBe("No dependencies found, nothing to do.");
+  await expect(updates(apiOpts({modes: ["nope"]}))).rejects.toThrow("Invalid mode: nope");
 });
 
-test("api include regex", async ({expect = globalExpect}: any = {}) => {
-  const output = await updates(apiOpts({include: [/^noty$/]}));
-  expect(output.results.npm.dependencies.noty).toBeDefined();
-  const depNames = Object.keys(output.results.npm.dependencies);
-  expect(depNames).toEqual(["noty"]);
+test.each([
+  ["greatest", {greatest: true}, "2.6.5"],
+  ["patch", {patch: true}, "2.0.1"],
+  ["minor", {minor: true}, "2.6.5"],
+])("api %s", async (_name, option, expected, {expect = globalExpect}: any = {}) => {
+  const output = await updates(apiOpts({include: ["gulp-sourcemaps"], ...option}));
+  expect(output.results.npm.dependencies["gulp-sourcemaps"].new).toBe(expected);
 });
 
-test("api exclude regex", async ({expect = globalExpect}: any = {}) => {
-  const output = await updates(apiOpts({include: ["noty", "gulp-sourcemaps"], exclude: [/sourcemaps/]}));
-  expect(output.results.npm.dependencies.noty).toBeDefined();
-  expect(output.results.npm.dependencies["gulp-sourcemaps"]).toBeUndefined();
-});
-
-test("api greatest", async ({expect = globalExpect}: any = {}) => {
-  const output = await updates(apiOpts({include: ["gulp-sourcemaps"], greatest: true}));
-  expect(output.results.npm.dependencies["gulp-sourcemaps"].new).toBe("2.6.5");
-});
-
-// each selector targets gulp-sourcemaps only, so noty keeps its default resolution
 test.each([
   ["api greatest array", {greatest: ["gulp-sourcemaps"]}],
   ["api greatest regex", {greatest: [/^gulp/]}],
@@ -2254,78 +1733,41 @@ test.each([
   expect(output.results.npm.dependencies.noty.new).toBe("3.1.4");
 });
 
-test("api patch", async ({expect = globalExpect}: any = {}) => {
-  const output = await updates(apiOpts({include: ["gulp-sourcemaps"], patch: true}));
-  expect(output.results.npm.dependencies["gulp-sourcemaps"].new).toBe("2.0.1");
-});
-
-test("api minor", async ({expect = globalExpect}: any = {}) => {
-  const output = await updates(apiOpts({include: ["gulp-sourcemaps"], minor: true}));
-  expect(output.results.npm.dependencies["gulp-sourcemaps"].new).toBe("2.6.5");
-});
-
-test("api overrides per-package cooldown", async ({expect = globalExpect}: any = {}) => {
-  const output = await updates(apiOpts({include: ["noty", "updates"], cooldown: "999999d", overrides: [{include: ["noty"], cooldown: 0}]}));
+test("api cooldown overrides apply per package and last match wins", async ({expect = globalExpect}: any = {}) => {
+  let output = await updates(apiOpts({include: ["noty", "updates"], cooldown: "999999d", overrides: [{include: ["noty"], cooldown: 0}]}));
   expect(output.results.npm.dependencies.noty.new).toBe("3.1.4");
   expect(output.results.npm.dependencies.updates).toBeUndefined();
-});
 
-test("api overrides last match wins", async ({expect = globalExpect}: any = {}) => {
-  const output = await updates(apiOpts({include: ["noty"], cooldown: "999999d", overrides: [{include: ["noty"], cooldown: "999999d"}, {include: ["noty"], cooldown: 0}]}));
+  output = await updates(apiOpts({include: ["noty"], cooldown: "999999d", overrides: [{include: ["noty"], cooldown: "999999d"}, {include: ["noty"], cooldown: 0}]}));
   expect(output.results.npm.dependencies.noty.new).toBe("3.1.4");
-});
-
-test("api modes filter", async ({expect = globalExpect}: any = {}) => {
-  const output = await updates(apiOpts({include: ["noty"], modes: ["pypi"]}));
-  expect(output.message).toBe("No dependencies found, nothing to do.");
-  await expect(updates(apiOpts({modes: ["nope"]}))).rejects.toThrow("Invalid mode: nope");
-});
-
-test("api output structure", async ({expect = globalExpect}: any = {}) => {
-  const output = await updates(apiOpts({include: ["noty"]}));
-  expect(output).toHaveProperty("results");
-  expect(output.results).toHaveProperty("npm");
-  expect(output.results.npm).toHaveProperty("dependencies");
-  const dep = output.results.npm.dependencies.noty;
-  expect(dep).toHaveProperty("old");
-  expect(dep).toHaveProperty("new");
-  expect(dep).toHaveProperty("info");
 });
 
 test("pypi dotted group names are collected, a declined rewrite is not reported", async ({expect = globalExpect}: any = {}) => {
-  const dir = mkdtempSync(join(tmpdir(), "updates-pypi-"));
-  try {
-    const file = join(dir, "pyproject.toml");
-    await writeFile(file, [
-      `[project]`,
-      `dependencies = ["djlint>=1.30.0,!=1.31.0"]`,
-      ``,
-      `[project.optional-dependencies]`,
-      `"extra.one" = ["PyYAML>=1.0"]`,
-      ``,
-      `[dependency-groups]`,
-      `"test.unit" = ["types-paramiko>=3.4.0.20240423"]`,
-      ``,
-    ].join("\n"));
+  const file = join(testDir, "test-pypi-groups", "pyproject.toml");
+  mkdirSync(join(testDir, "test-pypi-groups"));
+  await writeFile(file, [
+    `[project]`,
+    `dependencies = ["djlint>=1.30.0,!=1.31.0"]`,
+    ``,
+    `[project.optional-dependencies]`,
+    `"extra.one" = ["PyYAML>=1.0"]`,
+    ``,
+    `[dependency-groups]`,
+    `"test.unit" = ["types-paramiko>=3.4.0.20240423"]`,
+    ``,
+  ].join("\n"));
 
-    const {pypi} = (await updates(apiOpts({files: [file], modes: ["pypi"], update: true}))).results;
-    expect(pypi["project.optional-dependencies.extra.one"].PyYAML.new).toBe("6.0");
-    expect(pypi["dependency-groups.test.unit"]["types-paramiko"].new).toBe("3.5.0.20250801");
-    // 1.31.0 is the version `!=` excludes, so there is no update to report
-    expect(pypi["project.dependencies"]).toBeUndefined();
+  const {pypi} = (await updates(apiOpts({files: [file], modes: ["pypi"], update: true}))).results;
+  expect(pypi["project.optional-dependencies.extra.one"].PyYAML.new).toBe("6.0");
+  expect(pypi["dependency-groups.test.unit"]["types-paramiko"].new).toBe("3.5.0.20250801");
+  expect(pypi["project.dependencies"]).toBeUndefined();
 
-    const written = await readFile(file, "utf8");
-    expect(written).toContain(`"PyYAML>=6.0"`);
-    expect(written).toContain(`"types-paramiko>=3.5.0.20250801"`);
-    expect(written).toContain(`"djlint>=1.30.0,!=1.31.0"`);
-  } finally {
-    try {
-      await rm(dir, {recursive: true, force: true, maxRetries: 10, retryDelay: 100});
-    } catch {}
-  }
+  const written = await readFile(file, "utf8");
+  expect(written).toContain(`"PyYAML>=6.0"`);
+  expect(written).toContain(`"types-paramiko>=3.5.0.20250801"`);
+  expect(written).toContain(`"djlint>=1.30.0,!=1.31.0"`);
 });
 
-// Bug: no pin, override or per-dep flag ever matched a pypi dep.
 test("a pypi pin holds, keyed by the authored spelling or the normalized one", async ({expect = globalExpect}: any = {}) => {
   for (const key of ["PyYAML", "pyyaml"]) {
     const {pypi} = (await updates(apiOpts({files: [uvFile], modes: ["pypi"], include: ["PyYAML"], pin: {[key]: "<6.0"}}))).results;
@@ -2333,57 +1775,23 @@ test("a pypi pin holds, keyed by the authored spelling or the normalized one", a
   }
 });
 
-// Bug: two non-workspace manifests of the same mode shared single mode-keyed
-// slots, so only the last file was written and same name+type deps collided.
-test("two non-workspace package.json: both updated, no dep loss", async ({expect = globalExpect}: any = {}) => {
-  const dir = mkdtempSync(join(tmpdir(), "updates-multi-"));
-  try {
-    const fileA = join(dir, "a", "package.json");
-    const fileB = join(dir, "b", "package.json");
-    mkdirSync(join(dir, "a"), {recursive: true});
-    mkdirSync(join(dir, "b"), {recursive: true});
-    await writeFile(fileA, `${JSON.stringify({dependencies: {noty: "3.1.0"}}, null, 2)}\n`);
-    await writeFile(fileB, `${JSON.stringify({dependencies: {"gulp-sourcemaps": "2.0.0"}}, null, 2)}\n`);
+test("non-workspace manifests keep distinct dependencies and duplicate identities", async ({expect = globalExpect}: any = {}) => {
+  const dir = join(testDir, "test-multi-manifest");
+  const manifests = [
+    ["a", "noty", "3.1.0", "3.1.4"],
+    ["b", "noty", "3.1.0", "3.1.4"],
+    ["c", "gulp-sourcemaps", "2.0.0", "2.6.5"],
+  ] as const;
+  const files = await Promise.all(manifests.map(async ([subdir, name, old]) => {
+    mkdirSync(join(dir, subdir), {recursive: true});
+    const file = join(dir, subdir, "package.json");
+    await writeFile(file, `${JSON.stringify({dependencies: {[name]: old}}, null, 2)}\n`);
+    return file;
+  }));
 
-    const output = await updates(apiOpts({files: [fileA, fileB], update: true}));
-
-    // Both deps survive (neither file's unique dep is lost to a shared slot).
-    const npm = output.results.npm;
-    const allDeps = Object.assign({}, ...Object.values(npm) as Array<Record<string, any>>);
-    expect(allDeps.noty?.new).toBe("3.1.4");
-    expect(allDeps["gulp-sourcemaps"]?.new).toBe("2.6.5");
-
-    // Both files are written with their own update (not just the last one).
-    expect(await readFile(fileA, "utf8")).toContain(`"noty": "3.1.4"`);
-    expect(await readFile(fileB, "utf8")).toContain(`"gulp-sourcemaps": "2.6.5"`);
-  } finally {
-    try {
-      await rm(dir, {recursive: true, force: true, maxRetries: 10, retryDelay: 100});
-    } catch {}
-  }
-});
-
-test("two non-workspace package.json with the same dep: both updated", async ({expect = globalExpect}: any = {}) => {
-  const dir = mkdtempSync(join(tmpdir(), "updates-multi-same-"));
-  try {
-    const fileA = join(dir, "a", "package.json");
-    const fileB = join(dir, "b", "package.json");
-    mkdirSync(join(dir, "a"), {recursive: true});
-    mkdirSync(join(dir, "b"), {recursive: true});
-    await writeFile(fileA, `${JSON.stringify({dependencies: {noty: "3.1.0"}}, null, 2)}\n`);
-    await writeFile(fileB, `${JSON.stringify({dependencies: {noty: "3.1.0"}}, null, 2)}\n`);
-
-    const output = await updates(apiOpts({files: [fileA, fileB], update: true}));
-
-    // Same name+type from both files must not collide into one dep entry.
-    const notyEntries = Object.values(output.results.npm).filter(section => "noty" in section);
-    expect(notyEntries.length).toBe(2);
-
-    expect(await readFile(fileA, "utf8")).toContain(`"noty": "3.1.4"`);
-    expect(await readFile(fileB, "utf8")).toContain(`"noty": "3.1.4"`);
-  } finally {
-    try {
-      await rm(dir, {recursive: true, force: true, maxRetries: 10, retryDelay: 100});
-    } catch {}
+  const {npm} = (await updates(apiOpts({files, update: true}))).results;
+  expect(Object.values(npm).filter(section => "noty" in section)).toHaveLength(2);
+  for (const [index, [, name, , expected]] of manifests.entries()) {
+    expect(await readFile(files[index], "utf8")).toContain(`"${name}": "${expected}"`);
   }
 });

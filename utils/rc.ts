@@ -66,8 +66,6 @@ export function parseEnvVars(prefix: string): Record<string, any> {
   return result;
 }
 
-// `startDir` is where the project-level file is searched for upwards. A caller holding a manifest
-// path must pass its directory, as npm resolves `.npmrc` as a sibling or parent of the package file.
 export default function rc(name: string, defaults: Record<string, any> = {}, startDir: string = cwd()): Record<string, any> {
   const win = platform === "win32";
   const home = win ? env.USERPROFILE : env.HOME;
