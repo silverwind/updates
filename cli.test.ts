@@ -1,4 +1,5 @@
 import {parseCliArgs} from "./cli.ts";
+import {parseMixedArg} from "./config.ts";
 
 test("recovers swallowed short option clusters", () => {
   const single = parseCliArgs(["-T", "-u", "package.json"]);
@@ -11,6 +12,7 @@ test("recovers swallowed short option clusters", () => {
 
   const {args, positionals} = parseCliArgs(["-i", "-ug", "react", "package.json"]);
   expect(args.include).toEqual([]);
+  expect(parseMixedArg(args.include)).toBe(true);
   expect(args.update).toBe(true);
   expect(args.greatest).toEqual(["react"]);
   expect(positionals).toEqual(["package.json"]);

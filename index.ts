@@ -43,7 +43,7 @@ async function startPrewarm(rawArgs: Array<string>): Promise<void> {
     const option = long ? valueOptions[long[1]] : short ? valueOptions[short[1]] : undefined;
     if (!option) continue;
     const inline = long ? long[2] : short?.[2];
-    const value = inline || rawArgs[index + 1]?.startsWith("-") === false ? inline || rawArgs[++index] : undefined;
+    const value = inline || (rawArgs[index + 1]?.startsWith("-") === false ? rawArgs[++index] : undefined);
     if (value === undefined) continue;
     if (option === "file" || option === "modes") {
       ((args[option] ??= []) as Array<string>).push(...value.split(","));

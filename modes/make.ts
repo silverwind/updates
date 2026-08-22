@@ -140,17 +140,16 @@ export async function resolveGoModuleRoot(installPath: string, goCwd: string, ct
   const candidates = Array.from({length: parts.length - 1}, (_, idx) => parts.slice(0, parts.length - idx).join("/"));
   // One entry at a time, all candidates at once: the first entry that knows the module decides the
   // root, so later entries are only reached while nothing has resolved at all.
-  let hit = -1;
   for (const entry of chain) {
     const probes = await Promise.allSettled(candidates.map(
       candidate => probeGoModuleRoot(candidate, goCwd, ctx, [entry]),
     ));
-    hit = probes.findIndex(probe => probe.status === "fulfilled" && probe.value);
+    const hit = probes.findIndex(probe => probe.status === "fulfilled" && probe.value);
     const failed = probes.slice(0, hit === -1 ? undefined : hit).find(probe => probe.status === "rejected");
     if (failed) throw failed.reason;
-    if (hit !== -1) break;
+    if (hit !== -1) return candidates[hit];
   }
-  return hit === -1 ? null : candidates[hit];
+  return null;
 }
 
 export type MakeRewrite = {oldSpec: string, newSpec: string};

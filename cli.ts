@@ -43,17 +43,19 @@ export function parseCliArgs(argv?: Array<string>): {args: Record<string, Arg>, 
 
   const values = Object.create(null) as Record<string, Arg>;
   const consumedPositionals = new Set<number>();
+  const recordOptionValue = (key: string, value: string | boolean) => {
+    if (options[key]?.multiple) {
+      ((values[key] ??= []) as Array<string | boolean>).push(value);
+    } else {
+      values[key] = value;
+    }
+  };
   let positionalsSeen = 0;
   for (const [index, token] of result.tokens.entries()) {
     if (token.kind === "positional") positionalsSeen++;
     if (token.kind !== "option") continue;
     if (token.inlineValue || !token.value?.startsWith("-")) {
-      if (options[token.name]?.multiple) {
-        const list = (values[token.name] ??= []) as Array<string | boolean>;
-        list.push(token.value ?? true);
-      } else {
-        values[token.name] = token.value ?? true;
-      }
+      recordOptionValue(token.name, token.value ?? true);
       continue;
     }
     const longOption = token.value.startsWith("--");
@@ -87,12 +89,7 @@ export function parseCliArgs(argv?: Array<string>): {args: Record<string, Arg>, 
       }
     }
     if (!recoveredOptions.length) {
-      if (options[token.name]?.multiple) {
-        const list = (values[token.name] ??= []) as Array<string | boolean>;
-        list.push(token.value);
-      } else {
-        values[token.name] = token.value;
-      }
+      recordOptionValue(token.name, token.value);
       continue;
     }
     if (options[token.name]?.multiple) {
@@ -101,14 +98,7 @@ export function parseCliArgs(argv?: Array<string>): {args: Record<string, Arg>, 
       values[token.name] = true;
     }
     if (consumesPositional) consumedPositionals.add(positionalsSeen);
-    for (const {key, value} of recoveredOptions) {
-      if (options[key].multiple) {
-        const list = (values[key] ??= []) as Array<string | boolean>;
-        list.push(value);
-      } else {
-        values[key] = value;
-      }
-    }
+    for (const {key, value} of recoveredOptions) recordOptionValue(key, value);
   }
 
   return {args: values, positionals: result.positionals.filter((_val, index) => !consumedPositionals.has(index))};

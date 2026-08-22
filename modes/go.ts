@@ -95,7 +95,7 @@ export function buildGoModulePath(name: string, major: number): string {
 
 export function goModulePathForVersion(modulePath: string, version: string): string {
   if (version.includes("+incompatible")) return modulePath;
-  const newMajor = Number.parseInt(stripv(version).split(".")[0]);
+  const newMajor = Number.parseInt(stripv(version));
   if (Number.isNaN(newMajor) || newMajor === extractGoMajor(modulePath)) return modulePath;
   return buildGoModulePath(modulePath, newMajor);
 }

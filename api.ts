@@ -929,7 +929,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
 
       const lockPath = findUpSync(["Cargo.lock"], workspaceDir).get("Cargo.lock");
       const wsMembers = (cargoParsed.workspace as Record<string, any>)?.members;
-      const isWorkspace = Array.isArray(wsMembers) && wsMembers.length;
+      const isWorkspace = Array.isArray(wsMembers) && wsMembers.length > 0;
 
       const [filters, lockContent, members] = await Promise.all([
         resolveDirConfig(workspaceDir),
@@ -1076,8 +1076,8 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
   const npmIdentity = (key: string, name: string) => npmPublishedNames.get(key) ?? npmAliases.get(key)?.name ??
     (selectorTypes.has(key.split(fieldSep)[0].split("|")[0]) ? resolutionsBasePackage(name) : name);
 
-  const argsForNpm = {needsDates: (modeContextsBySuffix.npm?.values() ?? [][Symbol.iterator]()).some(entry =>
-    entry.cooldownDays || entry.versionConfig.hasCooldownOverride)};
+  const argsForNpm = {needsDates: modeContextsBySuffix.npm?.values().some(entry =>
+    entry.cooldownDays || entry.versionConfig.hasCooldownOverride) ?? false};
 
   for (const [mode, modeContexts] of Object.entries(modeContextsBySuffix)) {
     if (!Object.keys(deps[mode] ?? {}).length && (mode !== "npm" || !hasMaybeUrlDeps)) continue;

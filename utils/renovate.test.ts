@@ -1,5 +1,5 @@
 import {test, expect, afterAll} from "vitest";
-import {mkdtempSync, rmSync, mkdirSync, writeFileSync} from "node:fs";
+import {mkdtempSync, rmSync, mkdirSync, readFileSync, writeFileSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
 import {loadRenovateConfig} from "./renovate.ts";
@@ -103,11 +103,25 @@ test.each([
   ]}, {$disabled: ["@babel/parser"], $enabled: ["@babel/core"]}],
   ["top-level enabled false, which disables everything", "renovate.json",
     {enabled: false, ignoreDeps: ["foo"]}, {$disabled: ["foo", "bar"]}],
-  ["only a literal renovate.json", "renovate.jsonc", {ignoreDeps: ["foo"]}, {$enabled: ["foo"]}],
+  ["renovate.jsonc", "renovate.jsonc", {ignoreDeps: ["foo"]}, {$disabled: ["foo"]}],
 ])("loadRenovateConfig reads %s", async (_name, file, config, expected) => {
   const dir = makeDir();
   if (file) writeFileSync(join(dir, file), typeof config === "string" ? config : JSON.stringify(config));
   expectImport(await loadRenovateConfig(dir), expected);
+});
+
+test("renovate.json5 imports local rules from a Gitea-shaped config", async () => {
+  const dir = makeDir();
+  writeFileSync(join(dir, "renovate.json5"),
+    readFileSync(new URL("../fixtures/renovate/real-world.json5", import.meta.url), "utf8"));
+  const config = await loadRenovateConfig(dir);
+  expect(config.pin).toEqual({
+    "@mcaptcha/vanilla-glue": "^0.1",
+    cropperjs: "^1",
+    tailwindcss: "^3",
+  });
+  expect(config.pinNoDowngrade).toBe(true);
+  expect(config.exclude?.some(pattern => patternToRegex(pattern).test("@types/node"))).toBe(true);
 });
 
 test("regex allowedVersions forms are preserved for release filtering", async () => {
@@ -148,13 +162,9 @@ test("a subdirectory inherits the config of a parent directory", async () => {
 test.each([
   ["invalid allowedVersions", {packageRules: [{matchPackageNames: ["foo"], allowedVersions: "not-a-range"}]},
     "Invalid renovate allowedVersions: not-a-range"],
-  ["top-level extends", {extends: ["config:recommended"]}, "extends"],
-  ["nested extends", {packageRules: [{matchPackageNames: ["foo"], extends: [":disableRenovate"]}]},
-    "extends"],
   ["malformed JSON", "{bad json", "Unable to parse renovate config"],
 ])("%s is rejected", async (_name, config, error) => {
   const dir = makeDir();
   writeFileSync(join(dir, "renovate.json"), typeof config === "string" ? config : JSON.stringify(config));
-  await expect(loadRenovateConfig(dir)).rejects.toThrow(error === "extends" ?
-    `Renovate extends is unsupported in ${join(dir, "renovate.json")}` : error);
+  await expect(loadRenovateConfig(dir)).rejects.toThrow(error);
 });

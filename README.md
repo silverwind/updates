@@ -103,7 +103,7 @@ export default {
 
 ### Renovate config
 
-A [Renovate](https://docs.renovatebot.com/) `renovate.json` is picked up automatically, inheriting `ignoreDeps`, `enabled` and `allowedVersions` from matching `packageRules` as `include`/`exclude`/`pin`. Exact-name `allowedVersions` ranges become pin ceilings that never downgrade. Configs using `extends` are rejected. `minimumReleaseAge` is not inherited unless opted in:
+A [Renovate](https://docs.renovatebot.com/) `renovate.json`, `renovate.jsonc` or `renovate.json5` is picked up automatically, inheriting `ignoreDeps`, `enabled` and `allowedVersions` from matching local `packageRules` as `include`/`exclude`/`pin`. Exact-name `allowedVersions` ranges become pin ceilings that never downgrade. Local fields are imported when `extends` is present, but preset contents are not resolved. `minimumReleaseAge` is not inherited unless opted in:
 
 ```ts
 export default {

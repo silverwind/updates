@@ -133,17 +133,13 @@ export const options: ParseArgsOptionsConfig = {
 };
 
 export function parseMixedArg(arg: Arg): boolean | Set<string> {
-  if (Array.isArray(arg) && arg.every(val => val === true)) {
-    return true;
-  } else if (Array.isArray(arg)) {
-    return new Set(arg.filter(val => typeof val === "string").flatMap(commaSeparatedToArray));
-  } else if (typeof arg === "string") {
-    return new Set([arg]);
-  } else if (typeof arg === "boolean") {
-    return arg;
-  } else {
-    return false;
+  if (Array.isArray(arg)) {
+    return arg.every(val => val === true) ? true :
+      new Set(arg.filter(val => typeof val === "string").flatMap(commaSeparatedToArray));
   }
+  if (typeof arg === "string") return new Set([arg]);
+  if (typeof arg === "boolean") return arg;
+  return false;
 }
 
 export function getOptionKey(name: string): string {

@@ -4,7 +4,7 @@ import {writeFile, mkdir, readdir, rename, stat, unlink, utimes} from "node:fs/p
 import {join} from "node:path";
 import {env, platform, pid} from "node:process";
 import {homedir} from "node:os";
-import {tryOrNull} from "./utils.ts";
+import {getOrSet, tryOrNull} from "./utils.ts";
 
 function readFileUtf8(path: string): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -55,12 +55,7 @@ let tmpCounter = 0;
 export function setCache(url: string, etag: string, body: string, dir: string = cacheDir): void {
   const write = (async () => {
     try {
-      let created = createdDirs.get(dir);
-      if (!created) {
-        created = mkdir(dir, {recursive: true});
-        createdDirs.set(dir, created);
-      }
-      await created;
+      await getOrSet(createdDirs, dir, () => mkdir(dir, {recursive: true}));
     } catch {
       createdDirs.delete(dir);
       return;

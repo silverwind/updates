@@ -1,5 +1,6 @@
 import {join} from "node:path";
 import {readFile} from "node:fs/promises";
+import {parseJsonish} from "./json5.ts";
 import {validRange} from "./semver.ts";
 import {walkUp, patternToRegex, esc, getOrSet} from "./utils.ts";
 import type {Config} from "../config.ts";
@@ -91,8 +92,9 @@ function compileRule(rule: RenovatePackageRule): {matchers: RenovateVersionRule,
     for (const name of values) {
       const list = name.startsWith("!") ? exclude : include;
       const value = list === exclude ? name.slice(1) : name;
-      list.push(renovateRegex(value) ?? value);
-      if (list === include && !/[*?[\]{}!()|+]/.test(value) && !renovateRegex(value)) literals.push(value);
+      const regex = renovateRegex(value);
+      list.push(regex ?? value);
+      if (list === include && !/[*?[\]{}!()|+]/.test(value) && !regex) literals.push(value);
     }
     if (include.length) matchers[`match${target}Names`] = include;
     if (exclude.length) matchers[`exclude${target}Names`] = exclude;
@@ -231,31 +233,30 @@ function normalize(raw: RenovateConfig, opts: RenovateImportOptions): Partial<Co
   return out;
 }
 
-function containsExtends(value: unknown): boolean {
-  return Boolean(value && typeof value === "object" &&
-    (Object.hasOwn(value, "extends") || Object.values(value).some(containsExtends)));
-}
+const renovateConfigFilenames = ["renovate.json", "renovate.jsonc", "renovate.json5"];
 
 export async function loadRenovateConfig(
   rootDir: string, opts: RenovateImportOptions = {},
 ): Promise<Partial<Config>> {
   const found = await walkUp(rootDir, async dir => {
-    const path = join(dir, "renovate.json");
-    let text: string;
-    try {
-      text = await readFile(path, "utf8");
-    } catch {
-      return null;
+    for (const filename of renovateConfigFilenames) {
+      const path = join(dir, filename);
+      let text: string;
+      try {
+        text = await readFile(path, "utf8");
+      } catch {
+        continue;
+      }
+      let parsed: unknown;
+      try {
+        parsed = parseJsonish(text);
+      } catch (err: any) {
+        throw new Error(`Unable to parse renovate config ${path}: ${err.message}`);
+      }
+      if (parsed && typeof parsed === "object") return {parsed: parsed as RenovateConfig, path};
     }
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(text);
-    } catch (err: any) {
-      throw new Error(`Unable to parse renovate config ${path}: ${err.message}`);
-    }
-    return parsed && typeof parsed === "object" ? {parsed: parsed as RenovateConfig, path} : null;
+    return null;
   });
   if (!found) return {};
-  if (containsExtends(found.parsed)) throw new Error(`Renovate extends is unsupported in ${found.path}`);
   return normalize(found.parsed, opts);
 }

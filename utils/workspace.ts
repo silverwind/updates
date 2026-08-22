@@ -210,11 +210,8 @@ function readConfigUp(filename: string, startDir: string): string | null {
 const nativeRegistryCache = new Map<string, NpmRegistryConfig>();
 
 export function resolveNativeNpmRegistry(name: string, startDir: string): string | null {
-  let config = nativeRegistryCache.get(startDir);
-  if (!config) {
-    config = parsePnpmRegistryConfig(readConfigUp("pnpm-workspace.yaml", startDir) ?? "");
-    nativeRegistryCache.set(startDir, config);
-  }
+  const config = getOrSet(nativeRegistryCache, startDir,
+    () => parsePnpmRegistryConfig(readConfigUp("pnpm-workspace.yaml", startDir) ?? ""));
   for (const [scope, url] of Object.entries(config.registries)) {
     if (scope !== "default" && name.startsWith(`${scope}/`)) return url;
   }

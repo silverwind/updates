@@ -20,13 +20,16 @@ async function makeCacheDir(name: string): Promise<string> {
   return dir;
 }
 
-test("setCache and getCache round-trip preserves newlines", async () => {
-  const cacheDir = await makeCacheDir("round-trip");
+test("setCache shares directory creation and getCache preserves newlines", async () => {
+  const cacheDir = join(cacheRoot, "round-trip");
   const url = "https://test.example.com/fetchCache-round-trip-test";
+  const otherUrl = "https://test.example.com/fetchCache-concurrent-test";
   const body = '{"a":1}\n{"b":2}\n{"c":3}';
   setCache(url, "W/\"abc123\"", body, cacheDir);
+  setCache(otherUrl, "etag", "other", cacheDir);
   await flushCacheWrites(cacheDir);
   expect(await getCache(url, cacheDir)).toEqual({etag: "W/\"abc123\"", body});
+  expect(await getCache(otherUrl, cacheDir)).toEqual({etag: "etag", body: "other"});
   expect(await readdir(cacheDir)).toContain(`${createHash("sha256").update(url).digest("hex")}.cache`);
 });
 
