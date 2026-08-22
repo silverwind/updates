@@ -87,7 +87,9 @@ export function parseMakeDockerImages(content: string): Array<MakeDockerImage> {
 
 const midMajorRe = /\/v(?:[2-9]|[1-9]\d+)(?=\/|$)/;
 
-async function probeGoModuleRoot(candidate: string, goCwd: string, ctx: ModeContext, chain: ModeContext["goProxyChain"]): Promise<boolean> {
+async function probeGoModuleRoot(
+  candidate: string, goCwd: string, ctx: ModeContext, chain: ModeContext["goProxyChain"],
+): Promise<boolean> {
   return await fetchFromGoProxyChain(chain, async url => {
     if (url === "off") return false;
     if (url !== "direct") {
@@ -128,24 +130,19 @@ export async function resolveGoModuleRoot(installPath: string, goCwd: string, ct
   if (chain[0].url === "off") return null;
   const parts = installPath.split("/");
   const candidates = Array.from({length: parts.length - 1}, (_, idx) => parts.slice(0, parts.length - idx).join("/"));
-  if (chain[0].url === "direct") {
-    for (const candidate of candidates) {
-      if (await probeGoModuleRoot(candidate, goCwd, ctx, chain)) return candidate;
-    }
-    return null;
+  // One entry at a time, all candidates at once: the first entry that knows the module decides the
+  // root, so later entries are only reached while nothing has resolved at all.
+  let hit = -1;
+  for (const entry of chain) {
+    const probes = await Promise.allSettled(candidates.map(
+      candidate => probeGoModuleRoot(candidate, goCwd, ctx, [entry]),
+    ));
+    hit = probes.findIndex(probe => probe.status === "fulfilled" && probe.value);
+    const failed = probes.slice(0, hit === -1 ? undefined : hit).find(probe => probe.status === "rejected");
+    if (failed) throw failed.reason;
+    if (hit !== -1) break;
   }
-  const directIndex = chain.findIndex(({url}) => url === "direct");
-  const proxyChain = directIndex === -1 ? chain : chain.slice(0, directIndex);
-  const probes = await Promise.allSettled(candidates.map(candidate => probeGoModuleRoot(candidate, goCwd, ctx, proxyChain)));
-  const failed = probes.find(probe => probe.status === "rejected");
-  if (failed) throw failed.reason;
-  const firstHit = probes.findIndex(probe => probe.status === "fulfilled" && probe.value);
-  if (directIndex !== -1) {
-    for (const candidate of candidates.slice(0, firstHit === -1 ? undefined : firstHit)) {
-      if (await probeGoModuleRoot(candidate, goCwd, ctx, chain.slice(directIndex))) return candidate;
-    }
-  }
-  return firstHit === -1 ? null : candidates[firstHit];
+  return hit === -1 ? null : candidates[hit];
 }
 
 export type MakeRewrite = {oldSpec: string, newSpec: string};

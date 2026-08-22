@@ -546,6 +546,22 @@ test.each([429, 503, 403])("fetchWithRetry retries returned %s responses twice",
   expect(calls).toBe(3);
 });
 
+test("fetchWithRetry gives up rather than wait out a retry-after past the fetch timeout", async () => {
+  const attempts = async (status: number, retryAfter: number) => {
+    let calls = 0;
+    const ctx = modeCtx({noCache: true, doFetch: () => {
+      calls++;
+      return Promise.resolve({ok: false, status, headers: new Headers([["retry-after", String(retryAfter)]])});
+    }});
+    await fetchWithRetry(ctx, "https://slow-retry.test");
+    return calls;
+  };
+  // Docker Hub's 60s on a 5s budget: return the rate limit instead of stalling the run
+  expect(await attempts(429, 60)).toBe(1);
+  // a server fault still retries, just without the wait
+  expect(await attempts(503, 60)).toBe(3);
+});
+
 sequential("fetchForge classifies rate limits and server faults, fetchActionTags lets them through", async () => {
   const reset = Math.floor(Date.parse("2026-05-01T00:00:00Z") / 1000);
   const responses: Record<string, Partial<Response>> = {

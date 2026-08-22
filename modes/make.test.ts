@@ -6,7 +6,7 @@ import {
   resolveGoModuleRoot,
   updateMakefile,
 } from "./make.ts";
-import {type ExecFile, type GoProxyEntry, type ModeContext, fetchTimeout} from "./shared.ts";
+import {type ExecFile, type GoProxyEntry, type ModeContext, fetchTimeout, goProbeTimeout} from "./shared.ts";
 
 const sample = `GOLANGCI_PACKAGE ?= github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
 AIR_PACKAGE := github.com/air-verse/air@v1.65.1
@@ -97,7 +97,7 @@ const execFileFails: ExecFile = () => Promise.reject(new Error("no such file or 
 const rootCtx = (
   doFetch: (url: string) => Promise<any>, goProxyUrl = "https://proxy", execFile: ExecFile = execFileFails,
   goProxyChain: Array<GoProxyEntry> = [{url: goProxyUrl, fallback: ","}],
-) => ({goProxyUrl, goProxyChain, fetchTimeout, doFetch, execFile}) as unknown as ModeContext;
+) => ({goProxyUrl, goProxyChain, fetchTimeout, goProbeTimeout, doFetch, execFile}) as unknown as ModeContext;
 const rootHit = (path: string) => (url: string) => Promise.resolve({
   ok: url.endsWith(`${path}/@latest`), status: 404, json: () => Promise.resolve({Version: "v1.1.4"}),
 } as any);
@@ -172,10 +172,12 @@ test("resolveGoModuleRoot returns null when nothing resolves and throws when a p
 test("resolveGoModuleRoot uses VCS origin metadata through a direct fallback", async () => {
   const moduleRoot = "golang.org/x/vuln";
   const seen: Array<string> = [];
+  const probed: Array<string> = [];
   const execFile = (_file: string, args: Array<string>, opts: Record<string, any>) => {
     expect(args.slice(0, 4)).toEqual(["list", "-m", "-e", "-json"]);
     expect(opts.env.GOPROXY).toBe("direct");
     const candidate = args.at(-1)!.replace(/@latest$/, "");
+    probed.push(candidate);
     return candidate === moduleRoot ? Promise.resolve({stdout: JSON.stringify({Path: candidate, Version: "v1.2.0"}), stderr: ""}) : goListMiss(candidate);
   };
   const chain: Array<GoProxyEntry> = [{url: "https://empty", fallback: ","}, {url: "direct", fallback: ","}];
@@ -185,6 +187,20 @@ test("resolveGoModuleRoot uses VCS origin metadata through a direct fallback", a
   }, chain[0].url, execFile, chain);
   expect(await resolveGoModuleRoot(`${moduleRoot}/cmd/govulncheck`, ".", ctx, [])).toBe(moduleRoot);
   expect(seen).toContain(`https://empty/${moduleRoot}/@latest`);
+
+  // the entry that resolves the root ends the walk, so no later entry is paid for
+  probed.length = 0;
+  const backed: Array<string> = [];
+  const backupChain: Array<GoProxyEntry> = [
+    {url: "https://primary", fallback: ","}, {url: "https://backup", fallback: ","}, {url: "direct", fallback: ","},
+  ];
+  const stopsAtHit = rootCtx(url => {
+    if (url.startsWith("https://backup/")) backed.push(url);
+    return rootHit(moduleRoot)(url);
+  }, backupChain[0].url, execFile, backupChain);
+  expect(await resolveGoModuleRoot(`${moduleRoot}/cmd/govulncheck`, ".", stopsAtHit, [])).toBe(moduleRoot);
+  expect(backed).toEqual([]);
+  expect(probed).toEqual([]);
 });
 
 test("resolveGoModuleRoot never builds a proxy URL for off, direct or a GONOPROXY match", async () => {

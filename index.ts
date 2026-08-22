@@ -117,7 +117,7 @@ async function main(): Promise<void> {
     -P, --patch [<dep,...>]            Consider only up to semver-patch
     -m, --minor [<dep,...>]            Consider only up to semver-minor
     -d, --allow-downgrade [<dep,...>]  Allow downgrading onto a lower latest tag
-    -s, --sockets <num>                Maximum number of parallel HTTP sockets opened. Default: 25
+    -s, --sockets <num>                Maximum number of parallel HTTP sockets opened. Default: 50
     -T, --timeout <ms>                 Network request timeout in ms (go probes use half). Default: 5000
     -r, --registry <url>               Override npm registry URL
     -I, --indirect                     Include indirect Go dependencies

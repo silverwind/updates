@@ -59,7 +59,7 @@ export const packageVersion = pkg.version;
 export const fieldSep = "\0";
 export const fetchTimeout = 5000;
 export const goProbeTimeout = 2500;
-export const maxSockets = 25;
+export const maxSockets = 50;
 export const maxTagPages = 100;
 
 export const githubApiUrl = "https://api.github.com";
@@ -74,7 +74,6 @@ export const defaultApiUrls = {
   goproxy: "https://proxy.golang.org",
 } as const;
 export const fetchRetries = 2;
-const maxRetryAfter = 60000;
 
 export const stripv = (str: string): string => str[0] === "v" ? str.substring(1) : str;
 export const normalizeUrl = (url: string) => url.endsWith("/") ? url.slice(0, -1) : url;
@@ -121,6 +120,9 @@ export async function fetchWithRetry(
       const date = value && !/^\d+$/.test(value) ? Date.parse(value) : NaN;
       const retryAfter = !value ? null : /^\d+$/.test(value) ? Number(value) * 1000 :
         Number.isNaN(date) ? null : Math.max(date - Date.now(), 0);
+      // Waiting longer for a retry than for the request itself never pays off in a one-shot run:
+      // Docker Hub asks for 60s and answers the retry with the same rate limit.
+      const maxRetryAfter = ctx.fetchTimeout;
       const retryDelay = res && res.status >= 500 && res.status < 600 ?
         (retryAfter !== null && retryAfter <= maxRetryAfter ? retryAfter : 0) : res &&
         (res.status === 429 || res.status === 403 && retryAfter !== null) &&
@@ -643,44 +645,60 @@ function lastPageFromLink(link: string): number {
   return Math.min(page, maxTagPages);
 }
 
-async function fetchReleaseStability(owner: string, repo: string, ctx: ModeContext): Promise<Map<string, boolean>> {
-  const releasesUrl = (page: number) => `${githubApiUrl}/repos/${owner}/${repo}/releases?per_page=100&page=${page}`;
-  const page1 = await fetchForgePage(releasesUrl(1), ctx, "releases", parseReleases);
-  if (!page1) return new Map();
-  const pages = await Promise.all(Array.from({length: Math.max(lastPageFromLink(page1.link) - 1, 0)},
-    (_, idx) => fetchForgePage(releasesUrl(idx + 2), ctx, "releases", parseReleases)));
-  const stability = new Map<string, boolean>();
-  for (const page of [page1, ...pages]) {
-    for (const release of page?.entries ?? []) stability.set(release.name, release.isStable);
+async function fetchForgePages<T>(
+  url: (page: number) => string, ctx: ModeContext, key: "tags" | "releases",
+  parse: (data: any, cached: boolean) => Array<T>, take: (entries: Array<T>) => boolean,
+): Promise<void> {
+  const page1 = await fetchForgePage(url(1), ctx, key, parse);
+  if (!page1) return;
+  const lastPage = lastPageFromLink(page1.link);
+  const maxWave = effectiveConcurrency(ctx);
+  for (let next = 2, wave = 1, done = take(page1.entries); next <= lastPage && !done; next += wave, wave = Math.min(wave * 2, maxWave)) {
+    const pages = await Promise.all(
+      Array.from({length: Math.min(wave, lastPage - next + 1)}, (_, idx) =>
+        fetchForgePage(url(next + idx), ctx, key, parse)),
+    );
+    for (const page of pages) done = take(page?.entries ?? []);
   }
+}
+
+async function fetchReleaseStability(
+  owner: string, repo: string, ctx: ModeContext, oldRefs: Array<string>,
+): Promise<Map<string, boolean>> {
+  const stability = new Map<string, boolean>();
+  // Newest first, so the same bound as the tags: everything still selectable is seen before the
+  // release naming a current ref, and anything past it could only be picked as a downgrade.
+  const unresolved = new Set(oldRefs.filter(Boolean));
+  const bounded = unresolved.size > 0;
+  await fetchForgePages(
+    page => `${githubApiUrl}/repos/${owner}/${repo}/releases?per_page=100&page=${page}`,
+    ctx, "releases", parseReleases, entries => {
+      for (const release of entries) {
+        unresolved.delete(release.name);
+        stability.set(release.name, release.isStable);
+      }
+      return bounded && !unresolved.size;
+    },
+  );
   return stability;
 }
 
 export async function fetchForgeTags(
   apiUrl: string, owner: string, repo: string, ctx: ModeContext, oldRefs: Array<string> = [],
 ): Promise<Array<TagEntry>> {
-  const tagsUrl = (page: number) => `${apiUrl}/repos/${owner}/${repo}/tags?per_page=100&page=${page}`;
   const tags: Array<TagEntry> = [];
   const unresolved = new Set(oldRefs.filter(Boolean));
   const bounded = unresolved.size > 0;
-  const take = (page: ForgePage<TagEntry> | null): boolean => {
-    for (const entry of page?.entries ?? []) {
-      for (const ref of unresolved) if (ref === entry.name || entry.commitSha.startsWith(ref)) unresolved.delete(ref);
-      tags.push(entry);
-    }
-    return bounded && !unresolved.size;
-  };
-  const page1 = await fetchForgePage(tagsUrl(1), ctx, "tags", parseTagPage);
-  if (!page1) return tags;
-  const lastPage = lastPageFromLink(page1.link);
-  const maxWave = effectiveConcurrency(ctx);
-  for (let next = 2, wave = 1, done = take(page1); next <= lastPage && !done; next += wave, wave = Math.min(wave * 2, maxWave)) {
-    const pages = await Promise.all(
-      Array.from({length: Math.min(wave, lastPage - next + 1)}, (_, idx) =>
-        fetchForgePage(tagsUrl(next + idx), ctx, "tags", parseTagPage)),
-    );
-    for (const page of pages) done = take(page);
-  }
+  await fetchForgePages(
+    page => `${apiUrl}/repos/${owner}/${repo}/tags?per_page=100&page=${page}`,
+    ctx, "tags", parseTagPage, entries => {
+      for (const entry of entries) {
+        for (const ref of unresolved) if (ref === entry.name || entry.commitSha.startsWith(ref)) unresolved.delete(ref);
+        tags.push(entry);
+      }
+      return bounded && !unresolved.size;
+    },
+  );
   return tags;
 }
 
@@ -690,7 +708,7 @@ export async function fetchActionTags(
   if (apiUrl !== githubApiUrl || !includeStability) return fetchForgeTags(apiUrl, owner, repo, ctx, oldRefs);
   const [tagsResult, stability] = await Promise.allSettled([
     fetchForgeTags(apiUrl, owner, repo, ctx, oldRefs),
-    fetchReleaseStability(owner, repo, ctx),
+    fetchReleaseStability(owner, repo, ctx, oldRefs),
   ]);
   if (tagsResult.status === "rejected") throw tagsResult.reason;
   if (stability.status === "rejected" && !(stability.reason instanceof ForgeError)) throw stability.reason;
