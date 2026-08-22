@@ -123,7 +123,7 @@ const depBelongsToMember = (key: string, memberPath: string): boolean => {
   return type === (memberPath === "." ? baseType(type) : `${baseType(type)}|${memberPath}`);
 };
 
-const countDeps = (deps: DepsByMode) => Object.values(deps).reduce((num, modeDeps) => num + Object.keys(modeDeps).length, 0);
+const hasDeps = (deps: DepsByMode) => Object.values(deps).some(modeDeps => Object.keys(modeDeps).length > 0);
 
 const normalizePep503 = (name: string) => name.toLowerCase().replace(/[-_.]+/g, "-");
 
@@ -418,8 +418,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
   const versionOptsCache = new WeakMap<VersionConfig, Map<string, ResolvedVersionOpts>>();
 
   function getVersionOpts(versionConfig: VersionConfig, kind: string, packageName: string, depName: string = packageName) {
-    let cache = versionOptsCache.get(versionConfig);
-    if (!cache) versionOptsCache.set(versionConfig, cache = new Map());
+    const cache = getOrSet(versionOptsCache, versionConfig, () => new Map());
     const cacheKey = `${kind}${fieldSep}${packageName}${fieldSep}${depName}`;
     let entry = cache.get(cacheKey);
     if (!entry) {
@@ -806,15 +805,14 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
         const indent = pair[1].length;
         while (yamlPath.length && yamlPath.at(-1)!.indent >= indent) yamlPath.pop();
         const key = (pair[2] ?? pair[3] ?? pair[4]).trim();
-        const parents = yamlPath.map(entry => entry.key);
-        const container = key === "container" && parents[0] === "jobs" && parents.length === 2;
-        const image = key === "image" && parents[0] === "jobs" && (
-          parents.length === 3 && parents[2] === "container" ||
-          parents.length === 4 && parents[2] === "services"
+        const container = key === "container" && yamlPath.length === 2 && yamlPath[0].key === "jobs";
+        const image = key === "image" && (
+          yamlPath.length === 3 && yamlPath[0].key === "jobs" && yamlPath[2].key === "container" ||
+          yamlPath.length === 4 && yamlPath[0].key === "jobs" && yamlPath[2].key === "services"
         );
         const uses = key === "uses" && (
-          parents[0] === "jobs" && parents.length === 3 && parents[2] === "steps" ||
-          parents[0] === "runs" && parents.length === 2 && parents[1] === "steps"
+          yamlPath.length === 3 && yamlPath[0].key === "jobs" && yamlPath[2].key === "steps" ||
+          yamlPath.length === 2 && yamlPath[0].key === "runs" && yamlPath[1].key === "steps"
         );
         if ((container || image || uses) && pair[5]) {
           const value = pair[5].replace(/\s+#.*$/, "").replace(/^(['"])(.*)\1$/, "$2");
@@ -828,6 +826,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
     }
 
     const filename = basename(file);
+    const absFile = resolve(file);
 
     if (isDockerFileName(filename)) {
       const content = fileContents.get(file)!;
@@ -876,7 +875,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
 
     if (filename === "go.work") {
       deps[mode] ??= {};
-      const workspaceDir = dirname(resolve(file));
+      const workspaceDir = dirname(absFile);
       const workContent = fileContents.get(file)!;
       const goWork = parseGoWork(workContent);
 
@@ -918,15 +917,15 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
       continue;
     }
 
-    if (filename === "go.mod" && goModFiles.some(member => member.absPath === resolve(file))) continue;
-    if (filename === "package.json" && pnpmMemberFiles.some(member => member.absPath === resolve(file))) continue;
-    if (filename === "Cargo.toml" && cargoMemberFiles.some(member => member.absPath === resolve(file))) continue;
+    if (filename === "go.mod" && goModFiles.some(member => member.absPath === absFile)) continue;
+    if (filename === "package.json" && pnpmMemberFiles.some(member => member.absPath === absFile)) continue;
+    if (filename === "Cargo.toml" && cargoMemberFiles.some(member => member.absPath === absFile)) continue;
 
     if (filename === "Cargo.toml") {
       deps[mode] ??= {};
       const cargoContent = fileContents.get(file)!;
       const cargoParsed = cargoWorkspaceFiles.get(file) ?? parseToml(cargoContent);
-      const workspaceDir = dirname(resolve(file));
+      const workspaceDir = dirname(absFile);
 
       const lockPath = findUpSync(["Cargo.lock"], workspaceDir).get("Cargo.lock");
       const wsMembers = (cargoParsed.workspace as Record<string, any>)?.members;
@@ -966,7 +965,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
         const modeContext = modeCtx(filters, workspaceDir);
         registerModeContext(mode, workspacePath, modeContext);
         collectCargoDeps(cargoParsed, workspacePath === "." ? "" : `|${workspacePath}`);
-        cargoMemberFiles.push({absPath: resolve(file), content: cargoContent, memberPath: workspacePath});
+        cargoMemberFiles.push({absPath: absFile, content: cargoContent, memberPath: workspacePath});
         for (const member of members) {
           const memberPath = workspaceMemberPath(mode, file, member.memberPath);
           registerModeContext(mode, memberPath, modeContext);
@@ -982,7 +981,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
 
     if (filename === "package.json" && npmWorkspaceFiles.has(file)) {
       deps[mode] ??= {};
-      const workspaceDir = dirname(resolve(file));
+      const workspaceDir = dirname(absFile);
       const rootContent = fileContents.get(file)!;
       const rootPkg = npmWorkspaceFiles.get(file)!;
       const rawPackagePatterns = Array.isArray(rootPkg.workspaces) ? rootPkg.workspaces : rootPkg.workspaces?.packages;
@@ -994,7 +993,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
       ]);
       const dependencyTypes = resolveDepTypes(mode, filters.modeConfig);
       collectNpmWorkspaceMember(file, workspaceDir, {
-        absPath: resolve(file), content: rootContent, memberPath: ".",
+        absPath: absFile, content: rootContent, memberPath: ".",
       }, rootPkg, dependencyTypes, filters);
       for (const member of members) {
         collectNpmWorkspaceMember(file, workspaceDir, member,
@@ -1005,7 +1004,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
 
     if (filename === "pnpm-workspace.yaml") {
       deps[mode] ??= {};
-      const workspaceDir = dirname(resolve(file));
+      const workspaceDir = dirname(absFile);
       const wsContent = fileContents.get(file)!;
       const packagePatterns = parsePnpmWorkspace(wsContent);
       const rootPkgPath = join(workspaceDir, "package.json");
@@ -1019,7 +1018,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
       const workspaceManifestPath = workspaceMemberPath(mode, file, filename);
       registerModeContext(mode, workspaceManifestPath, modeCtx(filters, workspaceDir));
 
-      pnpmCatalogFiles.push({absPath: resolve(file), content: wsContent, memberPath: workspaceManifestPath});
+      pnpmCatalogFiles.push({absPath: absFile, content: wsContent, memberPath: workspaceManifestPath});
       for (const {type, name, value} of pnpmCatalogEntries(wsContent)) {
         if (canInclude(name, mode, filters.include, filters.exclude, type, mode, parseNpmAlias(value)?.name ?? name)) {
           addNpmDep(manifestDependencyKey(type, `|${workspaceManifestPath}`, name), name, value);
@@ -1054,7 +1053,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
 
     deps[mode] ??= {};
 
-    const projectDir = dirname(resolve(file));
+    const projectDir = dirname(absFile);
     const filters = await resolveDirConfig(projectDir);
     const {modeConfig, include: modeInclude, exclude: modeExclude} = filters;
 
@@ -1068,7 +1067,8 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
     collectDeps(mode, pkg, typePrefix, dependencyTypes, modeInclude, modeExclude);
   }
 
-  if (!countDeps(deps) && !Object.keys(maybeUrlDeps).length) {
+  const hasMaybeUrlDeps = Object.keys(maybeUrlDeps).length > 0;
+  if (!hasDeps(deps) && !hasMaybeUrlDeps) {
     return {results: {}, message: "No dependencies found, nothing to do."};
   }
 
@@ -1080,7 +1080,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
     entry.cooldownDays || entry.versionConfig.hasCooldownOverride)};
 
   for (const [mode, modeContexts] of Object.entries(modeContextsBySuffix)) {
-    if (!Object.keys(deps[mode] ?? {}).length && (mode !== "npm" || !Object.keys(maybeUrlDeps).length)) continue;
+    if (!Object.keys(deps[mode] ?? {}).length && (mode !== "npm" || !hasMaybeUrlDeps)) continue;
     fetchTasks.push((async () => {
       const modeConfigEntry = modeContexts.values().next().value!;
       const ctxForType = (type: string) => {
@@ -1173,7 +1173,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
         setDepAge(dep, followUp.date);
       }));
 
-      if (mode === "npm" && Object.keys(maybeUrlDeps).length) {
+      if (mode === "npm" && hasMaybeUrlDeps) {
         const results = (await pMap(Object.entries(maybeUrlDeps), async ([key, dep]) => {
           try {
             return await checkUrlDep(key, dep, ctx);
@@ -1473,7 +1473,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
     await flushCacheWrites();
   }
 
-  if (!countDeps(deps)) {
+  if (!hasDeps(deps)) {
     return errors.length ? {results: {}, errors} : {results: {}, message: "All dependencies are up to date."};
   }
 

@@ -3,9 +3,8 @@ import {join} from "node:path";
 import {tmpdir} from "node:os";
 import {env, platform} from "node:process";
 import {
-  checkUrlDep, fetchJsrInfo, fetchNpmInfo, fetchNpmVersionInfo, getLatestCommit, getTags, isCatalogRef, isJsr,
-  isLocalDep, normalizeRange, parseJsrDependency, parseNpmAlias, resolutionsBasePackage, updatePackageJson,
-  updateVersionRange,
+  checkUrlDep, fetchJsrInfo, fetchNpmInfo, getLatestCommit, getTags, isCatalogRef, isJsr, isLocalDep, normalizeRange,
+  parseJsrDependency, parseNpmAlias, resolutionsBasePackage, updatePackageJson, updateVersionRange,
 } from "./npm.ts";
 import {type ModeContext, fetchTimeout, fieldSep} from "./shared.ts";
 
@@ -302,38 +301,6 @@ test("fetchNpmInfo requests the full doc only when dates are needed, never reusi
   await fetchNpmInfo("both", "dependencies", {}, {}, ctx);
   await fetchNpmInfo("both", "dependencies", {}, {needsDates: true}, ctx);
   expect(accepts.slice(2)).toEqual(["application/vnd.npm.install-v1+json", undefined]);
-});
-
-test("fetchNpmVersionInfo reuses full metadata and falls back when it is absent", async () => {
-  const args = {needsDates: true};
-  const date = "2025-01-01T00:00:00.000Z";
-  const repository = "https://github.com/example/reused";
-  let calls = 0;
-  const reusedCtx = modeCtx({noCache: true, doFetch: () => {
-    calls++;
-    return textRes({
-      name: "reused", "dist-tags": {latest: "2.0.0"},
-      versions: {"2.0.0": {repository, homepage: "https://example.com/reused"}},
-      time: {"2.0.0": date}, padding: "x".repeat(17000),
-    });
-  }});
-  await fetchNpmInfo("reused", "dependencies", {}, args, reusedCtx);
-  expect(await fetchNpmVersionInfo("reused", "2.0.0", {}, args, reusedCtx)).toEqual({
-    repository, homepage: "https://example.com/reused", date,
-  });
-  expect(calls).toBe(1);
-
-  calls = 0;
-  const fallbackCtx = modeCtx({noCache: true, doFetch: (url: string) => {
-    calls++;
-    return url.endsWith("/2.0.0") ? textRes({repository}) : textRes({
-      name: "fallback", "dist-tags": {latest: "2.0.0"}, versions: {"2.0.0": {}}, time: {"2.0.0": date},
-    });
-  }});
-  await fetchNpmInfo("fallback", "dependencies", {}, args, fallbackCtx);
-  expect(await fetchNpmVersionInfo("fallback", "2.0.0", {}, args, fallbackCtx))
-    .toEqual({repository, homepage: undefined, date});
-  expect(calls).toBe(2);
 });
 
 test("getLatestCommit", async () => {

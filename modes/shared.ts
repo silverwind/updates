@@ -190,14 +190,19 @@ export function fetchImmutable(
   return fetchCached(url, ctx, opts, reduce, url, true);
 }
 
-export async function dedupe<T>(byCtx: WeakMap<ModeContext, Map<string, Promise<T>>>, ctx: ModeContext, key: string, fn: () => Promise<T>): Promise<T> {
+export async function dedupe<T>(
+  byCtx: WeakMap<ModeContext, Map<string, Promise<T>>>, ctx: ModeContext, key: string, fn: () => Promise<T>,
+  cacheSettled = true,
+): Promise<T> {
   const cache = getOrSet(byCtx, ctx, () => new Map<string, Promise<T>>());
   const promise = cache.get(key);
   if (promise) return promise;
   const request = fn();
   cache.set(key, request);
   try {
-    return await request;
+    const result = await request;
+    if (!cacheSettled) cache.delete(key);
+    return result;
   } catch (err) {
     cache.delete(key);
     throw err;
@@ -601,11 +606,12 @@ const forgeEtagsByCtx = new WeakMap<ModeContext, Map<string, Promise<string | nu
 export function fetchForgeEtag(
   url: string, ctx: ModeContext, flavor: "commits" | "tags" | "releases", reduce: (res: Response) => Promise<string>,
 ): Promise<string | null> {
-  return dedupe(forgeEtagsByCtx, ctx, `${flavor}${fieldSep}${url}`, async () => {
+  const key = `${flavor}${fieldSep}${url}`;
+  return dedupe(forgeEtagsByCtx, ctx, key, async () => {
     const cached = ctx.noCache ? null : await getCache(url);
     const res = await fetchForge(url, ctx, cached ? {"if-none-match": cached.etag} : undefined);
     if (res?.status === 304 && cached) return cached.body;
-    if (!res?.ok) return null;
+    if (!res?.ok) { forgeEtagsByCtx.get(ctx)!.delete(key); return null; }
     const body = await reduce(res);
     const etag = res.headers.get("etag");
     if (etag && !ctx.noCache) setCache(url, etag, body);
@@ -653,20 +659,13 @@ function lastPageFromLink(link: string): number {
 
 async function fetchForgePages<T>(
   url: (page: number) => string, ctx: ModeContext, key: "tags" | "releases",
-  parse: (data: any, cached: boolean) => Array<T>, bounded: boolean, take: (entries: Array<T>) => boolean,
+  parse: (data: any, cached: boolean) => Array<T>, take: (entries: Array<T>) => boolean,
 ): Promise<void> {
   const page1 = await fetchForgePage(url(1), ctx, key, parse);
   if (!page1) return;
   const lastPage = lastPageFromLink(page1.link);
-  let done = take(page1.entries);
-  if (bounded) {
-    for (let next = 2; next <= lastPage && !done; next++) {
-      done = take((await fetchForgePage(url(next), ctx, key, parse))?.entries ?? []);
-    }
-    return;
-  }
   const maxWave = effectiveConcurrency(ctx);
-  for (let next = 2, wave = 1; next <= lastPage && !done; next += wave, wave = Math.min(wave * 2, maxWave)) {
+  for (let next = 2, wave = 1, done = take(page1.entries); next <= lastPage && !done; next += wave, wave = Math.min(wave * 2, maxWave)) {
     const pages = await Promise.all(
       Array.from({length: Math.min(wave, lastPage - next + 1)}, (_, idx) =>
         fetchForgePage(url(next + idx), ctx, key, parse)),
@@ -676,21 +675,16 @@ async function fetchForgePages<T>(
 }
 
 async function fetchReleaseStability(
-  owner: string, repo: string, ctx: ModeContext, oldRefs: Array<string>,
+  owner: string, repo: string, ctx: ModeContext,
 ): Promise<Map<string, boolean>> {
   const stability = new Map<string, boolean>();
-  // Newest first, so the same bound as the tags: everything still selectable is seen before the
-  // release naming a current ref, and anything past it could only be picked as a downgrade.
-  const unresolved = new Set(oldRefs.filter(Boolean));
-  const bounded = unresolved.size > 0;
   await fetchForgePages(
     page => `${githubApiUrl}/repos/${owner}/${repo}/releases?per_page=100&page=${page}`,
-    ctx, "releases", parseReleases, bounded, entries => {
+    ctx, "releases", parseReleases, entries => {
       for (const release of entries) {
-        unresolved.delete(release.name);
         stability.set(release.name, release.isStable);
       }
-      return bounded && !unresolved.size;
+      return false;
     },
   );
   return stability;
@@ -704,7 +698,7 @@ export async function fetchForgeTags(
   const bounded = unresolved.size > 0;
   await fetchForgePages(
     page => `${apiUrl}/repos/${owner}/${repo}/tags?per_page=100&page=${page}`,
-    ctx, "tags", parseTagPage, bounded, entries => {
+    ctx, "tags", parseTagPage, entries => {
       for (const entry of entries) {
         for (const ref of unresolved) if (ref === entry.name || entry.commitSha.startsWith(ref)) unresolved.delete(ref);
         tags.push(entry);
@@ -721,7 +715,7 @@ export async function fetchActionTags(
   if (apiUrl !== githubApiUrl || !includeStability) return fetchForgeTags(apiUrl, owner, repo, ctx, oldRefs);
   const [tagsResult, stability] = await Promise.allSettled([
     fetchForgeTags(apiUrl, owner, repo, ctx, oldRefs),
-    fetchReleaseStability(owner, repo, ctx, oldRefs),
+    fetchReleaseStability(owner, repo, ctx),
   ]);
   if (tagsResult.status === "rejected") throw tagsResult.reason;
   if (stability.status === "rejected" && !(stability.reason instanceof ForgeError)) throw stability.reason;

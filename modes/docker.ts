@@ -208,9 +208,12 @@ function fetchDockerHubTagPages(namespace: string, repo: string, ctx: ModeContex
         page = result.value;
       }
     }
+    let baseOrigin: string | undefined;
     for (; pageNumber <= maxDockerTagPages && page.next; pageNumber++) {
-      const nextUrl = new URL(page.next, baseUrl).href;
-      if (new URL(nextUrl).origin !== new URL(baseUrl).origin || seen.has(nextUrl)) break;
+      const next = new URL(page.next, baseUrl);
+      baseOrigin ??= new URL(baseUrl).origin;
+      const nextUrl = next.href;
+      if (next.origin !== baseOrigin || seen.has(nextUrl)) break;
       seen.add(nextUrl);
       const result = await fetchPage(nextUrl);
       if (!result) break;

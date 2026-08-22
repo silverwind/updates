@@ -440,8 +440,9 @@ test("fetchForge only sends github credentials to github hosts", async () => {
 
 test("fetchForgeEtag memoizes each reduced response flavor for one run", async () => {
   let calls = 0;
-  const ctx = modeCtx({noCache: true, forgeApiUrl: "https://api.github.com", doFetch: () => {
+  const ctx = modeCtx({noCache: true, forgeApiUrl: "https://api.github.com", doFetch: (requestUrl: string) => {
     calls++;
+    if (requestUrl.includes("retry") && calls === 3) return Promise.resolve({ok: false, status: 404, headers: new Headers()});
     return Promise.resolve({ok: true, status: 200, text: () => Promise.resolve(String(calls)), headers: new Headers()});
   }});
   const url = "https://memoized-forge.test/repos/o/r/tags?page=1";
@@ -449,7 +450,10 @@ test("fetchForgeEtag memoizes each reduced response flavor for one run", async (
   expect(await fetchForgeEtag(url, ctx, "tags", res => res.text())).toBe("1");
   expect(await fetchForgeEtag(url, ctx, "tags", res => res.text())).toBe("1");
   expect(await fetchForgeEtag(url, ctx, "releases", res => res.text())).toBe("2");
-  expect(calls).toBe(2);
+  const retryUrl = "https://memoized-forge.test/repos/o/retry/tags?page=1";
+  expect(await fetchForgeEtag(retryUrl, ctx, "tags", res => res.text())).toBeNull();
+  expect(await fetchForgeEtag(retryUrl, ctx, "tags", res => res.text())).toBe("4");
+  expect(calls).toBe(4);
 });
 
 sequential("fetchForge does not reuse a cached token removed from the environment", async () => {
@@ -527,7 +531,7 @@ test("fetchActionTags walks until the authored ref turns up, and no further", as
   };
   expect(await walk([])).toEqual([lastPage, lastPage + 1]);
   expect(await walk(["v1.0.0"])).toEqual([1, 2]);
-  expect(await walk(["sha11"])).toEqual([11, 12]);
+  expect(await walk(["sha11"])).toEqual([16, 17]);
 });
 
 test("every request shares the run's one socket budget", async () => {

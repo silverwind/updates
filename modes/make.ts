@@ -1,5 +1,6 @@
 import {env} from "node:process";
-import {type ModeContext, fetchWithRetry} from "./shared.ts";
+import {resolve} from "node:path";
+import {dedupe, fetchWithRetry, fieldSep, type ModeContext} from "./shared.ts";
 import {esc} from "../utils/utils.ts";
 import {fetchFromGoProxyChain, fetchGoLatestOnce, isGoNoProxy, goProxyHeaders} from "./go.ts";
 import {type DockerImageRef, parseDockerImageRef} from "./docker.ts";
@@ -86,17 +87,10 @@ export function parseMakeDockerImages(content: string): Array<MakeDockerImage> {
 }
 
 const midMajorRe = /\/v(?:[2-9]|[1-9]\d+)(?=\/|$)/;
+const directGoProbesByCtx = new WeakMap<ModeContext, Map<string, Promise<boolean | null>>>();
 
-async function probeGoModuleRoot(
-  candidate: string, goCwd: string, ctx: ModeContext, chain: ModeContext["goProxyChain"],
-): Promise<boolean> {
-  return await fetchFromGoProxyChain(chain, async url => {
-    if (url === "off") return false;
-    if (url !== "direct") {
-      return await fetchGoLatestOnce(
-        ctx, "primary", requestUrl => fetchWithRetry(ctx, requestUrl, {headers: goProxyHeaders}), url, candidate,
-      ) ? true : null;
-    }
+function probeDirectGoModule(candidate: string, goCwd: string, ctx: ModeContext): Promise<boolean | null> {
+  return dedupe(directGoProbesByCtx, ctx, `${resolve(goCwd)}${fieldSep}${candidate}`, async () => {
     let stdout: string;
     try {
       ({stdout} = await ctx.execFile("go", ["list", "-m", "-e", "-json", `${candidate}@latest`], {
@@ -119,6 +113,20 @@ async function probeGoModuleRoot(
     }
     if (typeof result.Version !== "string") throw new Error(`go list -m ${candidate}@latest returned malformed JSON`);
     return true;
+  }, false);
+}
+
+async function probeGoModuleRoot(
+  candidate: string, goCwd: string, ctx: ModeContext, chain: ModeContext["goProxyChain"],
+): Promise<boolean> {
+  return await fetchFromGoProxyChain(chain, async url => {
+    if (url === "off") return false;
+    if (url !== "direct") {
+      return await fetchGoLatestOnce(
+        ctx, "primary", requestUrl => fetchWithRetry(ctx, requestUrl, {headers: goProxyHeaders}), url, candidate,
+      ) ? true : null;
+    }
+    return probeDirectGoModule(candidate, goCwd, ctx);
   }) ?? false;
 }
 

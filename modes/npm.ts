@@ -82,18 +82,11 @@ const npmVersionInfoByCtx = new WeakMap<ModeContext, Map<string, Promise<NpmVers
 const npmFullDataByCtx = new WeakMap<ModeContext, Map<string, Promise<Record<string, any> | null>>>();
 const jsrDataByCtx = new WeakMap<ModeContext, Map<string, Promise<Record<string, any>>>>();
 
-const docCacheKey = (url: string, needsDates: boolean) => `${url}\0v3${needsDates ? "-dates" : ""}`;
+const docCacheKey = (url: string, needsDates: boolean) => `${url}\0v2${needsDates ? "-dates" : ""}`;
 
-function reduceNpmDoc(data: Record<string, any>, needsDates: boolean): Record<string, any> {
-  const versions: Record<string, {deprecated?: true, repository?: PackageRepository, homepage?: string}> = {};
-  for (const [version, metadata] of Object.entries(data.versions ?? {})) {
-    const info = metadata as Record<string, any>;
-    versions[version] = {
-      ...(info.deprecated && {deprecated: true}),
-      ...(needsDates && info.repository && {repository: info.repository}),
-      ...(needsDates && info.homepage && {homepage: info.homepage}),
-    };
-  }
+function reduceNpmDoc(data: Record<string, any>): Record<string, any> {
+  const versions: Record<string, {deprecated?: true}> = {};
+  for (const version of Object.keys(data.versions ?? {})) versions[version] = data.versions[version]?.deprecated ? {deprecated: true} : {};
   return {name: data.name, "dist-tags": data["dist-tags"], versions, time: data.time, error: data.error};
 }
 
@@ -108,7 +101,7 @@ export async function fetchNpmInfo(name: string, type: string, config: Config, a
     const opts = getFetchOpts(auth?.type, auth?.token);
     if (!args.needsDates) opts.headers = {...opts.headers as Record<string, string>,
       "accept": "application/vnd.npm.install-v1+json"};
-    const result = await fetchWithEtag(url, ctx, opts, reduceJson(data => reduceNpmDoc(data, Boolean(args.needsDates))), cacheKey);
+    const result = await fetchWithEtag(url, ctx, opts, reduceJson(reduceNpmDoc), cacheKey);
     if (!("body" in result)) throwFetchError(result.res, url, name, registry);
     return JSON.parse(result.body);
   });
@@ -124,13 +117,6 @@ export async function fetchNpmVersionInfo(name: string, version: string, config:
   return dedupe(npmVersionInfoByCtx, ctx, url, async (): Promise<NpmVersionInfo> => {
     try {
       const fetchOpts = getFetchOpts(auth?.type, auth?.token);
-      const fullUrl = npmPackageUrl(registry, name);
-      const fullData = args.needsDates ? await npmDataByCtx.get(ctx)?.get(docCacheKey(fullUrl, true)) : undefined;
-      const fullVersion = fullData?.versions?.[version];
-      const fullDate = fullData?.time?.[version] || "";
-      if (fullDate && (fullVersion?.repository || fullVersion?.homepage)) {
-        return {repository: fullVersion.repository, homepage: fullVersion.homepage, date: fullDate};
-      }
       const result = await fetchImmutable(url, ctx, fetchOpts, reduceJson(data => ({
         repository: data.repository,
         homepage: data.homepage,
@@ -141,13 +127,14 @@ export async function fetchNpmVersionInfo(name: string, version: string, config:
       let date = "";
       const match = /(\d{13})/.exec(data?._npmOperationalInternal?.tmp ?? "");
       if (match) date = new Date(Number(match[1])).toISOString();
-      if (!date) date = fullDate;
+      const fullUrl = npmPackageUrl(registry, name);
+      if (!date && args.needsDates) date = (await npmDataByCtx.get(ctx)?.get(docCacheKey(fullUrl, true)))?.time?.[version] || "";
       if (!date) {
-        const fallbackData = await tryOrNull(dedupe(npmFullDataByCtx, ctx, fullUrl, async () => {
+        const fullData = await tryOrNull(dedupe(npmFullDataByCtx, ctx, fullUrl, async () => {
           const res = await fetchWithRetry(ctx, fullUrl, fetchOpts);
           return res?.ok ? await res.json() : null;
         }));
-        date = fallbackData?.time?.[version] || "";
+        date = fullData?.time?.[version] || "";
       }
       return {repository: data.repository, homepage: data.homepage, date};
     } catch {

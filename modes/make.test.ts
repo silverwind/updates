@@ -185,7 +185,13 @@ test("resolveGoModuleRoot uses VCS origin metadata through a direct fallback", a
     seen.push(url);
     return Promise.resolve({ok: false, status: 404} as any);
   }, chain[0].url, execFile, chain);
+  await expect(Promise.all([
+    resolveGoModuleRoot(`${moduleRoot}/cmd/govulncheck`, ".", ctx, []),
+    resolveGoModuleRoot(`${moduleRoot}/cmd/scan`, ".", ctx, []),
+  ])).resolves.toEqual([moduleRoot, moduleRoot]);
+  expect(probed.filter(candidate => candidate === moduleRoot)).toHaveLength(1);
   expect(await resolveGoModuleRoot(`${moduleRoot}/cmd/govulncheck`, ".", ctx, [])).toBe(moduleRoot);
+  expect(probed.filter(candidate => candidate === moduleRoot)).toHaveLength(2);
   expect(seen).toContain(`https://empty/${moduleRoot}/@latest`);
 
   // the entry that resolves the root ends the walk, so no later entry is paid for
