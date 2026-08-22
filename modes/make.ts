@@ -94,7 +94,7 @@ async function probeGoModuleRoot(
     if (url === "off") return false;
     if (url !== "direct") {
       return await fetchGoLatestOnce(
-        ctx, requestUrl => fetchWithRetry(ctx, requestUrl, {headers: goProxyHeaders}), url, candidate,
+        ctx, "primary", requestUrl => fetchWithRetry(ctx, requestUrl, {headers: goProxyHeaders}), url, candidate,
       ) ? true : null;
     }
     let stdout: string;

@@ -314,10 +314,14 @@ const fetchGoLatest = async (doFetch: ProxyFetch, base: string, path: string): P
   throwFetchError(res, url, path, base);
 };
 
-const goLatestByCtx = new WeakMap<ModeContext, Map<string, Promise<ProbeResult | null>>>();
+type GoFetchKind = "primary" | "probe";
+const goFetchesByCtx = new WeakMap<ModeContext, Map<string, Promise<ProbeResult | null>>>();
 
-export function fetchGoLatestOnce(ctx: ModeContext, doFetch: ProxyFetch, base: string, path: string): Promise<ProbeResult | null> {
-  return dedupe(goLatestByCtx, ctx, `${base}/${path}`, () => fetchGoLatest(doFetch, base, path));
+export function fetchGoLatestOnce(
+  ctx: ModeContext, kind: GoFetchKind, doFetch: ProxyFetch, base: string, path: string,
+): Promise<ProbeResult | null> {
+  return dedupe(goFetchesByCtx, ctx, `latest${fieldSep}${kind}${fieldSep}${base}/${path}`,
+    () => fetchGoLatest(doFetch, base, path));
 }
 
 export function pickGoListVersion(body: string, major = 0, excluded = new Set<string>()): {Version: string, Time: string} | null {
@@ -358,27 +362,35 @@ async function fetchGoList(doFetch: ProxyFetch, base: string, path: string, excl
   return {...best, path};
 }
 
+function fetchGoListOnce(
+  ctx: ModeContext, kind: GoFetchKind, doFetch: ProxyFetch, base: string, path: string,
+  excluded = new Set<string>(),
+): Promise<ProbeResult | null> {
+  const key = `list${fieldSep}${kind}${fieldSep}${base}/${path}${fieldSep}${Array.from(excluded).sort().join(fieldSep)}`;
+  return dedupe(goFetchesByCtx, ctx, key, () => fetchGoList(doFetch, base, path, excluded));
+}
+
 async function fetchGoProxyModule(
   base: string, name: string, currentVersion: string, ctx: ModeContext, excludes: GoExcludes,
 ): Promise<PackageInfo | null> {
   const currentMajor = extractGoMajor(name);
   const primaryFetch: ProxyFetch = url => fetchWithRetry(ctx, url, {headers: goProxyHeaders});
   const probeFetch: ProxyFetch = url => ctx.doFetch(url, {signal: AbortSignal.timeout(ctx.goProbeTimeout), headers: goProxyHeaders});
-  const primaryLatestPromise = fetchGoLatestOnce(ctx, primaryFetch, base, name);
+  const primaryLatestPromise = fetchGoLatestOnce(ctx, "primary", primaryFetch, base, name);
   const primaryPromise = (async () => {
     const primaryLatest = await primaryLatestPromise;
     return primaryLatest && !excludes.get(name)?.has(primaryLatest.Version) ? primaryLatest :
-      fetchGoList(primaryFetch, base, name, excludes.get(name));
+      fetchGoListOnce(ctx, "primary", primaryFetch, base, name, excludes.get(name));
   })();
   const probe = async (path: string) => {
     try {
       const [latest, primaryLatest] = await Promise.all([
-        fetchGoLatestOnce(ctx, probeFetch, base, path), primaryLatestPromise,
+        fetchGoLatestOnce(ctx, "probe", probeFetch, base, path), primaryLatestPromise,
       ]);
       const excluded = excludes.get(path);
       if (latest && !excluded?.has(latest.Version)) return latest;
       if (!latest && primaryLatest) return null;
-      return fetchGoList(probeFetch, base, path, excluded);
+      return fetchGoListOnce(ctx, "probe", probeFetch, base, path, excluded);
     } catch {
       return null;
     }

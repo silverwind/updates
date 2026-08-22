@@ -596,15 +596,21 @@ const parseTagPage = (data: any, cached: boolean): Array<TagEntry> => {
   });
 };
 
-export async function fetchForgeEtag(url: string, ctx: ModeContext, reduce: (res: Response) => Promise<string>): Promise<string | null> {
-  const cached = ctx.noCache ? null : await getCache(url);
-  const res = await fetchForge(url, ctx, cached ? {"if-none-match": cached.etag} : undefined);
-  if (res?.status === 304 && cached) return cached.body;
-  if (!res?.ok) return null;
-  const body = await reduce(res);
-  const etag = res.headers.get("etag");
-  if (etag && !ctx.noCache) setCache(url, etag, body);
-  return body;
+const forgeEtagsByCtx = new WeakMap<ModeContext, Map<string, Promise<string | null>>>();
+
+export function fetchForgeEtag(
+  url: string, ctx: ModeContext, flavor: "commits" | "tags" | "releases", reduce: (res: Response) => Promise<string>,
+): Promise<string | null> {
+  return dedupe(forgeEtagsByCtx, ctx, `${flavor}${fieldSep}${url}`, async () => {
+    const cached = ctx.noCache ? null : await getCache(url);
+    const res = await fetchForge(url, ctx, cached ? {"if-none-match": cached.etag} : undefined);
+    if (res?.status === 304 && cached) return cached.body;
+    if (!res?.ok) return null;
+    const body = await reduce(res);
+    const etag = res.headers.get("etag");
+    if (etag && !ctx.noCache) setCache(url, etag, body);
+    return body;
+  });
 }
 
 type Release = {name: string, isStable: boolean};
@@ -627,7 +633,7 @@ type ForgePage<T> = {entries: Array<T>, link: string};
 async function fetchForgePage<T>(
   url: string, ctx: ModeContext, key: "tags" | "releases", parse: (data: any, cached: boolean) => Array<T>,
 ): Promise<ForgePage<T> | null> {
-  const body = await fetchForgeEtag(url, ctx, async res => JSON.stringify({
+  const body = await fetchForgeEtag(url, ctx, key, async res => JSON.stringify({
     link: res.headers.get("link") || "",
     [key]: parse(await res.json(), false),
   }));
@@ -647,13 +653,20 @@ function lastPageFromLink(link: string): number {
 
 async function fetchForgePages<T>(
   url: (page: number) => string, ctx: ModeContext, key: "tags" | "releases",
-  parse: (data: any, cached: boolean) => Array<T>, take: (entries: Array<T>) => boolean,
+  parse: (data: any, cached: boolean) => Array<T>, bounded: boolean, take: (entries: Array<T>) => boolean,
 ): Promise<void> {
   const page1 = await fetchForgePage(url(1), ctx, key, parse);
   if (!page1) return;
   const lastPage = lastPageFromLink(page1.link);
+  let done = take(page1.entries);
+  if (bounded) {
+    for (let next = 2; next <= lastPage && !done; next++) {
+      done = take((await fetchForgePage(url(next), ctx, key, parse))?.entries ?? []);
+    }
+    return;
+  }
   const maxWave = effectiveConcurrency(ctx);
-  for (let next = 2, wave = 1, done = take(page1.entries); next <= lastPage && !done; next += wave, wave = Math.min(wave * 2, maxWave)) {
+  for (let next = 2, wave = 1; next <= lastPage && !done; next += wave, wave = Math.min(wave * 2, maxWave)) {
     const pages = await Promise.all(
       Array.from({length: Math.min(wave, lastPage - next + 1)}, (_, idx) =>
         fetchForgePage(url(next + idx), ctx, key, parse)),
@@ -672,7 +685,7 @@ async function fetchReleaseStability(
   const bounded = unresolved.size > 0;
   await fetchForgePages(
     page => `${githubApiUrl}/repos/${owner}/${repo}/releases?per_page=100&page=${page}`,
-    ctx, "releases", parseReleases, entries => {
+    ctx, "releases", parseReleases, bounded, entries => {
       for (const release of entries) {
         unresolved.delete(release.name);
         stability.set(release.name, release.isStable);
@@ -691,7 +704,7 @@ export async function fetchForgeTags(
   const bounded = unresolved.size > 0;
   await fetchForgePages(
     page => `${apiUrl}/repos/${owner}/${repo}/tags?per_page=100&page=${page}`,
-    ctx, "tags", parseTagPage, entries => {
+    ctx, "tags", parseTagPage, bounded, entries => {
       for (const entry of entries) {
         for (const ref of unresolved) if (ref === entry.name || entry.commitSha.startsWith(ref)) unresolved.delete(ref);
         tags.push(entry);

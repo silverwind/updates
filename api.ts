@@ -1207,12 +1207,21 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
     })());
   }
 
+  const actionVersionOpts = (info: ActionDepInfo) => resolveVersionOpts(
+    info.versionConfig, "actions", info.name, info.name, info.filePin, info.filePinNoDowngrade,
+    info.fileCooldownDays,
+  );
+
   if (actionDepInfos.length) {
     fetchTasks.push((async () => {
       await pMap(Map.groupBy(actionDepInfos, info => `${info.apiUrl}/${info.owner}/${info.repo}`).values(), async (infos) => {
         const {apiUrl, owner, repo} = infos[0];
         const versionConsumers = infos.filter(info => info.isHash ?
           !isDigestOnlyPin(info) : isVersionLikeRef(info.ref));
+        const needsOlderTags = versionConsumers.some(info => {
+          const {allowDowngrade, pinnedRange, pinNoDowngrade} = actionVersionOpts(info);
+          return allowDowngrade || Boolean(pinnedRange && !pinNoDowngrade);
+        });
         const tagRefs = [
           ...versionConsumers.map(info => info.isHash ? info.comment || info.ref : info.ref),
           ...(apiUrl === defaultApiUrls.forgeapi ? [] : infos.filter(isDigestOnlyPin).map(info => info.comment)),
@@ -1220,7 +1229,9 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
         let tags: Array<TagEntry> = [];
         try {
           if (tagRefs.length) {
-            tags = await fetchActionTags(apiUrl, owner, repo, ctx, tagRefs, Boolean(versionConsumers.length));
+            tags = await fetchActionTags(
+              apiUrl, owner, repo, ctx, needsOlderTags ? [] : tagRefs, Boolean(versionConsumers.length),
+            );
           }
         } catch (err) {
           for (const info of infos) {
@@ -1275,7 +1286,8 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
           return null;
         }
 
-        const updateAction = async ({key, host, ref, comment, name: actionName, isHash, versionConfig, filePin, filePinNoDowngrade, fileCooldownDays}: ActionDepInfo) => {
+        const updateAction = async (info: ActionDepInfo) => {
+          const {key, host, ref, comment, isHash} = info;
           const dep = deps.actions[key];
           const infoUrl = `https://${host || "github.com"}/${owner}/${repo}`;
 
@@ -1290,7 +1302,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
           const {
             useGreatest, usePre, useRel, semvers, allowDowngrade: allowDown, allowedVersions,
             pinnedRange, pinNoDowngrade, cooldownDays: actionCooldownDays,
-          } = resolveVersionOpts(versionConfig, "actions", actionName, actionName, filePin, filePinNoDowngrade, fileCooldownDays);
+          } = actionVersionOpts(info);
           // A comment naming a branch or other moving ref has no version to select against.
           const result = isVersionLikeRef(oldRef) ? await pickVersion({
             range: oldRef, semvers, useGreatest, usePre, useRel, allowDowngrade: allowDown, versioning: githubActionsVersioning,

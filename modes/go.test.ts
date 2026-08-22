@@ -284,12 +284,30 @@ const infoFor = (ctx: ModeContext, cwd = ".") => fetchGoProxyInfo(modPath, "deps
 
 test("fetchGoProxyInfo falls back to @v/list when the proxy omits @latest", async () => {
   const seen: Array<string> = [];
-  const [data] = await infoFor(makeGoCtx({
+  const ctx = makeGoCtx({
     [`${goProxyBase}/${modPath}/@v/list`]: "v1.0.0\nv1.2.0\nv1.3.0-rc.1\n",
     [`${goProxyBase}/${modPath}/@v/v1.2.0.info`]: JSON.stringify({Version: "v1.2.0", Time: "2024-01-01T00:00:00Z"}),
-  }, seen));
+  }, seen);
+  const [[data], [sameData]] = await Promise.all([infoFor(ctx), infoFor(ctx)]);
   expect(data).toMatchObject({name: modPath, old: "1.0.0", new: "1.2.0", Time: "2024-01-01T00:00:00Z"});
+  expect(sameData).toEqual(data);
   expect(seen).toContain(`${goProxyBase}/${modPath}/v2/@v/list`);
+  expect(new Set(seen).size).toBe(seen.length);
+});
+
+test("primary and probe Go lookups keep their retry semantics separate", async () => {
+  const seen: Array<string> = [];
+  const ctx = makeGoCtx({
+    [`${goProxyBase}/${modPath}/@latest`]: JSON.stringify({Version: "v1.2.0", Time: ""}),
+    [`${goProxyBase}/${modPath}/v2/@latest`]: 500,
+  }, seen);
+  const [root, major] = await Promise.allSettled([
+    infoFor(ctx),
+    fetchGoProxyInfo(`${modPath}/v2`, "deps", "2.0.0", ".", ctx, []),
+  ]);
+  expect(root.status).toBe("fulfilled");
+  expect(major).toMatchObject({status: "rejected", reason: expect.any(Error)});
+  expect(seen.filter(url => url === `${goProxyBase}/${modPath}/v2/@latest`)).toHaveLength(4);
 });
 
 test("fetchGoProxyInfo stops major probing at the first absent major", async () => {

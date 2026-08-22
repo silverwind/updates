@@ -1283,6 +1283,41 @@ test("branch-only actions do not fetch forge metadata", async () => {
   }
 });
 
+test("actions scan older tags for configured downgrades and pins", async () => {
+  const server = makeServer(defaultRoute);
+  const dir = mkdtempSync(join(tmpdir(), "updates-actions-older-"));
+  const workflow = join(dir, ".github", "workflows", "ci.yml");
+  mkdirSync(join(dir, ".github", "workflows"), {recursive: true});
+  writeFileSync(workflow, [
+    "jobs:",
+    "  test:",
+    "    steps:",
+    "      - uses: o/down@v10.0.0-alpha",
+    "      - uses: o/pinned@v10.0.0",
+  ].join("\n"));
+  await server.start(0);
+  const forgeapi = makeUrl(server);
+  for (const repo of ["down", "pinned"]) {
+    server.get(`/repos/o/${repo}/tags`, (req, res) => {
+      const page = Number(new URL(req.url, forgeapi).searchParams.get("page"));
+      const names = ["main", "edge", repo === "down" ? "v10.0.0-alpha" : "v10.0.0", "legacy", "v9.0.0"];
+      res.setHeader("Link", `<${forgeapi}repos/o/${repo}/tags?per_page=100&page=5>; rel="last"`);
+      res.end(JSON.stringify([{name: names[page - 1], commit: {sha: `${repo}${page}`}}]));
+    });
+  }
+  try {
+    const output = await updates({
+      files: [workflow], modes: ["actions"], forgeapi, noCache: true, noColor: true,
+      allowDowngrade: ["o/down"], pin: {"o/pinned": "^9"},
+    });
+    const results = Object.values(output.results.actions)[0];
+    expect(results["o/down"].new).toBe("9.0.0");
+    expect(results["o/pinned"].new).toBe("9.0.0");
+  } finally {
+    await Promise.all([server.close(), rm(dir, {recursive: true, force: true})]);
+  }
+});
+
 test("actions basic", async ({expect = globalExpect}: any = {}) => {
   const {stdout, stderr} = await runCliExec(actionsArgs("-j"));
   expect(stderr).toEqual("");
