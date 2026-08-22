@@ -1470,7 +1470,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
   try {
     await Promise.all(fetchTasks);
   } finally {
-    await flushCacheWrites();
+    if (!config.noCache) await flushCacheWrites();
   }
 
   if (!hasDeps(deps)) {

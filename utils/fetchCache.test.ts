@@ -2,7 +2,7 @@ import {createHash} from "node:crypto";
 import {mkdir, mkdtemp, readdir, rm, utimes, writeFile} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import {basename, join} from "node:path";
-import {flushCacheWrites, getCache, setCache} from "./fetchCache.ts";
+import {flushCacheWrites, getCache, maxCacheEntries, setCache} from "./fetchCache.ts";
 
 let cacheRoot: string;
 
@@ -57,17 +57,19 @@ test("cache eviction retains a recently used entry and bounds files across runs"
   const usedUrl = "https://test.example.com/fetchCache-used-before-eviction";
   const usedFile = `${createHash("sha256").update(usedUrl).digest("hex")}.cache`;
   const now = Date.now();
-  await Promise.all(Array.from({length: 4096}, async (_value, index) => {
+  const testMaxEntries = 8;
+  expect(maxCacheEntries).toBe(4096);
+  await Promise.all(Array.from({length: testMaxEntries}, async (_value, index) => {
     const file = join(cacheDir, index === 0 ? usedFile : `${index}.cache`);
     await writeFile(file, "etag\nbody");
-    const time = new Date(now - (4097 - index) * 1000);
+    const time = new Date(now - (testMaxEntries + 1 - index) * 1000);
     await utimes(file, time, time);
   }));
   expect(await getCache(usedUrl, cacheDir)).toEqual({etag: "etag", body: "body"});
   setCache("https://test.example.com/fetchCache-newest", "etag", "body", cacheDir);
-  await flushCacheWrites(cacheDir);
+  await flushCacheWrites(cacheDir, testMaxEntries);
   const files = (await readdir(cacheDir)).filter(name => name.endsWith(".cache"));
-  expect(files).toHaveLength(4096);
+  expect(files).toHaveLength(testMaxEntries);
   expect(files).toContain(usedFile);
   expect(files).not.toContain("1.cache");
 });

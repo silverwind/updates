@@ -26,7 +26,7 @@ function cacheKey(url: string): string {
 }
 
 const maxAge = 7 * 24 * 60 * 60 * 1000;
-const maxEntries = 4096;
+export const maxCacheEntries = 4096;
 
 export async function getCache(url: string, dir: string = cacheDir): Promise<{etag: string, body: string} | null> {
   try {
@@ -74,7 +74,7 @@ export function setCache(url: string, etag: string, body: string, dir: string = 
   (async () => { await write; pendingWrites.delete(write); })();
 }
 
-export async function flushCacheWrites(dir: string = cacheDir): Promise<void> {
+export async function flushCacheWrites(dir: string = cacheDir, maxEntries: number = maxCacheEntries): Promise<void> {
   while (pendingWrites.size) await Promise.all(pendingWrites);
   try {
     const files = (await readdir(dir)).filter(name => name.endsWith(".cache"));

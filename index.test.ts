@@ -426,6 +426,7 @@ function dependencyRows(results: Awaited<ReturnType<typeof updates>>["results"])
 
 function apiArgs(): string[] {
   return [
+    "--no-cache",
     "--registry", npmUrl,
     "--forgeapi", githubUrl,
     "--pypiapi", pypiUrl,
@@ -1685,6 +1686,7 @@ async function withConfigDir<T>(config: string, fn: (dir: string) => Promise<T>)
 
 function configTest(config: string, args: string): Promise<{stdout: string, stderr: string}> {
   return withConfigDir(config, dir => execFileAsync(execPath, [script, ...args.split(/\s+/), "-c",
+    "--no-cache",
     "--forgeapi", githubUrl, "--pypiapi", pypiUrl,
     "--jsrapi", jsrUrl, "--goproxy", goProxyUrl, "--cargoapi", cargoUrl,
   ], {cwd: dir}));
@@ -1742,6 +1744,7 @@ function apiOpts(overrides: UpdatesOptions = {}): UpdatesOptions {
   return {
     files: [testFile],
     modes: ["npm"],
+    noCache: true,
     registry: npmUrl,
     forgeapi: githubUrl,
     pypiapi: pypiUrl,
