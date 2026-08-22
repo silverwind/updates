@@ -361,6 +361,18 @@ test("fetchDockerTagDigest returns the registry digest and reports failures", as
     ok: false, status: 429, statusText: "Too Many Requests",
   })))).rejects.toThrow("Received 429 Too Many Requests");
   await expect(fetchDockerTagDigest("library", "node", "20", hubCtx(hubBody({})))).resolves.toBe(null);
+
+  const urls: Array<string> = [];
+  const listing = hubCtx((url: string) => {
+    urls.push(url);
+    return hubBody(url.includes("/tags/") ? {digest: oldDigest} :
+      {count: 1, results: [{name: "20", tag_last_pushed: "2024-01-01", digest: newDigest}]})();
+  });
+  // a digest the tag listing already carries costs no request of its own
+  await expect(fetchDockerTagDigest("library", "node", "20", listing)).resolves.toBe(newDigest);
+  expect(urls.length).toBe(1);
+  await expect(fetchDockerTagDigest("library", "node", "22", listing)).resolves.toBe(oldDigest);
+  expect(urls.at(-1)).toBe("https://hub.docker.com/v2/repositories/library/node/tags/22");
 });
 
 test("fetchDockerInfo library image", async () => {

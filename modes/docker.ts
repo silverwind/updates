@@ -147,13 +147,16 @@ function locallyBuiltImages(content: string): Set<number> {
   return result;
 }
 
-const hubTagsByCtx = new WeakMap<ModeContext, Map<string, Promise<Record<string, string>>>>();
+/** Tag dates keyed by name, plus the manifest digest each listing entry carries. */
+type HubTags = {dates: Record<string, string>, digests: Map<string, string>};
+
+const hubTagsByCtx = new WeakMap<ModeContext, Map<string, Promise<HubTags>>>();
 const noTagsStatus = new Set([401, 403, 404]);
 const maxDockerTagPages = 20;
 
-export function fetchDockerHubTags(namespace: string, repo: string, ctx: ModeContext): Promise<Record<string, string>> {
+function fetchDockerHubTagPages(namespace: string, repo: string, ctx: ModeContext): Promise<HubTags> {
   return dedupe(hubTagsByCtx, ctx, `${namespace}/${repo}`, async () => {
-    const tags: Record<string, string> = {};
+    const tags: HubTags = {dates: {}, digests: new Map()};
     const baseUrl = `${ctx.dockerApiUrl}/v2/repositories/${namespace}/${repo}/tags`;
     const pageUrl = (page: number) => `${baseUrl}?page_size=1000&ordering=last_updated&page=${page}`;
     const fetchPage = async (url: string): Promise<any | null> => {
@@ -161,9 +164,10 @@ export function fetchDockerHubTags(namespace: string, repo: string, ctx: ModeCon
         count: data.count,
         next: data.next,
         results: (data.results || []).map((tag: Record<string, any>) => ({
-          name: tag.name, tag_last_pushed: tag.tag_last_pushed, last_updated: tag.last_updated,
+          name: tag.name, tag_last_pushed: tag.tag_last_pushed, last_updated: tag.last_updated, digest: tag.digest,
         })),
-      })));
+      // the cache key carries the digest so entries reduced before it was kept are not reused
+      })), `${url}#digest`);
       if ("body" in result) {
         return JSON.parse(result.body);
       }
@@ -171,7 +175,10 @@ export function fetchDockerHubTags(namespace: string, repo: string, ctx: ModeCon
       return null;
     };
     const take = (page: any): void => {
-      for (const tag of page?.results ?? []) tags[tag.name] = tag.tag_last_pushed || tag.last_updated || "";
+      for (const tag of page?.results ?? []) {
+        tags.dates[tag.name] = tag.tag_last_pushed || tag.last_updated || "";
+        if (typeof tag.digest === "string") tags.digests.set(tag.name, tag.digest);
+      }
     };
 
     const firstPage = await fetchPage(pageUrl(1));
@@ -214,12 +221,19 @@ export function fetchDockerHubTags(namespace: string, repo: string, ctx: ModeCon
   });
 }
 
+export async function fetchDockerHubTags(namespace: string, repo: string, ctx: ModeContext): Promise<Record<string, string>> {
+  return (await fetchDockerHubTagPages(namespace, repo, ctx)).dates;
+}
+
 export async function fetchDockerTagDigest(
   namespace: string,
   repo: string,
   tag: string,
   ctx: ModeContext,
 ): Promise<string | null> {
+  // The listing carries the same manifest digest, so a tag only costs a request when it is missing there.
+  const listed = (await fetchDockerHubTagPages(namespace, repo, ctx)).digests.get(tag);
+  if (listed) return listed;
   const url = `${ctx.dockerApiUrl}/v2/repositories/${namespace}/${repo}/tags/${tag}`;
   const result = await fetchWithEtag(url, ctx, {headers: {"accept-encoding": "gzip, deflate, br"}},
     reduceJson(data => ({digest: data.digest})));
