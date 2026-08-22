@@ -59,6 +59,10 @@ import {
 
 const allowedVersionsRe = /^(!?)\/(.*)\/(i?)$/;
 
+/** A sha pin whose comment names a branch or other moving ref, so only its digest ever moves. */
+const isDigestOnlyPin = (info: {isHash: boolean, comment: string}): boolean =>
+  info.isHash && Boolean(info.comment) && !isVersionLikeRef(info.comment);
+
 /** A dependency whose lookup failed. Every other dependency is still resolved and written. */
 export type DepError = {
   mode: string,
@@ -1207,11 +1211,11 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
     fetchTasks.push((async () => {
       await pMap(Map.groupBy(actionDepInfos, info => `${info.apiUrl}/${info.owner}/${info.repo}`).values(), async (infos) => {
         const {apiUrl, owner, repo} = infos[0];
-        const versionConsumers = infos.filter(info => info.isHash ? !info.comment : isVersionLikeRef(info.ref));
+        const versionConsumers = infos.filter(info => info.isHash ?
+          !isDigestOnlyPin(info) : isVersionLikeRef(info.ref));
         const tagRefs = [
-          ...versionConsumers.map(info => info.ref),
-          ...(apiUrl === defaultApiUrls.forgeapi ? [] : infos.filter(info => info.isHash && info.comment)
-            .map(info => info.comment)),
+          ...versionConsumers.map(info => info.isHash ? info.comment || info.ref : info.ref),
+          ...(apiUrl === defaultApiUrls.forgeapi ? [] : infos.filter(isDigestOnlyPin).map(info => info.comment)),
         ];
         let tags: Array<TagEntry> = [];
         try {
@@ -1274,19 +1278,6 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
         const updateAction = async ({key, host, ref, comment, name: actionName, isHash, versionConfig, filePin, filePinNoDowngrade, fileCooldownDays}: ActionDepInfo) => {
           const dep = deps.actions[key];
           const infoUrl = `https://${host || "github.com"}/${owner}/${repo}`;
-          if (isHash && comment) {
-            const newDigest = await getExactDigest(comment);
-            if (!newDigest || newDigest.startsWith(ref) || ref.startsWith(newDigest)) { delete deps.actions[key]; return; }
-            dep.old = comment;
-            dep.new = comment;
-            dep.oldDigest = ref;
-            dep.newDigest = newDigest;
-            dep.digestOnly = true;
-            dep.info = infoUrl;
-            const newDate = await tryOrNull(getDate(newDigest));
-            setDepAge(dep, newDate);
-            return;
-          }
 
           let oldRef = ref;
           if (isHash) {
@@ -1300,12 +1291,26 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
             useGreatest, usePre, useRel, semvers, allowDowngrade: allowDown, allowedVersions,
             pinnedRange, pinNoDowngrade, cooldownDays: actionCooldownDays,
           } = resolveVersionOpts(versionConfig, "actions", actionName, actionName, filePin, filePinNoDowngrade, fileCooldownDays);
-          const result = await pickVersion({
+          // A comment naming a branch or other moving ref has no version to select against.
+          const result = isVersionLikeRef(oldRef) ? await pickVersion({
             range: oldRef, semvers, useGreatest, usePre, useRel, allowDowngrade: allowDown, versioning: githubActionsVersioning,
             pinnedRange, pinNoDowngrade,
             cooldownDays: actionCooldownDays || undefined, now: actionCooldownDays ? now : undefined,
-          }, allowedVersions ? versions.filter(versionAllowedPredicate("actions", allowedVersions)) : versions);
-          if (!result) { delete deps.actions[key]; return; }
+          }, allowedVersions ? versions.filter(versionAllowedPredicate("actions", allowedVersions)) : versions) : null;
+          if (!result) {
+            // No newer version, but a commented sha pin still tracks whatever that ref points at now.
+            if (!isHash || !comment) { delete deps.actions[key]; return; }
+            const newDigest = await getExactDigest(comment);
+            if (!newDigest || newDigest.startsWith(ref) || ref.startsWith(newDigest)) { delete deps.actions[key]; return; }
+            dep.old = comment;
+            dep.new = comment;
+            dep.oldDigest = ref;
+            dep.newDigest = newDigest;
+            dep.digestOnly = true;
+            dep.info = infoUrl;
+            setDepAge(dep, await tryOrNull(getDate(newDigest)));
+            return;
+          }
           const {tag: newTag, commitSha: newCommitSha, date} = result;
 
           if (isHash) {

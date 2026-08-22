@@ -1379,31 +1379,42 @@ test("actions update rewrites tags and keeps same-sha pin identities distinct", 
   expect(updatedContent).toContain("actions/checkout@v10\n");
   expect(updatedContent).not.toContain("actions/checkout@v2");
   expect(updatedContent).toContain("actions/setup-node@v10.0.0");
-  expect(updatedContent).toContain("actions/checkout@cccc000000000000000000000000000000000006 # v4.2.0");
+  expect(updatedContent).toContain("actions/checkout@cccc000000000000000000000000000000000011 # v10.0.1");
   expect(updatedContent).toContain("actions/checkout@aaaa000000000000000000000000000000000001 # main");
   expect(updatedContent).toContain("actions/checkout@bbbb000000000000000000000000000000000002 # release");
   expect(updatedContent).not.toContain("dddd000000000000000000000000000000000000");
 });
 
-test("actions hash-pinned", async ({expect = globalExpect}: any = {}) => {
+test("actions hash-pinned on a version comment updates the sha and the comment", async ({expect = globalExpect}: any = {}) => {
   const tmpActionsDir = join(testDir, "actions-hash-test/.github/workflows");
   mkdirSync(tmpActionsDir, {recursive: true});
   const wfPath = join(tmpActionsDir, "ci.yaml");
   const oldDigest = "dddd000000000000000000000000000000000000";
-  await writeFile(wfPath, `name: ci\non: push\njobs:\n  ci:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@${oldDigest} # v4.2.0\n`);
+  await writeFile(wfPath, [
+    "name: ci", "on: push", "jobs:", "  ci:", "    runs-on: ubuntu-latest", "    steps:",
+    `      - uses: actions/checkout@${oldDigest} # v4.2.0`,
+    `      - uses: actions/setup-node@${oldDigest} # v10.0.0`,
+    "",
+  ].join("\n"));
 
   const {stdout, stderr} = await runCliExec([
-    script, "-j", "-c", "--forgeapi", githubUrl, "-M", "actions",
-    "-f", join(testDir, "actions-hash-test/.github/workflows"),
+    script, "-u", "-j", "-c", "--forgeapi", githubUrl, "-M", "actions", "-f", tmpActionsDir,
   ]);
   expect(stderr).toEqual("");
   const output = JSON.parse(stdout);
   const ciKey = Object.keys(output.results.actions).find(t => t.endsWith("ci.yaml"));
   const actionsDeps = output.results.actions[ciKey!];
-  expect(actionsDeps["actions/checkout"].old).toBe("v4.2.0");
-  expect(actionsDeps["actions/checkout"].new).toBe("v4.2.0");
-  expect(actionsDeps["actions/checkout"].oldDigest).toBe(oldDigest);
-  expect(actionsDeps["actions/checkout"].newDigest).toBe("cccc000000000000000000000000000000000006");
+  expect(actionsDeps["actions/checkout"].old).toBe("4.2.0");
+  expect(actionsDeps["actions/checkout"].new).toBe("10.0.1");
+  // already on the newest version, so only the stale sha moves
+  expect(actionsDeps["actions/setup-node"].old).toBe("v10.0.0");
+  expect(actionsDeps["actions/setup-node"].new).toBe("v10.0.0");
+  expect(actionsDeps["actions/setup-node"].newDigest).toBe("bbbb000000000000000000000000000000000010");
+
+  const updated = await readFile(wfPath, "utf8");
+  expect(updated).toContain("actions/checkout@cccc000000000000000000000000000000000011 # v10.0.1");
+  expect(updated).toContain("actions/setup-node@bbbb000000000000000000000000000000000010 # v10.0.0");
+  expect(updated).not.toContain(oldDigest);
 });
 
 test("actions composite action discovery", async ({expect = globalExpect}: any = {}) => {
