@@ -44,7 +44,7 @@ npx updates -u && npm i
 |`-m, --minor [<dep,...>]`|Consider only up to semver-minor|
 |`-d, --allow-downgrade [<dep,...>]`|Allow downgrading onto a lower `latest` tag|
 |`-s, --sockets <num>`|Maximum number of parallel HTTP sockets opened. Default: 50|
-|`-T, --timeout <ms>`|Network request timeout in ms. Default: 5000|
+|`-T, --timeout <ms>`|Network request timeout in ms, go probes use half. Default: 5000|
 |`-r, --registry <url>`|Override npm registry URL|
 |`-I, --indirect`|Include indirect Go dependencies|
 |`-E, --error-on-outdated`|Exit with code 2 when updates are available and 0 when not|
@@ -63,7 +63,7 @@ A failed lookup is reported on its own, does not hold back the other results and
 
 ## Config File
 
-Configure via `updates.config.{ts,js,mjs,mts}`. Each manifest uses the nearest config above it, and workspace members use the workspace root config. CLI arguments win over configured values, including `include`, `exclude` and `pin`.
+Configure via `updates.config.{js,ts,mjs,mts}`. Each manifest uses the nearest config above it, and workspace members use the workspace root config. CLI arguments win over configured values, including `include`, `exclude` and `pin`.
 
 ```ts
 import type {Config} from "updates";

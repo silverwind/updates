@@ -9,7 +9,14 @@ let red: (text: string | number) => string = String;
 let green: (text: string | number) => string = String;
 let jsonOutput = false;
 
-const stringShortOptions = new Set("deflCpgPtmsTriM");
+const valueOptions: Record<string, string> = {
+  d: "allow-downgrade", e: "exclude", f: "file", l: "pin", C: "cooldown", p: "prerelease", R: "release",
+  g: "greatest", t: "types", P: "patch", m: "minor", s: "sockets", T: "timeout", r: "registry", i: "include",
+  M: "modes", forgeapi: "forgeapi", pypiapi: "pypiapi", jsrapi: "jsrapi", goproxy: "goproxy",
+  cargoapi: "cargoapi", dockerapi: "dockerapi",
+};
+const stringShortOptions = new Set(Object.keys(valueOptions));
+for (const long of Object.values(valueOptions)) valueOptions[long] = long;
 
 function hasFlag(args: Array<string>, long: string, short: string): boolean {
   if (args.includes(`--${long}`)) return true;
@@ -21,13 +28,6 @@ function hasFlag(args: Array<string>, long: string, short: string): boolean {
   }
   return false;
 }
-
-const valueOptions: Record<string, string> = {
-  d: "allow-downgrade", e: "exclude", f: "file", l: "pin", C: "cooldown", p: "prerelease", R: "release",
-  g: "greatest", t: "types", P: "patch", m: "minor", s: "sockets", T: "timeout", r: "registry", i: "include",
-  M: "modes", forgeapi: "forgeapi", pypiapi: "pypiapi", jsrapi: "jsrapi", goproxy: "goproxy",
-  cargoapi: "cargoapi", dockerapi: "dockerapi", file: "file", modes: "modes", registry: "registry",
-};
 
 async function startPrewarm(rawArgs: Array<string>): Promise<void> {
   const args: Record<string, unknown> = {};
@@ -75,7 +75,7 @@ async function startPrewarm(rawArgs: Array<string>): Promise<void> {
   }
 }
 
-async function end(err?: Error | void, exitCode?: number): Promise<void> {
+async function end(err?: Error, exitCode?: number): Promise<void> {
   if (err) {
     const error = err.message ?? String(err);
     if (jsonOutput) {
@@ -94,7 +94,7 @@ async function end(err?: Error | void, exitCode?: number): Promise<void> {
 
 async function main(): Promise<void> {
   for (const stream of [stdout, stderr]) {
-    (stream as any)?._handle?.setBlocking?.(true);
+    (stream as any)._handle?.setBlocking?.(true);
   }
 
   const rawArgs = argv.slice(2);

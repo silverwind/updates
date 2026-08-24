@@ -90,11 +90,11 @@ function compileRule(rule: RenovatePackageRule): {matchers: RenovateVersionRule,
     const include: Array<Matcher> = [];
     const exclude: Array<Matcher> = [];
     for (const name of values) {
-      const list = name.startsWith("!") ? exclude : include;
-      const value = list === exclude ? name.slice(1) : name;
+      const negated = name.startsWith("!");
+      const value = negated ? name.slice(1) : name;
       const regex = renovateRegex(value);
-      list.push(regex ?? value);
-      if (list === include && !/[*?[\]{}!()|+]/.test(value) && !regex) literals.push(value);
+      (negated ? exclude : include).push(regex ?? value);
+      if (!negated && !regex && !/[*?[\]{}!()|+]/.test(value)) literals.push(value);
     }
     if (include.length) matchers[`match${target}Names`] = include;
     if (exclude.length) matchers[`exclude${target}Names`] = exclude;

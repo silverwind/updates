@@ -30,19 +30,13 @@ export function parseJsonish(text: string): unknown {
     const ch = text[i];
 
     if (ch === '"') {
-      out += ch;
-      i++;
+      const start = i++;
       while (i < n) {
-        const c = text[i];
-        out += c;
-        i++;
-        if (c === "\\" && i < n) {
-          out += text[i];
-          i++;
-          continue;
-        }
-        if (c === '"') break;
+        const c = text[i++];
+        if (c === "\\") i++;
+        else if (c === '"') break;
       }
+      out += text.slice(start, i);
       continue;
     }
 
@@ -84,16 +78,11 @@ export function parseJsonish(text: string): unknown {
       continue;
     }
 
-    if (ch === "}" || ch === "]") {
-      out += ch;
-      i++;
-      continue;
-    }
-
     if (identStart.test(ch)) {
-      let ident = "";
-      while (i < n && identPart.test(text[i])) { ident += text[i]; i++; }
-      out += text[skipTrivia(i)] === ":" ? JSON.stringify(ident) : ident;
+      const start = i;
+      while (i < n && identPart.test(text[i])) i++;
+      const ident = text.slice(start, i);
+      out += text[skipTrivia(i)] === ":" ? `"${ident}"` : ident;
       continue;
     }
 

@@ -97,9 +97,8 @@ export function diff(v1: string, v2: string): string | null {
 }
 
 function diffParsed(a: SemVer, b: SemVer): string | null {
-  if (a.version === b.version) return null;
-
   const cmp = compareParsed(a, b);
+  if (cmp === 0) return null;
   const highVersion = cmp > 0 ? a : b;
   const lowVersion = cmp > 0 ? b : a;
   const highHasPre = highVersion.prerelease.length > 0;
@@ -195,10 +194,7 @@ function upperComparator(major: number, minor: number, patch: number): Comparato
 }
 
 function partialBounds(partial: PartialVersion, op: string): Array<Comparator> | null {
-  if (partial.major === null) {
-    if (partial.minor !== null || partial.patch !== null) return null;
-    return op === ">" || op === "<" ? comparators(upperComparator(0, 0, 0)) : [];
-  }
+  if (partial.major === null) return op === ">" || op === "<" ? comparators(upperComparator(0, 0, 0)) : [];
   const major = partial.major;
   const minor = partial.minor ?? 0;
   const patch = partial.patch ?? 0;
@@ -249,7 +245,7 @@ function parseComparatorSet(group: string): Array<Comparator> | null {
   for (const token of normalized.split(/\s+/).filter(Boolean)) {
     const match = /^(>=|<=|>|<|=|~|\^)?(.+)$/.exec(token);
     const partial = match && parsePartial(match[2]);
-    const bounds = partial ? partialBounds(partial, match?.[1] ?? "") : null;
+    const bounds = partial ? partialBounds(partial, match[1] ?? "") : null;
     if (!bounds) return null;
     result.push(...bounds);
   }
@@ -271,11 +267,14 @@ function testWithPrerelease(version: SemVer, comparators: Array<Comparator>): bo
     comp.semver.major === version.major && comp.semver.minor === version.minor && comp.semver.patch === version.patch);
 }
 
-export function satisfies(version: string, range: string): boolean {
-  const v = parseVersion(version);
-  if (!v) return false;
+function satisfiesParsed(v: SemVer, range: string): boolean {
   const parsed = parseRange(range);
   return Boolean(parsed?.some(group => testWithPrerelease(v, group)));
+}
+
+export function satisfies(version: string, range: string): boolean {
+  const v = parseVersion(version);
+  return Boolean(v && satisfiesParsed(v, range));
 }
 
 export function validRange(range: string): string | null {
@@ -322,7 +321,7 @@ function parsePep440Range(range: string): Pep440 | null {
   return parsePep440(range) ?? parsePep440(pep440SearchRe.exec(range)?.[0] ?? "");
 }
 
-const isPep440Prerelease = (v: Pep440): boolean => Boolean(v.pre || v.dev);
+const isPep440Prerelease = (v: Pep440): boolean => Boolean(v.pre) || v.dev !== null;
 
 function compareLocal(a: Array<string | number> | null, b: Array<string | number> | null): number {
   if (!a || !b) return a ? 1 : b ? -1 : 0;
@@ -393,7 +392,7 @@ export const semverVersioning: Versioning<SemVer> = {
   diff: diffParsed,
   isPrerelease: parsed => parsed.prerelease.length > 0,
   isRangePrerelease: range => /[0-9]+\.[0-9]+\.[0-9]+-.+/.test(range),
-  satisfiesRange: (parsed, range) => satisfies(parsed.version, range),
+  satisfiesRange: satisfiesParsed,
 };
 
 const actionsParseCache = new Map<string, SemVer | null>();

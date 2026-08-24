@@ -11,7 +11,7 @@ export function isMakeFileName(filename: string): boolean {
   return makeExactFileNames.includes(filename) || filename.endsWith(".mk");
 }
 
-export type MakeInstall = {installPath: string, version: string};
+type MakeInstall = {installPath: string, version: string};
 
 const makeAssignRe = /^\s*[A-Za-z_][\w.]*\s*(?:::=|:=|\?=|\+=|=)\s*(.*)$/;
 const makeGoInstallRe = /^([^@\s]+)@(v\d\S*)$/;
@@ -152,13 +152,13 @@ export async function resolveGoModuleRoot(installPath: string, goCwd: string, ct
   return null;
 }
 
-export type MakeRewrite = {oldSpec: string, newSpec: string};
+type MakeRewrite = {oldSpec: string, newSpec: string};
 
 export function updateMakefile(content: string, rewrites: Array<MakeRewrite>): string {
   const bySpec = new Map(rewrites.map(({oldSpec, newSpec}) => [oldSpec, newSpec]));
   if (!bySpec.size) return content;
   const specs = Array.from(bySpec.keys()).sort((a, b) => b.length - a.length)
-    .map(spec => Array.from(spec, char => esc(char)).join(`["']*`)).join("|");
+    .map(spec => Array.from(spec, esc).join(`["']*`)).join("|");
   const specRe = new RegExp(`(?<![\\w./@:-])(${specs})(?=[\\s#"']|$)`, "g");
   return content.replace(/^[^#\n]*/gm, code => code.replace(specRe, authoredSpec => {
     const oldSpec = authoredSpec.replace(/["']/g, "");

@@ -146,7 +146,7 @@ function yamlScalar(content: string): {value: string, valueIndex: number} | null
     if (end === -1) return null;
     return {value: trimmed.slice(1, end), valueIndex: leading + 1};
   }
-  const commentIndex = trimmed.search(/\s#/);
+  const commentIndex = trimmed.search(yamlCommentRe);
   return {value: (commentIndex === -1 ? trimmed : trimmed.slice(0, commentIndex)).trimEnd(), valueIndex: leading};
 }
 

@@ -1255,6 +1255,31 @@ test("a config-file pin and overrides merge with the renovate ones rather than r
   }
 });
 
+test("a renovate packageRules cooldown still requests the dated npm document", async ({expect = globalExpect}: any = {}) => {
+  const doc = JSON.parse(await readFile(join(import.meta.dirname, "fixtures/npm/noty.json"), "utf8"));
+  const server = makeServer((req: any, res: any) => {
+    const body = {...doc};
+    if (String(req.headers.accept ?? "").includes("install-v1")) delete body.time;
+    res.setHeader("content-type", "application/json");
+    res.end(JSON.stringify(body));
+  });
+  await server.start(0);
+  const dir = mkdtempSync(join(tmpdir(), "updates-renovate-cooldown-"));
+  try {
+    const file = join(dir, "package.json");
+    await writeFile(file, JSON.stringify({dependencies: {noty: "3.1.0"}}));
+    await writeFile(join(dir, "renovate.json"), JSON.stringify({
+      packageRules: [{matchPackageNames: ["noty"], minimumReleaseAge: "7 days"}],
+    }));
+    await writeFile(join(dir, "updates.config.js"), `module.exports = {inherit: {renovate: {cooldown: true}}};\n`);
+
+    const output = await updates(apiOpts({files: [file], registry: makeUrl(server)}));
+    expect(output.results.npm.dependencies.noty.new).toBe("3.1.4");
+  } finally {
+    await Promise.all([server.close(), rm(dir, {recursive: true, force: true})]);
+  }
+});
+
 function actionsArgs(...extra: Array<string>) {
   return [script, "-c", "--forgeapi", githubUrl, "--dockerapi", dockerUrl, "-M", "actions", "-f", actionsDir, ...extra];
 }

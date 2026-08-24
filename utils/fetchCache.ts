@@ -82,8 +82,9 @@ export async function flushCacheWrites(dir: string = cacheDir, maxEntries: numbe
       const path = join(dir, name);
       try { return {path, mtime: (await stat(path)).mtimeMs}; } catch { return null; }
     }))).filter(entry => entry !== null).sort((a, b) => b.mtime - a.mtime);
-    const fresh = entries.filter(entry => Date.now() - entry.mtime <= maxAge);
-    await Promise.all([...entries.filter(entry => Date.now() - entry.mtime > maxAge), ...fresh.slice(maxEntries)]
+    const cutoff = Date.now() - maxAge;
+    const fresh = entries.filter(entry => entry.mtime >= cutoff);
+    await Promise.all([...entries.slice(fresh.length), ...fresh.slice(maxEntries)]
       .map(entry => tryOrNull(unlink(entry.path))));
   } catch {}
 }

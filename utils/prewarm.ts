@@ -1,5 +1,9 @@
 import {readFileSync, readdirSync, statSync} from "node:fs";
 import {basename, join, resolve} from "node:path";
+import {env} from "node:process";
+
+// not imported from utils.ts so prewarm.ts stays its own chunk, see tsdown.config.ts
+const forgeDirSet = new Set([".github", ".gitea", ".forgejo"]);
 
 const defaults = {
   registry: "https://registry.npmjs.org",
@@ -22,7 +26,7 @@ const modeByName = (filename: string) => filename === "package.json" || filename
 export function prewarmOrigins(dir: string, args: Record<string, unknown>): string[] {
   const enabledModes = Array.isArray(args.modes) ? new Set(args.modes) : typeof args.modes === "string" ?
     new Set(args.modes.split(",")) : null;
-  const resources = new Set<string>();
+  const resources = new Set<keyof typeof defaults>();
   const candidates = new Set<string>();
   const paths = Array.isArray(args.files) && args.files.length ? args.files.filter(path => typeof path === "string") : [dir];
   for (const input of paths) {
@@ -34,7 +38,7 @@ export function prewarmOrigins(dir: string, args: Record<string, unknown>): stri
       }
       for (const entry of readdirSync(path, {withFileTypes: true})) {
         if (entry.isFile()) candidates.add(join(path, entry.name));
-        else if ([".github", ".gitea", ".forgejo"].includes(entry.name)) {
+        else if (forgeDirSet.has(entry.name)) {
           try {
             for (const workflow of readdirSync(join(path, entry.name, "workflows"), {withFileTypes: true})) {
               if (workflow.isFile() && /\.ya?ml$/.test(workflow.name)) candidates.add(join(path, entry.name, "workflows", workflow.name));
@@ -100,9 +104,9 @@ export function prewarmOrigins(dir: string, args: Record<string, unknown>): stri
     if (resource === "registry" && typeof value !== "string") {
       try { value = /^\s*registry\s*=\s*(\S+)\s*$/m.exec(readFileSync(join(dir, ".npmrc"), "utf8"))?.[1]; } catch {}
     } else if (resource === "goproxy" && typeof value !== "string") {
-      value = process.env.GOPROXY;
+      value = env.GOPROXY;
     }
-    let origin = typeof value === "string" && value ? value : defaults[resource as keyof typeof defaults];
+    let origin = typeof value === "string" && value ? value : defaults[resource];
     if (resource === "goproxy") {
       origin = origin.split(/[|,]/, 1)[0].trim();
       if (origin === "off" || origin === "direct") continue;

@@ -88,7 +88,7 @@ export function parseDockerImageRef(ref: string): DockerImageRef | null {
   const imagePart = hasTag ? taggedRef.substring(0, colonIndex) : taggedRef;
   const tag = hasTag ? taggedRef.substring(colonIndex + 1) : "latest";
 
-  if (hasTag && !digest && (!tag || !dockerTagRe.test(tag))) return null;
+  if (hasTag && !digest && !dockerTagRe.test(tag)) return null;
 
   const {registry, namespace, repo} = parseImageParts(imagePart);
   return {registry, namespace, repo, tag, fullImage: imagePart, ...(digest && {digest}), ...(!hasTag && {digestOnly: true})};
@@ -116,10 +116,10 @@ export function extractDockerRefs(content: string, regex: RegExp): Array<{ref: D
     return results;
   }
   const locallyBuilt = regex === composeImageRe ? locallyBuiltImages(content) : null;
-  for (const m of content.matchAll(regex)) {
-    if (locallyBuilt?.has(m.index + m[0].indexOf("image:"))) continue;
-    const ref = parseDockerImageRef(m[1]);
-    if (ref) results.push({ref, match: m[1]});
+  for (const match of content.matchAll(regex)) {
+    if (locallyBuilt?.has(match.index + match[0].indexOf("image:"))) continue;
+    const ref = parseDockerImageRef(match[1]);
+    if (ref) results.push({ref, match: match[1]});
   }
   return results;
 }
@@ -147,7 +147,6 @@ function locallyBuiltImages(content: string): Set<number> {
   return result;
 }
 
-/** Tag dates keyed by name, plus the manifest digest each listing entry carries. */
 type HubTags = {dates: Record<string, string>, digests: Map<string, string>};
 
 const hubTagsByCtx = new WeakMap<ModeContext, Map<string, Promise<HubTags>>>();
@@ -208,10 +207,9 @@ function fetchDockerHubTagPages(namespace: string, repo: string, ctx: ModeContex
         page = result.value;
       }
     }
-    let baseOrigin: string | undefined;
+    const baseOrigin = new URL(baseUrl).origin;
     for (; pageNumber <= maxDockerTagPages && page.next; pageNumber++) {
       const next = new URL(page.next, baseUrl);
-      baseOrigin ??= new URL(baseUrl).origin;
       const nextUrl = next.href;
       if (next.origin !== baseOrigin || seen.has(nextUrl)) break;
       seen.add(nextUrl);
@@ -282,15 +280,18 @@ export async function fetchDockerInfo(name: string, ctx: ModeContext): Promise<P
 
 const dockerSemver = (coerced: string, prerelease: string) => prerelease ? `${coerced}-${prerelease}` : coerced;
 
+const dockerNumericRe = /^\d+$/;
+const dockerVersionParts = (tag: DockerTag) => stripv(tag.version).split(".").map(Number);
+
 function coerceDockerVersion(version: string): string | null {
   const parts = stripv(version).split(".").slice(0, 3);
-  if (!parts.length || parts.some(part => !/^\d+$/.test(part))) return null;
+  if (parts.some(part => !dockerNumericRe.test(part))) return null;
   return [...parts.map(part => String(Number(part))), ...new Array(3 - parts.length).fill("0")].join(".");
 }
 
 function compareExtendedDockerTags(left: DockerTag, right: DockerTag): number {
-  const leftParts = stripv(left.version).split(".").map(Number);
-  const rightParts = stripv(right.version).split(".").map(Number);
+  const leftParts = dockerVersionParts(left);
+  const rightParts = dockerVersionParts(right);
   for (let index = 0; index < leftParts.length; index++) {
     if (leftParts[index] !== rightParts[index]) return leftParts[index] - rightParts[index];
   }
@@ -300,8 +301,8 @@ function compareExtendedDockerTags(left: DockerTag, right: DockerTag): number {
 }
 
 function extendedDockerLevel(left: DockerTag, right: DockerTag): string | null {
-  const leftParts = stripv(left.version).split(".").map(Number);
-  const rightParts = stripv(right.version).split(".").map(Number);
+  const leftParts = dockerVersionParts(left);
+  const rightParts = dockerVersionParts(right);
   const changed = leftParts.findIndex((part, index) => part !== rightParts[index]);
   if (changed === -1) return left.prerelease === right.prerelease ? null : "patch";
   return changed === 0 ? "major" : changed === 1 ? "minor" : "patch";
@@ -364,8 +365,8 @@ export function findDockerVersion(
       continue;
     }
 
-    const d = semverVersioning.diff(bestVersion, candidate);
-    if (!d || !effectiveSemvers.has(d)) continue;
+    const diff = semverVersioning.diff(bestVersion, candidate);
+    if (!diff || !effectiveSemvers.has(diff)) continue;
 
     if (semverVersioning.compare(candidate, bestVersion) > 0) {
       bestVersion = candidate;
@@ -417,18 +418,21 @@ function replaceImageRefs(
 export function updateDockerfile(content: string, deps: Deps): string {
   const separator = "(?:[ \\t]+|\\\\[ \\t]*\\r?\\n[ \\t]*)";
   const replacements = imageReplacements(deps);
+  if (!replacements.size) return content;
   const refs = longestFirstAlternation(replacements.keys());
-  const updated = replacements.size ? content.replace(
+  const updated = content.replace(
     new RegExp(`(FROM${separator}+(?:--platform=\\S+${separator}+)?)(${refs})${tagEnd}`, "gi"),
     (_match, prefix, ref) => `${prefix}${replacements.get(ref) ?? ref}`,
-  ) : content;
+  );
   const edits = new Map<number, {end: number, value: string}>();
   for (const {instruction, args, from, resolved} of dockerfileFromInstructions(updated)) {
     const replacement = replacements.get(resolved);
     if (!replacement) continue;
-    const oldDigest = resolved.slice(resolved.lastIndexOf("@") + 1);
-    const newDigest = replacement.slice(replacement.lastIndexOf("@") + 1);
-    const replacesDigest = resolved.includes("@") && replacement.includes("@") && oldDigest !== newDigest;
+    const oldAt = resolved.lastIndexOf("@");
+    const newAt = replacement.lastIndexOf("@");
+    const oldDigest = resolved.slice(oldAt + 1);
+    const newDigest = replacement.slice(newAt + 1);
+    const replacesDigest = oldAt !== -1 && newAt !== -1 && oldDigest !== newDigest;
     if (replacesDigest) {
       const relativeDigest = instruction[0].lastIndexOf(oldDigest);
       if (relativeDigest !== -1) edits.set(instruction.index! + relativeDigest, {

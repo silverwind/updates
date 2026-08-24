@@ -57,15 +57,15 @@ export async function fetchActionTagDate(apiUrl: string, owner: string, repo: st
 }
 
 export function formatActionVersion(newFullVersion: string, oldRef: string): string {
-  const newParsed = parse(stripv(newFullVersion));
-  return formatVersionPrecision(newParsed?.version ?? stripv(newFullVersion), oldRef);
+  const bare = stripv(newFullVersion);
+  return formatVersionPrecision(parse(bare)?.version ?? bare, oldRef);
 }
 
 const yamlPairRe = /^(\s*)(?:-\s*)?(?:"([^"]+)"|'([^']+)'|([^\s:#][^:#]*)):\s*([^\r\n]*)\r?$/;
 
 const pinTokenRe = /^\s*(?:(?:renovate\s*:\s*)?(?:pin\s+|tag\s*=\s*)?|ratchet:[\w-]+\/[.\w-]+(?:\/[.\w-]+)*)@?((?:[\w-]*[-/])?v?\d+(?:\.\d+(?:\.\d+)?)?(?:-[a-zA-Z0-9.]+)?)/;
 
-export type UsesLine = {
+type UsesLine = {
   prefix: string,
   quote: string,
   value: string,
@@ -93,7 +93,7 @@ export function parseUsesLine(line: string): UsesLine | null {
   };
 }
 
-export type ActionUpdate = {name: string, oldRef: string, newRef: string, oldComment?: string, newComment?: string};
+type ActionUpdate = {name: string, oldRef: string, newRef: string, oldComment?: string, newComment?: string};
 
 const schemeRe = /^https?:\/\//;
 
@@ -112,8 +112,8 @@ export function updateWorkflowFile(content: string, actionDeps: Array<ActionUpda
     while (yamlPath.length && yamlPath.at(-1)!.indent >= indent) yamlPath.pop();
     const key = (pair[2] ?? pair[3] ?? pair[4]).trim();
     const isUses = key === "uses" && (
-      yamlPath[0]?.key === "jobs" && yamlPath.length === 3 && yamlPath[2].key === "steps" ||
-      yamlPath[0]?.key === "runs" && yamlPath.length === 2 && yamlPath[1].key === "steps"
+      yamlPath.length === 3 && yamlPath[0].key === "jobs" && yamlPath[2].key === "steps" ||
+      yamlPath.length === 2 && yamlPath[0].key === "runs" && yamlPath[1].key === "steps"
     );
     const pairValue = pair[5].replace(/(?:^|\s)#.*$/, "").trim();
     if (!pairValue) yamlPath.push({indent, key});

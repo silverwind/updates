@@ -396,6 +396,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
       patch: override.patch, minor: override.minor, allowDowngrade: override.allowDowngrade,
       cooldownDays: override.cooldown !== undefined ? parseDuration(String(override.cooldown)) : undefined,
     }));
+    const renovateVersionRules = (source as Config & {renovateVersionRules?: Array<RenovateVersionRule>}).renovateVersionRules ?? [];
     return {
       greatest: configMixedToRegexes(source.greatest),
       prerelease: configMixedToRegexes(source.prerelease),
@@ -404,8 +405,9 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
       minor: configMixedToRegexes(source.minor),
       allowDowngrade: configMixedToRegexes(source.allowDowngrade),
       overrides,
-      renovateVersionRules: (source as Config & {renovateVersionRules?: Array<RenovateVersionRule>}).renovateVersionRules ?? [],
-      hasCooldownOverride: overrides.some(override => override.cooldownDays !== undefined),
+      renovateVersionRules,
+      hasCooldownOverride: overrides.some(override => override.cooldownDays !== undefined) ||
+        renovateVersionRules.some(rule => rule.cooldownDays !== undefined),
     };
   };
   type VersionConfig = ReturnType<typeof compileVersionConfig>;
@@ -547,7 +549,6 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
           addDep(mode, depType, typePrefix, name, normalizeRange(value), value);
         }
       } else {
-        const entries = Object.entries(obj as Record<string, any>);
         if (mode === "npm" && (depType === "overrides" || depType === "pnpm.overrides")) {
           const root = depType === "overrides" ? ["overrides"] : ["pnpm", "overrides"];
           const collectOverrides = (child: Record<string, any>, parents: Array<string>) => {
@@ -568,7 +569,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
           collectOverrides(obj as Record<string, any>, []);
           continue;
         }
-        for (const [name, value] of entries) {
+        for (const [name, value] of Object.entries(obj as Record<string, any>)) {
           if (mode === "pypi" && Array.isArray(value)) { addUvDeps(value, `${depType}.${name}`); continue; }
           if (typeof value !== "string") continue;
           const alias = mode === "npm" ? parseNpmAlias(value) : null;
@@ -635,7 +636,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
   const registerModeContext = (mode: string, memberPath: string, modeCtx: ModeCtx) => {
     (modeContextsBySuffix[mode] ??= new Map()).set(memberPath === "." ? "" : `|${memberPath}`, modeCtx);
   };
-  const cliBase = (opts as {[cliBaseConfig]?: {fileConfig: Config, cliKeys: Array<string>}})[cliBaseConfig];
+  const cliBase = (opts as {[cliBaseConfig]?: {cliKeys: Array<string>}})[cliBaseConfig];
   const cliKeys = cliBase && new Set(cliBase.cliKeys);
   const configOverrides = Object.fromEntries(Object.entries(config).filter(([key, value]) =>
     value !== undefined && (!cliKeys || cliKeys.has(key))));
@@ -816,7 +817,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
         );
         if ((container || image || uses) && pair[5]) {
           const value = pair[5].replace(/\s+#.*$/, "").replace(/^(['"])(.*)\1$/, "$2");
-          const ref = parseDockerImageRef(uses ? value.replace(/^docker:\/\//, "") : value);
+          const ref = parseDockerImageRef(value);
           if (ref) { collectDockerRef(ref, relPath, filters); workflowLines.add(lineNumber); }
         }
         yamlPath.push({indent, key});
@@ -1080,7 +1081,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
     entry.cooldownDays || entry.versionConfig.hasCooldownOverride) ?? false};
 
   for (const [mode, modeContexts] of Object.entries(modeContextsBySuffix)) {
-    if (!Object.keys(deps[mode] ?? {}).length && (mode !== "npm" || !hasMaybeUrlDeps)) continue;
+    if (!Object.keys(deps[mode]).length && (mode !== "npm" || !hasMaybeUrlDeps)) continue;
     fetchTasks.push((async () => {
       const modeConfigEntry = modeContexts.values().next().value!;
       const ctxForType = (type: string) => {
@@ -1276,7 +1277,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
             const picked = findVersion({}, candidates, selectOpts);
             if (!picked) return null;
             const tag = tagByVersion.get(picked)!;
-            const commitSha = entryByName.get(tag)?.commitSha || "";
+            const commitSha = entryByName.get(tag)!.commitSha;
             if (!opts.cooldownDays) return {version: picked, tag, commitSha, date: ""};
             const date = commitSha ? await getDate(commitSha) : "";
             if (date === undefined) throw new Error(`Unable to fetch the commit date for ${owner}/${repo}@${tag}`);
@@ -1303,7 +1304,6 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
             useGreatest, usePre, useRel, semvers, allowDowngrade: allowDown, allowedVersions,
             pinnedRange, pinNoDowngrade, cooldownDays: actionCooldownDays,
           } = actionVersionOpts(info);
-          // A comment naming a branch or other moving ref has no version to select against.
           const result = isVersionLikeRef(oldRef) ? await pickVersion({
             range: oldRef, semvers, useGreatest, usePre, useRel, allowDowngrade: allowDown, versioning: githubActionsVersioning,
             pinnedRange, pinNoDowngrade,

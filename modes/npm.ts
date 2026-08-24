@@ -54,7 +54,7 @@ function getRegistryAuthToken(registryUrl: string, config: Npmrc): AuthAndRegist
 
 function resolveNpmRegistry(name: string, config: Config, args: Record<string, any>, dir: string | undefined): AuthAndRegistry {
   const npmrcConfig = getOrSet(npmrcCache, dir ?? "", () => rc("npm", {registry: defaultRegistry}, dir) as Npmrc);
-  const registry = normalizeUrl((typeof args.registry === "string" ? args.registry : false) ||
+  const registry = normalizeUrl((typeof args.registry === "string" ? args.registry : "") ||
     config.registry || npmrcConfig.registry || defaultRegistry);
   const scope = name.startsWith("@") ? name.split("/")[0] : "";
   const nativeRegistry = dir ? resolveNativeNpmRegistry(name, dir) : null;
@@ -82,7 +82,7 @@ const npmVersionInfoByCtx = new WeakMap<ModeContext, Map<string, Promise<NpmVers
 const npmFullDataByCtx = new WeakMap<ModeContext, Map<string, Promise<Record<string, any> | null>>>();
 const jsrDataByCtx = new WeakMap<ModeContext, Map<string, Promise<Record<string, any>>>>();
 
-const docCacheKey = (url: string, needsDates: boolean) => `${url}\0v2${needsDates ? "-dates" : ""}`;
+const docCacheKey = (url: string, needsDates: boolean) => `${url}${fieldSep}v2${needsDates ? "-dates" : ""}`;
 
 function reduceNpmDoc(data: Record<string, any>): Record<string, any> {
   const versions: Record<string, {deprecated?: true}> = {};
@@ -248,7 +248,7 @@ export function updatePackageJson(pkgStr: string, deps: Deps): string {
   for (const [key, dep] of Object.entries(deps)) {
     const [depType, name, identity] = key.split(fieldSep);
     let oldValue = dep.oldOrig || dep.old;
-    let span = spans.get(JSON.stringify(identity ? JSON.parse(identity) : [depType, name]));
+    let span = spans.get(identity || JSON.stringify([depType, name]));
     let newValue = dep.new;
     if (!span) {
       span = spans.get(JSON.stringify([depType]));
@@ -296,8 +296,8 @@ function replaceComparator(comparator: string, newVersion: string): string {
   }
   if (operator === ">" || operator === "<") return comparator;
 
-  const newParts = newVersion.split("-")[0].split(".");
-  if (newParts.join(".") !== newVersion) return `${operator}${space}${vPrefix}${newVersion}`;
+  if (newVersion.includes("-")) return `${operator}${space}${vPrefix}${newVersion}`;
+  const newParts = newVersion.split(".");
   return `${operator}${space}${vPrefix}${parts.map((part, i) => xPartRe.test(part) ? part : newParts[i] ?? "0").join(".")}`;
 }
 

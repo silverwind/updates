@@ -327,16 +327,12 @@ function parseGlob(pattern: string): {source: string, tokens: Array<GlobToken>} 
     if (char === "\\" && i + 1 < pattern.length) {
       addChar(esc(pattern[++i]));
     } else if (char === "*" && pattern[i + 1] !== "(") {
-      if (pattern[i + 1] === "*") {
-        while (pattern[i + 1] === "*") i++;
-        if (pattern[i + 1] === "/") {
-          source += "(?:.*/)?";
-          tokens.push({kind: "globstarSlash"});
-          i++;
-        } else {
-          source += ".*";
-          tokens.push({kind: "span", slash: true});
-        }
+      const globstar = pattern[i + 1] === "*";
+      while (pattern[i + 1] === "*") i++;
+      if (globstar && pattern[i + 1] === "/") {
+        source += "(?:.*/)?";
+        tokens.push({kind: "globstarSlash"});
+        i++;
       } else {
         source += ".*";
         tokens.push({kind: "span", slash: true});
@@ -422,8 +418,9 @@ function matchGlob(tokens: Array<GlobToken>, value: string): boolean {
           if (!excluded) addSpan(next, position, false);
         } else {
           if (token.minimum === 0) next.add(position);
-          const first = new Set(token.alternatives.flatMap(alternative => [...matchSequence(alternative, position)]));
-          for (const end of first) next.add(end);
+          for (const alternative of token.alternatives) {
+            for (const end of matchSequence(alternative, position)) next.add(end);
+          }
           if (token.repeat) {
             for (const end of next) {
               for (const alternative of token.alternatives) {
@@ -458,10 +455,8 @@ export function patternToRegex(pattern: string | RegExp): RegExp {
   const negated = negateCount % 2 === 1;
   const glob = pattern.slice(negateCount);
   const {source, tokens} = parseGlob(glob);
-  const compiled = new RegExp(`^${source}$`, "i");
   const predicate = (value: string) => matchGlob(tokens, value);
-  return negated ? new PredicateRegExp(pattern, value => !predicate(value)) :
-    new PredicateRegExp(compiled.source, predicate, compiled.flags);
+  return new PredicateRegExp(`^${source}$`, negated ? value => !predicate(value) : predicate, "i");
 }
 
 export async function walkUp<T>(startDir: string, probe: (dir: string) => Promise<T | null>): Promise<T | null> {

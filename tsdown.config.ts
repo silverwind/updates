@@ -11,10 +11,9 @@ export default defineConfig([
     outputOptions: {
       codeSplitting: true,
       chunkFileNames: "[name].js",
-      // Entry plus lazily-imported chunks (dns/renovate) stay out of the
-      // hot-path shared chunk so startup doesn't pay their cost.
       manualChunks: (id: string) => {
-        if (["index.ts", "dns.ts", "renovate.ts"].includes(basename(id))) return undefined;
+        // the entry and the lazily-imported dns/prewarm chunks stay out of the hot-path shared chunk
+        if (["index.ts", "dns.ts", "prewarm.ts"].includes(basename(id))) return undefined;
         return "shared";
       },
     },

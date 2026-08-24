@@ -60,7 +60,7 @@ export const fieldSep = "\0";
 export const fetchTimeout = 5000;
 export const goProbeTimeout = 2500;
 export const maxSockets = 50;
-export const maxTagPages = 100;
+const maxTagPages = 100;
 
 export const githubApiUrl = "https://api.github.com";
 
@@ -93,7 +93,7 @@ const transientErrorCodes = new Set([
   "UND_ERR_SOCKET", "UND_ERR_CONNECT_TIMEOUT", "UND_ERR_HEADERS_TIMEOUT", "UND_ERR_BODY_TIMEOUT",
 ]);
 
-export function isTransientFetchError(err: any): boolean {
+function isTransientFetchError(err: any): boolean {
   if (err?.name === "TimeoutError" || err?.name === "AbortError") return true;
   const code = err?.code ?? err?.cause?.code;
   return typeof code === "string" && transientErrorCodes.has(code);
@@ -218,13 +218,12 @@ export const effectiveConcurrency = (ctx: ModeContext): number => Math.max(ctx.c
 const limiterByCtx = new WeakMap<ModeContext, Limiter>();
 
 export function getLimiter(ctx: ModeContext): Limiter {
-  let limiter = limiterByCtx.get(ctx);
-  if (!limiter) {
+  return getOrSet(limiterByCtx, ctx, () => {
     const concurrency = effectiveConcurrency(ctx);
     let active = 0;
     let head = 0;
     let waiting: Array<() => void> = [];
-    limiter = async <T>(fn: () => Promise<T>): Promise<T> => {
+    return async <T>(fn: () => Promise<T>): Promise<T> => {
       if (inSlot.getStore()) return fn();
       if (active < concurrency) active++;
       else await new Promise<void>(resolve => { waiting.push(resolve); });
@@ -237,9 +236,7 @@ export function getLimiter(ctx: ModeContext): Limiter {
         } else active--;
       }
     };
-    limiterByCtx.set(ctx, limiter);
-  }
-  return limiter;
+  });
 }
 
 export function isVersionPrerelease(version: string, versioning: Versioning = semverVersioning): boolean {
@@ -597,7 +594,7 @@ const parseTagPage = (data: any, cached: boolean): Array<TagEntry> => {
   return data.map(tag => {
     if (typeof tag?.name !== "string" || typeof tag.commitSha !== "string" ||
       tag.isStable !== undefined && typeof tag.isStable !== "boolean") throw new TypeError("Invalid cached Forge tag entry");
-    return {...tag};
+    return tag as TagEntry;
   });
 };
 
@@ -737,17 +734,15 @@ export function throwFetchError(res: Response | undefined, url: string, name: st
 
 const dateVersionMin = 20000000;
 export function isSameVersionScheme(candidate: string, oldVersion: string): boolean {
-  const candidateFields = stripv(candidate).split(".");
-  const oldFields = stripv(oldVersion).split(".");
-  if (candidateFields.length < oldFields.length) return false;
-  return Number(candidateFields[0]) < dateVersionMin || Number(oldFields[0]) >= dateVersionMin;
+  return Number(stripv(candidate).split(".")[0]) < dateVersionMin ||
+    Number(stripv(oldVersion).split(".")[0]) >= dateVersionMin;
 }
 
 export function formatVersionPrecision(newVersion: string, oldVersion: string, suffix = ""): string {
   const bare = stripv(newVersion);
   const numParts = stripv(oldVersion).split(".").length;
-  const newParts = bare.split(".");
-  const formatted = numParts >= 3 ? bare : Array.from({length: numParts}, (_, idx) => newParts[idx] || "0").join(".");
+  const formatted = numParts >= 3 ? bare :
+    Array.from({length: numParts}, (_, idx) => bare.split(".")[idx] || "0").join(".");
   return `${oldVersion.startsWith("v") ? "v" : ""}${formatted}${suffix}`;
 }
 

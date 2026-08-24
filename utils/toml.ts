@@ -3,6 +3,7 @@ type TomlObject = {[key: string]: TomlValue};
 
 const arrayTableRe = /^\[\[([^\]]+)\]\]$/;
 const tableRe = /^\[([^[\]]+)\]$/;
+const mlDelims = ['"""', "'''"];
 
 const emptyTable = (): TomlObject => Object.create(null);
 
@@ -12,8 +13,7 @@ export function parseToml(input: string): TomlObject {
   const lines = input.split(/\r?\n/);
 
   for (let i = 0; i < lines.length; i++) {
-    const raw = lines[i];
-    const line = stripComment(raw).trim();
+    const line = stripComment(lines[i]).trim();
     if (!line) continue;
 
     const arrayTableMatch = arrayTableRe.exec(line);
@@ -32,7 +32,7 @@ export function parseToml(input: string): TomlObject {
       const lastKey = keys[keys.length - 1];
       if (!Array.isArray(target[lastKey])) target[lastKey] = [];
       const newTable = emptyTable();
-      (target[lastKey]).push(newTable);
+      target[lastKey].push(newTable);
       current = newTable;
       continue;
     }
@@ -50,15 +50,16 @@ export function parseToml(input: string): TomlObject {
     const keys = splitDottedKey(rawKey);
     const target = descend(current, keys.slice(0, -1));
     const finalKey = keys[keys.length - 1];
-    const mlDelim = ['"""', "'''"].find(delimiter =>
+    const mlDelim = mlDelims.find(delimiter =>
       rawVal.startsWith(delimiter) && !rawVal.includes(delimiter, 3)) ?? "";
+    const state: ScanState = {depth: 0, inStr: null, index: 0};
 
-    if ((rawVal.startsWith("[") || rawVal.startsWith("{")) && !inlineTableClosed(rawVal)) {
+    if ((rawVal.startsWith("[") || rawVal.startsWith("{")) && !scanClose(rawVal, state)) {
       let body = rawVal;
       let j = i + 1;
       for (; j < lines.length; j++) {
         body += `\n${stripComment(lines[j])}`;
-        if (inlineTableClosed(body)) break;
+        if (scanClose(body, state)) break;
       }
       i = j;
       target[finalKey] = parseValue(body);
@@ -127,7 +128,28 @@ function parseInlineTable(raw: string): TomlObject {
   return obj;
 }
 
-function scanValue(s: string, split: boolean): Array<string> | null {
+type ScanState = {depth: number, inStr: string | null, index: number};
+
+// resumable so appending a line to a growing inline table rescans only the new characters
+function scanClose(s: string, state: ScanState): boolean {
+  for (; state.index < s.length; state.index++) {
+    const ch = s[state.index];
+    if (state.inStr) {
+      if (ch === "\\" && state.inStr === '"') { state.index++; continue; }
+      if (ch === state.inStr) state.inStr = null;
+    } else if (ch === '"' || ch === "'") {
+      state.inStr = ch;
+    } else if (ch === "{" || ch === "[") {
+      state.depth++;
+    } else if (ch === "}" || ch === "]") {
+      state.depth--;
+      if (!state.depth) return true;
+    }
+  }
+  return false;
+}
+
+function splitTopLevel(s: string): Array<string> {
   const parts: Array<string> = [];
   let depth = 0;
   let inStr: string | null = null;
@@ -143,23 +165,13 @@ function scanValue(s: string, split: boolean): Array<string> | null {
       depth++;
     } else if (ch === "}" || ch === "]") {
       depth--;
-      if (!split && depth === 0) return parts;
-    } else if (split && ch === "," && depth === 0) {
+    } else if (ch === "," && depth === 0) {
       parts.push(s.slice(start, k));
       start = k + 1;
     }
   }
-  if (!split) return null;
   if (start < s.length) parts.push(s.slice(start));
   return parts;
-}
-
-function inlineTableClosed(s: string): boolean {
-  return scanValue(s, false) !== null;
-}
-
-function splitTopLevel(s: string): Array<string> {
-  return scanValue(s, true)!;
 }
 
 function splitDottedKey(key: string): Array<string> {

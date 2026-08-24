@@ -1,6 +1,6 @@
 import {cwd} from "node:process";
 import {parseArgs} from "node:util";
-import {dirname, isAbsolute, resolve} from "node:path";
+import {dirname, resolve} from "node:path";
 import {statSync} from "node:fs";
 import {cliBaseConfig, options, parseMixedArg, getOptionKey, parseArgList, parsePinArg, loadConfig} from "./config.ts";
 import {parsePositiveInt} from "./utils/utils.ts";
@@ -20,13 +20,13 @@ function argToConfigMixed(arg: Arg): boolean | Array<string | RegExp> | undefine
 
 function deriveStartDir(first: string | undefined): string {
   if (!first) return cwd();
-  const abs = isAbsolute(first) ? first : resolve(cwd(), first);
+  const abs = resolve(first);
   let isDir = false;
   try { isDir = statSync(abs).isDirectory(); } catch {}
   return isDir ? abs : dirname(abs);
 }
 
-export function resolveFileArgs(args: Record<string, Arg>, positionals: Array<string>): {filesList: Array<string>, startDir: string} {
+function resolveFileArgs(args: Record<string, Arg>, positionals: Array<string>): {filesList: Array<string>, startDir: string} {
   const fileSet = parseMixedArg(args.file);
   const filesList = [...(fileSet instanceof Set ? fileSet : []), ...positionals];
   return {filesList, startDir: deriveStartDir(filesList[0])};
@@ -125,7 +125,7 @@ export async function resolveConfig(
   if (typeof args.timeout === "string") cliConfig.timeout = parsePositiveInt(args.timeout, "timeout");
   if (typeof args.sockets === "string") cliConfig.sockets = parsePositiveInt(args.sockets, "sockets");
   if (typeof args.registry === "string") cliConfig.registry = args.registry;
-  if (typeof args.cooldown === "string") cliConfig.cooldown = Number(args.cooldown) || args.cooldown;
+  if (typeof args.cooldown === "string") cliConfig.cooldown = args.cooldown;
 
   const cliInclude = parseArgList(args.include).map(cliPatternToRegex);
   const cliExclude = parseArgList(args.exclude).map(cliPatternToRegex);
@@ -155,6 +155,6 @@ export async function resolveConfig(
   }
 
   const config: UpdatesOptions = {...fileConfig, pin: undefined, ...cliConfig};
-  Object.defineProperty(config, cliBaseConfig, {value: {fileConfig, cliKeys: Object.keys(cliConfig)}});
+  Object.defineProperty(config, cliBaseConfig, {value: {cliKeys: Object.keys(cliConfig)}});
   return config;
 }

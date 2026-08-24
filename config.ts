@@ -49,7 +49,7 @@ export type Config = {
   noColor?: boolean;
   /** Disable HTTP cache */
   noCache?: boolean;
-  /** Network request timeout in ms */
+  /** Network request timeout in ms, go probes use half */
   timeout?: number;
   /** Maximum number of parallel HTTP sockets */
   sockets?: number;
@@ -191,8 +191,8 @@ const findConfigUp = memoizeAsync((startDir: string) => walkUp(startDir, async d
     try {
       await access(fullPath);
     } catch (err: any) {
-      if (err?.code === "ENOENT") continue;
-      throw new Error(`Unable to load config file ${filename}: ${err?.message ?? err}`);
+      if (err.code === "ENOENT") continue;
+      throw new Error(`Unable to load config file ${filename}: ${err.message}`);
     }
     try {
       const mod = await import(pathToFileURL(fullPath).href);
@@ -204,7 +204,7 @@ const findConfigUp = memoizeAsync((startDir: string) => walkUp(startDir, async d
   return null;
 }));
 
-export async function loadConfig(startDir: string): Promise<Config> {
+export const loadConfig = memoizeAsync(async (startDir: string): Promise<Config> => {
   const raw = await findConfigUp(startDir) ?? {};
   const renovateConfig = await loadRenovateConfig(startDir, raw.inherit?.renovate);
   const config: Config = {...renovateConfig, ...raw};
@@ -215,4 +215,4 @@ export async function loadConfig(startDir: string): Promise<Config> {
   if (renovateConfig.overrides?.length) config.overrides = [...renovateConfig.overrides, ...(raw.overrides ?? [])];
   validatePin(config.pin);
   return config;
-}
+});

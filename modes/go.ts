@@ -379,8 +379,9 @@ async function fetchGoProxyModule(
   const primaryLatestPromise = fetchGoLatestOnce(ctx, "primary", primaryFetch, base, name);
   const primaryPromise = (async () => {
     const primaryLatest = await primaryLatestPromise;
-    return primaryLatest && !excludes.get(name)?.has(primaryLatest.Version) ? primaryLatest :
-      fetchGoListOnce(ctx, "primary", primaryFetch, base, name, excludes.get(name));
+    const excluded = excludes.get(name);
+    return primaryLatest && !excluded?.has(primaryLatest.Version) ? primaryLatest :
+      fetchGoListOnce(ctx, "primary", primaryFetch, base, name, excluded);
   })();
   const probe = async (path: string) => {
     try {

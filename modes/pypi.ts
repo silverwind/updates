@@ -2,7 +2,7 @@ import {
   type Deps, type ModeContext, type PackageInfo, dedupe, fieldSep, fetchWithEtag, reduceJson, throwFetchError,
 } from "./shared.ts";
 import {type Pep440, comparePep440, parsePep440} from "../utils/semver.ts";
-import {type Pep508Specifier, anchorSpecifier, esc, getOrSet, parsePep508, serializePep508} from "../utils/utils.ts";
+import {type Pep508Specifier, anchorSpecifier, getOrSet, longestFirstAlternation, parsePep508, serializePep508} from "../utils/utils.ts";
 
 const pypiNameSeparatorRe = /[-_.]+/g;
 
@@ -57,11 +57,11 @@ function specifierAllows(version: Pep440, {op, version: text}: Pep508Specifier):
   if (op === "==") return equalityCmp === 0;
   if (op === "!=") return equalityCmp !== 0;
   if (op === ">=") return cmp >= 0;
+  if (op === "<=") return cmp <= 0;
   const sameRelease = version.epoch === parsed.epoch &&
     Array.from({length: Math.max(version.release.length, parsed.release.length)})
       .every((_, idx) => (version.release[idx] ?? 0) === (parsed.release[idx] ?? 0));
   if (op === ">") return cmp > 0 && !(sameRelease && version.post !== null && parsed.post === null);
-  if (op === "<=") return cmp <= 0;
   if (op === "<") return cmp < 0 && !(sameRelease && (version.pre || version.dev !== null) && !parsed.pre && parsed.dev === null);
   return cmp >= 0 && parsed.release.length > 1 && parsed.epoch === version.epoch &&
     parsed.release.slice(0, -1).every((part, idx) => (version.release[idx] ?? 0) === part);
@@ -115,6 +115,7 @@ export function updateRequirement(text: string, oldValue: string, newValue: stri
       const cap = parsePep440(specifier.version);
       if (specifier.op === "<" && cap) specifier.version = raisedUpperBound(cap, oldParsed, newParsed);
       else if (specifier.op === "<=") specifier.version = orderedVersion(newParsed);
+      else return null;
     }
     if (!specifierAllows(newParsed, specifier)) return null;
   }
@@ -210,7 +211,7 @@ export function updatePyprojectToml(pkgStr: string, deps: Deps): string {
   let newPkgStr = pkgStr;
   for (const [depType, span] of Array.from(spans).sort((left, right) => right[1][0] - left[1][0])) {
     const byName = depsByType.get(depType)!;
-    const names = Array.from(byName.keys()).sort((left, right) => right.length - left.length).map(esc).join("|");
+    const names = longestFirstAlternation(byName.keys());
     const value = newPkgStr.slice(...span).replace(
       new RegExp(`(['"])( *(${names})(?![\\w.-]).*?)(?=\\1)`, "g"),
       (_, quote, requirement, name) => {

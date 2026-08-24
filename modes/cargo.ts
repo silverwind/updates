@@ -132,7 +132,10 @@ export function findLockedVersion(allVersions: Map<string, string[]>, name: stri
   return best;
 }
 
-const tomlKey = (key: string) => `(?:${esc(key)}|"${esc(key)}"|'${esc(key)}')`;
+const tomlKey = (key: string) => {
+  const escaped = esc(key);
+  return `(?:${escaped}|"${escaped}"|'${escaped}')`;
+};
 const jsonStringArrayRe = /^\[(?:"(?:\\.|[^"\\])*"(?:,"(?:\\.|[^"\\])*")*)?\]/;
 
 const tableHeaderRe = /^[ \t]*\[(\[?)[ \t]*([^[\]]+?)[ \t]*\]\1[ \t]*(?:#.*)?[ \t\r]*$/;

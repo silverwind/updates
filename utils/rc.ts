@@ -42,10 +42,7 @@ export function parseEnvVars(prefix: string): Record<string, any> {
   const result: Record<string, any> = {};
   const prefixLower = prefix.toLowerCase();
   for (const [key, value] of Object.entries(env)) {
-    if (!key.toLowerCase().startsWith(prefixLower)) {
-      continue;
-    }
-
+    if (!key.toLowerCase().startsWith(prefixLower)) continue;
     const keyPath = key.substring(prefix.length).split("__").filter(Boolean);
     if (keyPath.length === 0) continue;
     let cursor: Record<string, any> = result;
@@ -67,7 +64,7 @@ export default function rc(name: string, defaults: Record<string, any> = {}, sta
   const win = platform === "win32";
   const home = win ? env.USERPROFILE : env.HOME;
 
-  const configs: Array<Record<string, any>> = [{...defaults}];
+  const configs: Array<Record<string, any>> = [defaults];
   const configFiles: string[] = [];
 
   function addConfigFile(filePath: string | undefined) {

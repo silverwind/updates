@@ -5,12 +5,9 @@ const ttl = 60000;
 let active: {lookup: typeof dns.lookup, original: typeof dns.lookup, users: number} | null = null;
 
 export function enableDnsCache(): () => void {
-  if (active) {
-    if (dns.lookup === active.lookup) {
-      active.users++;
-      return disable(active);
-    }
-    active = null;
+  if (dns.lookup === active?.lookup) {
+    active.users++;
+    return disable(active);
   }
 
   const dnsCache = new Map<string, {expires: number, result: Array<any>}>();
