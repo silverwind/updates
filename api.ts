@@ -29,7 +29,7 @@ import {
 import {fetchPypiInfo, pypiSatisfies, updatePyprojectToml, updateRequirement} from "./modes/pypi.ts";
 import {
   resolveGoProxyChain, parseGoNoProxy,
-  parseGoMod, parseGoWork, resolveGoWorkModule, fetchGoProxyInfo, updateGoMod, rewriteGoImports,
+  parseGoMod, parseGoModule, parseGoWork, resolveGoWorkModule, fetchGoProxyInfo, updateGoMod, rewriteGoImports,
   getGoInfoUrl, goModulePathForVersion, shortenGoVersion, shortenGoModule,
 } from "./modes/go.ts";
 import {
@@ -126,6 +126,8 @@ const depBelongsToMember = (key: string, memberPath: string): boolean => {
 const hasDeps = (deps: DepsByMode) => Object.values(deps).some(modeDeps => Object.keys(modeDeps).length > 0);
 
 const normalizePep503 = (name: string) => name.toLowerCase().replace(/[-_.]+/g, "-");
+
+const selectorName = (depType: string, name: string) => selectorTypes.has(depType) ? resolutionsBasePackage(name) : name;
 
 function depNames(name: string, kind: string): Array<string> {
   if (kind === "go") return [name, shortenGoModule(name)];
@@ -527,7 +529,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
     }
   };
 
-  const collectDeps = (mode: string, pkg: Record<string, any>, typePrefix: string, depTypes: Array<string>, modeInclude: Set<RegExp>, modeExclude: Set<RegExp>) => {
+  const collectDeps = (mode: string, pkg: Record<string, any>, typePrefix: string, depTypes: Array<string>, modeInclude: Set<RegExp>, modeExclude: Set<RegExp>, internalNames?: ReadonlySet<string>) => {
     const uvSources = new Set(Object.keys(pkg.tool?.uv?.sources ?? {}).map(normalizePep503));
     const addUvDeps = (specs: Array<unknown>, depType: string) => {
       for (const {name, version, spec} of parseUvDependencies(specs)) {
@@ -555,6 +557,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
             for (const [selector, value] of Object.entries(child)) {
               if (typeof value === "string") {
                 const name = resolutionsBasePackage(selector === "." ? parents.at(-1) ?? selector : selector);
+                if (internalNames?.has(name)) continue;
                 const alias = parseNpmAlias(value);
                 if (!canInclude(name, mode, modeInclude, modeExclude, depType, mode, alias?.name ?? name)) continue;
                 const path = [...root, ...parents, selector];
@@ -572,6 +575,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
         for (const [name, value] of Object.entries(obj as Record<string, any>)) {
           if (mode === "pypi" && Array.isArray(value)) { addUvDeps(value, `${depType}.${name}`); continue; }
           if (typeof value !== "string") continue;
+          if (internalNames?.has(selectorName(depType, name))) continue;
           const alias = mode === "npm" ? parseNpmAlias(value) : null;
           if (!canInclude(name, mode, modeInclude, modeExclude, depType, mode, alias?.name ?? name)) continue;
           if (mode === "npm") addNpmDep(manifestDependencyKey(depType, typePrefix, name), name, value);
@@ -760,12 +764,13 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
       `${toRelPath(workspaceFile)}:${memberPath}` : memberPath;
   const collectNpmWorkspaceMember = (
     workspaceFile: string, workspaceDir: string, member: WorkspaceMember, pkg: Record<string, any>,
-    dependencyTypes: Array<string>, filters: FileFilters,
+    dependencyTypes: Array<string>, filters: FileFilters, internalNames?: ReadonlySet<string>,
   ) => {
     const memberPath = workspaceMemberPath("npm", workspaceFile, member.memberPath);
     registerModeContext("npm", memberPath, modeCtx(filters, workspaceDir));
     pnpmMemberFiles.push({...member, memberPath});
-    collectDeps("npm", pkg, memberPath === "." ? "" : `|${memberPath}`, dependencyTypes, filters.include, filters.exclude);
+    collectDeps("npm", pkg, memberPath === "." ? "" : `|${memberPath}`, dependencyTypes, filters.include, filters.exclude,
+      internalNames);
   };
   for (const file of cargoWorkspaceFiles.size || npmWorkspaceFiles.size ?
     new Set([...cargoWorkspaceFiles.keys(), ...npmWorkspaceFiles.keys(), ...fileContents.keys()]) : fileContents.keys()) {
@@ -898,19 +903,26 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
       registerModeContext(mode, workspacePath, modeContext);
       goWorkFiles.push({file, content: workContent, memberPath: workspacePath});
 
+      const internalNames = new Set<string>();
+      const goMembers: Array<{usePath: string, modPath: string, content: string, parsed: Record<string, any>}> = [];
       for (const entry of useReads) {
         if (!entry) continue;
-        const {usePath, modPath, content: modContent} = entry;
-        const parsed = parseGoMod(modContent);
+        const module = parseGoModule(entry.content);
+        if (module) internalNames.add(module);
+        goMembers.push({...entry, parsed: parseGoMod(entry.content)});
+      }
+
+      for (const {usePath, modPath, content: modContent, parsed} of goMembers) {
         const memberPath = workspaceMemberPath(mode, file, usePath);
         registerModeContext(mode, memberPath, modeContext);
         goModFiles.push({absPath: modPath, content: modContent, projectDir: dirname(modPath), memberPath});
 
-        collectDeps(mode, parsed, memberPath === "." ? "" : `|${memberPath}`, dependencyTypes, modeInclude, modeExclude);
+        collectDeps(mode, parsed, memberPath === "." ? "" : `|${memberPath}`, dependencyTypes, modeInclude, modeExclude,
+          internalNames);
       }
 
       for (const [name, value] of Object.entries(goWork.replace)) {
-        if (canInclude(name, mode, modeInclude, modeExclude, "replace")) {
+        if (!internalNames.has(name) && canInclude(name, mode, modeInclude, modeExclude, "replace")) {
           addDep(mode, "replace", workspacePath === "." ? "" : `|${workspacePath}`, name, shortenGoVersion(value), stripv(value));
         }
       }
@@ -993,17 +1005,23 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
         resolveWorkspaceMembers(packagePatterns, workspaceDir, "package.json", concurrency),
       ]);
       const dependencyTypes = resolveDepTypes(mode, filters.modeConfig);
+      const internalNames = new Set<string>();
+      const parsedMembers: Array<{member: WorkspaceMember, pkg: Record<string, any>}> = [];
+      for (const member of members) {
+        const pkg = parseFile(member.absPath, () => JSON.parse(member.content));
+        if (typeof pkg.name === "string" && pkg.name) internalNames.add(pkg.name);
+        parsedMembers.push({member, pkg});
+      }
       collectNpmWorkspaceMember(file, workspaceDir, {
         absPath: absFile, content: rootContent, memberPath: ".",
-      }, rootPkg, dependencyTypes, filters);
-      for (const member of members) {
-        collectNpmWorkspaceMember(file, workspaceDir, member,
-          parseFile(member.absPath, () => JSON.parse(member.content)), dependencyTypes, filters);
+      }, rootPkg, dependencyTypes, filters, internalNames);
+      for (const {member, pkg} of parsedMembers) {
+        collectNpmWorkspaceMember(file, workspaceDir, member, pkg, dependencyTypes, filters, internalNames);
       }
       continue;
     }
 
-    if (filename === "pnpm-workspace.yaml") {
+    if (filename === "pnpm-workspace.yaml") { // pnpm only treats `workspace:` dependencies as internal
       deps[mode] ??= {};
       const workspaceDir = dirname(absFile);
       const wsContent = fileContents.get(file)!;
@@ -1075,7 +1093,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
 
   const fetchTasks: Array<Promise<void>> = [];
   const npmIdentity = (key: string, name: string) => npmPublishedNames.get(key) ?? npmAliases.get(key)?.name ??
-    (selectorTypes.has(key.split(fieldSep)[0].split("|")[0]) ? resolutionsBasePackage(name) : name);
+    selectorName(key.split(fieldSep)[0].split("|")[0], name);
 
   const argsForNpm = {needsDates: modeContextsBySuffix.npm?.values().some(entry =>
     entry.cooldownDays || entry.versionConfig.hasCooldownOverride) ?? false};

@@ -1017,13 +1017,15 @@ test("go workspace reports and writes member updates", async ({expect = globalEx
   mkdirSync(join(testGoWorkDir, "lib"), {recursive: true});
 
   writeFileSync(join(testGoWorkDir, "go.work"), readFileSync(join(goWorkspaceDir, "go.work"), "utf8"));
-  writeFileSync(join(testGoWorkDir, "app", "go.mod"), readFileSync(join(goWorkspaceDir, "app", "go.mod"), "utf8"));
+  writeFileSync(join(testGoWorkDir, "app", "go.mod"),
+    `${readFileSync(join(goWorkspaceDir, "app", "go.mod"), "utf8")}require example.com/workspace/lib v1.0.0\n`);
   writeFileSync(join(testGoWorkDir, "app", "main.go"), readFileSync(join(goWorkspaceDir, "app", "main.go"), "utf8"));
   writeFileSync(join(testGoWorkDir, "lib", "go.mod"), readFileSync(join(goWorkspaceDir, "lib", "go.mod"), "utf8"));
 
-  const {go} = (await updates({
+  const {results: {go}, errors} = await updates({
     files: [join(testGoWorkDir, "go.work")], goproxy: goProxyUrl, update: true, color: false, noCache: true,
-  })).results;
+  });
+  expect(errors).toBeUndefined();
   expect(go["deps|./app"]["github.com/google/uuid"].old).toBe("1.5.0");
   expect(go["deps|./lib"]["github.com/google/uuid"].old).toBe("1.5.0");
 
@@ -1207,6 +1209,30 @@ test("local npm dependencies are neither requested nor rewritten", async ({expec
   await updates(apiOpts({files: [file], modes: ["npm"], update: true}));
   expect(localDependencyRequests).toBe(requestsBefore);
   expect(await readFile(file, "utf8")).toBe(content);
+});
+
+test("npm workspace members are skipped, published or not", async ({expect = globalExpect}: any = {}) => {
+  const dir = join(testDir, "test-internal-workspace-packages");
+  for (const member of ["app", "noty", "unpublished"]) mkdirSync(join(dir, "packages", member), {recursive: true});
+  await writeFile(join(dir, "package.json"), JSON.stringify({
+    name: "react", workspaces: ["packages/*"],
+    overrides: {"internal-lib": "^1.0.0"}, resolutions: {"react/internal-lib": "^1.0.0"},
+  }));
+  await writeFile(join(dir, "packages", "noty", "package.json"), JSON.stringify({name: "noty", version: "3.1.0"}));
+  await writeFile(join(dir, "packages", "unpublished", "package.json"), JSON.stringify({name: "internal-lib"}));
+  const appFile = join(dir, "packages", "app", "package.json");
+  await writeFile(appFile, JSON.stringify({
+    name: "app",
+    dependencies: {"internal-lib": "^1.0.0", noty: "^3.1.0", react: "^17.0.0", aliased: "npm:noty@^3.1.0"},
+  }));
+
+  const {errors} = await updates(apiOpts({files: [join(dir, "package.json")], modes: ["npm"], update: true}));
+
+  expect(errors).toBeUndefined(); // the unpublished member, the override and the resolution are never requested
+  const app = JSON.parse(await readFile(appFile, "utf8"));
+  expect(app.dependencies.noty).toBe("^3.1.0");
+  expect(app.dependencies.react).not.toBe("^17.0.0"); // the root is not a member
+  expect(app.dependencies.aliased).toBe("npm:noty@^3.1.4"); // npm resolves an alias from the registry, member or not
 });
 
 test("pin holds the range and keeps the authored precision", async ({expect = globalExpect}: any = {}) => {

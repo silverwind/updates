@@ -100,10 +100,10 @@ export function goModulePathForVersion(modulePath: string, version: string): str
   return buildGoModulePath(modulePath, newMajor);
 }
 
-type GoDirectiveKind = "require" | "replace" | "exclude" | "tool" | "use";
+type GoDirectiveKind = "module" | "require" | "replace" | "exclude" | "tool" | "use";
 type GoDirective = {kind: GoDirectiveKind, value: string, lineNumber: number};
 
-const directiveRe = /^(require|replace|exclude|tool|use)(?:\s*\(\s*(?:\/\/.*)?$|\s+(.+)$)/;
+const directiveRe = /^(module|require|replace|exclude|tool|use)(?:\s*\(\s*(?:\/\/.*)?$|\s+(.+)$)/;
 const requireEntryRe = /^(\S+)\s+(v\S+)/;
 const replaceInBlockRe = /^(\S+)(?:\s+(v\S+))?\s+=>\s+(\S+)(?:\s+(v\S+))?/;
 type ParsedReplace = {origModule: string, origVersion: string, targetModule: string, targetVersion: string};
@@ -172,6 +172,13 @@ function buildGoPackageInfo(
     ...(highest.path !== name && {newPath: highest.path}),
     sameMajorNew: stripv(latest.Version), sameMajorTime: latest.Time,
   }, null];
+}
+
+export function parseGoModule(content: string): string {
+  for (const {kind, value} of scanGoDirectives(content.split(/\r?\n/))) {
+    if (kind === "module") return trimQuotes(value.split(/\s/, 1)[0]);
+  }
+  return "";
 }
 
 export function parseGoMod(content: string) {
