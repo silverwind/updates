@@ -76,6 +76,13 @@ test("resolveWorkspaceMembers resolves literals, globs and exclusions", async ()
   mkdirSync(join(globDir, "packages/internal"));
   writeFileSync(join(globDir, "packages/internal/package.json"), "{\"name\": \"internal\"}");
   expect(await memberPaths(["packages/*", "!packages/internal"])).toEqual(["./packages/bar", "./packages/foo"]);
+
+  const broadDir = makeWorkspace({
+    "packages/foo/package.json": "{\"name\": \"foo\"}",
+    "node_modules/eslint/package.json": "{\"name\": \"eslint\"}",
+  });
+  expect((await resolveWorkspaceMembers(["**"], broadDir, "package.json")).map(({memberPath}) => memberPath))
+    .toEqual(["./packages/foo"]);
 });
 
 test("resolveWorkspaceMembers skips missing", async () => {

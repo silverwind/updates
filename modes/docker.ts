@@ -20,6 +20,8 @@ const dockerTagRe = /^(v?\d+(?:\.\d+)*)([a-z][a-z0-9]*)?(-.+)?$/i;
 
 export const dockerfileFromRe = /^[ \t]*FROM\b[^\r\n]*(?:(?<=\\)[ \t]*\r?\n[^\r\n]*)*/gim;
 export const composeImageRe = /^[ \t]*image:\s*['"]?([^\s'"#]+)['"]?/gm;
+// zero-width so a rewrite's `offset` stays on the key, which is what locallyBuiltImages records
+const keyStart = String.raw`(?<=^[ \t]*(?:-[ \t]+)?|[{,][ \t]*)`;
 const dockerArgRe = /^[ \t]*ARG\s+(\w+)(?:[ =](\S*))?/i;
 const dockerFromInstructionRe = /^[ \t]*FROM\s+(?:--platform=\S+\s+)?(\S+)/i;
 const unfoldDockerInstruction = (instruction: string) => instruction.replace(/\\[ \t]*\r?\n[ \t]*/g, " ");
@@ -355,7 +357,7 @@ export function findDockerVersion(
     const candidate = parse(dockerSemver(coerced, parsed.prerelease));
     if (!candidate) continue;
     if (parsed.prerelease && skipsPrerelease(candidate)) continue;
-    if (pinnedRange && !satisfies(coerced, pinnedRange)) continue;
+    if (pinnedRange && !satisfies(candidate.version, pinnedRange)) continue;
 
     if (candidate.version === bestVersion.version) {
       if (bestTag && Date.parse(lastUpdated) > Date.parse(bestDate)) {
@@ -409,8 +411,8 @@ function replaceImageRefs(
   const refs = longestFirstAlternation(byRef.keys());
   let newContent = content;
   for (const prefix of prefixes) {
-    newContent = newContent.replace(new RegExp(`(${prefix})(${refs})${tagEnd}`, "g"), (match, start, ref, offset) =>
-      canReplace(offset) ? `${start}${byRef.get(ref) ?? ref}` : match);
+    newContent = newContent.replace(new RegExp(`${keyStart}(${prefix})(${refs})${tagEnd}`, "gm"),
+      (match, start, ref, offset) => canReplace(offset) ? `${start}${byRef.get(ref) ?? ref}` : match);
   }
   return newContent;
 }
@@ -421,7 +423,7 @@ export function updateDockerfile(content: string, deps: Deps): string {
   if (!replacements.size) return content;
   const refs = longestFirstAlternation(replacements.keys());
   const updated = content.replace(
-    new RegExp(`(FROM${separator}+(?:--platform=\\S+${separator}+)?)(${refs})${tagEnd}`, "gi"),
+    new RegExp(`^([ \\t]*FROM${separator}+(?:--platform=\\S+${separator}+)?)(${refs})${tagEnd}`, "gim"),
     (_match, prefix, ref) => `${prefix}${replacements.get(ref) ?? ref}`,
   );
   const edits = new Map<number, {end: number, value: string}>();

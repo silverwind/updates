@@ -318,7 +318,7 @@ test.each([
 });
 
 test("findNewVersion filters PyPI files by yank and earliest upload", () => {
-  const data = {info: {version: "1.3.0"}, releases: {
+  const data = {info: {version: "1.4.0"}, releases: {
     "1.0.0": [{upload_time_iso_8601: "2025-01-01T00:00:00Z"}],
     "1.1.0": [
       {upload_time_iso_8601: "2026-04-24T00:00:00Z", yanked: true},
@@ -326,6 +326,10 @@ test("findNewVersion filters PyPI files by yank and earliest upload", () => {
     ],
     "1.2.0": [{upload_time_iso_8601: "2026-04-24T00:00:00Z"}],
     "1.3.0": [{upload_time_iso_8601: "2026-04-01T00:00:00Z", yanked: true}],
+    "1.4.0": [ // cooldown must use the viable file, not the older yanked one
+      {upload_time_iso_8601: "2026-04-01T00:00:00Z", yanked: true},
+      {upload_time_iso_8601: "2026-04-24T00:00:00Z"},
+    ],
   }};
   expect(findNewVersion(data, {...pypiOpts, range: "1.0.0", cooldownDays: 5,
     now: Date.parse("2026-04-25T00:00:00Z")})).toBe("1.1.0");
@@ -355,6 +359,8 @@ const goOpts = {mode: "go", useGreatest: false, usePre: false, useRel: false,
 const goData = {name: "github.com/foo/bar", old: "1.0.0", new: "3.0.0", Time: "2025-03-01"};
 const goSameMajor = (sameMajorNew: string) => ({...goData, sameMajorNew, sameMajorTime: "2025-02-01"});
 const pseudo = "0.4.2-0.20230802210424-5b0b94c5c0d3";
+const oldSameBasePseudo = "0.0.0-20250101120000-111111111111";
+const newSameBasePseudo = "0.0.0-20250201120000-222222222222";
 
 test.each([
   ["a cross-major upgrade", goSameMajor("1.5.0"), {range: "1.0.0"}, "3.0.0"],
@@ -363,6 +369,8 @@ test.each([
   ["a pseudo-version pin moved to its release", {...goData, old: pseudo, new: "0.4.2"}, {range: pseudo}, "0.4.2"],
   ["a newer pseudo-version candidate", {...goData, old: "0.4.2", new: "0.4.3-0.20260821120000-6c1a2b3c4d5e"},
     {range: "0.4.2", semvers: new Set(["patch"])}, "0.4.3-0.20260821120000-6c1a2b3c4d5e"],
+  ["a newer same-base pseudo-version", {...goData, old: oldSameBasePseudo, new: newSameBasePseudo},
+    {range: oldSameBasePseudo}, newSameBasePseudo],
   ["a prerelease pin moved to its release", {...goData, old: "1.5.0-rc.1", new: "1.5.0"}, {range: "1.5.0-rc.1"}, "1.5.0"],
   ["nothing when pinnedRange excludes the cross-major target", goData,
     {range: "1.0.0", semvers: new Set(["major"]), pinnedRange: "<2.0.0"}, null],

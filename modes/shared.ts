@@ -123,8 +123,8 @@ export async function fetchWithRetry(
       // Waiting longer for a retry than for the request itself never pays off in a one-shot run:
       // Docker Hub asks for 60s and answers the retry with the same rate limit.
       const maxRetryAfter = ctx.fetchTimeout;
-      const retryDelay = res && res.status >= 500 && res.status < 600 ?
-        (retryAfter !== null && retryAfter <= maxRetryAfter ? retryAfter : 0) : res &&
+      const retryDelay = res.status >= 500 && res.status < 600 ?
+        (retryAfter !== null && retryAfter <= maxRetryAfter ? retryAfter : 0) :
         (res.status === 429 || res.status === 403 && retryAfter !== null) &&
         (retryAfter === null || retryAfter <= maxRetryAfter) ? retryAfter ?? 0 : null;
       if (retryDelay === null || attempt >= fetchRetries) return res;
@@ -325,10 +325,12 @@ export function findNewVersion(data: any, {mode, range: authoredRange, useGreate
   if (mode === "pypi") {
     const releases = data?.releases;
     if (!releases) return null;
+    const isViableFile = (file: any) => Boolean(file && !file.yanked);
     versions = Object.keys(releases).filter(version =>
-      Array.isArray(releases[version]) && releases[version].some((file: any) => file && !file.yanked));
+      Array.isArray(releases[version]) && releases[version].some(isViableFile));
     getVersionDate = (version: string) => releases[version].reduce(
       (earliest: {date?: string, time: number}, file: any) => {
+        if (!isViableFile(file)) return earliest;
         const date = file?.upload_time_iso_8601;
         const time = typeof date === "string" ? Date.parse(date) : NaN;
         return !Number.isNaN(time) && time < earliest.time ? {date, time} : earliest;
@@ -358,7 +360,8 @@ export function findNewVersion(data: any, {mode, range: authoredRange, useGreate
       const pseudo = isGoPseudoVersion(candidate);
       if (!coerced || !pseudo && skipsPrerelease(parsed)) return false;
       const d = diff(originalOldVersion, candidate) ?? diff(oldVersion, coerced);
-      const level = pseudo ? d?.replace(/^pre/, "") : d;
+      // a same-base pseudo-version diffs as `prerelease`, which would otherwise map to `release`
+      const level = pseudo ? (d === "prerelease" ? "patch" : d?.replace(/^pre/, "")) : d;
       if (!level || !effectiveSemvers.has(level)) return false;
       if (!mayStepDown && parsed && oldParsed && versioning.compare(parsed, oldParsed) < 0) return false;
       if (!passesCooldown(time, cooldownDays, now)) return false;
@@ -607,8 +610,8 @@ export function fetchForgeEtag(
   return dedupe(forgeEtagsByCtx, ctx, key, async () => {
     const cached = ctx.noCache ? null : await getCache(url);
     const res = await fetchForge(url, ctx, cached ? {"if-none-match": cached.etag} : undefined);
-    if (res?.status === 304 && cached) return cached.body;
-    if (!res?.ok) { forgeEtagsByCtx.get(ctx)!.delete(key); return null; }
+    if (res.status === 304 && cached) return cached.body;
+    if (!res.ok) { forgeEtagsByCtx.get(ctx)!.delete(key); return null; }
     const body = await reduce(res);
     const etag = res.headers.get("etag");
     if (etag && !ctx.noCache) setCache(url, etag, body);

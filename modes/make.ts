@@ -138,8 +138,7 @@ export async function resolveGoModuleRoot(installPath: string, goCwd: string, ct
   if (chain[0].url === "off") return null;
   const parts = installPath.split("/");
   const candidates = Array.from({length: parts.length - 1}, (_, idx) => parts.slice(0, parts.length - idx).join("/"));
-  // One entry at a time, all candidates at once: the first entry that knows the module decides the
-  // root, so later entries are only reached while nothing has resolved at all.
+  // One entry at a time, all candidates at once: the first entry that knows the module decides the root.
   for (const entry of chain) {
     const probes = await Promise.allSettled(candidates.map(
       candidate => probeGoModuleRoot(candidate, goCwd, ctx, [entry]),

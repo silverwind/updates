@@ -46,9 +46,8 @@ function jsrResponse(): string {
   return JSON.stringify({latest: "1.9.0", versions});
 }
 
-// The module paths the proxy hosts. Every other path 404s, as a real proxy does: answering
-// `@latest` for any path let probeMajorVersions walk to its 101-major cap, 102 requests per
-// dependency, so the scenario measured the cap rather than go's cost.
+// Every other path 404s, as a real proxy does. Answering `@latest` everywhere let probeMajorVersions
+// walk to its 101-major cap, so the scenario measured the cap rather than go's cost.
 const goModules = new Set([
   "github.com/google/uuid",
   "github.com/google/go-github/v70",
@@ -57,8 +56,8 @@ const goModules = new Set([
   "github.com/example/testpkg/v2",
 ]);
 
-// `@latest` is optional in the GOPROXY protocol and these paths omit it, exercising the `@v/list`
-// fallback. `listonly`'s list carries no timestamps and so costs the follow-up `.info`.
+// These paths omit the optional `@latest`, exercising the `@v/list` fallback. `listonly` carries no
+// timestamps and so costs the follow-up `.info`.
 const goLists: Record<string, string> = {
   "github.com/example/listonly": "v1.0.0\nv1.2.0\nv1.3.0-rc.1\n",
   "github.com/example/listtime": "v1.0.0 2024-01-01T00:00:00Z\nv1.1.0 2024-06-01T00:00:00Z\n",
@@ -71,7 +70,6 @@ function goLatestResponse(path: string): string {
   return JSON.stringify({Version: `v${major}.10.0`, Time: "2025-01-01T00:00:00Z"});
 }
 
-// The sparse index answers with NDJSON, one record per version in publication order.
 function cargoResponse(): string {
   const lines: Array<string> = [];
   for (let minor = 0; minor < 20; minor++) {
@@ -82,14 +80,13 @@ function cargoResponse(): string {
 
 const pageSize = 100;
 const dockerTagsPerMajor = 60;
-// The newest major each fixture image sits below, so its authored tag is a few pages down rather
-// than absent, which is what leaves a walk unbounded.
+// Newest major per image, so its authored tag is a few pages down rather than absent, which would
+// leave the walk unbounded.
 const dockerNewestMajor: Record<string, number> = {node: 24, postgres: 17, redis: 9};
 const dockerEpoch = Date.UTC(2026, 0, 1);
 
-// Hub serves tags newest-first, 100 per page, and reports the total up front, which is what lets
-// the walk stop at the page holding the authored tag. A single page of 15 tags reported a total
-// of 15, so the walk never started and the scenario could not see its cost.
+// Hub serves tags newest-first, 100 per page, and reports the total up front, which is what lets the
+// walk stop at the page holding the authored tag. One page of 15 meant the walk never started.
 function dockerTagsResponse(repo: string, page: number): string {
   const newest = dockerNewestMajor[repo] ?? 22;
   const count = newest * dockerTagsPerMajor; // every major down to 1, three flavours and a patch series each
@@ -111,8 +108,8 @@ function dockerTagsResponse(repo: string, page: number): string {
 const ghTagPages = 3;
 const ghTagsPerMajor = 30;
 
-// GitHub serves tags newest-first and names the page count only in the Link header, which is what
-// bounds fetchActionTags' walk. Ten tags on one unlinked page meant the walk never ran.
+// GitHub names the page count only in the Link header, which is what bounds fetchActionTags' walk.
+// Ten tags on one unlinked page meant the walk never ran.
 function githubTagsResponse(page: number): string {
   const tags: Array<{name: string, commit: {sha: string}}> = [];
   for (let idx = (page - 1) * pageSize; idx < page * pageSize; idx++) {
@@ -131,8 +128,8 @@ function githubCommitsResponse(): string {
   return JSON.stringify([{sha: "a".repeat(40), commit: {committer: {date: "2025-01-01T00:00:00Z"}}}]);
 }
 
-// The sparse index has no fixed prefix, only the shard shape a crate name maps to:
-// `1/a`, `2/ab`, `3/a/abc` or `ab/cd/name`. Distinguishes it from `/pkg` and `/pkg/version`.
+// Shard shapes a crate name maps to: `1/a`, `2/ab`, `3/a/abc`, `ab/cd/name`. The sparse index has no
+// fixed prefix, so this is what distinguishes it from `/pkg` and `/pkg/version`.
 const cargoIndexRe = /^\/(?:[12]\/[^/]+|3\/[^/]\/[^/]+|[^/]{2}\/[^/]{2}\/[^/]+)$/;
 
 // `/v2/repositories/<ns>/<repo>/tags`, and the per-tag digest lookup a `image:tag@sha256:` pin makes.

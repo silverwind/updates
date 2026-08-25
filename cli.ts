@@ -2,7 +2,8 @@ import {cwd} from "node:process";
 import {parseArgs} from "node:util";
 import {dirname, resolve} from "node:path";
 import {statSync} from "node:fs";
-import {cliBaseConfig, options, parseMixedArg, getOptionKey, parseArgList, parsePinArg, loadConfig} from "./config.ts";
+import {cliBaseConfig, options, optionalValueOptions, parseMixedArg, getOptionKey, parseArgList, parsePinArg,
+  loadConfig} from "./config.ts";
 import {parsePositiveInt} from "./utils/utils.ts";
 import type {Arg} from "./config.ts";
 import type {UpdatesOptions} from "./api.ts";
@@ -54,6 +55,10 @@ export function parseCliArgs(argv?: Array<string>): {args: Record<string, Arg>, 
   for (const [index, token] of result.tokens.entries()) {
     if (token.kind === "positional") positionalsSeen++;
     if (token.kind !== "option") continue;
+    if (!getOptionKey(token.name)) throw new Error(`Unknown option: ${token.rawName}`);
+    if (options[token.name]?.type === "string" && token.value === undefined && !optionalValueOptions.has(token.name)) {
+      throw new Error(`Missing value for --${token.name}`);
+    }
     if (token.inlineValue || !token.value?.startsWith("-")) {
       recordOptionValue(token.name, token.value ?? true);
       continue;

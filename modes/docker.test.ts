@@ -1,3 +1,7 @@
+import {mkdtemp, rm, writeFile} from "node:fs/promises";
+import {tmpdir} from "node:os";
+import {join} from "node:path";
+import {updates} from "../api.ts";
 import {
   composeImageRe, dockerExactFileNames, dockerfileFromRe, dockerImageNames, extractDockerRefs, fetchDockerHubTags,
   fetchDockerInfo, fetchDockerTagDigest, filterStableTags, findDockerVersion, formatDockerVersion, getDockerInfoUrl,
@@ -202,6 +206,13 @@ test("findDockerVersion respects pinnedRange", () => {
   }, "8.0.0", allSemvers, undefined, undefined, "8.0")).toEqual({newTag: "8.0.41", date: "2024-06-01"});
 });
 
+test("findDockerVersion applies pinnedRange to prereleases", () => {
+  expect(findDockerVersion({
+    "1.2.0": "2024-01-01",
+    "1.3.0rc1": "2024-06-01",
+  }, "1.2.0", allSemvers, undefined, undefined, "^1.2.0", true)).toBeNull();
+});
+
 test.each([
   ["updateDockerfile replaces a FROM image tag", updateDockerfile,
     "FROM node:18\nRUN echo hello\n", "node", {old: "18", new: "20"}, "FROM node:20\nRUN echo hello\n"],
@@ -219,6 +230,18 @@ test.each([
     "jobs:\n  build:\n    container: node:18\n", "node", {old: "18", new: "20"}, "jobs:\n  build:\n    container: node:20\n"],
   ["updateWorkflowDockerImages replaces a uses docker://", updateWorkflowDockerImages,
     "steps:\n  - uses: docker://node:18\n", "node", {old: "18", new: "20"}, "steps:\n  - uses: docker://node:20\n"],
+  ["updateDockerfile skips comments and shell text", updateDockerfile,
+    "# FROM node:18\nRUN echo FROM node:18\nFROM node:18\n", "node", {old: "18", new: "20"},
+    "# FROM node:18\nRUN echo FROM node:18\nFROM node:20\n"],
+  ["updateComposeFile skips a commented image", updateComposeFile,
+    "services:\n  a:\n    # image: node:18\n    image: node:18\n", "node", {old: "18", new: "20"},
+    "services:\n  a:\n    # image: node:18\n    image: node:20\n"],
+  ["updateWorkflowDockerImages skips a commented container", updateWorkflowDockerImages,
+    "jobs:\n  a:\n    # container: node:18\n    container: node:18\n", "node", {old: "18", new: "20"},
+    "jobs:\n  a:\n    # container: node:18\n    container: node:20\n"],
+  ["updateComposeFile replaces a flow-style image", updateComposeFile,
+    "services:\n  web:\n    image: node:18\n  api: {image: node:18}\n", "node", {old: "18", new: "20"},
+    "services:\n  web:\n    image: node:20\n  api: {image: node:20}\n"],
   ["updateDockerfile replaces an uppercase tag", updateDockerfile,
     "FROM foo/bar:1.0-RC1\n", "foo/bar", {old: "1.0", oldOrig: "1.0-RC1", new: "1.1-RC1"}, "FROM foo/bar:1.1-RC1\n"],
   ["updateComposeFile replaces an uppercase tag", updateComposeFile,
@@ -373,6 +396,40 @@ test("fetchDockerTagDigest returns the registry digest and reports failures", as
   expect(urls.length).toBe(1);
   await expect(fetchDockerTagDigest("library", "node", "22", listing)).resolves.toBe(oldDigest);
   expect(urls.at(-1)).toBe("https://hub.docker.com/v2/repositories/library/node/tags/22");
+});
+
+test("docker digest lookup errors are isolated per dependency", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "updates-docker-digest-error-"));
+  const file = join(dir, "Dockerfile");
+  await writeFile(file, `FROM broken:1@${oldDigest}\nFROM healthy:1\n`);
+  const registryUrl = "https://registry.test";
+  const tags = {count: 2, results: [
+    {name: "2", tag_last_pushed: "2025-01-02T00:00:00Z"},
+    {name: "1", tag_last_pushed: "2025-01-01T00:00:00Z"},
+  ]};
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (input: string | URL | Request): Promise<Response> => {
+    const url = new URL(typeof input === "string" || input instanceof URL ? input : input.url);
+    if (url.pathname.endsWith("/tags")) return Promise.resolve(Response.json(tags));
+    if (url.pathname === "/v2/repositories/library/broken/tags/2") {
+      return Promise.resolve(new Response(null, {status: 500, statusText: "Internal Server Error"}));
+    }
+    return Promise.reject(new Error(`Unexpected request: ${url}`));
+  };
+
+  try {
+    const output = await updates({files: [file], modes: ["docker"], dockerapi: registryUrl, noCache: true});
+    const type = Object.keys(output.results.docker)[0];
+    expect(output.results.docker[type].healthy).toMatchObject({old: "1", new: "2"});
+    expect(output.results.docker[type].broken).toBeUndefined();
+    expect(output.errors).toEqual([expect.objectContaining({
+      mode: "docker", type, name: "broken",
+      error: expect.stringContaining(`${registryUrl}/v2/repositories/library/broken/tags/2`),
+    })]);
+  } finally {
+    globalThis.fetch = realFetch;
+    await rm(dir, {recursive: true});
+  }
 });
 
 test("fetchDockerInfo library image", async () => {

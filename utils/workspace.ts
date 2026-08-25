@@ -34,7 +34,7 @@ export function filterDepsForMember(allDeps: Deps, memberPath: string): Deps {
 const globChars = /[*?{[]/;
 
 function globDirectories(pattern: string, cwd: string): Array<string> {
-  return globSync(pattern, {cwd, withFileTypes: true})
+  return globSync(pattern, {cwd, exclude: entry => entry.name === "node_modules", withFileTypes: true})
     .filter(entry => entry.isDirectory() || entry.isSymbolicLink())
     .map(entry => resolve(entry.parentPath, entry.name));
 }

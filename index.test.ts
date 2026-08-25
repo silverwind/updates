@@ -1306,6 +1306,24 @@ test("a renovate packageRules cooldown still requests the dated npm document", a
   }
 });
 
+test("a config-file cooldown override wins over an inherited renovate packageRule", async ({expect = globalExpect}: any = {}) => {
+  const dir = mkdtempSync(join(tmpdir(), "updates-renovate-cooldown-override-"));
+  try {
+    const file = join(dir, "package.json");
+    await writeFile(file, JSON.stringify({dependencies: {noty: "3.1.0"}}));
+    await writeFile(join(dir, "renovate.json"), JSON.stringify({
+      packageRules: [{matchPackageNames: ["noty"], minimumReleaseAge: "999999 days"}],
+    }));
+    await writeFile(join(dir, "updates.config.js"), `module.exports = {inherit: {renovate: {cooldown: true}}, ` +
+      `overrides: [{include: ["noty"], cooldown: 0}]};\n`);
+
+    const output = await updates(apiOpts({files: [file]}));
+    expect(output.results.npm?.dependencies.noty?.new).toBe("3.1.4");
+  } finally {
+    await rm(dir, {recursive: true, force: true});
+  }
+});
+
 function actionsArgs(...extra: Array<string>) {
   return [script, "-c", "--forgeapi", githubUrl, "--dockerapi", dockerUrl, "-M", "actions", "-f", actionsDir, ...extra];
 }

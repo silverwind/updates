@@ -102,16 +102,16 @@ export const options: ParseArgsOptionsConfig = {
   "error-on-unchanged": {short: "U", type: "boolean"},
   "exclude": {short: "e", type: "string", multiple: true},
   "file": {short: "f", type: "string", multiple: true},
-  "forgeapi": {type: "string"}, // undocumented, only for tests
-  "goproxy": {type: "string"}, // undocumented, only for tests
-  "cargoapi": {type: "string"}, // undocumented, only for tests
-  "dockerapi": {type: "string"}, // undocumented, only for tests
+  "forgeapi": {type: "string"}, // test-only
+  "goproxy": {type: "string"}, // test-only
+  "cargoapi": {type: "string"}, // test-only
+  "dockerapi": {type: "string"}, // test-only
   "greatest": {short: "g", type: "string", multiple: true},
   "help": {short: "h", type: "boolean"},
   "include": {short: "i", type: "string", multiple: true},
   "indirect": {short: "I", type: "boolean"},
   "json": {short: "j", type: "boolean"},
-  "jsrapi": {type: "string"}, // undocumented, only for tests
+  "jsrapi": {type: "string"}, // test-only
   "cooldown": {short: "C", type: "string"},
   "minor": {short: "m", type: "string", multiple: true},
   "modes": {short: "M", type: "string", multiple: true},
@@ -121,7 +121,7 @@ export const options: ParseArgsOptionsConfig = {
   "patch": {short: "P", type: "string", multiple: true},
   "pin": {short: "l", type: "string", multiple: true},
   "prerelease": {short: "p", type: "string", multiple: true},
-  "pypiapi": {type: "string"}, // undocumented, only for tests
+  "pypiapi": {type: "string"}, // test-only
   "registry": {short: "r", type: "string"},
   "release": {short: "R", type: "string", multiple: true},
   "sockets": {short: "s", type: "string"},
@@ -131,6 +131,9 @@ export const options: ParseArgsOptionsConfig = {
   "verbose": {short: "V", type: "boolean"},
   "version": {short: "v", type: "boolean"},
 };
+
+// the `[<dep,...>]` options in --help, valid on their own
+export const optionalValueOptions = new Set(["allow-downgrade", "greatest", "minor", "patch", "prerelease", "release"]);
 
 export function parseMixedArg(arg: Arg): boolean | Set<string> {
   if (Array.isArray(arg)) {

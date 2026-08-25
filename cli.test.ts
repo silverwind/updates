@@ -27,4 +27,21 @@ test("recovers swallowed short option clusters", () => {
   expect(ordered.args.timeout).toBe("2000");
   expect(ordered.args.file).toEqual(["cluster.json", "explicit.json"]);
   expect(ordered.positionals).toEqual(["package.json"]);
+
+  const accepted = parseCliArgs(["-uj", "-T1000", "--", "--bogus", "-z", "-1"]);
+  expect(accepted.args).toMatchObject({update: true, json: true, timeout: "1000"});
+  expect(accepted.positionals).toEqual(["--bogus", "-z", "-1"]);
+});
+
+test.each(["--bogus", "-z"])("rejects unknown option %s", option => {
+  expect(() => parseCliArgs([option])).toThrow(`Unknown option: ${option}`);
+});
+
+test("rejects required options without a value", () => {
+  for (const name of ["file", "modes", "include", "exclude", "pin", "cooldown", "types", "sockets", "timeout", "registry"]) {
+    expect(() => parseCliArgs([`--${name}`])).toThrow(`Missing value for --${name}`);
+  }
+  for (const name of ["allow-downgrade", "greatest", "minor", "patch", "prerelease", "release"]) {
+    expect(() => parseCliArgs([`--${name}`])).not.toThrow();
+  }
 });

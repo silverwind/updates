@@ -312,18 +312,12 @@ function filterVersionData(data: Record<string, any>, mode: string, allowedVersi
 }
 
 export type UpdatesOptions = Config & {
-  /** Override GitHub/Gitea API URL (for testing) */
-  forgeapi?: string;
-  /** Override PyPI API URL (for testing) */
-  pypiapi?: string;
-  /** Override JSR API URL (for testing) */
-  jsrapi?: string;
-  /** Override Go proxy URL (for testing) */
-  goproxy?: string;
-  /** Override crates.io API URL (for testing) */
-  cargoapi?: string;
-  /** Override Docker Hub API URL (for testing) */
-  dockerapi?: string;
+  forgeapi?: string; // test-only
+  pypiapi?: string; // test-only
+  jsrapi?: string; // test-only
+  goproxy?: string; // test-only
+  cargoapi?: string; // test-only
+  dockerapi?: string; // test-only
 };
 
 export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
@@ -436,6 +430,14 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
       let allowDown = anyMatches(versionConfig.allowDowngrade);
       let cooldownOverride: number | undefined;
 
+      // imported rules first, local overrides win: "Values in `updates.config` override anything inherited"
+      let allowedVersions: string | undefined;
+      for (const rule of versionConfig.renovateVersionRules) {
+        if (!matchesRenovateRule(rule, packageName, depName)) continue;
+        if (rule.allowedVersions !== undefined) allowedVersions = rule.allowedVersions;
+        if (rule.cooldownDays !== undefined) cooldownOverride = rule.cooldownDays;
+      }
+
       for (const override of versionConfig.overrides) {
         if (override.include && allNames.every(name => !matchesAny(name, override.include!)) ||
           override.exclude && allNames.some(name => matchesAny(name, override.exclude!))) continue;
@@ -449,13 +451,6 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
       }
 
       const semvers = usePatch ? semversByPrecision.patch : useMinor ? semversByPrecision.minor : semversByPrecision.major;
-      let allowedVersions: string | undefined;
-      for (const rule of versionConfig.renovateVersionRules) {
-        if (!matchesRenovateRule(rule, packageName, depName)) continue;
-        if (rule.allowedVersions !== undefined) allowedVersions = rule.allowedVersions;
-        if (rule.cooldownDays !== undefined) cooldownOverride = rule.cooldownDays;
-      }
-
       entry = {names: allNames, useGreatest, usePre, useRel, semvers, allowDowngrade: allowDown, cooldownOverride, allowedVersions};
       cache.set(cacheKey, entry);
     }
@@ -1396,31 +1391,35 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
         }
 
         await pMap(infos, async (info) => {
-          const dep = deps.docker[info.key];
-          const oldTag = dep.oldOrig || dep.old;
-          const {semvers, usePre, useRel, allowedVersions, pinnedRange, cooldownDays: dockerCooldownDays} =
-            resolveVersionOpts(info.versionConfig, "docker", fullImage, fullImage, info.filePin, undefined, info.fileCooldownDays);
-          const tags = filterVersionData(data, "docker", allowedVersions).tags;
-          const result = !info.ref.digestOnly && parseDockerTag(oldTag) ? findDockerVersion(
-            tags, oldTag, semvers,
-            dockerCooldownDays || undefined, dockerCooldownDays ? now : undefined,
-            pinnedRange, usePre, useRel,
-          ) : null;
-          const newTag = result?.newTag ?? oldTag;
-          if (info.ref.digest) {
-            const newDigest = await resolveDockerTagDigest(info.ref.namespace, info.ref.repo, newTag);
-            if (!newDigest || newDigest === info.ref.digest && !result) { delete deps.docker[info.key]; return; }
-            dep.oldDigest = info.ref.digest;
-            dep.newDigest = newDigest;
-            dep.digestOnly = info.ref.digestOnly;
-          } else if (!result) {
-            delete deps.docker[info.key];
-            return;
-          }
+          try {
+            const dep = deps.docker[info.key];
+            const oldTag = dep.oldOrig || dep.old;
+            const {semvers, usePre, useRel, allowedVersions, pinnedRange, cooldownDays: dockerCooldownDays} =
+              resolveVersionOpts(info.versionConfig, "docker", fullImage, fullImage, info.filePin, undefined, info.fileCooldownDays);
+            const tags = filterVersionData(data, "docker", allowedVersions).tags;
+            const result = !info.ref.digestOnly && parseDockerTag(oldTag) ? findDockerVersion(
+              tags, oldTag, semvers,
+              dockerCooldownDays || undefined, dockerCooldownDays ? now : undefined,
+              pinnedRange, usePre, useRel,
+            ) : null;
+            const newTag = result?.newTag ?? oldTag;
+            if (info.ref.digest) {
+              const newDigest = await resolveDockerTagDigest(info.ref.namespace, info.ref.repo, newTag);
+              if (!newDigest || newDigest === info.ref.digest && !result) { delete deps.docker[info.key]; return; }
+              dep.oldDigest = info.ref.digest;
+              dep.newDigest = newDigest;
+              dep.digestOnly = info.ref.digestOnly;
+            } else if (!result) {
+              delete deps.docker[info.key];
+              return;
+            }
 
-          dep.new = newTag;
-          dep.info = getDockerInfoUrl(info.ref);
-          setDepAge(dep, result?.date);
+            dep.new = newTag;
+            dep.info = getDockerInfoUrl(info.ref);
+            setDepAge(dep, result?.date);
+          } catch (err) {
+            rejectDep("docker", info.key, err);
+          }
         }, {concurrency});
       }, {concurrency});
 

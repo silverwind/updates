@@ -132,7 +132,7 @@ export async function fetchNpmVersionInfo(name: string, version: string, config:
       if (!date) {
         const fullData = await tryOrNull(dedupe(npmFullDataByCtx, ctx, fullUrl, async () => {
           const res = await fetchWithRetry(ctx, fullUrl, fetchOpts);
-          return res?.ok ? await res.json() : null;
+          return res.ok ? await res.json() : null;
         }));
         date = fullData?.time?.[version] || "";
       }
