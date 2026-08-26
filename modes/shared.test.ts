@@ -75,6 +75,7 @@ test.each([
   [["v1.0.0", "v10.0.0", "v9.0.0", "v2.0.0"], "v1.0.0", "v10.0.0"],
   [["v1.0.0"], "v1.0.0", null], // no upgrade
   [["v1.0.0"], "not-semver", null],
+  [["v2.0.0+a", "v2.0.0+b"], "v1.0.0", "v2.0.0+a"], // equal precedence keeps the first tag
 ])("selectTag %s over %s", (tags, oldRef, expected) => {
   expect(selectTag(tags, oldRef)).toBe(expected);
 });

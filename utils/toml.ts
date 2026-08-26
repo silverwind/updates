@@ -52,17 +52,18 @@ export function parseToml(input: string): TomlObject {
     const finalKey = keys[keys.length - 1];
     const mlDelim = mlDelims.find(delimiter =>
       rawVal.startsWith(delimiter) && !rawVal.includes(delimiter, 3)) ?? "";
-    const state: ScanState = {depth: 0, inStr: null, index: 0};
+    const state: ScanState = {depth: 0, inStr: null};
 
     if ((rawVal.startsWith("[") || rawVal.startsWith("{")) && !scanClose(rawVal, state)) {
-      let body = rawVal;
+      const body = [rawVal];
       let j = i + 1;
       for (; j < lines.length; j++) {
-        body += `\n${stripComment(lines[j])}`;
-        if (scanClose(body, state)) break;
+        const next = stripComment(lines[j]);
+        body.push(next);
+        if (scanClose(next, state)) break;
       }
       i = j;
-      target[finalKey] = parseValue(body);
+      target[finalKey] = parseValue(body.join("\n"));
     } else if (mlDelim) {
       let body = rawVal.slice(3);
       let j = i + 1;
@@ -128,14 +129,14 @@ function parseInlineTable(raw: string): TomlObject {
   return obj;
 }
 
-type ScanState = {depth: number, inStr: string | null, index: number};
+type ScanState = {depth: number, inStr: string | null};
 
-// resumable so appending a line to a growing inline table rescans only the new characters
+// carries depth and string state across lines so each line is scanned exactly once
 function scanClose(s: string, state: ScanState): boolean {
-  for (; state.index < s.length; state.index++) {
-    const ch = s[state.index];
+  for (let index = 0; index < s.length; index++) {
+    const ch = s[index];
     if (state.inStr) {
-      if (ch === "\\" && state.inStr === '"') { state.index++; continue; }
+      if (ch === "\\" && state.inStr === '"') { index++; continue; }
       if (ch === state.inStr) state.inStr = null;
     } else if (ch === '"' || ch === "'") {
       state.inStr = ch;

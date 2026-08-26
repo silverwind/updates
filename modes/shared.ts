@@ -3,7 +3,7 @@ import {Buffer} from "node:buffer";
 import {env} from "node:process";
 import {setTimeout as delay} from "node:timers/promises";
 import {
-  type Versioning, coerce, diff, gt, satisfies, semverVersioning, pep440Versioning, valid,
+  type Versioning, coerce, diff, satisfies, semverVersioning, pep440Versioning,
 } from "../utils/semver.ts";
 import {getCache, setCache} from "../utils/fetchCache.ts";
 import {commaSeparatedToArray, getOrSet} from "../utils/utils.ts";
@@ -542,20 +542,19 @@ export async function fetchForge(url: string, ctx: ModeContext, extraHeaders?: R
 }
 
 export function selectTag(tags: Array<string>, oldRef: string): string | null {
-  const oldRefBare = stripv(oldRef);
-  if (!valid(oldRefBare)) return null;
+  const oldParsed = semverVersioning.parse(stripv(oldRef));
+  if (!oldParsed) return null;
 
   let bestTag = "";
-  let bestBare = "";
+  let bestParsed = oldParsed;
   for (const tag of tags) {
-    const tagBare = stripv(tag);
-    if (!valid(tagBare)) continue;
-    if (!bestTag || gt(tagBare, bestBare)) {
+    const parsed = semverVersioning.parse(stripv(tag));
+    if (parsed && semverVersioning.compare(parsed, bestParsed) > 0) {
       bestTag = tag;
-      bestBare = tagBare;
+      bestParsed = parsed;
     }
   }
-  return bestTag && gt(bestBare, oldRefBare) ? bestTag : null;
+  return bestTag || null;
 }
 
 export function resolvePackageJsonUrl(url: string): string {
