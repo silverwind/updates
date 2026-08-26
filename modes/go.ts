@@ -1,6 +1,6 @@
 import {env} from "node:process";
-import {dirname, join, resolve} from "node:path";
-import {globSync, readFileSync, realpathSync} from "node:fs";
+import {basename, dirname, join, resolve} from "node:path";
+import {existsSync, globSync, readFileSync, realpathSync} from "node:fs";
 import {
   type Deps, type GoProxyEntry, type ModeContext, type PackageInfo, dedupe, fieldSep, stripv, getSubDir, normalizeUrl,
   fetchWithRetry, defaultApiUrls, isVersionPrerelease,
@@ -551,10 +551,19 @@ export function rewriteGoImportPaths(content: string, rewrites: Record<string, s
   return result;
 }
 
+const goIgnoredPath = (path: string): boolean => { // mirrors go's `./...`, globSync already skips dot-prefixed
+  const name = basename(path);
+  return name === "vendor" || name === "testdata" || name[0] === "_";
+};
+
 export function rewriteGoImports(projectDir: string, majorVersionRewrites: Record<string, string>, write: (file: string, content: string) => void): void {
   if (!Object.keys(majorVersionRewrites).length) return;
-  for (const relPath of globSync("**/*.go", {cwd: projectDir})) {
+  const nested = new Map<string, boolean>();
+  const inNestedModule = (dir: string): boolean => dir.length > projectDir.length &&
+    getOrSet(nested, dir, () => existsSync(join(dir, "go.mod")) || inNestedModule(dirname(dir)));
+  for (const relPath of globSync("**/*.go", {cwd: projectDir, exclude: goIgnoredPath})) {
     const filePath = join(projectDir, relPath);
+    if (inNestedModule(dirname(filePath))) continue; // its own module, its go.mod was not bumped
     const content = readFileSync(filePath, "utf8");
     const replaced = rewriteGoImportPaths(content, majorVersionRewrites);
     if (replaced !== content) write(filePath, replaced);

@@ -129,6 +129,9 @@ test("updateWorkflowFile skips uses lines inside YAML block scalars", () => {
         cat > generated.yml <<EOF
         uses: actions/checkout@v1
         EOF
+    - if: |
+        true
+      uses: actions/checkout@v1
     - uses: actions/checkout@v1
 other:
   uses: actions/checkout@v1
@@ -137,9 +140,42 @@ other:
         cat > generated.yml <<EOF
         uses: actions/checkout@v1
         EOF
+    - if: |
+        true
+      uses: actions/checkout@v4
     - uses: actions/checkout@v4
 other:
   uses: actions/checkout@v1
+`);
+});
+
+test("updateWorkflowFile tracks yaml depth across job-level uses and ragged list items", () => {
+  const content = `jobs:
+  deploy:
+    uses: owner/repo/.github/workflows/deploy.yml@v1
+    with:
+      uses: actions/checkout@v1
+  build:
+    steps:
+      - name: a
+        with:
+          x: 1
+      -  uses: actions/checkout@v1
+`;
+  expect(updateWorkflowContent(content, [
+    {name: "owner/repo/.github/workflows/deploy.yml", oldRef: "v1", newRef: "v2"},
+    {name: "actions/checkout", oldRef: "v1", newRef: "v4"},
+  ])).toBe(`jobs:
+  deploy:
+    uses: owner/repo/.github/workflows/deploy.yml@v2
+    with:
+      uses: actions/checkout@v1
+  build:
+    steps:
+      - name: a
+        with:
+          x: 1
+      -  uses: actions/checkout@v4
 `);
 });
 

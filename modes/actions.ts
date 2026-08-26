@@ -61,7 +61,19 @@ export function formatActionVersion(newFullVersion: string, oldRef: string): str
   return formatVersionPrecision(parse(bare)?.version ?? bare, oldRef);
 }
 
-const yamlPairRe = /^(\s*)(?:-\s*)?(?:"([^"]+)"|'([^']+)'|([^\s:#][^:#]*)):\s*([^\r\n]*)\r?$/;
+const yamlPairRe = /^(\s*(?:-\s*)?)(?:"([^"]+)"|'([^']+)'|([^\s:#][^:#]*)):\s*([^\r\n]*)\r?$/;
+
+export type YamlPathEntry = {indent: number, key: string};
+
+// pops path down to this line's level, the caller decides whether to push the pair onto it
+export function walkYamlPair(line: string, path: Array<YamlPathEntry>): {indent: number, key: string, value: string} | null {
+  const pair = yamlPairRe.exec(line);
+  if (!pair) return null;
+  const indent = pair[1].length;
+  const dashEnd = pair[1].indexOf("-") + 1; // closes the previous item, 0 when not a list item
+  while (path.length && path.at(-1)!.indent >= (dashEnd || indent)) path.pop();
+  return {indent, key: (pair[2] ?? pair[3] ?? pair[4]).trim(), value: pair[5]};
+}
 
 const pinTokenRe = /^\s*(?:(?:renovate\s*:\s*)?(?:pin\s+|tag\s*=\s*)?|ratchet:[\w-]+\/[.\w-]+(?:\/[.\w-]+)*)@?((?:[\w-]*[-/])?v?\d+(?:\.\d+(?:\.\d+)?)?(?:-[a-zA-Z0-9.]+)?)/;
 
@@ -99,23 +111,22 @@ const schemeRe = /^https?:\/\//;
 
 export function updateWorkflowFile(content: string, actionDeps: Array<ActionUpdate>): string {
   const depByUses = new Map(actionDeps.map(dep => [`${dep.name}@${dep.oldRef}${dep.oldComment ? `#${dep.oldComment}` : ""}`, dep]));
-  const yamlPath: Array<{indent: number, key: string}> = [];
+  const yamlPath: Array<YamlPathEntry> = [];
   let blockIndent = -1;
   return content.split("\n").map(line => {
     if (blockIndent !== -1) {
       if (!line.trim() || line.length - line.trimStart().length > blockIndent) return line;
       blockIndent = -1;
     }
-    const pair = yamlPairRe.exec(line);
+    const pair = walkYamlPair(line, yamlPath);
     if (!pair) return line;
-    const indent = pair[1].length;
-    while (yamlPath.length && yamlPath.at(-1)!.indent >= indent) yamlPath.pop();
-    const key = (pair[2] ?? pair[3] ?? pair[4]).trim();
+    const {indent, key} = pair;
     const isUses = key === "uses" && (
       yamlPath.length === 3 && yamlPath[0].key === "jobs" && yamlPath[2].key === "steps" ||
-      yamlPath.length === 2 && yamlPath[0].key === "runs" && yamlPath[1].key === "steps"
+      yamlPath.length === 2 && yamlPath[0].key === "runs" && yamlPath[1].key === "steps" ||
+      yamlPath.length === 2 && yamlPath[0].key === "jobs"
     );
-    const pairValue = pair[5].replace(/(?:^|\s)#.*$/, "").trim();
+    const pairValue = pair.value.replace(/(?:^|\s)#.*$/, "").trim();
     if (!pairValue) yamlPath.push({indent, key});
     if (/^[>|](?:[+-]?\d?|\d[+-]?)$/.test(pairValue)) { blockIndent = indent; return line; }
     if (!isUses) return line;

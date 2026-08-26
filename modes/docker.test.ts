@@ -3,10 +3,10 @@ import {tmpdir} from "node:os";
 import {join} from "node:path";
 import {updates} from "../api.ts";
 import {
-  composeImageRe, dockerExactFileNames, dockerfileFromRe, dockerImageNames, extractDockerRefs, fetchDockerHubTags,
-  fetchDockerInfo, fetchDockerTagDigest, filterStableTags, findDockerVersion, formatDockerVersion, getDockerInfoUrl,
-  getExtractionRegex, isComposeFile, isDockerfile, isDockerFileName, parseDockerImageRef, parseDockerTag,
-  updateComposeFile, updateDockerfile, updateWorkflowDockerImages,
+  composeImageRe, dockerExactFileNames, dockerfileFromRe, dockerImageNames, dockerTagVersion, extractDockerRefs,
+  fetchDockerHubTags, fetchDockerInfo, fetchDockerTagDigest, filterStableTags, findDockerVersion, formatDockerVersion,
+  getDockerInfoUrl, getExtractionRegex, isComposeFile, isDockerfile, isDockerFileName, parseDockerImageRef,
+  parseDockerTag, updateComposeFile, updateDockerfile, updateWorkflowDockerImages,
 } from "./docker.ts";
 import {type ModeContext, fetchTimeout, fieldSep} from "./shared.ts";
 
@@ -59,6 +59,12 @@ test.each([
   ["1.27rc3-alpine", {version: "1.27", prerelease: "rc3", suffix: "-alpine"}],
   ["latest", null],
   ["bullseye", null],
+  ["21.0.5_11-jdk-alpine", {version: "21.0.5_11", prerelease: "", suffix: "-jdk-alpine"}],
+  ["21_35-jdk", {version: "21_35", prerelease: "", suffix: "-jdk"}],
+  ["1_2_3", null],
+  ["8f3a2b1", null],
+  ["7.0.0RC1", {version: "7.0.0", prerelease: "RC1", suffix: ""}],
+  ["V1.2.3", null],
 ])("parseDockerTag %s", (tag, expected) => {
   expect(parseDockerTag(tag)).toEqual(expected);
 });
@@ -204,6 +210,26 @@ test("findDockerVersion respects pinnedRange", () => {
     "8.0.41": "2024-06-01",
     "9.7": "2024-12-01",
   }, "8.0.0", allSemvers, undefined, undefined, "8.0")).toEqual({newTag: "8.0.41", date: "2024-06-01"});
+  const extended = {"10.4.1.88267": "2024-01-01", "10.5.0.89998": "2024-06-01", "25.1.0.102122": "2024-12-01"};
+  expect(findDockerVersion(extended, "10.4.1.88267", allSemvers, undefined, undefined, "<25"))
+    .toEqual({newTag: "10.5.0.89998", date: "2024-06-01"});
+  expect(findDockerVersion(extended, "10.4.1.88267", allSemvers))
+    .toEqual({newTag: "25.1.0.102122", date: "2024-12-01"});
+});
+
+test("dockerTagVersion matches ranges on the release, with docker's own coercion", () => {
+  expect(dockerTagVersion("1.27rc3")).toBe("1.27.0");
+  expect(dockerTagVersion("21_35")).toBe("21.35.0");
+  expect(dockerTagVersion("latest")).toBe("");
+});
+
+test("findDockerVersion keeps underscore builds verbatim and apart from dotted tags", () => {
+  const tagMap = {
+    "21.0.5_11-jdk": "2024-01-01", "21.0.6_9-jdk": "2024-06-01", "21.0.6.9-jdk": "2024-06-02",
+    "21_35-jdk": "2024-01-01", "22_36-jdk": "2024-06-01",
+  };
+  expect(findDockerVersion(tagMap, "21.0.5_11-jdk", allSemvers)).toEqual({newTag: "21.0.6_9-jdk", date: "2024-06-01"});
+  expect(findDockerVersion(tagMap, "21_35-jdk", allSemvers)).toEqual({newTag: "22_36-jdk", date: "2024-06-01"});
 });
 
 test("findDockerVersion applies pinnedRange to prereleases", () => {

@@ -1,8 +1,8 @@
 import {parse, satisfies, semverVersioning} from "../utils/semver.ts";
 import {longestFirstAlternation, pMap} from "../utils/utils.ts";
 import {
-  type Deps, type ModeContext, type PackageInfo, dedupe, effectiveConcurrency, fieldSep, fetchWithEtag,
-  isSameVersionScheme, passesCooldown, prereleaseOpts, reduceJson, stripv, throwFetchError, formatVersionPrecision,
+  type Deps, type ModeContext, type PackageInfo, dedupe, effectiveConcurrency, fieldSep, fetchWithEtag, hashRe,
+  passesCooldown, prereleaseOpts, reduceJson, stripv, throwFetchError, formatVersionPrecision,
 } from "./shared.ts";
 
 export type DockerImageRef = {
@@ -16,7 +16,7 @@ export type DockerImageRef = {
 };
 type DockerTag = {version: string, prerelease: string, suffix: string};
 
-const dockerTagRe = /^(v?\d+(?:\.\d+)*)([a-z][a-z0-9]*)?(-.+)?$/i;
+const dockerTagRe = /^(v?\d+(?:\.\d+)*(?:_\d+)?)([a-zA-Z][a-zA-Z0-9]*)?(-.+)?$/; // no `i`, `stripv` only strips lowercase
 
 export const dockerfileFromRe = /^[ \t]*FROM\b[^\r\n]*(?:(?<=\\)[ \t]*\r?\n[^\r\n]*)*/gim;
 export const composeImageRe = /^[ \t]*image:\s*['"]?([^\s'"#]+)['"]?/gm;
@@ -99,6 +99,7 @@ export function parseDockerImageRef(ref: string): DockerImageRef | null {
 export function parseDockerTag(tag: string): DockerTag | null {
   const match = dockerTagRe.exec(tag);
   if (!match) return null;
+  if (match[2] && !match[3] && hashRe.test(tag)) return null; // a commit hash, not a date tag
   return {version: match[1], prerelease: match[2] || "", suffix: match[3] || ""};
 }
 
@@ -282,12 +283,25 @@ export async function fetchDockerInfo(name: string, ctx: ModeContext): Promise<P
 
 const dockerSemver = (coerced: string, prerelease: string) => prerelease ? `${coerced}-${prerelease}` : coerced;
 
-const dockerNumericRe = /^\d+$/;
-const dockerVersionParts = (tag: DockerTag) => stripv(tag.version).split(".").map(Number);
+// ranges match on the release only, prerelease stability is decided separately by prereleaseOpts
+export function dockerTagVersion(tag: string): string {
+  const parsed = parseDockerTag(tag);
+  return parsed ? coerceDockerVersion(parsed.version) : "";
+}
 
-function coerceDockerVersion(version: string): string | null {
-  const parts = stripv(version).split(".").slice(0, 3);
-  if (parts.some(part => !dockerNumericRe.test(part))) return null;
+const dockerVersionSep = /[._]/;
+const dockerVersionParts = (tag: DockerTag) => stripv(tag.version).split(dockerVersionSep).map(Number);
+const dockerVersionShape = (version: string) => stripv(version).replace(/\d+/g, ""); // keeps `21_35` off `21.35`
+
+const dateVersionMin = 20000000;
+const firstVersionField = (version: string) => Number(stripv(version).split(dockerVersionSep)[0]);
+function isSameVersionScheme(candidate: string, oldVersion: string): boolean {
+  return firstVersionField(candidate) < dateVersionMin || firstVersionField(oldVersion) >= dateVersionMin;
+}
+
+// every part is numeric by construction, dockerTagRe only admits digits between separators
+function coerceDockerVersion(version: string): string {
+  const parts = stripv(version).split(dockerVersionSep).slice(0, 3);
   return [...parts.map(part => String(Number(part))), ...new Array(3 - parts.length).fill("0")].join(".");
 }
 
@@ -323,13 +337,10 @@ export function findDockerVersion(
   const oldParsed = parseDockerTag(oldTag);
   if (!oldParsed) return null;
 
-  const oldCoerced = coerceDockerVersion(oldParsed.version);
-  if (!oldCoerced) return null;
-
-  const oldFields = stripv(oldParsed.version).split(".").length;
-  const oldSemver = dockerSemver(oldCoerced, oldParsed.prerelease);
+  const oldShape = dockerVersionShape(oldParsed.version);
+  const oldSemver = dockerSemver(coerceDockerVersion(oldParsed.version), oldParsed.prerelease);
   const {effectiveSemvers, skipsPrerelease} = prereleaseOpts(oldSemver, usePre, useRel, semvers);
-  const extended = oldFields > 3;
+  const extended = oldShape.length > 2 || oldShape.includes("_");
   let bestVersion = parse(oldSemver)!;
   let bestParsed = oldParsed;
   let bestTag = "";
@@ -337,9 +348,12 @@ export function findDockerVersion(
 
   for (const [tagName, lastUpdated] of Object.entries(tagMap)) {
     const parsed = parseDockerTag(tagName);
-    if (!parsed || parsed.suffix !== oldParsed.suffix || stripv(parsed.version).split(".").length !== oldFields ||
+    if (!parsed || parsed.suffix !== oldParsed.suffix || dockerVersionShape(parsed.version) !== oldShape ||
       !isSameVersionScheme(parsed.version, oldParsed.version)) continue;
     if (!passesCooldown(lastUpdated, cooldownDays, now)) continue;
+
+    const semver = dockerSemver(coerceDockerVersion(parsed.version), parsed.prerelease);
+    if (pinnedRange && !satisfies(semver, pinnedRange)) continue;
 
     if (extended) {
       if (parsed.prerelease && (!usePre && !oldParsed.prerelease || useRel)) continue;
@@ -352,12 +366,9 @@ export function findDockerVersion(
       continue;
     }
 
-    const coerced = coerceDockerVersion(parsed.version);
-    if (!coerced) continue;
-    const candidate = parse(dockerSemver(coerced, parsed.prerelease));
+    const candidate = parse(semver);
     if (!candidate) continue;
     if (parsed.prerelease && skipsPrerelease(candidate)) continue;
-    if (pinnedRange && !satisfies(candidate.version, pinnedRange)) continue;
 
     if (candidate.version === bestVersion.version) {
       if (bestTag && Date.parse(lastUpdated) > Date.parse(bestDate)) {

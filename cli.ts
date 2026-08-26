@@ -28,8 +28,7 @@ function deriveStartDir(first: string | undefined): string {
 }
 
 function resolveFileArgs(args: Record<string, Arg>, positionals: Array<string>): {filesList: Array<string>, startDir: string} {
-  const fileSet = parseMixedArg(args.file);
-  const filesList = [...(fileSet instanceof Set ? fileSet : []), ...positionals];
+  const filesList = [...parseArgList(args.file), ...positionals];
   return {filesList, startDir: deriveStartDir(filesList[0])};
 }
 
@@ -97,10 +96,12 @@ export function parseCliArgs(argv?: Array<string>): {args: Record<string, Arg>, 
       recordOptionValue(token.name, token.value);
       continue;
     }
-    if (options[token.name]?.multiple) {
-      values[token.name] ??= [];
-    } else {
+    if (!options[token.name]?.multiple) {
       values[token.name] = true;
+    } else if (optionalValueOptions.has(token.name)) {
+      recordOptionValue(token.name, true); // a bare occurrence still means "all"
+    } else {
+      values[token.name] ??= [];
     }
     if (consumesPositional) consumedPositionals.add(positionalsSeen);
     for (const {key, value} of recoveredOptions) recordOptionValue(key, value);
@@ -143,8 +144,8 @@ export async function resolveConfig(
   const cliPin = parsePinArg(args.pin);
   if (Object.keys(cliPin).length) cliConfig.pin = cliPin;
 
-  const cliModes = parseMixedArg(args.modes);
-  if (cliModes instanceof Set) cliConfig.modes = Array.from(cliModes);
+  const cliModes = parseArgList(args.modes);
+  if (cliModes.length) cliConfig.modes = cliModes;
 
   for (const key of ["greatest", "prerelease", "release", "patch", "minor"] as const) {
     const val = argToConfigMixed(args[key]);

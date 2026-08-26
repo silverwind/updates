@@ -20,6 +20,7 @@ PSEUDO := golang.org/x/tools/cmd/goimports@v0.0.0-20200103221440-774c71fcf114
 PRE := github.com/foo/bar@v1.2.3-rc.1
 INCOMPAT := github.com/foo/baz@v2.0.0+incompatible
 TABS	:=	github.com/foo/qux@v1.0.0
+export override PREFIXED := github.com/foo/prefixed@v1.0.0
 TOOLS += \\
   'github.com/foo/quoted@v1.2.3' github.com/foo/aggregate@v2.0.0`;
 
@@ -43,6 +44,7 @@ test("parseMakeGoInstalls extracts go install specs across assignment operators"
     {installPath: "github.com/foo/bar", version: "v1.2.3-rc.1"},
     {installPath: "github.com/foo/baz", version: "v2.0.0+incompatible"},
     {installPath: "github.com/foo/qux", version: "v1.0.0"},
+    {installPath: "github.com/foo/prefixed", version: "v1.0.0"},
     {installPath: "github.com/foo/quoted", version: "v1.2.3"},
     {installPath: "github.com/foo/aggregate", version: "v2.0.0"},
   ]);
@@ -97,7 +99,7 @@ const execFileFails: ExecFile = () => Promise.reject(new Error("no such file or 
 const rootCtx = (
   doFetch: (url: string) => Promise<any>, goProxyUrl = "https://proxy", execFile: ExecFile = execFileFails,
   goProxyChain: Array<GoProxyEntry> = [{url: goProxyUrl, fallback: ","}],
-) => ({goProxyUrl, goProxyChain, fetchTimeout, goProbeTimeout, doFetch, execFile}) as unknown as ModeContext;
+) => ({goProxyChain, fetchTimeout, goProbeTimeout, doFetch, execFile}) as unknown as ModeContext;
 const rootHit = (path: string) => (url: string) => Promise.resolve({
   ok: url.endsWith(`${path}/@latest`), status: 404, json: () => Promise.resolve({Version: "v1.1.4"}),
 } as any);

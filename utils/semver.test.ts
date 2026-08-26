@@ -13,14 +13,14 @@ test("valid and parse", () => {
     expect(valid(input)).toBeNull();
   }
 
-  expect(parse("1.2.3")).toEqual({major: 1, minor: 2, patch: 3, prerelease: [], build: [], raw: "1.2.3", version: "1.2.3"});
+  expect(parse("1.2.3")).toEqual({major: 1, minor: 2, patch: 3, prerelease: [], raw: "1.2.3", version: "1.2.3"});
   expect(parse("1.2.3-alpha.1")).toEqual({
-    major: 1, minor: 2, patch: 3, prerelease: ["alpha", 1], build: [], raw: "1.2.3-alpha.1", version: "1.2.3-alpha.1",
+    major: 1, minor: 2, patch: 3, prerelease: ["alpha", 1], raw: "1.2.3-alpha.1", version: "1.2.3-alpha.1",
   });
   expect(parse("1.0.0-0.3.7")!.prerelease).toEqual([0, 3, 7]);
   expect(parse("1.0.0-beta.11")!.prerelease).toEqual(["beta", 11]);
   expect(parse("v2.0.0")!.version).toBe("2.0.0");
-  expect(parse("1.2.3+corp.1")).toMatchObject({build: ["corp", "1"], raw: "1.2.3+corp.1", version: "1.2.3"});
+  expect(parse("1.2.3+corp.1")).toMatchObject({raw: "1.2.3+corp.1", version: "1.2.3"});
   expect(parse("invalid")).toBeNull();
   expect(parse("")).toBeNull();
 });

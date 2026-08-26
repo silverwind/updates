@@ -4,7 +4,7 @@ import {join, dirname, basename, resolve} from "node:path";
 import {statSync, readdirSync, realpathSync, truncateSync, writeFileSync, accessSync, type Stats} from "node:fs";
 import {readFile} from "node:fs/promises";
 import {parseToml} from "./utils/toml.ts";
-import {coerce, githubActionsVersioning, satisfies, validRange} from "./utils/semver.ts";
+import {githubActionsVersioning, satisfies, validRange} from "./utils/semver.ts";
 import {timerel} from "timerel";
 import {
   npmTypes, uvTypes, goTypes, cargoTypes, cargoTargetTypes, expandDepTypes, parseUvDependencies, nonPackageEngines,
@@ -33,8 +33,8 @@ import {
   getGoInfoUrl, goModulePathForVersion, shortenGoVersion, shortenGoModule,
 } from "./modes/go.ts";
 import {
-  type ActionRef,
-  parseActionRef, parseUsesLine, getForgeApiBaseUrl,
+  type ActionRef, type YamlPathEntry,
+  parseActionRef, parseUsesLine, getForgeApiBaseUrl, walkYamlPair,
   fetchActionTagDate, formatActionVersion,
   updateWorkflowFile, isWorkflowFile, resolveWorkflowFiles,
 } from "./modes/actions.ts";
@@ -43,7 +43,7 @@ import {
   parseDockerImageRef, parseDockerTag, extractDockerRefs, dockerImageNames,
   fetchDockerTagDigest,
   getExtractionRegex, isDockerfile, isDockerFileName, dockerExactFileNames,
-  fetchDockerInfo, findDockerVersion, getDockerInfoUrl,
+  dockerTagVersion, fetchDockerInfo, findDockerVersion, getDockerInfoUrl,
   updateDockerfile, updateComposeFile, updateWorkflowDockerImages,
 } from "./modes/docker.ts";
 import {
@@ -289,7 +289,7 @@ function versionAllowedPredicate(mode: string, allowedVersions: string | undefin
     return regex[1] ? version => !versionRe.test(version) : version => versionRe.test(version);
   }
   if (mode === "docker") {
-    return version => satisfies(coerce(parseDockerTag(version)?.version ?? "")?.version ?? "", allowedVersions);
+    return version => satisfies(dockerTagVersion(version), allowedVersions);
   }
   if (mode === "pypi") return version => pypiSatisfies(version, allowedVersions);
   return version => satisfies(version, allowedVersions);
@@ -355,7 +355,6 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
     forgeApiUrl,
     pypiApiUrl: apiUrl(opts.pypiapi, defaultApiUrls.pypiapi),
     jsrApiUrl: apiUrl(opts.jsrapi, defaultApiUrls.jsrapi),
-    goProxyUrl: goProxyChain[0].url,
     goProxyChain,
     cratesIoUrl: apiUrl(opts.cargoapi, defaultApiUrls.cargoapi),
     dockerApiUrl: apiUrl(opts.dockerapi, defaultApiUrls.dockerapi),
@@ -777,7 +776,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
       const filters = await resolveDirConfig(dirname(file));
       const workflowLines = new Set<number>();
       fileData[relPath] = {absPath: file, content, fileType: "workflow", workflowLines};
-      const yamlPath: Array<{indent: number, key: string}> = [];
+      const yamlPath: Array<YamlPathEntry> = [];
 
       for (const [lineNumber, line] of content.split(/\r?\n/).entries()) {
         if (actionsEnabled) {
@@ -801,11 +800,9 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
         }
 
         if (!dockerEnabled) continue;
-        const pair = /^(\s*)(?:-\s*)?(?:"([^"]+)"|'([^']+)'|([^\s:#][^:#]*)):\s*(.*)$/.exec(line);
+        const pair = walkYamlPair(line, yamlPath);
         if (!pair) continue;
-        const indent = pair[1].length;
-        while (yamlPath.length && yamlPath.at(-1)!.indent >= indent) yamlPath.pop();
-        const key = (pair[2] ?? pair[3] ?? pair[4]).trim();
+        const {indent, key} = pair;
         const container = key === "container" && yamlPath.length === 2 && yamlPath[0].key === "jobs";
         const image = key === "image" && (
           yamlPath.length === 3 && yamlPath[0].key === "jobs" && yamlPath[2].key === "container" ||
@@ -815,8 +812,8 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
           yamlPath.length === 3 && yamlPath[0].key === "jobs" && yamlPath[2].key === "steps" ||
           yamlPath.length === 2 && yamlPath[0].key === "runs" && yamlPath[1].key === "steps"
         );
-        if ((container || image || uses) && pair[5]) {
-          const value = pair[5].replace(/\s+#.*$/, "").replace(/^(['"])(.*)\1$/, "$2");
+        if ((container || image || uses) && pair.value) {
+          const value = pair.value.replace(/\s+#.*$/, "").replace(/^(['"])(.*)\1$/, "$2");
           const ref = parseDockerImageRef(value);
           if (ref) { collectDockerRef(ref, relPath, filters); workflowLines.add(lineNumber); }
         }
@@ -941,8 +938,8 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
 
       const [filters, lockContent, members] = await Promise.all([
         resolveDirConfig(workspaceDir),
-        lockPath ? readFile(lockPath, "utf8") : Promise.resolve(null),
-        isWorkspace ? resolveWorkspaceMembers(wsMembers, workspaceDir, "Cargo.toml", concurrency) : Promise.resolve([] as WorkspaceMember[]),
+        lockPath ? readFile(lockPath, "utf8") : null,
+        isWorkspace ? resolveWorkspaceMembers(wsMembers, workspaceDir, "Cargo.toml", concurrency) : [] as WorkspaceMember[],
       ]);
       const {modeConfig, include: modeInclude, exclude: modeExclude} = filters;
       const dependencyTypes = resolveDepTypes(mode, modeConfig);
@@ -1285,7 +1282,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
         async function pickVersion(opts: Parameters<typeof findVersion>[2], sourceVersions: Array<string>): Promise<{version: string, tag: string, commitSha: string, date: string} | null> {
           const selectOpts = {...opts, cooldownDays: undefined, now: undefined};
           const denylist = new Set<string>();
-          for (let attempt = 0; attempt < 20; attempt++) {
+          for (let attempt = 0; attempt < 100; attempt++) { // bounded, each attempt is a serial commit-date fetch
             const candidates = denylist.size ? sourceVersions.filter(version => !denylist.has(version)) : sourceVersions;
             const picked = findVersion({}, candidates, selectOpts);
             if (!picked) return null;

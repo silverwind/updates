@@ -1,5 +1,5 @@
 import {parseCliArgs} from "./cli.ts";
-import {parseMixedArg} from "./config.ts";
+import {parseArgList, parseMixedArg} from "./config.ts";
 
 test("recovers swallowed short option clusters", () => {
   const single = parseCliArgs(["-T", "-u", "package.json"]);
@@ -16,6 +16,10 @@ test("recovers swallowed short option clusters", () => {
   expect(args.update).toBe(true);
   expect(args.greatest).toEqual(["react"]);
   expect(positionals).toEqual(["package.json"]);
+
+  expect(parseMixedArg(parseCliArgs(["--greatest", "react", "--greatest"]).args.greatest)).toBe(true);
+  expect(parseMixedArg(parseCliArgs(["-g", "react", "-g", "-uj"]).args.greatest)).toBe(true);
+  expect(parseArgList(parseCliArgs(["-g", "-M", "-Mu"]).args.modes)).toEqual(["u"]); // a recovered `true` is not "all"
 
   const ordered = parseCliArgs([
     "-g", "-ulreact=*", "-l", "react=<19",

@@ -13,7 +13,7 @@ export function isMakeFileName(filename: string): boolean {
 
 type MakeInstall = {installPath: string, version: string};
 
-const makeAssignRe = /^\s*[A-Za-z_][\w.]*\s*(?:::=|:=|\?=|\+=|=)\s*(.*)$/;
+const makeAssignRe = /^\s*(?:(?:export|override|private|unexport)\s+)*[A-Za-z_][\w.]*\s*(?:::=|:=|\?=|\+=|=)\s*(.*)$/;
 const makeGoInstallRe = /^([^@\s]+)@(v\d\S*)$/;
 const goHostRe = /^[^/\s]+\.[^/\s]+\//;
 

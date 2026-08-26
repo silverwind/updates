@@ -7,7 +7,7 @@ import {
   type Config, type CheckResult, type Dep, type Deps, type ModeContext, type PackageInfo, type PackageRepository,
   normalizeUrl, getFetchOpts, fieldSep, fetchForgeEtag, selectTag, fetchWithEtag, fetchImmutable, dedupe,
   coerceToVersion, hashRe, fetchForgeTags, throwFetchError, fetchWithRetry, defaultApiUrls, parseCommitDate,
-  reduceJson,
+  reduceJson, stripv,
 } from "./shared.ts";
 
 type Npmrc = Record<string, any> & {registry: string};
@@ -398,7 +398,7 @@ export async function checkUrlDep(key: string, dep: Dep, ctx: ModeContext): Prom
     const tags = await getTags(user, repo, oldRef, ctx);
     const newTag = selectTag(tags, selector ? coerceToVersion(selector) : oldRef);
     if (newTag) {
-      const newRef = selector ? updateVersionRange(selector, newTag.replace(/^v/, ""), selector) : newTag;
+      const newRef = selector ? updateVersionRange(selector, stripv(newTag), selector) : newTag;
       if (newRef !== oldRef) return {key, newRange: replaceRef(newRef), user, repo, oldRef, newRef};
     }
   }

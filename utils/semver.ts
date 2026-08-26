@@ -5,7 +5,6 @@ export type SemVer = {
   minor: number;
   patch: number;
   prerelease: ReadonlyArray<string | number>;
-  build: ReadonlyArray<string>;
   raw: string;
   version: string;
 };
@@ -13,7 +12,7 @@ export type SemVer = {
 const numericIdentifier = "0|[1-9]\\d*";
 const numericIdentifierRe = /^(?:0|[1-9]\d*)$/;
 const prereleaseIdentifier = "0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*";
-const semverRe = new RegExp(`^v?(${numericIdentifier})\\.(${numericIdentifier})\\.(${numericIdentifier})(?:-((?:${prereleaseIdentifier})(?:\\.(?:${prereleaseIdentifier}))*))?(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$`);
+const semverRe = new RegExp(`^v?(${numericIdentifier})\\.(${numericIdentifier})\\.(${numericIdentifier})(?:-((?:${prereleaseIdentifier})(?:\\.(?:${prereleaseIdentifier}))*))?(?:\\+[0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*)?$`);
 
 const parseCache = new Map<string, SemVer | null>();
 
@@ -29,9 +28,8 @@ function parseVersion(v: string): SemVer | null {
     const prerelease: Array<string | number> = m[4] ?
       m[4].split(".").map(part => /^\d+$/.test(part) && Number(part) < Number.MAX_SAFE_INTEGER ? Number(part) : part) :
       [];
-    const build = m[5]?.split(".") ?? [];
     const version = `${major}.${minor}.${patch}${prerelease.length ? `-${prerelease.join(".")}` : ""}`;
-    return {major, minor, patch, prerelease, build, raw: v, version};
+    return {major, minor, patch, prerelease, raw: v, version};
   });
 }
 

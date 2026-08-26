@@ -261,7 +261,6 @@ function makeGoCtx(routes: Record<string, string | number>, seen: Array<string> 
   return {
     fetchTimeout: 100,
     goProbeTimeout: 100,
-    goProxyUrl: goProxyChain[0].url,
     goProxyChain,
     doFetch: (url: string) => {
       seen.push(url);

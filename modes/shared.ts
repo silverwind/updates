@@ -48,7 +48,7 @@ export type GoProxyEntry = {url: string, fallback: "," | "|"};
 
 export type ModeContext = {
   fetchTimeout: number, goProbeTimeout: number, concurrency: number, forgeApiUrl: string, pypiApiUrl: string,
-  jsrApiUrl: string, goProxyUrl: string, goProxyChain: Array<GoProxyEntry>, cratesIoUrl: string, dockerApiUrl: string,
+  jsrApiUrl: string, goProxyChain: Array<GoProxyEntry>, cratesIoUrl: string, dockerApiUrl: string,
   doFetch: typeof doFetch, execFile: ExecFile, noCache: boolean,
 };
 
@@ -733,12 +733,6 @@ export function throwFetchError(res: Response | undefined, url: string, name: st
     throw new Error(`Received ${res.status} ${res.statusText} from ${url}`);
   }
   throw new Error(`Unable to fetch ${name} from ${source}`);
-}
-
-const dateVersionMin = 20000000;
-export function isSameVersionScheme(candidate: string, oldVersion: string): boolean {
-  return Number(stripv(candidate).split(".")[0]) < dateVersionMin ||
-    Number(stripv(oldVersion).split(".")[0]) >= dateVersionMin;
 }
 
 export function formatVersionPrecision(newVersion: string, oldVersion: string, suffix = ""): string {
