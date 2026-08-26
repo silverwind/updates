@@ -1,22 +1,30 @@
 import {execFile} from "node:child_process";
+import {AsyncLocalStorage} from "node:async_hooks";
 import {createServer} from "node:http";
 import {join, parse} from "node:path";
 import {readFileSync, mkdtempSync, readdirSync, mkdirSync, symlinkSync, writeFileSync} from "node:fs";
 import {writeFile, readFile, rm} from "node:fs/promises";
-import {fileURLToPath} from "node:url";
+import {fileURLToPath, pathToFileURL} from "node:url";
 import {tmpdir} from "node:os";
-import {execPath, platform, versions} from "node:process";
+import {platform, versions} from "node:process";
 import {gzip, gzipSync, constants} from "node:zlib";
-import {promisify} from "node:util";
+import {format, promisify} from "node:util";
 import type {Server} from "node:http";
 import {satisfies} from "./utils/semver.ts";
 import {npmTypes, forgeDirs, getOrSet} from "./utils/utils.ts";
 import {updates} from "./api.ts";
-import {parseCliArgs, resolveConfig} from "./cli.ts";
+import {parseCliArgs, resolveConfig, runCli as runCliMain} from "./cli.ts";
 import {resolutionsBasePackage} from "./modes/npm.ts";
 import type {UpdatesOptions} from "./api.ts";
 
 const execFileAsync = promisify(execFile);
+const cliStderr = new AsyncLocalStorage<(text: string) => void>();
+const realConsoleError = console.error;
+console.error = (...args) => {
+  const write = cliStderr.getStore();
+  if (write) write(`${format(...args)}\n`);
+  else realConsoleError(...args);
+};
 
 // Fail loudly if any in-process fetch escapes the loopback mock servers.
 const realFetch = globalThis.fetch;
@@ -73,8 +81,10 @@ function isObject<T = Record<string, any>>(obj: any): obj is T {
 
 function makeServer(defaultHandler: RouteHandler) {
   const routes = new Map<string, RouteHandler>();
+  const observers = new Set<(req: any) => void>();
 
   const server = createServer((req, res) => {
+    for (const observer of observers) observer(req);
     const url = (req.url || "/").split("?")[0];
     const handler = routes.get(url) || defaultHandler;
 
@@ -95,6 +105,10 @@ function makeServer(defaultHandler: RouteHandler) {
     get: (path: string, handler: RouteHandler) => {
       routes.set(path, handler);
     },
+    observe: (observer: (req: any) => void) => {
+      observers.add(observer);
+      return () => observers.delete(observer);
+    },
     start: (port: number) => {
       return new Promise<Server>((resolve) => {
         server.listen(port, "127.0.0.1", () => {
@@ -114,6 +128,10 @@ function makeServer(defaultHandler: RouteHandler) {
   };
 }
 
+function scopeServer(server: ReturnType<typeof makeServer>, prefix: string) {
+  return {get: (path: string, handler: RouteHandler) => server.get(`${prefix}${path}`, handler)};
+}
+
 const testPackages = new Set<string>(["npm"]);
 for (const dependencyType of npmTypes) {
   if (!isObject(testPkg[dependencyType])) continue;
@@ -122,13 +140,13 @@ for (const dependencyType of npmTypes) {
   }
 }
 
-function makeUrl(server: ReturnType<typeof makeServer>) {
+function makeUrl(server: ReturnType<typeof makeServer>, path = "/") {
   const addr = server.address();
   if (!addr || typeof addr === "string") {
     throw new Error("Server address is not available");
   }
   const {port}: any = addr;
-  return Object.assign(new URL("http://127.0.0.1"), {port}).toString();
+  return Object.assign(new URL("http://127.0.0.1"), {port, pathname: path}).toString();
 }
 
 function defaultRoute(_: any, res: any) {
@@ -136,13 +154,14 @@ function defaultRoute(_: any, res: any) {
   res.end();
 }
 
-let npmServer: ReturnType<typeof makeServer>;
-let githubServer: ReturnType<typeof makeServer>;
-let pypiServer: ReturnType<typeof makeServer>;
-let jsrServer: ReturnType<typeof makeServer>;
-let goProxyServer: ReturnType<typeof makeServer>;
-let dockerServer: ReturnType<typeof makeServer>;
-let cargoServer: ReturnType<typeof makeServer>;
+let mockServer: ReturnType<typeof makeServer>;
+let npmServer: ReturnType<typeof scopeServer>;
+let githubServer: ReturnType<typeof scopeServer>;
+let pypiServer: ReturnType<typeof scopeServer>;
+let jsrServer: ReturnType<typeof scopeServer>;
+let goProxyServer: ReturnType<typeof scopeServer>;
+let dockerServer: ReturnType<typeof scopeServer>;
+let cargoServer: ReturnType<typeof scopeServer>;
 
 let githubUrl: string;
 let pypiUrl: string;
@@ -154,13 +173,14 @@ let cargoUrl: string;
 let localDependencyRequests = 0;
 
 beforeAll(async () => {
-  npmServer = makeServer(defaultRoute);
-  githubServer = makeServer(defaultRoute);
-  pypiServer = makeServer(defaultRoute);
-  jsrServer = makeServer(defaultRoute);
-  goProxyServer = makeServer(defaultRoute);
-  dockerServer = makeServer(defaultRoute);
-  cargoServer = makeServer(defaultRoute);
+  mockServer = makeServer(defaultRoute);
+  npmServer = scopeServer(mockServer, "/npm");
+  githubServer = scopeServer(mockServer, "/github");
+  pypiServer = scopeServer(mockServer, "/pypi");
+  jsrServer = scopeServer(mockServer, "/jsr");
+  goProxyServer = scopeServer(mockServer, "/go");
+  dockerServer = scopeServer(mockServer, "/docker");
+  cargoServer = scopeServer(mockServer, "/cargo");
 
   const [commits, tags] = await Promise.all([
     readFile(fileURLToPath(new URL("fixtures/github/updates-commits.json", import.meta.url)), "utf8"),
@@ -345,23 +365,15 @@ beforeAll(async () => {
     cargoServer.get(path, (_, res) => res.send(gz));
   }
 
-  await Promise.all([
-    githubServer.start(0),
-    pypiServer.start(0),
-    npmServer.start(0),
-    jsrServer.start(0),
-    goProxyServer.start(0),
-    dockerServer.start(0),
-    cargoServer.start(0),
-  ]);
+  await mockServer.start(0);
 
-  githubUrl = makeUrl(githubServer);
-  npmUrl = makeUrl(npmServer);
-  pypiUrl = makeUrl(pypiServer);
-  jsrUrl = makeUrl(jsrServer);
-  goProxyUrl = makeUrl(goProxyServer);
-  dockerUrl = makeUrl(dockerServer);
-  cargoUrl = makeUrl(cargoServer);
+  githubUrl = makeUrl(mockServer, "/github/");
+  npmUrl = makeUrl(mockServer, "/npm/");
+  pypiUrl = makeUrl(mockServer, "/pypi/");
+  jsrUrl = makeUrl(mockServer, "/jsr/");
+  goProxyUrl = makeUrl(mockServer, "/go/");
+  dockerUrl = makeUrl(mockServer, "/docker/");
+  cargoUrl = makeUrl(mockServer, "/cargo/");
 
   await writeFile(join(testDir, ".npmrc"), `registry=${npmUrl}\nsave-exact=false`); // Fake registry
   await writeFile(join(testDir, "package.json"), JSON.stringify(testPkg, null, 2)); // Copy fixture
@@ -369,15 +381,10 @@ beforeAll(async () => {
 
 afterAll(async () => {
   globalThis.fetch = realFetch;
+  console.error = realConsoleError;
   await Promise.all([
     rm(testDir, {recursive: true}),
-    npmServer?.close(),
-    githubServer?.close(),
-    pypiServer?.close(),
-    jsrServer?.close(),
-    goProxyServer?.close(),
-    dockerServer?.close(),
-    cargoServer?.close(),
+    mockServer?.close(),
   ]);
 });
 
@@ -391,6 +398,20 @@ async function runCliExec(argvWithScript: Array<string>): Promise<{stdout: strin
     ...(output.errors?.length && {errors: output.errors}),
   });
   return {stdout, stderr: ""};
+}
+
+async function captureCli(
+  argvWithScript: Array<string>,
+  moduleUrl = pathToFileURL(sourceScript).href,
+): Promise<{stdout: string, stderr: string, exitCode: number}> {
+  let stdout = "";
+  let stderr = "";
+  const exitCode = await cliStderr.run(text => { stderr += text; }, () => runCliMain(argvWithScript.slice(1), {
+    stdout: text => { stdout += text; },
+    stdoutIsTTY: false,
+    moduleUrl,
+  }, false));
+  return {stdout, stderr, exitCode};
 }
 
 async function makeTest(args: string) {
@@ -438,7 +459,7 @@ function apiArgs(): string[] {
 }
 
 test("text output lists every dep, one row per version across sections", async ({expect = globalExpect}: any = {}) => {
-  const {stdout, stderr} = await execFileAsync(execPath, [
+  const {stdout, stderr} = await captureCli([
     script, "-n", ...apiArgs(), "-f", testFile,
   ]);
   expect(stderr).toEqual("");
@@ -464,23 +485,20 @@ test("version resolves the source and built package layouts", async ({expect = g
   const sourceDir = join(parentDir, "updates");
   const distDir = join(sourceDir, "dist");
   mkdirSync(distDir, {recursive: true});
-  const source = await readFile(sourceScript, "utf8");
   await Promise.all([
     writeFile(join(parentDir, "package.json"), JSON.stringify({version: "wrong"})),
     writeFile(join(sourceDir, "package.json"), JSON.stringify({version: "1.2.3", type: "module"})),
-    writeFile(join(sourceDir, "index.ts"), source),
-    writeFile(join(distDir, "index.ts"), source),
   ]);
 
   for (const entry of [join(sourceDir, "index.ts"), join(distDir, "index.ts")]) {
-    const {stdout, stderr} = await execFileAsync(execPath, [entry, "--version"]);
+    const {stdout, stderr} = await captureCli([entry, "--version"], pathToFileURL(entry).href);
     expect(stderr).toEqual("");
     expect(stdout).toBe("1.2.3\n");
   }
 });
 
 test("empty", async ({expect = globalExpect}: any = {}) => {
-  const {stdout, stderr} = await execFileAsync(execPath, [
+  const {stdout, stderr} = await captureCli([
     script, "-n", ...apiArgs(), "-f", emptyFile,
   ]);
   expect(stderr).toEqual("");
@@ -536,38 +554,34 @@ test("piped output stays colored with -c, on stdout and on -V stderr, and parsea
   mkdirSync(flagDir, {recursive: true});
   const pkgPath = join(flagDir, "package.json");
   await writeFile(pkgPath, JSON.stringify({dependencies: {prismjs: "1.0.0"}}));
-  const env = {...process.env, FORCE_COLOR: "0"};
 
-  const {stdout: colored, stderr: verbose} = await execFileAsync(execPath, [script, "-c", "-V", ...apiArgs(), "-f", pkgPath], {env});
+  const {stdout: colored, stderr: verbose} = await captureCli([script, "-c", "-V", ...apiArgs(), "-f", pkgPath]);
   expect(colored).toContain("\u001b[");
   expect(verbose).toContain("\u001b[");
 
-  const {stdout: json} = await execFileAsync(execPath, [script, "-u", "-j", ...apiArgs(), "-f", pkgPath], {env});
+  const {stdout: json} = await captureCli([script, "-u", "-j", ...apiArgs(), "-f", pkgPath]);
   expect(JSON.parse(json).results.npm.dependencies.prismjs.new).toBe("1.17.1");
 });
 
 if (!versions.bun) {
   test("global", async ({expect = globalExpect}: any = {}) => {
-    const prefix = mkdtempSync(join(tmpdir(), "updates-global-"));
-    try {
-      let bin: string;
-      if (platform === "win32") {
-        bin = join(prefix, "updates.cmd");
-        writeFileSync(bin, `@node "${script}" %*\r\n`);
-      } else {
-        bin = join(prefix, "bin", "updates");
-        mkdirSync(join(prefix, "bin"));
-        symlinkSync(script, bin);
-      }
-      const {stdout, stderr} = await execFileAsync(bin, [
-        "-n", ...apiArgs(), "-f", testFile,
-      ], {shell: platform === "win32"});
-      expect(stderr).toEqual("");
-      expect(stdout).toContain("prismjs");
-      expect(stdout).toContain("https://github.com/silverwind/updates");
-    } finally {
-      await rm(prefix, {recursive: true});
+    const prefix = join(testDir, "global");
+    let bin: string;
+    if (platform === "win32") {
+      mkdirSync(prefix);
+      bin = join(prefix, "updates.cmd");
+      writeFileSync(bin, `@node "${script}" %*\r\n`);
+    } else {
+      bin = join(prefix, "bin", "updates");
+      mkdirSync(join(prefix, "bin"), {recursive: true});
+      symlinkSync(script, bin);
     }
+    const {stdout, stderr} = await execFileAsync(bin, [
+      "-n", ...apiArgs(), "-f", testFile,
+    ], {shell: platform === "win32"});
+    expect(stderr).toEqual("");
+    expect(stdout).toContain("prismjs");
+    expect(stdout).toContain("https://github.com/silverwind/updates");
   });
 }
 
@@ -657,16 +671,8 @@ test.each([
   expect(await makeTest(args)).toEqual(notyResult);
 });
 
-// Out of process, unlike its siblings: the in-process registry cache is keyed by URL alone, so
-// the abbreviated document a run without --cooldown caches would answer this one too.
 test("cooldown duration", async ({expect = globalExpect}: any = {}) => {
-  const {stdout} = await execFileAsync(execPath, [
-    script, "-j", "-i", "noty", "-C", "12h", ...apiArgs(), "-f", testFile,
-  ]);
-  const {results} = JSON.parse(stdout);
-  delete results.npm.dependencies.noty.age;
-  delete results.npm.overrides.noty.age;
-  expect(results).toEqual(notyResult);
+  expect(await makeTest("-j -i noty -C 12h")).toEqual(notyResult);
 });
 
 test("packageManager", async ({expect = globalExpect}: any = {}) => {
@@ -716,15 +722,10 @@ test("uv", async ({expect = globalExpect}: any = {}) => {
 
 test("invalid config", async ({expect = globalExpect}: any = {}) => {
   const args = ["-j", "-f", invalidConfigFile, "-c", ...apiArgs()];
-  try {
-    await execFileAsync(execPath, [script, ...args]);
-    throw new Error("Expected error but got success");
-  } catch (err: any) {
-    expect(err?.code).toBe(1);
-    const output = err?.stdout || "";
-    expect(output).toContain("updates.config.js");
-    expect(output).toContain("Unable to parse");
-  }
+  const {stdout, exitCode} = await captureCli([script, ...args]);
+  expect(exitCode).toBe(1);
+  expect(stdout).toContain("updates.config.js");
+  expect(stdout).toContain("Unable to parse");
 });
 
 test("prerelease selection", async ({expect = globalExpect}: any = {}) => {
@@ -907,10 +908,14 @@ test("auto-discovery finds a Makefile once on a case-insensitive filesystem", as
   mkdirSync(makeDir, {recursive: true});
   await writeFile(join(makeDir, "Makefile"), "UUID_PACKAGE ?= github.com/google/uuid@v1.4.0\n");
 
-  // Discovery reads the cwd, so this runs out of process: a chdir here would be seen by every
-  // concurrent sibling, which resolves paths and config against the cwd too.
-  const {stdout} = await execFileAsync(execPath, [script, "-j", "-x", "-M", "make", ...apiArgs()], {cwd: makeDir});
-  expect(Object.keys(JSON.parse(stdout).results.make)).toEqual(["Makefile"]);
+  const previousCwd = process.cwd();
+  process.chdir(makeDir); // results are keyed relative to cwd
+  try {
+    const {stdout} = await runCliExec([script, "-j", "-x", "-M", "make", ...apiArgs(), "-f", makeDir]);
+    expect(Object.keys(JSON.parse(stdout).results.make)).toEqual(["Makefile"]);
+  } finally {
+    process.chdir(previousCwd);
+  }
 });
 
 test("make mode bumps docker image tags and re-resolves digests in Makefiles", async ({expect = globalExpect}: any = {}) => {
@@ -1073,28 +1078,24 @@ test("cargo workspace reports and writes root and member updates", async ({expec
 });
 
 test("multiple Cargo workspace roots keep member config identity", async ({expect = globalExpect}: any = {}) => {
-  const dir = mkdtempSync(join(tmpdir(), "updates-cargo-workspaces-"));
+  const dir = join(testDir, "cargo-workspaces");
   const roots = [join(dir, "one"), join(dir, "two")];
-  try {
-    for (const [index, root] of roots.entries()) {
-      mkdirSync(join(root, "crates", "app"), {recursive: true});
-      await writeFile(join(root, "Cargo.toml"), '[workspace]\nmembers = ["crates/*"]\n');
-      await writeFile(join(root, "crates", "app", "Cargo.toml"), '[package]\nname = "app"\nversion = "0.1.0"\n\n[dependencies]\nserde = "1.0.0"\n');
-      await writeFile(join(root, "renovate.json"), JSON.stringify({packageRules: [{
-        matchPackageNames: ["serde"], allowedVersions: index === 0 ? "<=1.0.100" : "<=1.0.200",
-      }]}));
-    }
-
-    await updates({
-      files: roots.map(root => join(root, "Cargo.toml")), cargoapi: cargoUrl,
-      modes: ["cargo"], update: true, color: false, noCache: true,
-    });
-
-    expect(await readFile(join(roots[0], "crates", "app", "Cargo.toml"), "utf8")).toContain('serde = "1.0.100"');
-    expect(await readFile(join(roots[1], "crates", "app", "Cargo.toml"), "utf8")).toContain('serde = "1.0.200"');
-  } finally {
-    await rm(dir, {recursive: true, force: true, maxRetries: 10, retryDelay: 100});
+  for (const [index, root] of roots.entries()) {
+    mkdirSync(join(root, "crates", "app"), {recursive: true});
+    await writeFile(join(root, "Cargo.toml"), '[workspace]\nmembers = ["crates/*"]\n');
+    await writeFile(join(root, "crates", "app", "Cargo.toml"), '[package]\nname = "app"\nversion = "0.1.0"\n\n[dependencies]\nserde = "1.0.0"\n');
+    await writeFile(join(root, "renovate.json"), JSON.stringify({packageRules: [{
+      matchPackageNames: ["serde"], allowedVersions: index === 0 ? "<=1.0.100" : "<=1.0.200",
+    }]}));
   }
+
+  await updates({
+    files: roots.map(root => join(root, "Cargo.toml")), cargoapi: cargoUrl,
+    modes: ["cargo"], update: true, color: false, noCache: true,
+  });
+
+  expect(await readFile(join(roots[0], "crates", "app", "Cargo.toml"), "utf8")).toContain('serde = "1.0.100"');
+  expect(await readFile(join(roots[1], "crates", "app", "Cargo.toml"), "utf8")).toContain('serde = "1.0.200"');
 });
 
 test("pnpm workspace", async ({expect = globalExpect}: any = {}) => {
@@ -1254,74 +1255,55 @@ test("pin holds the range and keeps the authored precision", async ({expect = gl
 });
 
 test("a config-file pin and overrides merge with the renovate ones rather than replacing them", async ({expect = globalExpect}: any = {}) => {
-  const dir = mkdtempSync(join(tmpdir(), "updates-pinmerge-"));
-  try {
-    const file = join(dir, "package.json");
-    await writeFile(file, JSON.stringify({dependencies: {noty: "3.1.0"}}));
-    await writeFile(join(dir, "renovate.json"), JSON.stringify({
-      packageRules: [
-        {matchPackageNames: ["noty"], allowedVersions: "<3.1.4"},
-        {matchPackageNames: ["esbuild"], minimumReleaseAge: "1 day"},
-      ],
-    }));
-    await writeFile(join(dir, "updates.config.js"), `module.exports = {inherit: {renovate: {cooldown: true}}, ` +
-      `pin: {"gulp-sourcemaps": "^2.0.0"}, overrides: [{include: ["gulp-sourcemaps"], greatest: true}]};\n`);
+  const dir = join(testDir, "pinmerge");
+  mkdirSync(dir);
+  const file = join(dir, "package.json");
+  await writeFile(file, JSON.stringify({dependencies: {noty: "3.1.0"}}));
+  await writeFile(join(dir, "renovate.json"), JSON.stringify({
+    packageRules: [
+      {matchPackageNames: ["noty"], allowedVersions: "<3.1.4"},
+      {matchPackageNames: ["esbuild"], minimumReleaseAge: "1 day"},
+    ],
+  }));
+  await writeFile(join(dir, "updates.config.js"), `module.exports = {inherit: {renovate: {cooldown: true}}, ` +
+    `pin: {"gulp-sourcemaps": "^2.0.0"}, overrides: [{include: ["gulp-sourcemaps"], greatest: true}]};\n`);
 
-    const output = await updates(apiOpts({files: [file]}));
-    expect(output.results.npm.dependencies.noty.new).toBe("3.1.3");
+  const output = await updates(apiOpts({files: [file]}));
+  expect(output.results.npm.dependencies.noty.new).toBe("3.1.3");
 
-    const {args, positionals} = parseCliArgs(["-f", file]);
-    const resolved = await resolveConfig(args, positionals) as UpdatesOptions & {renovateVersionRules: Array<Record<string, any>>};
-    expect(resolved.overrides).toEqual([{include: ["gulp-sourcemaps"], greatest: true}]);
-    expect(resolved.renovateVersionRules).toContainEqual({matchPackageNames: ["esbuild"], cooldownDays: 1});
-  } finally {
-    try {
-      await rm(dir, {recursive: true, force: true, maxRetries: 10, retryDelay: 100});
-    } catch {}
-  }
+  const {args, positionals} = parseCliArgs(["-f", file]);
+  const resolved = await resolveConfig(args, positionals) as UpdatesOptions & {renovateVersionRules: Array<Record<string, any>>};
+  expect(resolved.overrides).toEqual([{include: ["gulp-sourcemaps"], greatest: true}]);
+  expect(resolved.renovateVersionRules).toContainEqual({matchPackageNames: ["esbuild"], cooldownDays: 1});
 });
 
 test("a renovate packageRules cooldown still requests the dated npm document", async ({expect = globalExpect}: any = {}) => {
-  const doc = JSON.parse(await readFile(join(import.meta.dirname, "fixtures/npm/noty.json"), "utf8"));
-  const server = makeServer((req: any, res: any) => {
-    const body = {...doc};
-    if (String(req.headers.accept ?? "").includes("install-v1")) delete body.time;
-    res.setHeader("content-type", "application/json");
-    res.end(JSON.stringify(body));
-  });
-  await server.start(0);
-  const dir = mkdtempSync(join(tmpdir(), "updates-renovate-cooldown-"));
-  try {
-    const file = join(dir, "package.json");
-    await writeFile(file, JSON.stringify({dependencies: {noty: "3.1.0"}}));
-    await writeFile(join(dir, "renovate.json"), JSON.stringify({
-      packageRules: [{matchPackageNames: ["noty"], minimumReleaseAge: "7 days"}],
-    }));
-    await writeFile(join(dir, "updates.config.js"), `module.exports = {inherit: {renovate: {cooldown: true}}};\n`);
+  const dir = join(testDir, "renovate-cooldown");
+  mkdirSync(dir);
+  const file = join(dir, "package.json");
+  await writeFile(file, JSON.stringify({dependencies: {noty: "3.1.0"}}));
+  await writeFile(join(dir, "renovate.json"), JSON.stringify({
+    packageRules: [{matchPackageNames: ["noty"], minimumReleaseAge: "7 days"}],
+  }));
+  await writeFile(join(dir, "updates.config.js"), `module.exports = {inherit: {renovate: {cooldown: true}}};\n`);
 
-    const output = await updates(apiOpts({files: [file], registry: makeUrl(server)}));
-    expect(output.results.npm.dependencies.noty.new).toBe("3.1.4");
-  } finally {
-    await Promise.all([server.close(), rm(dir, {recursive: true, force: true})]);
-  }
+  const output = await updates(apiOpts({files: [file]}));
+  expect(output.results.npm.dependencies.noty.new).toBe("3.1.4");
 });
 
 test("a config-file cooldown override wins over an inherited renovate packageRule", async ({expect = globalExpect}: any = {}) => {
-  const dir = mkdtempSync(join(tmpdir(), "updates-renovate-cooldown-override-"));
-  try {
-    const file = join(dir, "package.json");
-    await writeFile(file, JSON.stringify({dependencies: {noty: "3.1.0"}}));
-    await writeFile(join(dir, "renovate.json"), JSON.stringify({
-      packageRules: [{matchPackageNames: ["noty"], minimumReleaseAge: "999999 days"}],
-    }));
-    await writeFile(join(dir, "updates.config.js"), `module.exports = {inherit: {renovate: {cooldown: true}}, ` +
-      `overrides: [{include: ["noty"], cooldown: 0}]};\n`);
+  const dir = join(testDir, "renovate-cooldown-override");
+  mkdirSync(dir);
+  const file = join(dir, "package.json");
+  await writeFile(file, JSON.stringify({dependencies: {noty: "3.1.0"}}));
+  await writeFile(join(dir, "renovate.json"), JSON.stringify({
+    packageRules: [{matchPackageNames: ["noty"], minimumReleaseAge: "999999 days"}],
+  }));
+  await writeFile(join(dir, "updates.config.js"), `module.exports = {inherit: {renovate: {cooldown: true}}, ` +
+    `overrides: [{include: ["noty"], cooldown: 0}]};\n`);
 
-    const output = await updates(apiOpts({files: [file]}));
-    expect(output.results.npm?.dependencies.noty?.new).toBe("3.1.4");
-  } finally {
-    await rm(dir, {recursive: true, force: true});
-  }
+  const output = await updates(apiOpts({files: [file]}));
+  expect(output.results.npm.dependencies.noty.new).toBe("3.1.4");
 });
 
 function actionsArgs(...extra: Array<string>) {
@@ -1335,27 +1317,23 @@ function getActionsDeps(results: any) {
 
 test("branch-only actions do not fetch forge metadata", async () => {
   let requests = 0;
-  const server = makeServer((_req, res) => {
-    requests++;
-    res.statusCode = 500;
-    res.end();
+  const unobserve = mockServer.observe((req) => {
+    if (/^\/github\/repos\/(?:one|two)\/repo\//.test(req.url || "")) requests++;
   });
-  const dir = mkdtempSync(join(tmpdir(), "updates-actions-branches-"));
+  const dir = join(testDir, "actions-branches");
   const workflow = join(dir, ".github", "workflows", "ci.yml");
   mkdirSync(join(dir, ".github", "workflows"), {recursive: true});
   writeFileSync(workflow, "jobs:\n  test:\n    steps:\n      - uses: one/repo@main\n      - uses: two/repo@develop\n");
-  await server.start(0);
   try {
-    await updates({files: [workflow], modes: ["actions"], forgeapi: makeUrl(server), noCache: true, noColor: true});
+    await updates({files: [workflow], modes: ["actions"], forgeapi: githubUrl, noCache: true, noColor: true});
     expect(requests).toBe(0);
   } finally {
-    await Promise.all([server.close(), rm(dir, {recursive: true, force: true})]);
+    unobserve();
   }
 });
 
 test("actions scan older tags for configured downgrades and pins", async () => {
-  const server = makeServer(defaultRoute);
-  const dir = mkdtempSync(join(tmpdir(), "updates-actions-older-"));
+  const dir = join(testDir, "actions-older");
   const workflow = join(dir, ".github", "workflows", "ci.yml");
   mkdirSync(join(dir, ".github", "workflows"), {recursive: true});
   writeFileSync(workflow, [
@@ -1365,27 +1343,22 @@ test("actions scan older tags for configured downgrades and pins", async () => {
     "      - uses: o/down@v10.0.0-alpha",
     "      - uses: o/pinned@v10.0.0",
   ].join("\n"));
-  await server.start(0);
-  const forgeapi = makeUrl(server);
+  const forgeapi = githubUrl;
   for (const repo of ["down", "pinned"]) {
-    server.get(`/repos/o/${repo}/tags`, (req, res) => {
+    githubServer.get(`/repos/o/${repo}/tags`, (req, res) => {
       const page = Number(new URL(req.url, forgeapi).searchParams.get("page"));
       const names = ["main", "edge", repo === "down" ? "v10.0.0-alpha" : "v10.0.0", "legacy", "v9.0.0"];
       res.setHeader("Link", `<${forgeapi}repos/o/${repo}/tags?per_page=100&page=5>; rel="last"`);
       res.end(JSON.stringify([{name: names[page - 1], commit: {sha: `${repo}${page}`}}]));
     });
   }
-  try {
-    const output = await updates({
-      files: [workflow], modes: ["actions"], forgeapi, noCache: true, noColor: true,
-      allowDowngrade: ["o/down"], pin: {"o/pinned": "^9"},
-    });
-    const results = Object.values(output.results.actions)[0];
-    expect(results["o/down"].new).toBe("9.0.0");
-    expect(results["o/pinned"].new).toBe("9.0.0");
-  } finally {
-    await Promise.all([server.close(), rm(dir, {recursive: true, force: true})]);
-  }
+  const output = await updates({
+    files: [workflow], modes: ["actions"], forgeapi, noCache: true, noColor: true,
+    allowDowngrade: ["o/down"], pin: {"o/pinned": "^9"},
+  });
+  const results = Object.values(output.results.actions)[0];
+  expect(results["o/down"].new).toBe("9.0.0");
+  expect(results["o/pinned"].new).toBe("9.0.0");
 });
 
 test("actions basic", async ({expect = globalExpect}: any = {}) => {
@@ -1435,7 +1408,7 @@ test("actions exclude filter", async ({expect = globalExpect}: any = {}) => {
 });
 
 test("text output renders several modes with a MODE column", async ({expect = globalExpect}: any = {}) => {
-  const {stdout, stderr} = await execFileAsync(execPath, [
+  const {stdout, stderr} = await captureCli([
     script, "-n", "--forgeapi", githubUrl, "--dockerapi", dockerUrl, "-M", "actions,docker", "-f", actionsDir,
   ]);
   expect(stderr).toEqual("");
@@ -1707,19 +1680,12 @@ test("docker directory discovery covers every recognized filename", async ({expe
 });
 
 test("fetch error includes URL and no stack trace", async ({expect = globalExpect}: any = {}) => {
-  const url = "http://test.invalid";
-  try {
-    await execFileAsync(execPath, [
-      script, "-j", "-T", "1000", ...apiArgs(), "--registry", url, "-f", testFile,
-    ]);
-    throw new Error("Expected error but got success");
-  } catch (err: any) {
-    const {errors} = JSON.parse(err?.stdout || "{}");
-    expect(errors.length).toBeGreaterThan(0);
-    for (const {error} of errors) {
-      expect(error).toContain(url);
-      expect(error).not.toContain("    at ");
-    }
+  const url = makeUrl(mockServer, "/fetch-error/");
+  const {errors = []} = await updates(apiOpts({registry: url, timeout: 1000}));
+  expect(errors.length).toBeGreaterThan(0);
+  for (const {error} of errors) {
+    expect(error).toContain(url);
+    expect(error).not.toContain("    at ");
   }
 });
 
@@ -1739,26 +1705,29 @@ test("repeated multi-value flag survives swallowed flag recovery", async ({expec
   expect(args.update).toBeUndefined();
 });
 
-async function withConfigDir<T>(config: string, fn: (dir: string) => Promise<T>): Promise<T> {
-  const dir = mkdtempSync(join(tmpdir(), "updates-cfg-"));
+let configDirCounter = 0;
+
+function withConfigDir<T>(config: string, fn: (dir: string) => Promise<T>): Promise<T> {
+  const dir = join(testDir, `config-${configDirCounter++}`);
+  mkdirSync(dir);
   writeFileSync(join(dir, "package.json"), JSON.stringify(testPkg, null, 2));
   writeFileSync(join(dir, ".npmrc"), `registry=${npmUrl}\nsave-exact=false`);
   writeFileSync(join(dir, "updates.config.js"), `module.exports = ${config};\n`);
-  try {
-    return await fn(dir);
-  } finally {
-    try {
-      await rm(dir, {recursive: true, force: true, maxRetries: 10, retryDelay: 100});
-    } catch {}
-  }
+  return fn(dir);
 }
 
 function configTest(config: string, args: string): Promise<{stdout: string, stderr: string}> {
-  return withConfigDir(config, dir => execFileAsync(execPath, [script, ...args.split(/\s+/), "-c",
-    "--no-cache",
-    "--forgeapi", githubUrl, "--pypiapi", pypiUrl,
-    "--jsrapi", jsrUrl, "--goproxy", goProxyUrl, "--cargoapi", cargoUrl,
-  ], {cwd: dir}));
+  return withConfigDir(config, async dir => {
+    const result = await captureCli([script, ...args.split(/\s+/), "-c",
+      "--no-cache", "--forgeapi", githubUrl, "--pypiapi", pypiUrl,
+      "--jsrapi", jsrUrl, "--goproxy", goProxyUrl, "--cargoapi", cargoUrl,
+      "-f", join(dir, "package.json"),
+    ]);
+    if (result.exitCode) {
+      throw Object.assign(new Error(result.stdout), result, {code: result.exitCode});
+    }
+    return result;
+  });
 }
 
 test("config exit-code options", async ({expect = globalExpect}: any = {}) => {
@@ -1783,12 +1752,13 @@ test("config cli overrides config", async ({expect = globalExpect}: any = {}) =>
 });
 
 test("config json yields JSON error output without -j flag", async ({expect = globalExpect}: any = {}) => {
+  const registry = makeUrl(mockServer, "/config-fetch-error/");
   try {
-    await configTest(`{ json: true }`, "-i noty --registry http://test.invalid -T 1000");
+    await configTest(`{ json: true }`, `-i noty --registry ${registry} -T 1000`);
     throw new Error("Expected non-zero exit");
   } catch (err: any) {
     const {errors} = JSON.parse(err?.stdout || "{}");
-    expect(errors[0].error).toContain("test.invalid");
+    expect(errors[0].error).toContain(registry);
   }
 
   try {
@@ -1832,19 +1802,17 @@ test("api basic", async ({expect = globalExpect}: any = {}) => {
   expect(output.results.npm.dependencies.noty.new).toBe("3.1.4");
   expect(output.results.npm.dependencies.noty.info).toBeTruthy();
 
+  const file = join(testDir, "api-basic", "package.json");
+  mkdirSync(join(testDir, "api-basic"));
+  await writeFile(file, JSON.stringify({dependencies: {"dynamic-noty": "3.1.0"}}));
   let latest = "3.1.4";
-  const registry = makeServer((_, res) => res.send(gzipNow(JSON.stringify({
-    name: "noty", "dist-tags": {latest}, versions: {"3.1.0": {}, "3.1.4": {}, "3.2.1": {}},
+  npmServer.get("/dynamic-noty", (_, res) => res.send(gzipNow(JSON.stringify({
+    name: "dynamic-noty", "dist-tags": {latest}, versions: {"3.1.0": {}, "3.1.4": {}, "3.2.1": {}},
   }))));
-  await registry.start(0);
-  try {
-    const opts = apiOpts({include: ["noty"], registry: makeUrl(registry), noCache: true});
-    expect((await updates(opts)).results.npm.dependencies.noty.new).toBe("3.1.4");
-    latest = "3.2.1";
-    expect((await updates(opts)).results.npm.dependencies.noty.new).toBe("3.2.1");
-  } finally {
-    await registry.close();
-  }
+  const opts = apiOpts({files: [file], include: ["dynamic-noty"]});
+  expect((await updates(opts)).results.npm.dependencies["dynamic-noty"].new).toBe("3.1.4");
+  latest = "3.2.1";
+  expect((await updates(opts)).results.npm.dependencies["dynamic-noty"].new).toBe("3.2.1");
 });
 
 test("api messages, filters and mode validation", async ({expect = globalExpect}: any = {}) => {

@@ -90,11 +90,7 @@ test.each(["Makefile", "makefile", "GNUmakefile", "tools.mk"])("%s triggers prox
 });
 
 test.each(forgeDirs)("%s/workflows dir triggers github + hub.docker.com", (forgeDir) => {
-  const dir = mkdtempSync(join(tmpdir(), "updates-prewarm-"));
-  created.push(dir);
-  mkdirSync(join(dir, forgeDir, "workflows"), {recursive: true});
-  writeFileSync(join(dir, forgeDir, "workflows", "ci.yml"), sampleContent("ci.yml", ""));
-  expect(prewarmOrigins(dir, {})).toEqual(expect.arrayContaining([
+  expect(prewarmOrigins(makeDir({[`${forgeDir}/workflows/ci.yml`]: ""}), {})).toEqual(expect.arrayContaining([
     "https://api.github.com/",
     "https://hub.docker.com/",
   ]));
@@ -145,11 +141,9 @@ test("local npm dependencies do not prewarm a registry", () => {
 });
 
 test("github overlap is deduplicated when both package.json and .github/workflows present", () => {
-  const dir = mkdtempSync(join(tmpdir(), "updates-prewarm-"));
-  created.push(dir);
-  writeFileSync(join(dir, "package.json"), JSON.stringify({dependencies: {repo: "github:user/repo"}}));
-  mkdirSync(join(dir, ".github", "workflows"), {recursive: true});
-  writeFileSync(join(dir, ".github", "workflows", "ci.yml"), "uses: actions/checkout@v4\n");
-  const origins = prewarmOrigins(dir, {});
+  const origins = prewarmOrigins(makeDir({
+    "package.json": JSON.stringify({dependencies: {repo: "github:user/repo"}}),
+    ".github/workflows/ci.yml": "uses: actions/checkout@v4\n",
+  }), {});
   expect(origins.filter(origin => origin === "https://api.github.com/")).toHaveLength(1);
 });

@@ -2,7 +2,7 @@ import {updatePyprojectToml, fetchPypiInfo, pypiSatisfies} from "./pypi.ts";
 import {type ModeContext, fetchTimeout, fieldSep} from "./shared.ts";
 import {parseUvDependencies} from "../utils/utils.ts";
 
-test("preserves surrounding content", () => {
+test("updatePyprojectToml preserves unrelated content and dependency groups", () => {
   const input = [
     `[project]`,
     `name = "my-project"`,
@@ -15,21 +15,18 @@ test("preserves surrounding content", () => {
     `]`,
     ``,
   ].join("\n");
-  const deps = {
+  const updates = {
     [`project.dependencies${fieldSep}flask`]: {old: "2.3.0", new: "2.4.0"} as any,
     [`project.dependencies${fieldSep}click`]: {old: "8.1.0", new: "8.2.0"} as any,
     [`project.dependencies${fieldSep}requests`]: {old: "2.28.0", new: "2.31.0"} as any,
   };
-  const result = updatePyprojectToml(input, deps);
+  const result = updatePyprojectToml(input, updates);
   expect(result).toContain(`"flask >=2.4.0"`);
   expect(result).toContain(`name = "my-project"`);
   expect(result).toContain(`"requests >=2.31.0"`);
   expect(result).toContain(`"requests-oauthlib >=2.28.0"`);
   expect(result).toContain(`"click >=8.2.0"`);
-});
-
-test("rewrites only the dependency's originating group", () => {
-  const input = [
+  const groupedInput = [
     `[project]`,
     `dependencies = ["pkg>=1.0"]`,
     ``,
@@ -40,10 +37,12 @@ test("rewrites only the dependency's originating group", () => {
     `"test.unit" = ["pkg>=1.0"]`,
     ``,
   ].join("\n");
-  const deps = {
+  const groupedUpdates = {
     [`project.optional-dependencies.extra${fieldSep}pkg`]: {old: "1.0", new: "2.0"} as any,
   };
-  expect(updatePyprojectToml(input, deps)).toBe(input.replace(`extra = ["pkg>=1.0"]`, `extra = ["pkg>=2.0"]`));
+  expect(updatePyprojectToml(groupedInput, groupedUpdates)).toBe(
+    groupedInput.replace(`extra = ["pkg>=1.0"]`, `extra = ["pkg>=2.0"]`),
+  );
 });
 
 test("fetchPypiInfo happy path", async () => {

@@ -224,16 +224,17 @@ test.each([
   }, ["https://scope.pnpm.test/@myorg%2fpkg", "https://pnpm.test/lodash"]],
 ])("fetchNpmInfo honors %s", async (_name, files, expected) => {
   const dir = mkdtempSync(join(tmpdir(), "updates-registry-"));
-  const urls: Array<string> = [];
-  const ctx = modeCtx({noCache: true, doFetch: (url: string) => {
-    urls.push(url);
-    return textRes({});
-  }});
+  const fetchUrl = async (name: string) => {
+    let fetchedUrl = "";
+    await fetchNpmInfo(name, "dependencies", {}, {}, modeCtx({noCache: true, doFetch: (url: string) => {
+      fetchedUrl = url;
+      return textRes({});
+    }}), dir);
+    return fetchedUrl;
+  };
   try {
     for (const [filename, content] of Object.entries(files)) writeFileSync(join(dir, filename), content);
-    await fetchNpmInfo("@myorg/pkg", "dependencies", {}, {}, ctx, dir);
-    await fetchNpmInfo("lodash", "dependencies", {}, {}, ctx, dir);
-    expect(urls).toEqual(expected);
+    expect(await Promise.all([fetchUrl("@myorg/pkg"), fetchUrl("lodash")])).toEqual(expected);
   } finally {
     rmSync(dir, {recursive: true});
   }
@@ -347,17 +348,24 @@ test("checkUrlDep parses refs and refreshes hashes", async () => {
     forgeCtx({noCache: true, doFetch: () => textRes([{sha: "abc1234567890", commit: {}}])}))).toBeNull();
 });
 
-test.each([
+const urlDepCases = [
   ["github:user/repo#v1.2.3", "github:user/repo#v2.0.0"],
   ["git+https://github.com/user/repo.git#v1.2.3-beta.1", "git+https://github.com/user/repo.git#v2.0.0"],
   ["git+ssh://git@github.com/user/repo.git#v1.2.3", "git+ssh://git@github.com/user/repo.git#v2.0.0"],
   ["git@github.com:user/repo.git#v1.2.3", "git@github.com:user/repo.git#v2.0.0"],
   ["github:user/repo#semver:^1", "github:user/repo#semver:^2"],
-])("checkUrlDep updates %s", async (old, expected) => {
+] as const;
+const urlDepResults = Promise.all(urlDepCases.map(([old]) => {
   const tags = [{name: "v1.2.3", commit: {sha: "abc"}}, {name: "v2.0.0", commit: {sha: "def"}}];
   const ctx = forgeCtx({noCache: true, doFetch: (url: string) => jsonRes(url.includes("/releases?") ? [] : tags)});
-  expect((await checkUrlDep("key", {old, new: ""}, ctx))?.newRange).toBe(expected);
-});
+  return checkUrlDep("key", {old, new: ""}, ctx);
+}));
+
+test.each(urlDepCases.map(([old, expected], index) => [old, expected, index] as const))(
+  "checkUrlDep updates %s", async (_old, expected, index) => {
+    expect((await urlDepResults)[index]!.newRange).toBe(expected);
+  },
+);
 
 test("checkUrlDep updates GitHub path refs at their trailing occurrence", async () => {
   const tags = [{name: "v1.2.3", commit: {sha: "abc"}}, {name: "v2.0.0", commit: {sha: "def"}}];

@@ -423,7 +423,7 @@ test.each([
   expect(parseGoWork(lines.join("\n"))).toEqual(expected);
 });
 
-test("resolveGoWorkModule resolves an out-of-tree member", () => {
+test("resolveGoWorkModule resolves valid members and skips resolution errors", () => {
   const parent = mkdtempSync(resolve(tmpdir(), "updates-go-work-"));
   try {
     const root = resolve(parent, "project");
@@ -432,18 +432,10 @@ test("resolveGoWorkModule resolves an out-of-tree member", () => {
     mkdirSync(outside);
     writeFileSync(resolve(outside, "go.mod"), "module example.com/shared\n");
     expect(resolveGoWorkModule(root, "../shared")).toBe(realpathSync(resolve(outside, "go.mod")));
-  } finally {
-    rmSync(parent, {recursive: true});
-  }
-});
-
-test("resolveGoWorkModule skips a member with a resolution error", () => {
-  const root = mkdtempSync(resolve(tmpdir(), "updates-go-work-"));
-  try {
     symlinkSync("loop", resolve(root, "loop"));
     expect(resolveGoWorkModule(root, "loop")).toBeNull();
   } finally {
-    rmSync(root, {recursive: true});
+    rmSync(parent, {recursive: true});
   }
 });
 
