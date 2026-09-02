@@ -235,7 +235,8 @@ async function startPrewarm(rawArgs: Array<string>): Promise<void> {
   const files = Array.isArray(config.file) ? config.file : config.files;
   const {prewarmOrigins} = await import("./utils/prewarm.ts");
   for (const origin of prewarmOrigins(startDir, {...config, files})) {
-    (async () => { try { await fetch(origin, {method: "HEAD"}); } catch {} })();
+    const method = origin.endsWith("/rate_limit") ? "GET" : "HEAD";
+    (async () => { try { await (await fetch(origin, {method})).arrayBuffer(); } catch {} })();
   }
 }
 

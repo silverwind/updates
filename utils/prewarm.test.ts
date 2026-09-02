@@ -91,7 +91,7 @@ test.each(["Makefile", "makefile", "GNUmakefile", "tools.mk"])("%s triggers prox
 
 test.each(forgeDirs)("%s/workflows dir triggers github + hub.docker.com", (forgeDir) => {
   expect(prewarmOrigins(makeDir({[`${forgeDir}/workflows/ci.yml`]: ""}), {})).toEqual(expect.arrayContaining([
-    "https://api.github.com/",
+    "https://api.github.com/rate_limit",
     "https://hub.docker.com/",
   ]));
 });
@@ -145,5 +145,5 @@ test("github overlap is deduplicated when both package.json and .github/workflow
     "package.json": JSON.stringify({dependencies: {repo: "github:user/repo"}}),
     ".github/workflows/ci.yml": "uses: actions/checkout@v4\n",
   }), {});
-  expect(origins.filter(origin => origin === "https://api.github.com/")).toHaveLength(1);
+  expect(origins.filter(origin => origin === "https://api.github.com/rate_limit")).toHaveLength(1);
 });

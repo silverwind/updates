@@ -111,7 +111,10 @@ export function prewarmOrigins(dir: string, args: Record<string, unknown>): stri
       origin = origin.split(/[|,]/, 1)[0].trim();
       if (origin === "off" || origin === "direct") continue;
     }
-    try { origins.add(`${new URL(origin).origin}/`); } catch {}
+    try {
+      const base = new URL(origin).origin;
+      origins.add(base === defaults.forgeapi ? `${base}/rate_limit` : `${base}/`); // the only GitHub endpoint exempt from the rate limit
+    } catch {}
   }
   return Array.from(origins);
 }
