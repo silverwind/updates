@@ -93,6 +93,10 @@ const apiUrl = (value: unknown, fallback: string) => normalizeUrl(typeof value =
 
 const jsrSpecifierRe = /^(npm:@jsr\/[^@]+@|jsr:@[^@]+@)(.+)$/;
 
+function realCwd(): string { // cwd() keeps Windows 8.3 short names, -f paths are realpath'd
+  try { return realpathSync.native(cwd()); } catch { return cwd(); }
+}
+
 function findUpSync(filenames: string[], dir: string): Map<string, string> {
   const found = new Map<string, string>();
   const remaining = new Set(filenames);
@@ -193,7 +197,8 @@ function resolveFiles(filesArg: Array<string> | undefined): Set<string> {
     const forgeDirSet = new Set<string>(forgeDirs);
     const candidates = [...Object.keys(modeByFileName), ...dockerExactFileNames, ...makeExactFileNames, ...forgeDirs];
     const realPaths = new Set<string>();
-    for (const [filename, path] of findUpSync(candidates, cwd())) {
+    const dir = realCwd();
+    for (const [filename, path] of findUpSync(candidates, dir)) {
       if (forgeDirSet.has(filename)) {
         for (const wf of resolveWorkflowFiles(path)) resolvedFiles.add(wf);
         continue;
@@ -205,11 +210,11 @@ function resolveFiles(filesArg: Array<string> | undefined): Set<string> {
       resolvedFiles.add(resolve(path));
     }
     try {
-      for (const entry of readdirSync(cwd(), {withFileTypes: true})) {
+      for (const entry of readdirSync(dir, {withFileTypes: true})) {
         const isExtraDocker = isDockerFileName(entry.name) && !dockerExactFileNames.includes(entry.name);
         const isExtraMake = isMakeFileName(entry.name) && !makeExactFileNames.includes(entry.name);
         if (entry.isFile() && (isExtraDocker || isExtraMake)) {
-          resolvedFiles.add(resolve(join(cwd(), entry.name)));
+          resolvedFiles.add(join(dir, entry.name));
         }
       }
     } catch {}
@@ -499,7 +504,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
   type PlainFile = {absPath: string, content: string, memberPath: string, projectDir: string};
   const plainFiles: Record<string, Array<PlainFile>> = {};
   const now = Date.now();
-  const cwdStr = cwd();
+  const cwdStr = realCwd();
   const toRelPath = (absPath: string) => absPath.replace(`${cwdStr}/`, "").replace(`${cwdStr}\\`, "");
 
   const addDep = (mode: string, depType: string, typePrefix: string, name: string, old: string, oldOrig: string) => {
