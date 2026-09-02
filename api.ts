@@ -15,7 +15,7 @@ import {
   type Dep, type Deps, type DepsByMode, type Limiter, type Output as ModeOutput, type ModeContext,
   type PackageRepository, type TagEntry,
   fieldSep, normalizeUrl, fetchTimeout, goProbeTimeout, maxSockets,
-  doFetch, fetchActionTags, fetchForge, findVersion, findNewVersion, getInfoUrl, getGithubTokens, getLimiter,
+  doFetch, fetchActionTags, fetchForge, findVersion, findNewVersion, getInfoUrl, getLimiter,
   passesCooldown, stripv, hashRe, isVersionLikeRef, defaultApiUrls, formatVersionPrecision, getExecFile,
 } from "./modes/shared.ts";
 import {flushCacheWrites} from "./utils/fetchCache.ts";
@@ -93,8 +93,8 @@ const apiUrl = (value: unknown, fallback: string) => normalizeUrl(typeof value =
 
 const jsrSpecifierRe = /^(npm:@jsr\/[^@]+@|jsr:@[^@]+@)(.+)$/;
 
-function realCwd(): string { // cwd() keeps Windows 8.3 short names, -f paths are realpath'd
-  try { return realpathSync.native(cwd()); } catch { return cwd(); }
+function realPath(path: string): string {
+  try { return realpathSync.native(path); } catch { return resolve(path); }
 }
 
 function findUpSync(filenames: string[], dir: string): Map<string, string> {
@@ -155,7 +155,7 @@ function canInclude(name: string, mode: string, include: Set<RegExp>, exclude: S
   return !include.size;
 }
 
-function resolveFiles(filesArg: Array<string> | undefined): Set<string> {
+function resolveFiles(filesArg: Array<string> | undefined, dir: string): Set<string> {
   const resolvedFiles = new Set<string>();
 
   if (filesArg?.length) {
@@ -166,8 +166,7 @@ function resolveFiles(filesArg: Array<string> | undefined): Set<string> {
       } catch (err) {
         throw new Error(`Unable to open ${arg}: ${(err as Error).message}`);
       }
-      let file = resolve(arg);
-      try { file = realpathSync.native(arg); } catch {}
+      const file = realPath(arg);
 
       if (stat.isFile()) {
         resolvedFiles.add(file);
@@ -197,16 +196,14 @@ function resolveFiles(filesArg: Array<string> | undefined): Set<string> {
     const forgeDirSet = new Set<string>(forgeDirs);
     const candidates = [...Object.keys(modeByFileName), ...dockerExactFileNames, ...makeExactFileNames, ...forgeDirs];
     const realPaths = new Set<string>();
-    const dir = realCwd();
     for (const [filename, path] of findUpSync(candidates, dir)) {
       if (forgeDirSet.has(filename)) {
         for (const wf of resolveWorkflowFiles(path)) resolvedFiles.add(wf);
         continue;
       }
-      let realPath = resolve(path);
-      try { realPath = realpathSync.native(path); } catch {}
-      if (realPaths.has(realPath)) continue;
-      realPaths.add(realPath);
+      const canonical = realPath(path);
+      if (realPaths.has(canonical)) continue;
+      realPaths.add(canonical);
       resolvedFiles.add(resolve(path));
     }
     try {
@@ -411,7 +408,6 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
     };
   };
   type VersionConfig = ReturnType<typeof compileVersionConfig>;
-  if (enabledModes.has("actions")) getGithubTokens();
 
   type ResolvedVersionOpts = {
     names: Array<string>, useGreatest: boolean, usePre: boolean, useRel: boolean, semvers: Set<string>,
@@ -504,7 +500,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
   type PlainFile = {absPath: string, content: string, memberPath: string, projectDir: string};
   const plainFiles: Record<string, Array<PlainFile>> = {};
   const now = Date.now();
-  const cwdStr = realCwd();
+  const cwdStr = realPath(cwd()); // cwd() keeps Windows 8.3 short names
   const toRelPath = (absPath: string) => absPath.replace(`${cwdStr}/`, "").replace(`${cwdStr}\\`, "");
 
   const addDep = (mode: string, depType: string, typePrefix: string, name: string, old: string, oldOrig: string) => {
@@ -585,7 +581,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
     }
   };
 
-  const files = resolveFiles(config.files);
+  const files = resolveFiles(config.files, cwdStr);
   const fileContents = new Map(await pMap(Array.from(files).filter(file => {
     if (isWorkflowFile(file)) return enabledModes.has("actions") || enabledModes.has("docker");
     const filename = basename(file);

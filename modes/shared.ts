@@ -407,21 +407,9 @@ export function getExecFile(): Promise<ExecFile> {
 
 const githubTokenEnvNames = ["UPDATES_GITHUB_API_TOKEN", "GITHUB_API_TOKEN", "GH_TOKEN", "GITHUB_TOKEN", "HOMEBREW_GITHUB_API_TOKEN"];
 
-let githubTokensPromise: Promise<string[]> | undefined;
-export function getGithubTokens(): Promise<string[]> {
-  const tokens = Array.from(new Set(githubTokenEnvNames
+export function getGithubTokens(): string[] {
+  return Array.from(new Set(githubTokenEnvNames
     .map(name => env[name]).filter((value): value is string => Boolean(value))));
-  if (tokens.length) return Promise.resolve(tokens);
-  return githubTokensPromise ??= (async () => {
-    try {
-      const execFile = await getExecFile();
-      const {stdout} = await execFile("gh", ["auth", "token"], {encoding: "utf8", timeout: 5000});
-      const token = stdout.trim();
-      return token ? [token] : [];
-    } catch {
-      return [];
-    }
-  })();
 }
 
 const reExtraheader = /^http\.(\S+)\/\.extraheader AUTHORIZATION:\s*basic\s+(\S+)$/i;
@@ -463,11 +451,8 @@ export async function getForgeTokens(host: string, forgeApiUrl: string): Promise
   const forgeHost = host === "api.github.com" ? "github.com" : host;
   const isGithubHost = forgeHost === "github.com" || host === urlHost(forgeApiUrl);
 
-  const [tokens, headers] = await Promise.all([
-    isGithubHost ? getGithubTokens() : [],
-    getExtraheaderTokens(),
-  ]);
-  const header = headers.get(forgeHost);
+  const tokens = isGithubHost ? getGithubTokens() : [];
+  const header = (await getExtraheaderTokens()).get(forgeHost);
   return Array.from(new Set(header ? [...tokens, header] : tokens));
 }
 
