@@ -35,17 +35,17 @@
   "files": [
     "dist"
   ],
-  "packageManager": "pnpm@11.24.0",
+  "packageManager": "pnpm@11.25.0",
   "engines": {
     "node": ">=22",
     "bun": "*"
   },
   "devDependencies": {
-    "@types/node": "26.3.0",
+    "@types/node": "26.4.1",
     "@typescript/native-preview": "7.0.0-dev.20260707.2",
     "@vitest/coverage-v8": "4.1.11",
     "eslint": "10.9.1",
-    "eslint-config-silverwind": "145.0.1",
+    "eslint-config-silverwind": "146.0.0",
     "timerel": "5.9.0",
     "tsdown": "0.22.14",
     "tsdown-config-silverwind": "4.0.3",
