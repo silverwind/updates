@@ -1,6 +1,8 @@
 import {isAbsolute, join, relative, resolve, sep} from "node:path";
 import {globSync, readFileSync} from "node:fs";
 import {readFile, realpath} from "node:fs/promises";
+import {homedir} from "node:os";
+import {env, platform} from "node:process";
 import {type Deps, fieldSep} from "../modes/shared.ts";
 import {getOrSet, pMap, pushTo, walkUpSync} from "./utils.ts";
 
@@ -80,7 +82,7 @@ export type PnpmCatalogEntry = {
   valueIndex: number,
 };
 
-const yamlPairRe = /^(\s*)(?:"([^"]*)"|'([^']*)'|([^\s#][^:#]*?))\s*:(?:\s+(.*))?$/;
+const yamlPairRe = /^(\s*)(?:"([^"]*)"|'([^']*)'|([^\s#](?:[^:#]|:(?=\S))*?))\s*:(?:\s+(.*))?$/;
 const yamlCommentRe = /\s#/;
 
 function parseYamlPair(line: string): {indent: number, key: string, value: string, valueIndex: number} | null {
@@ -88,7 +90,7 @@ function parseYamlPair(line: string): {indent: number, key: string, value: strin
   if (!match) return null;
   const [, indent, doubleQuoted, singleQuoted, plain, rest = ""] = match;
   let valueIndex = line.length - rest.length;
-  const commentIndex = rest.search(yamlCommentRe);
+  const commentIndex = rest.startsWith("#") ? 0 : rest.search(yamlCommentRe);
   let value = (commentIndex === -1 ? rest : rest.slice(0, commentIndex)).trimEnd();
   const quote = value[0];
   if ((quote === '"' || quote === "'") && value.length > 1 && value.endsWith(quote)) {
@@ -207,15 +209,72 @@ function readConfigUp(filename: string, startDir: string): string | null {
   return found ? found.content : null;
 }
 
+export function parseYamlMap(content: string): Record<string, any> {
+  const root: Record<string, any> = {};
+  const stack = [{indent: -1, map: root}];
+  for (const line of content.split(/\r?\n/)) {
+    const pair = parseYamlPair(line);
+    if (!pair) continue;
+    while (pair.indent <= stack.at(-1)!.indent) stack.pop();
+    const map = stack.at(-1)!.map;
+    if (pair.value) {
+      map[pair.key] = pair.value;
+    } else {
+      map[pair.key] = {};
+      stack.push({indent: pair.indent, map: map[pair.key]});
+    }
+  }
+  return root;
+}
+
+export type PnpmAuth = {tokens: Record<string, string>, registries: Record<string, string>};
+
+export function parsePnpmAuth(value: unknown, source: string): PnpmAuth {
+  const result: PnpmAuth = {tokens: {}, registries: {}};
+  try {
+    const parsed = (typeof value === "string" ? JSON.parse(value) : value ?? {}) as Record<string, Record<string, {authToken?: string}>>;
+    for (const [url, scopes] of Object.entries(parsed)) {
+      const {host, pathname, href} = new URL(url);
+      for (const [scope, {authToken}] of Object.entries(scopes)) {
+        if (typeof authToken !== "string") continue;
+        result.tokens[`//${host}${pathname.replace(/\/$/, "")}/:${scope === "@" ? "" : `${scope}:`}_authToken`] = authToken;
+        result.registries[scope === "@" ? "default" : scope] = href;
+      }
+    }
+  } catch (err) {
+    throw new Error(`Invalid _auth in ${source}: ${(err as Error).message}`);
+  }
+  return result;
+}
+
 const nativeRegistryCache = new Map<string, NpmRegistryConfig>();
 
-export function resolveNativeNpmRegistry(name: string, startDir: string): string | null {
-  const config = getOrSet(nativeRegistryCache, startDir,
-    () => parsePnpmRegistryConfig(readConfigUp("pnpm-workspace.yaml", startDir) ?? ""));
-  for (const [scope, url] of Object.entries(config.registries)) {
-    if (scope !== "default" && name.startsWith(`${scope}/`)) return url;
-  }
-  return config.registries.default || config.registry || null;
+export function nativeNpmRegistryConfig(startDir: string): NpmRegistryConfig {
+  return getOrSet(nativeRegistryCache, startDir, () => parsePnpmRegistryConfig(readConfigUp("pnpm-workspace.yaml", startDir) ?? ""));
+}
+
+export type PnpmGlobalConfig = NpmRegistryConfig & {auth: PnpmAuth};
+
+const globalConfigCache = new Map<string, PnpmGlobalConfig>();
+
+function pnpmConfigDir(): string {
+  if (env.XDG_CONFIG_HOME) return join(env.XDG_CONFIG_HOME, "pnpm");
+  if (platform === "darwin") return join(homedir(), "Library/Preferences/pnpm");
+  if (platform === "win32" && env.LOCALAPPDATA) return join(env.LOCALAPPDATA, "pnpm/config");
+  return join(homedir(), ".config/pnpm");
+}
+
+export function pnpmGlobalConfig(): PnpmGlobalConfig {
+  const configDir = pnpmConfigDir();
+  return getOrSet(globalConfigCache, configDir, () => {
+    let content = "";
+    try {
+      content = readFileSync(join(configDir, "config.yaml"), "utf8");
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    return {...parsePnpmRegistryConfig(content), auth: parsePnpmAuth(parseYamlMap(content)._auth, "config.yaml")};
+  });
 }
 
 export function* pnpmCatalogEntries(content: string): Generator<PnpmCatalogEntry> {

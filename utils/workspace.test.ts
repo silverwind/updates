@@ -3,7 +3,7 @@ import {mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync} from "node:f
 import {tmpdir} from "node:os";
 import {
   baseType, filterDepsForMember, resolveWorkspaceMembers, parsePnpmWorkspace, pnpmCatalogEntries, updatePnpmWorkspace,
-  parsePnpmRegistryConfig,
+  parsePnpmRegistryConfig, parsePnpmAuth, parseYamlMap,
 } from "./workspace.ts";
 import {fieldSep} from "../modes/shared.ts";
 
@@ -133,6 +133,27 @@ test("parse pnpm registry config", () => {
     registry: "https://pnpm.test",
     registries: {"@foo": "https://foo.pnpm.test", default: "https://default.pnpm.test"},
   });
+});
+
+test("parsePnpmAuth maps registry urls and scopes to npmrc keys and routes from json and yaml", () => {
+  const expected = {
+    tokens: {
+      "//registry.npmjs.org/:_authToken": "npm-token",
+      "//registry.npmjs.org/:@org:_authToken": "org-token",
+      "//npm.test/sub/:@sub:_authToken": "sub-token",
+    },
+    registries: {default: "https://registry.npmjs.org/", "@org": "https://registry.npmjs.org/", "@sub": "https://npm.test/sub/"},
+  };
+  expect(parsePnpmAuth(JSON.stringify({
+    "https://registry.npmjs.org": {"@": {authToken: "npm-token"}, "@org": {authToken: "org-token"}},
+    "https://npm.test/sub/": {"@sub": {authToken: "sub-token"}, "@empty": {}, "@list": {authToken: ["nope"]}},
+  }), "env")).toEqual(expected);
+  expect(parsePnpmAuth(parseYamlMap([
+    "_auth: # credentials", "  https://registry.npmjs.org:", '    "@":', "      authToken: npm-token", '    "@org":',
+    "      authToken: 'org-token' # comment", "  https://npm.test/sub/:", '    "@sub":', "      authToken: sub-token", "",
+  ].join("\n"))._auth, "config.yaml")).toEqual(expected);
+  expect(parsePnpmAuth(undefined, "config.yaml")).toEqual({tokens: {}, registries: {}});
+  expect(() => parsePnpmAuth("{", "env")).toThrow("Invalid _auth in env");
 });
 
 const catalogYaml = `packages:

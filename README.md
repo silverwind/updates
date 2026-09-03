@@ -149,10 +149,13 @@ const output = await updates({
 |:-|:-|
 |`UPDATES_FORGE_TOKENS`|Comma-separated list of `host:token` pairs for forge APIs, e.g. `github.com:ghp_xxx,localhost:3500:tok_xxx`. The host must match the URL exactly, port included|
 |`UPDATES_GITHUB_API_TOKEN`|GitHub API token, with `GITHUB_API_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN` and `HOMEBREW_GITHUB_API_TOKEN` as fallbacks, in that order. Only ever sent to GitHub itself|
+|`pnpm_config__auth`|npm registry credentials as [pnpm](https://pnpm.io/npmrc#_auth) reads them, e.g. `{"https://registry.npmjs.org":{"@":{"authToken":"npm-token"},"@org":{"authToken":"org-token"}}}`. `@` is the registry-wide token, `@org` binds a token and registry to that scope. The `_auth` key of pnpm's global `config.yaml` is read the same way|
 |`GOPROXY`|Go module proxy list, honored as go itself does. Default: `https://proxy.golang.org,direct`|
 |`GONOPROXY`|Comma-separated list of Go module patterns to fetch directly, bypassing the proxy|
 |`GOPRIVATE`|Fallback for `GONOPROXY` when not set|
 
 A host in `UPDATES_FORGE_TOKENS` wins over the GitHub tokens. Any non-GitHub forge without a matching entry receives no credentials.
+
+npm registries resolve in pnpm's order: `--registry`, then `pnpm_config__auth`, `pnpm-workspace.yaml`, the global `config.yaml`, its `_auth` routes, and finally `.npmrc`. A scope-specific token wins over a registry-wide one.
 
 © [silverwind](https://github.com/silverwind), distributed under BSD licence

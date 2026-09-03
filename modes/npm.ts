@@ -2,7 +2,7 @@ import {env} from "node:process";
 import {parse, satisfies, valid, validRange} from "../utils/semver.ts";
 import rc from "../utils/rc.ts";
 import {getOrSet, tryOrNull} from "../utils/utils.ts";
-import {resolveNativeNpmRegistry} from "../utils/workspace.ts";
+import {type PnpmAuth, nativeNpmRegistryConfig, parsePnpmAuth, pnpmGlobalConfig} from "../utils/workspace.ts";
 import {
   type Config, type CheckResult, type Dep, type Deps, type ModeContext, type PackageInfo, type PackageRepository,
   normalizeUrl, getFetchOpts, fieldSep, fetchForgeEtag, selectTag, fetchWithEtag, fetchImmutable, dedupe,
@@ -23,53 +23,60 @@ export function resolutionsBasePackage(name: string): string {
 
 const defaultRegistry = defaultApiUrls.registry;
 const npmrcCache = new Map<string, Npmrc>();
-const authCache = new Map<string, AuthAndRegistry>();
+const pnpmAuthCache = new Map<string, PnpmAuth>();
 
 const replaceEnvVar = (token: string): string => token.replace(/^\$\{?([^}]*)\}?$/, (_, envVar) => env[envVar] || "");
 
-function getRegistryAuthToken(registryUrl: string, config: Npmrc): AuthAndRegistry["auth"] {
-  const parsed = new URL(registryUrl.startsWith("//") ? `http:${registryUrl}` : registryUrl);
-  let pathname: string | undefined;
+function pnpmEnvAuth(): PnpmAuth {
+  const raw = env.pnpm_config__auth || env.PNPM_CONFIG__AUTH || undefined;
+  return getOrSet(pnpmAuthCache, raw ?? "", () => parsePnpmAuth(raw, "pnpm_config__auth"));
+}
 
+function registryAuthKeys(registryUrl: string): string[] {
+  const parsed = new URL(registryUrl.startsWith("//") ? `http:${registryUrl}` : registryUrl);
+  const keys: string[] = [];
+  let pathname: string | undefined;
   while (pathname !== "/" && parsed.pathname !== pathname) {
     pathname = parsed.pathname || "/";
-    const regUrl = `//${parsed.host}${pathname.replace(/\/$/, "")}`;
-    const get = (key: string) => config[`${regUrl}:${key}`] || config[`${regUrl}/:${key}`];
-    const bearerToken = get("_authToken");
+    keys.push(`//${parsed.host}${pathname.replace(/\/$/, "")}`);
+    parsed.pathname = new URL("..", new URL(pathname.endsWith("/") ? pathname : `${pathname}/`, "http://x")).pathname;
+  }
+  return keys;
+}
+
+function getRegistryAuthToken(registryUrl: string, config: Npmrc, scope: string): AuthAndRegistry["auth"] {
+  const keys = registryAuthKeys(registryUrl);
+  const get = (regUrl: string, key: string) => config[`${regUrl}:${key}`] || config[`${regUrl}/:${key}`];
+  const scopedToken = scope && keys.map(regUrl => get(regUrl, `${scope}:_authToken`)).find(Boolean);
+  if (scopedToken) return {token: replaceEnvVar(scopedToken), type: "Bearer"};
+  for (const regUrl of keys) {
+    const bearerToken = get(regUrl, "_authToken");
     if (bearerToken) return {token: replaceEnvVar(bearerToken), type: "Bearer"};
-    const username = get("username");
-    const password = get("_password");
+    const username = get(regUrl, "username");
+    const password = get(regUrl, "_password");
     if (username && password) {
       const pass = Buffer.from(replaceEnvVar(password), "base64").toString("utf8");
       return {token: Buffer.from(`${username}:${pass}`).toString("base64"), type: "Basic"};
     }
-    const legacyToken = get("_auth");
+    const legacyToken = get(regUrl, "_auth");
     if (legacyToken) return {token: replaceEnvVar(legacyToken), type: "Basic"};
-    parsed.pathname = new URL("..", new URL(pathname.endsWith("/") ? pathname : `${pathname}/`, "http://x")).pathname;
   }
-
   if (registryUrl === defaultRegistry && config["_auth"]) return {token: replaceEnvVar(config["_auth"]), type: "Basic"};
   return undefined;
 }
 
-function resolveNpmRegistry(name: string, config: Config, args: Record<string, any>, dir: string | undefined): AuthAndRegistry {
+function resolveNpmRegistry(name: string, config: Config, dir: string | undefined): AuthAndRegistry {
   const npmrcConfig = getOrSet(npmrcCache, dir ?? "", () => rc("npm", {registry: defaultRegistry}, dir) as Npmrc);
-  const registry = normalizeUrl((typeof args.registry === "string" ? args.registry : "") ||
-    config.registry || npmrcConfig.registry || defaultRegistry);
+  const envAuth = pnpmEnvAuth();
+  const global = pnpmGlobalConfig();
+  const workspace = dir ? nativeNpmRegistryConfig(dir) : {registries: {}};
   const scope = name.startsWith("@") ? name.split("/")[0] : "";
-  const nativeRegistry = dir ? resolveNativeNpmRegistry(name, dir) : null;
-  const nativeDefaultRegistry = scope && dir ? resolveNativeNpmRegistry("", dir) : null;
-  return getOrSet(authCache, `${dir ?? ""}${fieldSep}${scope}:${registry}:${nativeRegistry ?? ""}:${nativeDefaultRegistry ?? ""}`, () => {
-    let resolvedRegistry = nativeRegistry ? normalizeUrl(nativeRegistry) : registry;
-    const scoped = nativeRegistry === nativeDefaultRegistry && scope && npmrcConfig[`${scope}:registry`]; // Specificity wins across sources.
-    if (scoped) {
-      try {
-        const url = normalizeUrl(scoped);
-        if (url !== resolvedRegistry) resolvedRegistry = url;
-      } catch {}
-    }
-    return {auth: getRegistryAuthToken(resolvedRegistry, npmrcConfig), registry: resolvedRegistry};
-  });
+  const registry = normalizeUrl( // pnpm's order: CLI > pnpm_config__auth > workspace yaml > global yaml > global _auth > .npmrc
+    (scope && (envAuth.registries[scope] || workspace.registries[scope] || global.registries[scope] ||
+      global.auth.registries[scope] || npmrcConfig[`${scope}:registry`])) ||
+    config.registry || envAuth.registries.default || workspace.registries.default || workspace.registry ||
+    global.registries.default || global.registry || global.auth.registries.default || npmrcConfig.registry || defaultRegistry);
+  return {auth: getRegistryAuthToken(registry, {...npmrcConfig, ...global.auth.tokens, ...envAuth.tokens}, scope), registry};
 }
 
 const npmPackageUrl = (registry: string, name: string, version?: string): string => {
@@ -93,7 +100,7 @@ function reduceNpmDoc(data: Record<string, any>): Record<string, any> {
 export async function fetchNpmInfo(name: string, type: string, config: Config, args: Record<string, any>, ctx: ModeContext, dir?: string, version = ""): Promise<PackageInfo> {
   const packageName = selectorTypes.has(type) ? resolutionsBasePackage(name) :
     type === "packageManager" && name === "yarn" && (parse(version)?.major ?? 0) > 1 ? "@yarnpkg/cli" : name;
-  const {auth, registry} = resolveNpmRegistry(packageName, config, args, dir);
+  const {auth, registry} = resolveNpmRegistry(packageName, config, dir);
   const url = npmPackageUrl(registry, packageName);
 
   const cacheKey = docCacheKey(url, Boolean(args.needsDates));
@@ -111,7 +118,7 @@ export async function fetchNpmInfo(name: string, type: string, config: Config, a
 export type NpmVersionInfo = {repository?: PackageRepository, homepage?: string, date?: string};
 
 export async function fetchNpmVersionInfo(name: string, version: string, config: Config, args: Record<string, any>, ctx: ModeContext, dir?: string): Promise<NpmVersionInfo> {
-  const {auth, registry} = resolveNpmRegistry(name, config, args, dir);
+  const {auth, registry} = resolveNpmRegistry(name, config, dir);
   const url = npmPackageUrl(registry, name, version);
 
   return dedupe(npmVersionInfoByCtx, ctx, url, async (): Promise<NpmVersionInfo> => {
