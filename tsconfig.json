@@ -6,7 +6,4 @@
       "vitest/globals",
     ],
   },
-  "exclude": [
-    "fixtures/invalid-config/**"
-  ]
 }

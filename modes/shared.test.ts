@@ -383,9 +383,9 @@ test.each([
   expect(findNewVersion(data, {...goOpts, ...opts})).toBe(expected);
 });
 
-const sequential = test.sequential ?? (test as any).serial ?? test;
+const sequential = (test as any).serial ?? test; // bun ignores {concurrent: false}
 
-sequential("getForgeTokens", async () => {
+sequential("getForgeTokens", {concurrent: false}, async () => {
   expect(await getForgeTokens("", "https://api.github.com")).toEqual([]);
 
   expect(await getForgeTokens("gitea.example.com", "https://api.github.com")).toEqual([]);
@@ -465,7 +465,7 @@ test("fetchForgeEtag memoizes each reduced response flavor for one run", async (
   expect(calls).toBe(4);
 });
 
-sequential("fetchForge does not reuse a cached token removed from the environment", async () => {
+sequential("fetchForge does not reuse a cached token removed from the environment", {concurrent: false}, async () => {
   const saved = process.env.UPDATES_FORGE_TOKENS;
   const authorizations: Array<string | undefined> = [];
   const ctx = modeCtx({forgeApiUrl: "https://api.github.com", doFetch: (_url: string, opts: RequestInit) => {
@@ -590,7 +590,7 @@ test("fetchWithRetry gives up rather than wait out a retry-after past the fetch 
   expect(await attempts(503, 60)).toBe(3);
 });
 
-sequential("fetchForge classifies rate limits and server faults, fetchActionTags lets them through", async () => {
+sequential("fetchForge classifies rate limits and server faults, fetchActionTags lets them through", {concurrent: false}, async () => {
   const reset = Math.floor(Date.parse("2026-05-01T00:00:00Z") / 1000);
   const responses: Record<string, Partial<Response>> = {
     limited: {status: 403, headers: new Headers([["x-ratelimit-remaining", "0"], ["x-ratelimit-reset", String(reset)]])},
