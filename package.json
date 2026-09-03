@@ -1,6 +1,6 @@
 {
   "name": "updates",
-  "version": "18.0.8",
+  "version": "18.1.0",
   "description": "CLI to update npm, uv, cargo, go, docker and actions dependencies",
   "author": "silverwind",
   "repository": "silverwind/updates",
