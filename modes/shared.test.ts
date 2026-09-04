@@ -1,4 +1,8 @@
 import {Buffer} from "node:buffer";
+import {mkdtempSync, rmSync} from "node:fs";
+import {tmpdir} from "node:os";
+import {join} from "node:path";
+import {env} from "node:process";
 import {
   coerceToVersion, fetchActionTags, fetchForge, fetchForgeEtag, fetchImmutable, fetchTimeout, fetchWithEtag,
   fetchWithRetry,
@@ -10,8 +14,18 @@ import {
 import {esc} from "../utils/utils.ts";
 import {pep440Versioning} from "../utils/semver.ts";
 import {flushCacheWrites} from "../utils/fetchCache.ts";
+import {storeToken} from "../utils/tokens.ts";
 
 const defaultOpts = {allowDowngrade: false as any};
+
+const configHome = mkdtempSync(join(tmpdir(), "updates-tokens-"));
+const savedConfigHome = env.XDG_CONFIG_HOME;
+beforeAll(() => { env.XDG_CONFIG_HOME = configHome; });
+afterAll(() => {
+  if (savedConfigHome === undefined) delete env.XDG_CONFIG_HOME;
+  else env.XDG_CONFIG_HOME = savedConfigHome;
+  rmSync(configHome, {recursive: true});
+});
 
 const npmOpts = {mode: "npm", useGreatest: false, usePre: false, useRel: false, semvers: new Set(["patch", "minor", "major"]), ...defaultOpts};
 
@@ -420,8 +434,9 @@ test("parseExtraheaders reads a CI token per host", () => {
 
 const modeCtx = (props: Record<string, unknown>): ModeContext => ({fetchTimeout, ...props} as unknown as ModeContext);
 
+const tokenEnv = ["UPDATES_GITHUB_API_TOKEN", "GITHUB_API_TOKEN", "GH_TOKEN", "GITHUB_TOKEN", "HOMEBREW_GITHUB_API_TOKEN"];
+
 test("fetchForge only sends github credentials to github hosts", async () => {
-  const tokenEnv = ["UPDATES_GITHUB_API_TOKEN", "GITHUB_API_TOKEN", "GH_TOKEN", "GITHUB_TOKEN", "HOMEBREW_GITHUB_API_TOKEN"];
   const saved = Object.fromEntries(tokenEnv.map(name => [name, process.env[name]]));
   for (const name of tokenEnv) delete process.env[name];
   process.env.GH_TOKEN = "ghp_regression_secret";
@@ -443,6 +458,41 @@ test("fetchForge only sends github credentials to github hosts", async () => {
     for (const [name, value] of Object.entries(saved)) {
       if (value === undefined) delete process.env[name];
       else process.env[name] = value;
+    }
+  }
+});
+
+sequential("fetchForge tries a stored token first, drops it after a 401 with one warning, keeps a 403 quiet", {concurrent: false}, async () => {
+  const names = ["UPDATES_FORGE_TOKENS", ...tokenEnv];
+  const saved = Object.fromEntries(names.map(name => [name, env[name]]));
+  const warnings: string[] = [];
+  const originalConsoleError = console.error;
+  console.error = (message: string) => { warnings.push(message); };
+  try {
+    for (const name of names) delete env[name];
+    env.GH_TOKEN = "env-token";
+    await storeToken("rejected.test", "rejected-stored");
+    await storeToken("forbidden.test", "forbidden-stored");
+    const authorizations: Array<string | null> = [];
+    const doFetch = (_url: string, opts: RequestInit) => {
+      const authorization = new Headers(opts.headers).get("authorization");
+      authorizations.push(authorization);
+      const status = authorization === "Bearer rejected-stored" ? 401 : authorization === "Bearer forbidden-stored" ? 403 : 200;
+      return Promise.resolve(new Response("", {status}));
+    };
+    const ctxFor = (host: string) => modeCtx({forgeApiUrl: `https://${host}`, doFetch});
+    await fetchForge("https://rejected.test/repos/o/r/tags", ctxFor("rejected.test"));
+    await fetchForge("https://rejected.test/repos/o/r/tags", ctxFor("rejected.test"));
+    await fetchForge("https://forbidden.test/repos/o/r/tags", ctxFor("forbidden.test"));
+    expect(authorizations).toEqual([
+      "Bearer rejected-stored", "Bearer env-token", "Bearer env-token", "Bearer forbidden-stored", "Bearer env-token",
+    ]);
+    expect(warnings).toEqual(['stored token for rejected.test was rejected, run "updates --login rejected.test" to replace it']);
+  } finally {
+    console.error = originalConsoleError;
+    for (const [name, value] of Object.entries(saved)) {
+      if (value === undefined) delete env[name];
+      else env[name] = value;
     }
   }
 });
@@ -617,6 +667,7 @@ sequential("fetchForge classifies rate limits and server faults, fetchActionTags
   expect(limited).toBeInstanceOf(ForgeError);
   expect([limited.kind, limited.host, limited.status, limited.reset]).toEqual(["rateLimit", "limited.forge.test", 403, reset]);
   expect(limited.message).toContain("UPDATES_FORGE_TOKENS");
+  expect(limited.message).toContain("updates --login limited.forge.test");
   expect((await failureOf("secondary")).kind).toBe("rateLimit");
   expect((await failureOf("retryafter")).kind).toBe("rateLimit");
   expect((await failureOf("down")).kind).toBe("server");

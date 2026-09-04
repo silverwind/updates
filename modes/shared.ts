@@ -6,6 +6,7 @@ import {
   type Versioning, coerce, diff, satisfies, semverVersioning, pep440Versioning,
 } from "../utils/semver.ts";
 import {getCache, setCache} from "../utils/fetchCache.ts";
+import {readTokens} from "../utils/tokens.ts";
 import {commaSeparatedToArray, getOrSet} from "../utils/utils.ts";
 import pkg from "../package.json" with {type: "json"};
 
@@ -441,6 +442,11 @@ function getExtraheaderTokens(): Promise<Map<string, string>> {
 }
 
 const workingTokenCache = new Map<string, string>();
+const rejectedTokens = new Set<string>();
+
+export function forgeHostOf(host: string): string {
+  return host === "api.github.com" ? "github.com" : host;
+}
 
 export async function getForgeTokens(host: string, forgeApiUrl: string): Promise<string[]> {
   if (!host) return [];
@@ -448,12 +454,21 @@ export async function getForgeTokens(host: string, forgeApiUrl: string): Promise
   const hostToken = pairToken(host);
   if (hostToken) return [hostToken];
 
-  const forgeHost = host === "api.github.com" ? "github.com" : host;
+  const forgeHost = forgeHostOf(host);
   const isGithubHost = forgeHost === "github.com" || host === urlHost(forgeApiUrl);
 
+  const stored = (await readTokens())[forgeHost];
   const tokens = isGithubHost ? getGithubTokens() : [];
   const header = (await getExtraheaderTokens()).get(forgeHost);
-  return Array.from(new Set(header ? [...tokens, header] : tokens));
+  return Array.from(new Set([stored, ...tokens, header].filter(Boolean) as string[]));
+}
+
+export async function verifyToken(host: string, token: string, forgeApiUrl = githubApiUrl): Promise<string> {
+  const url = host === "github.com" ? `${forgeApiUrl}/user` : `https://${host}/api/v1/user`;
+  const res = await doFetch(url, {...getFetchOpts("Bearer", token), signal: AbortSignal.timeout(fetchTimeout)});
+  if (res.status === 401) throw new Error(`token for ${host} was rejected`);
+  if (!res.ok) throw new Error(`token verification for ${host} failed with status ${res.status}`);
+  return (await res.json()).login;
 }
 
 export type ForgeErrorKind = "rateLimit" | "server" | "network";
@@ -493,14 +508,15 @@ async function checkForgeResponse(res: Response, url: string, host: string, hasT
   }
   const reset = await rateLimitReset(res);
   if (reset === null) return res;
-  const hint = hasToken ? " even though a token was sent" : ", set one for this host in UPDATES_FORGE_TOKENS";
+  const hint = hasToken ? " even though a token was sent" :
+    `, set one for this host in UPDATES_FORGE_TOKENS or run "updates --login ${forgeHostOf(host)}"`;
   const until = reset ? `, resets at ${new Date(reset * 1000).toISOString()}` : "";
   throw new ForgeError("rateLimit", host, `Rate limit exceeded for ${host}${hint}${until}`, {status: res.status, reset});
 }
 
 export async function fetchForge(url: string, ctx: ModeContext, extraHeaders?: Record<string, string>): Promise<Response> {
   const host = urlHost(url);
-  const tokens = await getForgeTokens(host, ctx.forgeApiUrl);
+  const tokens = (await getForgeTokens(host, ctx.forgeApiUrl)).filter(token => !rejectedTokens.has(token));
   const attempt = async (token?: string) => {
     const opts = getFetchOpts("Bearer", token);
     opts.headers = {...opts.headers as Record<string, string>, ...extraHeaders};
@@ -516,6 +532,13 @@ export async function fetchForge(url: string, ctx: ModeContext, extraHeaders?: R
       if (response.status !== 401 && response.status !== 403) {
         workingTokenCache.set(host, token);
         return response;
+      }
+      if (response.status === 401 && !rejectedTokens.has(token)) {
+        rejectedTokens.add(token);
+        const forgeHost = forgeHostOf(host);
+        if ((await readTokens())[forgeHost] === token) {
+          console.error(`stored token for ${forgeHost} was rejected, run "updates --login ${forgeHost}" to replace it`);
+        }
       }
       if (token === cached) workingTokenCache.delete(host);
     }

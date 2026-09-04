@@ -67,7 +67,8 @@ async function runOnce(scenario: Scenario, url: string, cacheDir: string): Promi
   const start = performance.now();
   try {
     await execFileAsync(execPath, args, {
-      env: {...env, XDG_CACHE_HOME: cacheDir, LOCALAPPDATA: cacheDir, GH_TOKEN: "", GITHUB_TOKEN: "", UPDATES_GITHUB_API_TOKEN: ""},
+      env: {...env, XDG_CACHE_HOME: cacheDir, XDG_CONFIG_HOME: cacheDir, LOCALAPPDATA: cacheDir, GH_TOKEN: "",
+        GITHUB_TOKEN: "", UPDATES_GITHUB_API_TOKEN: ""},
       maxBuffer: 32 * 1024 * 1024,
     });
     return performance.now() - start;

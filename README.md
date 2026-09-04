@@ -46,6 +46,8 @@ npx updates -u && npm i
 |`-s, --sockets <num>`|Maximum number of parallel HTTP sockets opened. Default: 50|
 |`-T, --timeout <ms>`|Network request timeout in ms, go probes use half. Default: 5000|
 |`-r, --registry <url>`|Override npm registry URL|
+|`-L, --login <host>`|Verify and store a forge API token|
+|`-O, --logout <host>`|Remove a stored forge API token|
 |`-I, --indirect`|Include indirect Go dependencies|
 |`-E, --error-on-outdated`|Exit with code 2 when updates are available and 0 when not|
 |`-U, --error-on-unchanged`|Exit with code 0 when updates are available and 2 when not|
@@ -154,7 +156,7 @@ const output = await updates({
 |`GONOPROXY`|Comma-separated list of Go module patterns to fetch directly, bypassing the proxy|
 |`GOPRIVATE`|Fallback for `GONOPROXY` when not set|
 
-A host in `UPDATES_FORGE_TOKENS` wins over the GitHub tokens. Any non-GitHub forge without a matching entry receives no credentials.
+`updates --login <host>` reads a token from stdin or a prompt and stores it for that forge, `updates --logout <host>` removes it. A host in `UPDATES_FORGE_TOKENS` wins over a stored token, which wins over the GitHub tokens.
 
 npm registries resolve in pnpm's order: `--registry`, then `pnpm_config__auth`, `pnpm-workspace.yaml`, the global `config.yaml`, its `_auth` routes, and finally `.npmrc`. A scope-specific token wins over a registry-wide one.
 

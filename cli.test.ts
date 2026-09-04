@@ -42,7 +42,10 @@ test.each(["--bogus", "-z"])("rejects unknown option %s", option => {
 });
 
 test("rejects required options without a value", () => {
-  for (const name of ["file", "modes", "include", "exclude", "pin", "cooldown", "types", "sockets", "timeout", "registry"]) {
+  for (const name of [
+    "file", "modes", "include", "exclude", "pin", "cooldown", "types", "sockets", "timeout", "registry", "login",
+    "logout",
+  ]) {
     expect(() => parseCliArgs([`--${name}`])).toThrow(`Missing value for --${name}`);
   }
   for (const name of ["allow-downgrade", "greatest", "minor", "patch", "prerelease", "release"]) {

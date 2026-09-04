@@ -1,10 +1,15 @@
-import {cwd, platform, versions} from "node:process";
+import {cwd, exit, platform, stderr, stdin, versions} from "node:process";
 import {parseArgs, stripVTControlCharacters, styleText} from "node:util";
 import {dirname, join, resolve} from "node:path";
 import {readFileSync, statSync} from "node:fs";
 import {pathToFileURL} from "node:url";
+import {text} from "node:stream/consumers";
+import type {Readable} from "node:stream";
+import type {ReadStream} from "node:tty";
 import {cliBaseConfig, options, optionalValueOptions, parseMixedArg, getOptionKey, parseArgList, parsePinArg,
   loadConfig} from "./config.ts";
+import {forgeHostOf, normalizeUrl, verifyToken} from "./modes/shared.ts";
+import {removeToken, storeToken} from "./utils/tokens.ts";
 import {highlightDiff, parsePositiveInt, textTable} from "./utils/utils.ts";
 import {shortenGoModule} from "./modes/go.ts";
 import type {Arg} from "./config.ts";
@@ -170,6 +175,7 @@ export async function resolveConfig(
 type CliIo = {
   stdout: (text: string) => void,
   stdoutIsTTY?: boolean,
+  stdin?: Readable,
   moduleUrl: string,
 };
 
@@ -177,7 +183,7 @@ const valueOptions: Record<string, string> = {
   d: "allow-downgrade", e: "exclude", f: "file", l: "pin", C: "cooldown", p: "prerelease", R: "release",
   g: "greatest", t: "types", P: "patch", m: "minor", s: "sockets", T: "timeout", r: "registry", i: "include",
   M: "modes", forgeapi: "forgeapi", pypiapi: "pypiapi", jsrapi: "jsrapi", goproxy: "goproxy",
-  cargoapi: "cargoapi", dockerapi: "dockerapi",
+  cargoapi: "cargoapi", dockerapi: "dockerapi", L: "login", O: "logout",
 };
 const stringShortOptions = new Set(Object.keys(valueOptions));
 for (const long of Object.values(valueOptions)) valueOptions[long] = long;
@@ -240,6 +246,46 @@ async function startPrewarm(rawArgs: Array<string>): Promise<void> {
   }
 }
 
+function normalizeHost(value: unknown, option: string): string {
+  if (typeof value !== "string") throw new Error(`Missing value for --${option}`);
+  return forgeHostOf(new URL(value.includes("://") ? value : `https://${value}`).host);
+}
+
+function readHidden(stdin: ReadStream, prompt: string): Promise<string> {
+  stdin.setEncoding("utf8");
+  stdin.setRawMode(true);
+  stderr.write(prompt);
+  return new Promise(resolve => {
+    let value = "";
+    const onData = (chunk: string) => {
+      for (const char of chunk) {
+        if (char === "\u0003" || char === "\u0004") {
+          stdin.setRawMode(false);
+          stderr.write("\n");
+          exit(130);
+        } else if (char === "\r" || char === "\n") {
+          stdin.off("data", onData);
+          stdin.setRawMode(false);
+          stdin.pause();
+          stderr.write("\n");
+          return resolve(value);
+        } else {
+          value = char === "\b" || char === "\u007f" ? value.slice(0, -1) : value + char;
+        }
+      }
+    };
+    stdin.on("data", onData);
+  });
+}
+
+async function readToken(stdin: Readable | ReadStream, host: string): Promise<string> {
+  const raw = "isTTY" in stdin && stdin.isTTY ? await readHidden(stdin, `token for ${host}: `) : await text(stdin);
+  const token = raw.trim();
+  if (!token) throw new Error(`token for ${host} is empty`);
+  if (/[\s\p{C}]/u.test(token)) throw new Error(`token for ${host} contains invalid characters`);
+  return token;
+}
+
 export async function runCli(
   rawArgs: Array<string>,
   io: CliIo,
@@ -284,6 +330,8 @@ export async function runCli(
     -s, --sockets <num>                Maximum number of parallel HTTP sockets opened. Default: 50
     -T, --timeout <ms>                 Network request timeout in ms (go probes use half). Default: 5000
     -r, --registry <url>               Override npm registry URL
+    -L, --login <host>                 Verify and store a forge API token
+    -O, --logout <host>                Remove a stored forge API token
     -I, --indirect                     Include indirect Go dependencies
     -E, --error-on-outdated            Exit with code 2 when updates are available and 0 when not
     -U, --error-on-unchanged           Exit with code 0 when updates are available and 2 when not
@@ -322,10 +370,25 @@ export async function runCli(
       return await end();
     }
 
+    const {args, positionals} = parseCliArgs(rawArgs);
+    if (args.login !== undefined) {
+      const host = normalizeHost(args.login, "login");
+      const token = await readToken(io.stdin ?? stdin, host);
+      const forgeApiUrl = typeof args.forgeapi === "string" ? normalizeUrl(args.forgeapi) : undefined;
+      const login = await verifyToken(host, token, forgeApiUrl);
+      await storeToken(host, token);
+      writeLine(`stored token for ${host} (${login})`);
+      return await end();
+    }
+    if (args.logout !== undefined) {
+      const host = normalizeHost(args.logout, "logout");
+      if (!await removeToken(host)) throw new Error(`no stored token for ${host}`);
+      writeLine(`removed token for ${host}`);
+      return await end();
+    }
     if (prewarm) {
       try { await startPrewarm(rawArgs); } catch {}
     }
-    const {args, positionals} = parseCliArgs(rawArgs);
     const config = await resolveConfig(args, positionals);
     const {updates} = await import("./api.ts");
 

@@ -112,6 +112,8 @@ export const options: ParseArgsOptionsConfig = {
   "indirect": {short: "I", type: "boolean"},
   "json": {short: "j", type: "boolean"},
   "jsrapi": {type: "string"}, // test-only
+  "login": {short: "L", type: "string"},
+  "logout": {short: "O", type: "string"},
   "cooldown": {short: "C", type: "string"},
   "minor": {short: "m", type: "string", multiple: true},
   "modes": {short: "M", type: "string", multiple: true},

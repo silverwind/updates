@@ -2,13 +2,16 @@ import {execFile} from "node:child_process";
 import {AsyncLocalStorage} from "node:async_hooks";
 import {createServer} from "node:http";
 import {join, parse} from "node:path";
-import {readFileSync, mkdtempSync, readdirSync, mkdirSync, symlinkSync, writeFileSync} from "node:fs";
+import {
+  existsSync, readFileSync, mkdtempSync, readdirSync, mkdirSync, statSync, symlinkSync, writeFileSync,
+} from "node:fs";
 import {writeFile, readFile, rm} from "node:fs/promises";
 import {fileURLToPath, pathToFileURL} from "node:url";
 import {tmpdir} from "node:os";
-import {platform, versions} from "node:process";
+import {env, platform, versions} from "node:process";
 import {gzip, gzipSync, constants} from "node:zlib";
 import {format, promisify} from "node:util";
+import {Readable} from "node:stream";
 import type {Server} from "node:http";
 import {satisfies} from "./utils/semver.ts";
 import {npmTypes, forgeDirs, getOrSet} from "./utils/utils.ts";
@@ -68,6 +71,7 @@ const pnpmWorkspaceFile = fileURLToPath(new URL("fixtures/pnpm-workspace/pnpm-wo
 
 const testPkg = JSON.parse(readFileSync(testFile, "utf8"));
 const testDir = mkdtempSync(join(tmpdir(), "updates-"));
+const originalXdgConfigHome = env.XDG_CONFIG_HOME;
 const sourceScript = fileURLToPath(new URL("index.ts", import.meta.url));
 const script = fileURLToPath(new URL("dist/index.js", import.meta.url));
 
@@ -173,6 +177,7 @@ let cargoUrl: string;
 let localDependencyRequests = 0;
 
 beforeAll(async () => {
+  env.XDG_CONFIG_HOME = join(testDir, "xdg");
   mockServer = makeServer(defaultRoute);
   npmServer = scopeServer(mockServer, "/npm");
   githubServer = scopeServer(mockServer, "/github");
@@ -257,6 +262,10 @@ beforeAll(async () => {
     const server = type === "pypi" ? pypiServer : type === "jsr" ? jsrServer : githubServer;
     server.get(key, (_, res) => res.send(gz));
   }
+  githubServer.get("/user", (req, res) => {
+    if (req.headers.authorization !== "Bearer tok") res.statusCode = 401;
+    res.end(JSON.stringify({login: "someone"}));
+  });
 
   for (const [urlName, data] of npmParsed) {
     const versions = data.versions || {};
@@ -382,6 +391,8 @@ beforeAll(async () => {
 afterAll(async () => {
   globalThis.fetch = realFetch;
   console.error = realConsoleError;
+  if (originalXdgConfigHome === undefined) delete env.XDG_CONFIG_HOME;
+  else env.XDG_CONFIG_HOME = originalXdgConfigHome;
   await Promise.all([
     rm(testDir, {recursive: true}),
     mockServer?.close(),
@@ -403,12 +414,14 @@ async function runCliExec(argvWithScript: Array<string>): Promise<{stdout: strin
 async function captureCli(
   argvWithScript: Array<string>,
   moduleUrl = pathToFileURL(sourceScript).href,
+  stdin?: Readable,
 ): Promise<{stdout: string, stderr: string, exitCode: number}> {
   let stdout = "";
   let stderr = "";
   const exitCode = await cliStderr.run(text => { stderr += text; }, () => runCliMain(argvWithScript.slice(1), {
     stdout: text => { stdout += text; },
     stdoutIsTTY: false,
+    stdin,
     moduleUrl,
   }, false));
   return {stdout, stderr, exitCode};
@@ -457,6 +470,35 @@ function apiArgs(): string[] {
     "--dockerapi", dockerUrl,
   ];
 }
+
+const sequential = (test as any).serial ?? test;
+
+sequential("login verifies and stores tokens, logout removes them", {concurrent: false}, async () => {
+  const path = join(env.XDG_CONFIG_HOME!, "updates", "tokens.json");
+  const rejected = await captureCli(
+    [script, "--login", "github.com", "--forgeapi", githubUrl],
+    pathToFileURL(sourceScript).href,
+    Readable.from(["bad\n"]),
+  );
+  expect(rejected).toMatchObject({stdout: "token for github.com was rejected\n", stderr: "", exitCode: 1});
+  expect(existsSync(path)).toBe(false);
+
+  const stored = await captureCli(
+    [script, "--login", "github.com", "--forgeapi", githubUrl],
+    pathToFileURL(sourceScript).href,
+    Readable.from(["tok\n"]),
+  );
+  expect(stored).toMatchObject({stdout: "stored token for github.com (someone)\n", stderr: "", exitCode: 0});
+  expect(JSON.parse(readFileSync(path, "utf8"))).toEqual({"github.com": "tok"});
+  expect(statSync(path).mode & 0o777).toBe(0o600);
+
+  expect(await captureCli([script, "--logout", "github.com"])).toMatchObject({
+    stdout: "removed token for github.com\n", stderr: "", exitCode: 0,
+  });
+  expect(await captureCli([script, "--logout", "github.com"])).toMatchObject({
+    stdout: "no stored token for github.com\n", stderr: "", exitCode: 1,
+  });
+});
 
 test("text output lists every dep, one row per version across sections", async ({expect = globalExpect}: any = {}) => {
   const {stdout, stderr} = await captureCli([
