@@ -22,6 +22,6 @@ export default defineConfig([
     url: import.meta.url,
     entry: ["api.ts"],
     clean: false,
-    dts: {entry: ["api.ts"], emitDtsOnly: true, tsgo: true},
+    dts: {entry: ["api.ts"], emitDtsOnly: true, generator: "tsgo"},
   }),
 ]);
