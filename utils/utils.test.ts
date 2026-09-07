@@ -115,6 +115,7 @@ test("default npm dependency types", () => {
 test.each([
   ["*", ["@scope/pkg"], [true]],
   ["foo*", ["FOO", "foo.bar", "foo/bar"], [true, true, true]],
+  ["*a*b", ["aaab", "aaaa", "a/b"], [true, false, true]],
   ["foo/**/bar", ["foo/bar", "foo/a/bar", ".foo/bar"], [true, true, false]],
   ["file?.[jt]s", ["file1.js", "fileA.ts", "file10.js"], [true, true, false]],
   ["{foo,bar}/@(one|two)", ["foo/one", "bar/two", "baz/one"], [true, true, false]],

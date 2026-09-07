@@ -76,9 +76,9 @@ export function prewarmOrigins(dir: string, args: Record<string, unknown>): stri
         if (/^\s*\[(?:target\.[^\]]+\.)?(?:dev-|build-)?dependencies\]/m.test(content)) resources.add("cargoapi");
       } else if (filename === "go.mod" || filename === "go.work") {
         if (/^\s*(?:require\s+)?\S+\s+v\d/m.test(content)) resources.add("goproxy");
-      } else if (/^Dockerfile(?:\..+)?$/.test(filename) || /^(?:docker-|compose).*\.ya?ml$/.test(filename)) {
+      } else if (mode === "docker") {
         if (/^\s*(?:FROM\s+(?:--\S+\s+)*|image\s*:\s*)[^\s#]+[:@]/im.test(content)) resources.add("dockerapi");
-      } else if (["Makefile", "makefile", "GNUmakefile"].includes(filename) || filename.endsWith(".mk")) {
+      } else if (mode === "make") {
         if (/\bgo\s+install\s+\S+@v\d/.test(content)) resources.add("goproxy");
         if (/\b(?:docker|image)\b[^\n]*[\w./-]+:[\w.-]+/i.test(content)) resources.add("dockerapi");
       } else {

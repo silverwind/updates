@@ -317,8 +317,7 @@ export function* pnpmCatalogEntries(content: string): Generator<PnpmCatalogEntry
 export function updatePnpmWorkspace(content: string, deps: Deps): string {
   const lines = content.split("\n");
   let changed = false;
-  for (const {type, name, value, lineIndex, valueIndex} of Array.from(pnpmCatalogEntries(content))
-    .sort((a, b) => b.lineIndex - a.lineIndex || b.valueIndex - a.valueIndex)) {
+  for (const {type, name, value, lineIndex, valueIndex} of Array.from(pnpmCatalogEntries(content)).reverse()) {
     const dep = deps[`${type}${fieldSep}${name}`];
     if (!dep || (dep.oldOrig || dep.old) !== value) continue;
     const line = lines[lineIndex];

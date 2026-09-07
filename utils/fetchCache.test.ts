@@ -38,7 +38,7 @@ test("getCache returns null for unknown URL", async () => {
 });
 
 test("getCache returns null when the key can not be derived", async () => {
-  expect(await getCache(undefined as unknown as string, await makeCacheDir("invalid-key"))).toBeNull();
+  expect(await getCache(undefined as unknown as string, cacheRoot)).toBeNull();
 });
 
 test("expired cache entries are removed", async () => {

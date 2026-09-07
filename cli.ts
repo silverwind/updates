@@ -412,7 +412,7 @@ export async function runCli(
     } else if (output.message) {
       writeLine(output.message);
     } else if (hasResults) {
-      writeLine(formatOutput(output, shortenGoModule, highlightDiff, textTable, stripVTControlCharacters, red, green));
+      writeLine(formatOutput(output, red, green));
     }
 
     if (config.update && !config.json) {
@@ -432,10 +432,6 @@ export async function runCli(
 
 function formatOutput(
   output: Output,
-  shortenGoModule: (value: string) => string,
-  highlightDiff: (left: string, right: string, colorFn: (text: string) => string) => string,
-  textTable: (rows: Array<Array<string>>, lengthFn: (value: string) => number) => string,
-  stripVTControlCharacters: (value: string) => string,
   red: (text: string | number) => string,
   green: (text: string | number) => string,
 ): string {

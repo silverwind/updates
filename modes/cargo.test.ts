@@ -30,6 +30,8 @@ test.each([
     `workspace.dependencies${fieldSep}serde`, {old: "1.0.0", new: "1.0.1"}, `[workspace . dependencies]\nserde = "1.0.1"\n`],
   [`extended table skips comments and multiline strings`, `[dependencies.serde]\n# version = "1.0.0" was old\nnote = """\nversion = "1.0.0"\n"""\nversion = "1.0.0"\n`,
     `dependencies${fieldSep}serde`, {old: "1.0.0", new: "1.1.0"}, `[dependencies.serde]\n# version = "1.0.0" was old\nnote = """\nversion = "1.0.0"\n"""\nversion = "1.1.0"\n`],
+  [`escaped multiline delimiters`, `[dependencies.serde]\nnote = """\n${"\\".repeat(128)}text\n\\"""\nversion = "1.0.0"\n\\\\"""\nversion = "1.0.0"\n`,
+    `dependencies${fieldSep}serde`, {old: "1.0.0", new: "1.1.0"}, `[dependencies.serde]\nnote = """\n${"\\".repeat(128)}text\n\\"""\nversion = "1.0.0"\n\\\\"""\nversion = "1.1.0"\n`],
   [`extended table beside a same-named dev entry`, `[dependencies.serde]\nversion = "1.0.0"\n\n[dev-dependencies]\nserde = "1.0.0"\n`,
     `dependencies${fieldSep}serde`, {old: "1.0.0", new: "1.0.1"}, `[dependencies.serde]\nversion = "1.0.1"\n\n[dev-dependencies]\nserde = "1.0.0"\n`],
   [`indented header beside a same-named dev entry`, `  [dependencies] # pinned\n  serde = "1.0.0"\n\n  [dev-dependencies]\n  serde = "1.0.0"\n`,

@@ -171,8 +171,7 @@ function comparator(op: string, major: number, minor: number, patch: number, suf
 }
 
 function comparators(...values: Array<Comparator | null>): Array<Comparator> | null {
-  const result = values.filter((value): value is Comparator => value !== null);
-  return result.length === values.length ? result : null;
+  return values.every(value => value !== null) ? values : null;
 }
 
 function testComparator(v: SemVer, comp: Comparator): boolean {

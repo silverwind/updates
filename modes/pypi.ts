@@ -111,7 +111,9 @@ export function updateRequirement(text: string, oldValue: string, newValue: stri
       specifier.version = specifier.op === "~=" ? oldParsed.release.length === newParsed.release.length ? orderedVersion(newParsed) :
         orderedVersion(newParsed, Array.from({length: oldParsed.release.length}, (_, idx) => newParsed.release[idx] ?? 0)) :
         specifier.op === "==" || specifier.op === "===" ? newValue : orderedVersion(newParsed);
-    } else if (!specifierAllows(newParsed, specifier)) {
+    } else if (specifierAllows(newParsed, specifier)) {
+      continue;
+    } else {
       const cap = parsePep440(specifier.version);
       if (specifier.op === "<" && cap) specifier.version = raisedUpperBound(cap, oldParsed, newParsed);
       else if (specifier.op === "<=") specifier.version = orderedVersion(newParsed);

@@ -387,6 +387,7 @@ function parseGlob(pattern: string): {source: string, tokens: Array<GlobToken>} 
 function matchGlob(tokens: Array<GlobToken>, value: string): boolean {
   const memo = new WeakMap<Array<GlobToken>, Map<number, Set<number>>>();
   const addSpan = (positions: Set<number>, start: number, slash: boolean) => {
+    if (positions.has(start)) return;
     for (let end = start; ; end++) {
       positions.add(end);
       if (end === value.length || !slash && value[end] === "/") break;

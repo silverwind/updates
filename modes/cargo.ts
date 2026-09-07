@@ -1,7 +1,7 @@
 import {type Deps, type ModeContext, type PackageInfo, dedupe, fieldSep, fetchWithEtag, getFetchOpts, normalizeUrl, throwFetchError} from "./shared.ts";
 import {esc, pushTo} from "../utils/utils.ts";
 import {gt, parse, valid, satisfies} from "../utils/semver.ts";
-import {updateVersionRange, normalizeRange} from "./npm.ts";
+import {updateVersionRange} from "./npm.ts";
 
 type SparseIndexRecord = {vers?: string; yanked?: boolean; pubtime?: string};
 
@@ -108,9 +108,9 @@ function updateComparator(comparator: string, newVersion: string): string {
       updated = `${newVersion.split(/[-+]/)[0].split(".").slice(0, digits.split(".").length).join(".")}${stars}`;
     }
   } else if (startsWithDigitRe.test(value)) {
-    updated = updateVersionRange(normalizeRange(`^${value}`), newVersion, `^${value}`).replace(/^\^/, "");
+    updated = updateVersionRange(`^${value}`, newVersion, `^${value}`).replace(/^\^/, "");
   } else {
-    updated = updateVersionRange(normalizeRange(value), newVersion, value);
+    updated = updateVersionRange(value, newVersion, value);
   }
   return `${leading}${updated}${trailing}`;
 }
@@ -144,9 +144,10 @@ function multilineDelim(line: string, delimiter: string): string {
   for (let index = 0; index < line.length; index++) {
     const char = line[index];
     if (delimiter.length === 3) {
+      if (!line.startsWith(delimiter, index)) continue;
       let backslashes = 0;
       while (line[index - backslashes - 1] === `\\`) backslashes++;
-      if (line.startsWith(delimiter, index) && !(delimiter === `"""` && backslashes % 2)) {
+      if (!(delimiter === `"""` && backslashes % 2)) {
         index += 2;
         delimiter = "";
       }

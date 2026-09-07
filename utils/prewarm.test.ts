@@ -46,10 +46,10 @@ test.each([...Object.keys(modeByFileName), "Dockerfile", "Makefile", "tools.mk"]
 
 test("package.json prewarms only the registry its dependency uses", () => {
   expect(prewarmOrigins(makeDir(), {})).toEqual([]);
-  const origins = prewarmOrigins(makeDir({"package.json": "{}"}), {});
-  expect(origins).toEqual(npmOrigins);
+  const dir = makeDir({"package.json": "{}"});
+  expect(prewarmOrigins(dir, {})).toEqual(npmOrigins);
   expect(prewarmOrigins(makeDir({"pnpm-workspace.yaml": ""}), {})).toEqual(expect.arrayContaining(npmOrigins));
-  expect(prewarmOrigins(makeDir({"package.json": "{}"}), {modes: "docker"})).toEqual([]);
+  expect(prewarmOrigins(dir, {modes: "docker"})).toEqual([]);
   expect(prewarmOrigins(makeDir({".github/workflows/ci.yml": ""}), {modes: "docker"})).toEqual(["https://hub.docker.com/"]);
   expect(prewarmOrigins(makeDir({".github/workflows/ci.yml": "steps:\n  - run: |\n      uses: docker://node:18\n"}), {})).toEqual([]);
 });

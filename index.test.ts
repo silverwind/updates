@@ -21,6 +21,7 @@ import {resolutionsBasePackage} from "./modes/npm.ts";
 import type {UpdatesOptions} from "./api.ts";
 
 const execFileAsync = promisify(execFile);
+const gzipAsync = promisify(gzip);
 const cliStderr = new AsyncLocalStorage<(text: string) => void>();
 const realConsoleError = console.error;
 console.error = (...args) => {
@@ -42,7 +43,7 @@ globalThis.fetch = ((input: any, init?: any) => {
 }) as typeof fetch;
 
 const globalExpect = expect;
-const gzipPromise = (data: string | Buffer) => promisify(gzip)(data, {level: constants.Z_BEST_SPEED});
+const gzipPromise = (data: string | Buffer) => gzipAsync(data, {level: constants.Z_BEST_SPEED});
 const gzipNow = (data: string | Buffer) => gzipSync(data, {level: constants.Z_BEST_SPEED}); // for handlers, which must not await
 const testFile = fileURLToPath(new URL("fixtures/npm-test/package.json", import.meta.url));
 const emptyFile = fileURLToPath(new URL("fixtures/npm-empty/package.json", import.meta.url));
@@ -140,7 +141,7 @@ const testPackages = new Set<string>(["npm"]);
 for (const dependencyType of npmTypes) {
   if (!isObject(testPkg[dependencyType])) continue;
   for (const name of Object.keys(testPkg[dependencyType] || [])) {
-    testPackages.add(name);
+    testPackages.add(testPkg.resolutions[name] ? resolutionsBasePackage(name) : name);
   }
 }
 
@@ -194,8 +195,7 @@ beforeAll(async () => {
 
   const npmFilesPromises: Array<Promise<{urlName: string, data: string}>> = [];
   for (const pkgName of testPackages) {
-    const name = (testPkg.resolutions[pkgName] ? resolutionsBasePackage(pkgName) : pkgName);
-    const urlName = name.replace(/\//g, "%2f");
+    const urlName = pkgName.replace(/\//g, "%2f");
     const path = join(import.meta.dirname, `fixtures/npm/${urlName}.json`);
     npmFilesPromises.push((async () => ({urlName, data: await readFile(path, "utf8")}))());
   }
