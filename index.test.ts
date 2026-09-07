@@ -490,7 +490,7 @@ sequential("login verifies and stores tokens, logout removes them", {concurrent:
   );
   expect(stored).toMatchObject({stdout: "stored token for github.com (someone)\n", stderr: "", exitCode: 0});
   expect(JSON.parse(readFileSync(path, "utf8"))).toEqual({"github.com": "tok"});
-  expect(statSync(path).mode & 0o777).toBe(0o600);
+  expect(statSync(path).mode & 0o777).toBe(platform === "win32" ? 0o666 : 0o600);
 
   expect(await captureCli([script, "--logout", "github.com"])).toMatchObject({
     stdout: "removed token for github.com\n", stderr: "", exitCode: 0,
