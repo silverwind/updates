@@ -34,7 +34,7 @@ test("parseIni", () => {
     }],
     ["legacy auth", "_auth=\"dXNlcjpwYXNz\"", {_auth: "dXNlcjpwYXNz"}],
   ];
-  for (const [, input, expected] of cases) expect(parseIni(input)).toEqual(expected);
+  for (const [_name, input, expected] of cases) expect(parseIni(input)).toEqual(expected);
 });
 
 test("project config is found from the supplied directory", () => {

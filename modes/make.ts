@@ -55,7 +55,7 @@ export function parseMakeGoInstalls(content: string): Array<MakeInstall> {
   for (const value of makeAssignmentValues(content)) {
     const match = makeGoInstallRe.exec(value);
     if (!match || !goHostRe.test(match[1])) continue;
-    const [, installPath, version] = match;
+    const [_full, installPath, version] = match;
     installs.push({installPath, version});
   }
   return installs;

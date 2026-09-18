@@ -117,7 +117,7 @@ function isLocalReplaceTarget(target: string): boolean {
 function parseReplaceDirective(value: string): ParsedReplace | null {
   const match = replaceInBlockRe.exec(value);
   if (!match) return null;
-  const [, origModule, origVersion, targetModule, targetVersion] = match;
+  const [_full, origModule, origVersion, targetModule, targetVersion] = match;
   return {origModule: trimQuotes(origModule), origVersion: origVersion ?? "", targetModule: trimQuotes(targetModule), targetVersion: targetVersion ?? ""};
 }
 
@@ -601,7 +601,7 @@ export function getGoInfoUrl(name: string): string {
   const url = new URL(str);
   const pathParts = url.pathname.split("/");
   if (pathParts.length > 3) {
-    const [, user, repo, ...other] = pathParts;
+    const [_root, user, repo, ...other] = pathParts;
     url.pathname = `/${user}/${repo}/${getSubDir(str)}/${other.join("/")}`;
     return url.href;
   } else {

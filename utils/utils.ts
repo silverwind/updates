@@ -46,7 +46,7 @@ function parseSpecifiers(text: string): Array<Pep508Specifier> | null {
   for (const part of text.split(",")) {
     const match = pep440SpecifierRe.exec(part);
     if (!match) return null;
-    const [, lead, op, sep, version, trail] = match;
+    const [_full, lead, op, sep, version, trail] = match;
     specifiers.push({lead, op, sep, version, trail});
   }
   return specifiers;
@@ -56,7 +56,7 @@ export function parsePep508(text: string): Pep508 | null {
   const semi = text.indexOf(";");
   const match = pep508Re.exec(semi === -1 ? text : text.slice(0, semi));
   if (!match) return null;
-  const [, lead, name, space, extras, gap, set] = match;
+  const [_full, lead, name, space, extras, gap, set] = match;
   const paren = pep508ParenRe.exec(set);
   return {
     name,
@@ -211,7 +211,7 @@ const durationUnits: Record<string, number> = {y: 365, m: 30, w: 7, d: 1, h: 1 /
 export function parseDuration(str: string): number {
   const match = /^(\d+(?:\.\d+)?)\s*([a-z])$/i.exec(str);
   if (match) {
-    const [, num, unit] = match;
+    const [_full, num, unit] = match;
     const multiplier = durationUnits[unit.toLowerCase()];
     if (multiplier) return Number(num) * multiplier;
   }

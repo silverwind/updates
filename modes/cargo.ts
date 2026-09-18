@@ -95,7 +95,7 @@ export const cargoToNpmRange = (range: string): string => range.split(/\s*,\s*/)
   .join(" ");
 
 function updateComparator(comparator: string, newVersion: string): string {
-  const [, leading, value, trailing] = trimRe.exec(comparator)!;
+  const [_full, leading, value, trailing] = trimRe.exec(comparator)!;
   if (value.startsWith("<") && satisfies(newVersion, value)) return comparator;
 
   const wildcard = wildcardRe.exec(value);
@@ -104,7 +104,7 @@ function updateComparator(comparator: string, newVersion: string): string {
     if (parse(newVersion)?.prerelease.length) {
       updated = newVersion;
     } else {
-      const [, digits, stars] = wildcard;
+      const [_full, digits, stars] = wildcard;
       updated = `${newVersion.split(/[-+]/)[0].split(".").slice(0, digits.split(".").length).join(".")}${stars}`;
     }
   } else if (startsWithDigitRe.test(value)) {

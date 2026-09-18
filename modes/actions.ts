@@ -90,7 +90,7 @@ type UsesLine = {
 export function parseUsesLine(line: string): UsesLine | null {
   const match = /^(\s*(?:-\s*)?uses:\s*)(?:(["'])(.*?)\2|((?!["'])[^\s#]+))([^\n]*)$/.exec(line);
   if (!match) return null;
-  const [, prefix, quote = "", quotedValue, plainValue, rest] = match;
+  const [_full, prefix, quote = "", quotedValue, plainValue, rest] = match;
   const value = quotedValue ?? plainValue;
   if (!value) return null;
   const hash = rest.indexOf("#");

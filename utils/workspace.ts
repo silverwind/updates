@@ -88,7 +88,7 @@ const yamlCommentRe = /\s#/;
 function parseYamlPair(line: string): {indent: number, key: string, value: string, valueIndex: number} | null {
   const match = yamlPairRe.exec(line);
   if (!match) return null;
-  const [, indent, doubleQuoted, singleQuoted, plain, rest = ""] = match;
+  const [_full, indent, doubleQuoted, singleQuoted, plain, rest = ""] = match;
   let valueIndex = line.length - rest.length;
   const commentIndex = rest.startsWith("#") ? 0 : rest.search(yamlCommentRe);
   let value = (commentIndex === -1 ? rest : rest.slice(0, commentIndex)).trimEnd();
@@ -193,7 +193,7 @@ export function parsePnpmRegistryConfig(content: string): NpmRegistryConfig {
   }
   return {
     registry,
-    registries: Object.fromEntries(Object.entries(registries).filter(([, url]) => !url.includes("${"))),
+    registries: Object.fromEntries(Object.entries(registries).filter(([_scope, url]) => !url.includes("${"))),
   };
 }
 

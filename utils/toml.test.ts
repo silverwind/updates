@@ -51,7 +51,7 @@ test("TOML syntax", () => {
     ["backspace and form feed", `a = "\\b"\nb = "\\f"`, {a: "\b", b: "\f"}],
     ["carriage return", `key = "\\r"`, {key: "\r"}],
   ];
-  for (const [, input, expected] of cases) expect(parseToml(input)).toEqual(expected);
+  for (const [_name, input, expected] of cases) expect(parseToml(input)).toEqual(expected);
   expect(({} as Record<string, unknown>).poetry).toBeUndefined();
 });
 

@@ -289,7 +289,7 @@ function comparators(range: string): Array<string> {
 function replaceComparator(comparator: string, newVersion: string): string {
   const match = comparatorRe.exec(comparator);
   if (!match) return comparator;
-  const [, operator = "", space, vPrefix, digits, pre = ""] = match;
+  const [_full, operator = "", space, vPrefix, digits, pre = ""] = match;
   const parts = digits.split(".");
 
   if (operator === "<" && parts.length <= 3 && !/[xX*]/.test(digits)) {

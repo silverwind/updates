@@ -1954,7 +1954,7 @@ test("non-workspace manifests keep distinct dependencies and duplicate identitie
 
   const {npm} = (await updates(apiOpts({files, update: true}))).results;
   expect(Object.values(npm).filter(section => "noty" in section)).toHaveLength(2);
-  for (const [index, [, name, , expected]] of manifests.entries()) {
+  for (const [index, [_subdir, name, _old, expected]] of manifests.entries()) {
     expect(await readFile(files[index], "utf8")).toContain(`"${name}": "${expected}"`);
   }
 });
