@@ -145,7 +145,7 @@ export const optionalValueOptions = new Set(["allow-downgrade", "greatest", "min
 
 export function parseMixedArg(arg: Arg): boolean | Set<string> {
   if (Array.isArray(arg)) {
-    return !arg.length || arg.includes(true) ? true :
+    return !arg.length || arg.includes(true) ||
       new Set(arg.filter(val => typeof val === "string").flatMap(commaSeparatedToArray));
   }
   if (typeof arg === "string") return new Set([arg]);

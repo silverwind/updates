@@ -79,7 +79,7 @@ export function parseCliArgs(argv?: Array<string>): {args: Record<string, Arg>, 
       const key = getOptionKey(raw);
       if (key) {
         consumesPositional = options[key].type === "string" && nextPositional !== undefined;
-        recoveredOptions.push({key, value: consumesPositional ? nextPositional! : true});
+        recoveredOptions.push({key, value: !consumesPositional || nextPositional!});
       }
     } else {
       for (let offset = 0; offset < raw.length;) {
@@ -93,7 +93,7 @@ export function parseCliArgs(argv?: Array<string>): {args: Record<string, Arg>, 
           consumesPositional = !inlineValue && nextPositional !== undefined;
           recoveredOptions.push({
             key,
-            value: inlineValue || (consumesPositional ? nextPositional! : true),
+            value: inlineValue || !consumesPositional || nextPositional!,
           });
           offset = raw.length;
         }
