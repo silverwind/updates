@@ -10,7 +10,7 @@ import {cliBaseConfig, options, optionalValueOptions, parseMixedArg, getOptionKe
   loadConfig} from "./config.ts";
 import {forgeHostOf, normalizeUrl, verifyToken} from "./modes/shared.ts";
 import {removeToken, storeToken} from "./utils/tokens.ts";
-import {highlightDiff, parsePositiveInt, textTable} from "./utils/utils.ts";
+import {highlightDiff, parsePositiveInt, splitGlobAlternatives, textTable} from "./utils/utils.ts";
 import {shortenGoModule} from "./modes/go.ts";
 import type {Arg} from "./config.ts";
 import type {Output, UpdatesOptions} from "./api.ts";
@@ -162,6 +162,10 @@ export async function resolveConfig(
   if (allowDowngrade !== undefined) cliConfig.allowDowngrade = allowDowngrade;
 
   if (filesList.length) cliConfig.files = filesList;
+  for (const [option, key] of [["include-paths", "includePaths"], ["exclude-paths", "excludePaths"]] as const) {
+    const globs = Array.isArray(args[option]) ? args[option].filter(glob => typeof glob === "string").flatMap(splitGlobAlternatives) : [];
+    if (globs.length) cliConfig[key] = globs;
+  }
 
   for (const key of ["forgeapi", "pypiapi", "jsrapi", "goproxy", "cargoapi", "dockerapi"] as const) {
     if (typeof args[key] === "string") cliConfig[key] = args[key];
@@ -183,7 +187,7 @@ const valueOptions: Record<string, string> = {
   d: "allow-downgrade", e: "exclude", f: "file", l: "pin", C: "cooldown", p: "prerelease", R: "release",
   g: "greatest", t: "types", P: "patch", m: "minor", s: "sockets", T: "timeout", r: "registry", i: "include",
   M: "modes", forgeapi: "forgeapi", pypiapi: "pypiapi", jsrapi: "jsrapi", goproxy: "goproxy",
-  cargoapi: "cargoapi", dockerapi: "dockerapi", L: "login", O: "logout",
+  cargoapi: "cargoapi", dockerapi: "dockerapi", L: "login", O: "logout", N: "include-paths", X: "exclude-paths",
 };
 const stringShortOptions = new Set(Object.keys(valueOptions));
 for (const long of Object.values(valueOptions)) valueOptions[long] = long;
@@ -315,6 +319,8 @@ export async function runCli(
   Options:
     -u, --update                       Update versions and write dependency file
     -f, --file <path,...>              File or directory to use, defaults to current directory
+    -N, --include-paths <glob,...>     Only use paths matching the globs
+    -X, --exclude-paths <glob,...>     Skip paths matching the globs
     -M, --modes <mode,...>             Which modes to enable. Default: npm,pypi,go,cargo,actions,docker,make
     -i, --include <dep,...>            Include only given dependencies
     -e, --exclude <dep,...>            Exclude given dependencies

@@ -1,7 +1,7 @@
 import {cwd, platform, stderr} from "node:process";
 import {styleText} from "node:util";
-import {join, dirname, basename, resolve} from "node:path";
-import {statSync, readdirSync, realpathSync, truncateSync, writeFileSync, accessSync, type Stats} from "node:fs";
+import {join, dirname, basename, relative, resolve} from "node:path";
+import {statSync, realpathSync, truncateSync, writeFileSync, accessSync, type Stats} from "node:fs";
 import {readFile} from "node:fs/promises";
 import {parseToml} from "./utils/toml.ts";
 import {githubActionsVersioning, satisfies, validRange} from "./utils/semver.ts";
@@ -56,6 +56,7 @@ import {
   baseType, filterDepsForMember, resolveWorkspaceMembers, parsePnpmWorkspace, pnpmCatalogEntries,
   updatePnpmWorkspace, type WorkspaceMember,
 } from "./utils/workspace.ts";
+import {defaultExcludePaths, discoverFiles, passesPathFilters, type PathFilters} from "./utils/files.ts";
 
 const allowedVersionsRe = /^(!?)\/(.*)\/(i?)$/;
 
@@ -76,7 +77,7 @@ export type DepError = {
 export type Output = ModeOutput & {errors?: Array<DepError>};
 
 export type {Config, Override, Dep, Deps, DepsByMode};
-export {cliBaseConfig as cliConfigBaseDir};
+export {cliBaseConfig as cliConfigBaseDir, defaultExcludePaths};
 
 const modeOrder = [...new Set(Object.values(modeByFileName)), "actions", "docker", "make"];
 const defaultModes = new Set(modeOrder);
@@ -155,67 +156,43 @@ function canInclude(name: string, mode: string, include: Set<RegExp>, exclude: S
   return !include.size;
 }
 
-function resolveFiles(filesArg: Array<string> | undefined, dir: string): Set<string> {
+async function resolveFiles(filesArg: Array<string> | undefined, dir: string, pathFilters: PathFilters): Promise<Set<string>> {
   const resolvedFiles = new Set<string>();
+  const realPaths = new Set<string>();
+  const add = (file: string) => {
+    if (resolvedFiles.has(file)) return;
+    const canonical = realPath(file);
+    if (realPaths.has(canonical)) return;
+    realPaths.add(canonical);
+    resolvedFiles.add(file);
+  };
 
-  if (filesArg?.length) {
-    for (const arg of filesArg) {
-      let stat: Stats;
-      try {
-        stat = statSync(arg);
-      } catch (err) {
-        throw new Error(`Unable to open ${arg}: ${(err as Error).message}`);
-      }
-      const file = realPath(arg);
-
-      if (stat.isFile()) {
-        resolvedFiles.add(file);
-      } else if (stat.isDirectory()) {
-        try {
-          for (const entry of readdirSync(file, {withFileTypes: true})) {
-            if (!entry.isFile()) continue;
-            if (Object.hasOwn(modeByFileName, entry.name) || isDockerFileName(entry.name) || isMakeFileName(entry.name)) {
-              resolvedFiles.add(resolve(join(file, entry.name)));
-            }
-          }
-        } catch {}
-        const normalized = file.replace(/\\/g, "/");
-        const endsInWorkflowsDir = forgeDirs.some(forgeDir => normalized.endsWith(`/${forgeDir}/workflows`));
-        const endsInForgeDir = !endsInWorkflowsDir && forgeDirs.some(forgeDir => normalized.endsWith(`/${forgeDir}`));
-        const forgeDirCandidates: Array<string> = endsInWorkflowsDir ? [dirname(normalized)] :
-          endsInForgeDir ? [normalized] :
-            forgeDirs.map(forgeDir => join(normalized, forgeDir));
-        for (const forgeDir of forgeDirCandidates) {
-          for (const workflow of resolveWorkflowFiles(forgeDir)) resolvedFiles.add(workflow);
-        }
-      } else {
-        throw new Error(`${arg} is neither a file nor directory`);
-      }
+  const roots: Array<string> = [];
+  for (const arg of filesArg ?? []) {
+    let stat: Stats;
+    try {
+      stat = statSync(arg);
+    } catch (err) {
+      throw new Error(`Unable to open ${arg}: ${(err as Error).message}`);
     }
-  } else {
+    if (stat.isFile()) add(realPath(arg));
+    else if (stat.isDirectory()) roots.push(realPath(arg));
+    else throw new Error(`${arg} is neither a file nor directory`);
+  }
+  if (!filesArg?.length) roots.push(dir);
+  const discoveries = Promise.all(roots.map(root => discoverFiles(root, pathFilters, Boolean(filesArg?.length))));
+
+  if (!filesArg?.length) {
     const forgeDirSet = new Set<string>(forgeDirs);
     const candidates = [...Object.keys(modeByFileName), ...dockerExactFileNames, ...makeExactFileNames, ...forgeDirs];
-    const realPaths = new Set<string>();
     for (const [filename, path] of findUpSync(candidates, dir)) {
-      if (forgeDirSet.has(filename)) {
-        for (const wf of resolveWorkflowFiles(path)) resolvedFiles.add(wf);
-        continue;
+      if (dirname(path) === dir) continue; // the searched directory's own files come from discoverFiles
+      for (const file of forgeDirSet.has(filename) ? resolveWorkflowFiles(path) : [resolve(path)]) {
+        if (passesPathFilters(relative(dir, file).replaceAll("\\", "/"), pathFilters)) add(file);
       }
-      const canonical = realPath(path);
-      if (realPaths.has(canonical)) continue;
-      realPaths.add(canonical);
-      resolvedFiles.add(resolve(path));
     }
-    try {
-      for (const entry of readdirSync(dir, {withFileTypes: true})) {
-        const isExtraDocker = isDockerFileName(entry.name) && !dockerExactFileNames.includes(entry.name);
-        const isExtraMake = isMakeFileName(entry.name) && !makeExactFileNames.includes(entry.name);
-        if (entry.isFile() && (isExtraDocker || isExtraMake)) {
-          resolvedFiles.add(join(dir, entry.name));
-        }
-      }
-    } catch {}
   }
+  for (const found of (await discoveries).flat()) add(found);
 
   const workspaceFiles: Array<string> = [];
   for (const file of Array.from(resolvedFiles)) {
@@ -581,7 +558,9 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
     }
   };
 
-  const files = resolveFiles(config.files, cwdStr);
+  const files = await resolveFiles(config.files, cwdStr, {
+    includePaths: config.includePaths ?? [], excludePaths: config.excludePaths ?? defaultExcludePaths,
+  });
   const fileContents = new Map(await pMap(Array.from(files).filter(file => {
     if (isWorkflowFile(file)) return enabledModes.has("actions") || enabledModes.has("docker");
     const filename = basename(file);

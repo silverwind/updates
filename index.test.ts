@@ -1,9 +1,9 @@
 import {execFile} from "node:child_process";
 import {AsyncLocalStorage} from "node:async_hooks";
 import {createServer} from "node:http";
-import {join, parse} from "node:path";
+import {dirname, join, parse, relative} from "node:path";
 import {
-  existsSync, readFileSync, mkdtempSync, readdirSync, mkdirSync, statSync, symlinkSync, writeFileSync,
+  existsSync, readFileSync, mkdtempSync, readdirSync, mkdirSync, realpathSync, statSync, symlinkSync, writeFileSync,
 } from "node:fs";
 import {writeFile, readFile, rm} from "node:fs/promises";
 import {fileURLToPath, pathToFileURL} from "node:url";
@@ -812,6 +812,12 @@ test("a negative timeout is rejected, on the cli and through the api", async ({e
     .rejects.toThrow(/invalid timeout/i);
 });
 
+test("path glob flags split on commas outside braces", async ({expect = globalExpect}: any = {}) => {
+  const {args, positionals} = parseCliArgs(["-N", "a/**,{b,c}/**", "-X", "d/**"]);
+  const config = await resolveConfig(args, positionals);
+  expect([config.includePaths, config.excludePaths]).toEqual([["a/**", "{b,c}/**"], ["d/**"]]);
+});
+
 test("color flags reach the config", async ({expect = globalExpect}: any = {}) => {
   for (const [argv, expected] of [
     [["-n"], {color: false, noColor: true}],
@@ -958,6 +964,33 @@ test("auto-discovery finds a Makefile once on a case-insensitive filesystem", as
   } finally {
     process.chdir(previousCwd);
   }
+});
+
+test("auto-discovery finds tracked and untracked files at any depth, skipping gitignored ones unless passed and excluded paths", async ({expect = globalExpect}: any = {}) => {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), "updates-discovery-")));
+  for (const path of ["Makefile", "tools/tools.mk", "deep/er/Makefile", "node_modules/pkg/Makefile", "untracked/Makefile", "gitignored/Makefile"]) {
+    mkdirSync(join(dir, dirname(path)), {recursive: true});
+    writeFileSync(join(dir, path), "UUID_PACKAGE ?= github.com/google/uuid@v1.4.0\n");
+  }
+  mkdirSync(join(dir, "svc"));
+  writeFileSync(join(dir, "svc/app.Dockerfile"), "FROM node:18\n");
+  writeFileSync(join(dir, ".gitignore"), "gitignored/\n");
+  await execFileAsync("git", ["init", "-q"], {cwd: dir});
+  await execFileAsync("git", ["add", ".", ":!untracked"], {cwd: dir});
+
+  const discovered = async (config: UpdatesOptions) => {
+    const {results} = await updates({
+      files: [dir], modes: ["make", "docker"], goproxy: goProxyUrl, dockerapi: dockerUrl, noCache: true, ...config,
+    });
+    return Object.values(results).flatMap(Object.keys).map(file => relative(dir, file).replaceAll("\\", "/")).sort();
+  };
+  expect(await discovered({})).toEqual(["Makefile", "deep/er/Makefile", "svc/app.Dockerfile", "tools/tools.mk", "untracked/Makefile"]);
+  expect(await discovered({excludePaths: ["deep/**"]})).toEqual([
+    "Makefile", "node_modules/pkg/Makefile", "svc/app.Dockerfile", "tools/tools.mk", "untracked/Makefile",
+  ]);
+  expect(await discovered({includePaths: ["tools/**"]})).toEqual(["tools/tools.mk"]);
+  expect(await discovered({files: [join(dir, "gitignored")]})).toEqual(["gitignored/Makefile"]);
+  expect(await discovered({files: [join(dir, "gitignored/Makefile")]})).toEqual(["gitignored/Makefile"]);
 });
 
 test("make mode bumps docker image tags and re-resolves digests in Makefiles", async ({expect = globalExpect}: any = {}) => {

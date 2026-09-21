@@ -11,8 +11,8 @@
 - `pyproject.toml` - uv dependencies
 - `go.mod`, `go.work` - go dependencies
 - `Cargo.toml` - rust dependencies, including workspaces
-- `.{github,gitea,forgejo}/workflows` - actions and docker images
-- `Dockerfile*`, `compose*.{yml,yaml}`, `docker-*.{yml,yaml}` - docker images
+- `.{github,gitea,forgejo}/{workflows,actions}`, `workflow-templates`, `action.{yml,yaml}` - actions and docker images
+- `{Docker,Container}file*`, `*.{Docker,Container}file`, `compose*.{yml,yaml}`, `docker-*.{yml,yaml}` - docker images
 - `Makefile`, `*.mk` - go tool versions in `go install` paths and docker image tags
 
 ## Usage
@@ -31,6 +31,8 @@ npx updates -u && npm i
 |:-|:-|
 |`-u, --update`|Update versions and write dependency file|
 |`-f, --file <path,...>`|File or directory to use, defaults to current directory|
+|`-N, --include-paths <glob,...>`|Only use paths matching the globs|
+|`-X, --exclude-paths <glob,...>`|Skip paths matching the globs|
 |`-M, --modes <mode,...>`|Which modes to enable. Either `npm`, `pypi`, `go`, `cargo`, `actions`, `docker`, `make`. Default: all|
 |`-i, --include <dep,...>`|Include only given dependencies|
 |`-e, --exclude <dep,...>`|Exclude given dependencies|
@@ -84,7 +86,7 @@ Mirrors the [CLI options](#options) in camelCase, with `--file` as `files`, plus
 - `overrides` *Array\<Override>*: Per-package option overrides (see [Overrides](#overrides))
 - `inherit` *object*: Fields to inherit from other tools' configs (see [Renovate config](#renovate-config))
 
-`include`, `exclude` and the `dep` options take `Array<string | RegExp>`, `pin` takes a `Record<string, string>` keyed by exact dependency name, `files` and `modes` take `Array<string>`.
+`include`, `exclude` and the `dep` options take `Array<string | RegExp>`, `pin` takes a `Record<string, string>` keyed by exact dependency name, `files`, `modes`, `includePaths` and `excludePaths` take `Array<string>`.
 
 ### Overrides
 

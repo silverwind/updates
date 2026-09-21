@@ -58,8 +58,9 @@ test.each([
   [".forgejo/actions/my-action/action.yml", true],
   ["ci.yml", false],
   [".github/ci.yml", false],
-  [".github/actions/my-action/other.yml", false],
-  ["actions/my-action/action.yml", false],
+  [".github/actions/my-action/other.yml", true],
+  ["actions/my-action/action.yml", true],
+  ["workflow-templates/ci.yml", true],
 ])("isWorkflowFile %s", (path, expected) => {
   expect(isWorkflowFile(path)).toBe(expected);
 });

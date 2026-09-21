@@ -29,6 +29,10 @@ export type Config = {
   pinNoDowngrade?: boolean | Array<string>;
   /** File or directory paths to use */
   files?: Array<string>;
+  /** Only use paths matching these globs */
+  includePaths?: Array<string>;
+  /** Skip paths matching these globs, replacing `defaultExcludePaths` */
+  excludePaths?: Array<string>;
   /** Which modes to enable */
   modes?: Array<string>;
   /** Update versions and write dependency files */
@@ -109,6 +113,8 @@ export const options: ParseArgsOptionsConfig = {
   "greatest": {short: "g", type: "string", multiple: true},
   "help": {short: "h", type: "boolean"},
   "include": {short: "i", type: "string", multiple: true},
+  "include-paths": {short: "N", type: "string", multiple: true},
+  "exclude-paths": {short: "X", type: "string", multiple: true},
   "indirect": {short: "I", type: "boolean"},
   "json": {short: "j", type: "boolean"},
   "jsrapi": {type: "string"}, // test-only

@@ -486,6 +486,7 @@ export function updateWorkflowDockerImages(content: string, deps: Deps): string 
 
 export const dockerExactFileNames = [
   "Dockerfile",
+  "Containerfile",
   "compose.yml",
   "compose.yaml",
   "docker-compose.yml",
@@ -497,7 +498,7 @@ export function isComposeFile(filename: string): boolean {
 }
 
 export function isDockerfile(filename: string): boolean {
-  return /^Dockerfile(\..+)?$/.test(filename);
+  return /^(?:[Dd]ocker|[Cc]ontainer)file|\.(?:[Dd]ocker|[Cc]ontainer)file$/.test(filename);
 }
 
 export function isDockerFileName(filename: string): boolean {

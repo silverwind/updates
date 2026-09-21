@@ -19,7 +19,7 @@ const dependencyFields = ["dependencies", "devDependencies", "optionalDependenci
 const modeByName = (filename: string) => filename === "package.json" || filename === "pnpm-workspace.yaml" ? "npm" :
   filename === "pyproject.toml" ? "pypi" : filename === "Cargo.toml" ? "cargo" :
     filename === "go.mod" || filename === "go.work" ? "go" :
-      /^Dockerfile(?:\..+)?$/.test(filename) || /^(?:docker-|compose).*\.ya?ml$/.test(filename) ? "docker" :
+      /^(?:[Dd]ocker|[Cc]ontainer)file|\.(?:[Dd]ocker|[Cc]ontainer)file$/.test(filename) || /^(?:docker-|compose).*\.ya?ml$/.test(filename) ? "docker" :
         ["Makefile", "makefile", "GNUmakefile"].includes(filename) || filename.endsWith(".mk") ? "make" :
           /\.ya?ml$/.test(filename) ? "actions" : "";
 

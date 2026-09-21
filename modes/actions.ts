@@ -143,7 +143,8 @@ export function updateWorkflowFile(content: string, actionDeps: Array<ActionUpda
   }).join("\n");
 }
 
-const workflowFileRe = new RegExp(`(?:^|/)(?:${longestFirstAlternation(forgeDirs)})/(?:workflows/[^/]+|(?:[^/]+/)*action)\\.ya?ml$`);
+const workflowFileRe = new RegExp( // renovate's github-actions manager patterns
+  `(?:^|/)(?:(?:workflow-templates|(?:${longestFirstAlternation(forgeDirs)})/(?:workflows|actions))/.+|action)\\.ya?ml$`);
 
 export function isWorkflowFile(file: string): boolean {
   return workflowFileRe.test(file.replace(/\\/g, "/"));

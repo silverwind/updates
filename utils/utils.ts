@@ -268,7 +268,7 @@ class PredicateRegExp extends RegExp {
   }
 }
 
-function splitGlobAlternatives(value: string): Array<string> {
+export function splitGlobAlternatives(value: string): Array<string> {
   const alternatives: Array<string> = [];
   let depth = 0;
   let start = 0;
@@ -284,7 +284,7 @@ function splitGlobAlternatives(value: string): Array<string> {
   return alternatives;
 }
 
-function closingIndex(value: string, start: number, open: string, close: string): number {
+export function closingIndex(value: string, start: number, open: string, close: string): number {
   let depth = 0;
   for (let i = start; i < value.length; i++) {
     if (value[i] === open) depth++;
@@ -293,7 +293,7 @@ function closingIndex(value: string, start: number, open: string, close: string)
   return -1;
 }
 
-function braceAlternatives(value: string): Array<string> {
+export function braceAlternatives(value: string): Array<string> {
   const range = /^(-?\d+|[A-Za-z])\.\.(-?\d+|[A-Za-z])(?:\.\.(-?\d+))?$/.exec(value);
   if (!range) return splitGlobAlternatives(value);
   const numeric = /^-?\d+$/.test(range[1]) && /^-?\d+$/.test(range[2]);
