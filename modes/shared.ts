@@ -150,7 +150,7 @@ function fetchCached(
   url: string, ctx: ModeContext, opts: RequestInit, reduce: BodyReducer | undefined, cacheKey: string, immutable: boolean,
 ): Promise<FetchResult> {
   const requestKey = JSON.stringify([url, cacheKey, immutable, opts.method ?? "GET",
-    Array.from(new Headers(opts.headers).entries()).sort(), opts.body ?? null, reduce?.toString()]);
+    Array.from(new Headers(opts.headers).entries()), opts.body ?? null, reduce?.toString()]);
   const requests = getOrSet(fetchesByCtx, ctx, () => new Map<string, Promise<FetchResult>>());
   let request = requests.get(requestKey);
   if (!request) {

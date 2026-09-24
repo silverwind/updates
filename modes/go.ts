@@ -364,7 +364,7 @@ async function fetchGoList(doFetch: ProxyFetch, base: string, path: string, excl
   const infoUrl = `${base}/${encoded}/@v/${encodeGoModulePath(best.Version)}.info`;
   try {
     const infoRes = await doFetch(infoUrl);
-    if (infoRes.ok) return readGoProxyInfo(infoRes, infoUrl, path);
+    if (infoRes.ok) return await readGoProxyInfo(infoRes, infoUrl, path);
   } catch {}
   return {...best, path};
 }
@@ -398,7 +398,7 @@ async function fetchGoProxyModule(
       const excluded = excludes.get(path);
       if (latest && !excluded?.has(latest.Version)) return latest;
       if (!latest && primaryLatest) return null;
-      return fetchGoListOnce(ctx, "probe", probeFetch, base, path, excluded);
+      return await fetchGoListOnce(ctx, "probe", probeFetch, base, path, excluded);
     } catch {
       return null;
     }

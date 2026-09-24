@@ -294,6 +294,15 @@ test("fetchGoProxyInfo falls back to @v/list when the proxy omits @latest", asyn
   expect(new Set(seen).size).toBe(seen.length);
 });
 
+test("fetchGoProxyInfo keeps the @v/list pick when its .info and the major probe fail", async () => {
+  const [data] = await infoFor(makeGoCtx({
+    [`${goProxyBase}/${modPath}/@v/list`]: "v1.2.0\n",
+    [`${goProxyBase}/${modPath}/@v/v1.2.0.info`]: "{}",
+    [`${goProxyBase}/${modPath}/v2/@v/list`]: 500,
+  }));
+  expect(data).toMatchObject({new: "1.2.0", Time: ""});
+});
+
 test("primary and probe Go lookups keep their retry semantics separate", async () => {
   const seen: Array<string> = [];
   const ctx = makeGoCtx({
