@@ -510,7 +510,7 @@ test("auto-discovery finds a Makefile once on a case-insensitive filesystem", as
 
 test("auto-discovery finds tracked and untracked files at any depth, skipping gitignored ones unless passed and excluded paths", async () => {
   const makefile = "UUID_PACKAGE ?= github.com/google/uuid@v1.4.0\n";
-  const dir = realpathSync(writeTree("discovery", {
+  const dir = realpathSync.native(writeTree("discovery", {
     "Makefile": makefile, "tools/tools.mk": makefile, "deep/er/Makefile": makefile, "node_modules/pkg/Makefile": makefile,
     "untracked/Makefile": makefile, "gitignored/Makefile": makefile, "svc/app.Dockerfile": "FROM node:18\n", ".gitignore": "gitignored/\n",
   }));
