@@ -9,12 +9,12 @@ export function parseJsonish(text: string): unknown {
   function skipComment(j: number): number {
     if (text[j + 1] === "/") {
       j += 2;
-      while (j < n && text[j] !== "\n") j++;
+      while (j < n && text[j] !== "\n" && text[j] !== "\r") j++;
       return j;
     }
-    j += 2;
-    while (j < n && (text[j] !== "*" || text[j + 1] !== "/")) j++;
-    return j + 2;
+    const end = text.indexOf("*/", j + 2);
+    if (end === -1) throw new SyntaxError("Unterminated block comment");
+    return end + 2;
   }
 
   function skipTrivia(j: number): number {
@@ -46,17 +46,14 @@ export function parseJsonish(text: string): unknown {
       while (i < n) {
         const c = text[i];
         if (c === "\\") {
-          const next = text[i + 1];
-          if (next === "'") { out += "'"; i += 2; continue; }
-          if (next === "\n") { i += 2; continue; }
-          out += c;
-          if (i + 1 < n) { out += next; i += 2; } else { i++; }
+          if (text[i + 1] === "'") out += "'";
+          else if (text[i + 1] !== "\n") out += text.slice(i, i + 2);
+          i += 2;
           continue;
         }
-        if (c === '"') { out += '\\"'; i++; continue; }
-        if (c === "'") { out += '"'; i++; break; }
-        out += c;
         i++;
+        if (c === "'") { out += '"'; break; }
+        out += c === '"' ? '\\"' : c;
       }
       continue;
     }
@@ -69,11 +66,7 @@ export function parseJsonish(text: string): unknown {
 
     if (ch === ",") {
       const next = text[skipTrivia(i + 1)];
-      if (next === "}" || next === "]") {
-        i++;
-        continue;
-      }
-      out += ch;
+      if (next !== "}" && next !== "]") out += ch;
       i++;
       continue;
     }

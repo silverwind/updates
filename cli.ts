@@ -1,13 +1,12 @@
-import {cwd, exit, platform, stderr, stdin, versions} from "node:process";
+import {cwd, exit, stderr, stdin} from "node:process";
 import {parseArgs, stripVTControlCharacters, styleText} from "node:util";
-import {dirname, join, resolve} from "node:path";
+import {dirname, resolve} from "node:path";
 import {readFileSync, statSync} from "node:fs";
-import {pathToFileURL} from "node:url";
 import {text} from "node:stream/consumers";
 import type {Readable} from "node:stream";
 import type {ReadStream} from "node:tty";
 import {cliBaseConfig, options, optionalValueOptions, parseMixedArg, getOptionKey, parseArgList, parsePinArg,
-  loadConfig} from "./config.ts";
+  loadConfig, findConfigUp} from "./config.ts";
 import {forgeHostOf, normalizeUrl, verifyToken} from "./modes/shared.ts";
 import {removeToken, storeToken} from "./utils/tokens.ts";
 import {highlightDiff, parsePositiveInt, splitGlobAlternatives, textTable} from "./utils/utils.ts";
@@ -19,47 +18,26 @@ function cliPatternToRegex(pattern: string): string | RegExp {
   return /^\/.+\/$/.test(pattern) ? new RegExp(pattern.slice(1, -1)) : pattern;
 }
 
-function argToConfigMixed(arg: Arg): boolean | Array<string | RegExp> | undefined {
-  const parsed = parseMixedArg(arg);
-  if (parsed === false) return undefined;
-  if (parsed === true) return true;
-  return Array.from(parsed).map(cliPatternToRegex);
+function camelCase(option: string): string {
+  return option.replace(/-(.)/g, (_match, char: string) => char.toUpperCase());
 }
 
 function deriveStartDir(first: string | undefined): string {
   if (!first) return cwd();
   const abs = resolve(first);
-  let isDir = false;
-  try { isDir = statSync(abs).isDirectory(); } catch {}
-  return isDir ? abs : dirname(abs);
+  try { if (statSync(abs).isDirectory()) return abs; } catch {}
+  return dirname(abs);
 }
 
-function resolveFileArgs(args: Record<string, Arg>, positionals: Array<string>): {filesList: Array<string>, startDir: string} {
-  const filesList = [...parseArgList(args.file), ...positionals];
-  return {filesList, startDir: deriveStartDir(filesList[0])};
-}
-
-export function parseCliArgs(argv?: Array<string>): {args: Record<string, Arg>, positionals: Array<string>} {
-  const result = parseArgs({
-    strict: false,
-    allowPositionals: true,
-    tokens: true,
-    options,
-    ...(argv !== undefined && {args: argv}),
-  });
-
+export function parseCliArgs(argv: Array<string>): {args: Record<string, Arg>, positionals: Array<string>} {
+  const {tokens} = parseArgs({args: argv, strict: false, allowPositionals: true, tokens: true, options});
   const values = Object.create(null) as Record<string, Arg>;
-  const consumedPositionals = new Set<number>();
+  const consumedTokens = new Set<number>();
   const recordOptionValue = (key: string, value: string | boolean) => {
-    if (options[key]?.multiple) {
-      ((values[key] ??= []) as Array<string | boolean>).push(value);
-    } else {
-      values[key] = value;
-    }
+    if (options[key]?.multiple) ((values[key] ??= []) as Array<string | boolean>).push(value);
+    else values[key] = value;
   };
-  let positionalsSeen = 0;
-  for (const [index, token] of result.tokens.entries()) {
-    if (token.kind === "positional") positionalsSeen++;
+  for (const [index, token] of tokens.entries()) {
     if (token.kind !== "option") continue;
     if (!getOptionKey(token.name)) throw new Error(`Unknown option: ${token.rawName}`);
     if (options[token.name]?.type === "string" && token.value === undefined && !optionalValueOptions.has(token.name)) {
@@ -70,110 +48,70 @@ export function parseCliArgs(argv?: Array<string>): {args: Record<string, Arg>, 
       continue;
     }
     const longOption = token.value.startsWith("--");
-    const next = result.tokens[index + 1];
+    const next = tokens[index + 1];
     const nextPositional = next?.kind === "positional" ? next.value : undefined;
     const recoveredOptions: Array<{key: string, value: string | boolean}> = [];
     const raw = token.value.substring(longOption ? 2 : 1);
     let consumesPositional = false;
-    if (longOption) {
-      const key = getOptionKey(raw);
-      if (key) {
-        consumesPositional = options[key].type === "string" && nextPositional !== undefined;
-        recoveredOptions.push({key, value: !consumesPositional || nextPositional!});
-      }
-    } else {
-      for (let offset = 0; offset < raw.length;) {
-        const key = getOptionKey(raw[offset]);
-        if (!key) { recoveredOptions.length = 0; break; }
-        if (options[key].type === "boolean") {
-          recoveredOptions.push({key, value: true});
-          offset++;
-        } else {
-          const inlineValue = raw.substring(offset + 1);
-          consumesPositional = !inlineValue && nextPositional !== undefined;
-          recoveredOptions.push({
-            key,
-            value: inlineValue || !consumesPositional || nextPositional!,
-          });
-          offset = raw.length;
-        }
-      }
+    for (const [offset, name] of (longOption ? [raw] : raw.split("")).entries()) {
+      const key = getOptionKey(name);
+      if (!key) { recoveredOptions.length = 0; break; }
+      if (options[key].type === "boolean") { recoveredOptions.push({key, value: true}); continue; }
+      const inlineValue = longOption ? "" : raw.substring(offset + 1);
+      consumesPositional = !inlineValue && nextPositional !== undefined;
+      recoveredOptions.push({key, value: inlineValue || !consumesPositional || nextPositional!});
+      break;
     }
     if (!recoveredOptions.length) {
       recordOptionValue(token.name, token.value);
       continue;
     }
-    if (!options[token.name]?.multiple) {
-      values[token.name] = true;
-    } else if (optionalValueOptions.has(token.name)) {
+    if (!options[token.name]?.multiple || optionalValueOptions.has(token.name)) {
       recordOptionValue(token.name, true); // a bare occurrence still means "all"
     } else {
       values[token.name] ??= [];
     }
-    if (consumesPositional) consumedPositionals.add(positionalsSeen);
+    if (consumesPositional) consumedTokens.add(index + 1);
     for (const {key, value} of recoveredOptions) recordOptionValue(key, value);
   }
-
-  return {args: values, positionals: result.positionals.filter((_val, index) => !consumedPositionals.has(index))};
+  return {
+    args: values,
+    positionals: tokens.flatMap((token, index) => token.kind === "positional" && !consumedTokens.has(index) ? [token.value] : []),
+  };
 }
 
-export async function resolveConfig(
-  args: Record<string, Arg>,
-  positionals: Array<string>,
-): Promise<UpdatesOptions> {
-  const {filesList, startDir} = resolveFileArgs(args, positionals);
-
-  const fileConfig = await loadConfig(startDir);
-
-  const cliConfig: Partial<UpdatesOptions> = {};
-  if (args.json) cliConfig.json = true;
-  if (args.verbose) cliConfig.verbose = true;
-  if (args["no-cache"]) cliConfig.noCache = true;
-  if (args.update) cliConfig.update = true;
-  if (args.indirect) cliConfig.indirect = true;
-  if (args["error-on-outdated"]) cliConfig.errorOnOutdated = true;
-  if (args["error-on-unchanged"]) cliConfig.errorOnUnchanged = true;
-  if (args.color) {cliConfig.color = true; cliConfig.noColor = false;}
-  if (args["no-color"]) {cliConfig.color = false; cliConfig.noColor = true;}
-  if (typeof args.timeout === "string") cliConfig.timeout = parsePositiveInt(args.timeout, "timeout");
-  if (typeof args.sockets === "string") cliConfig.sockets = parsePositiveInt(args.sockets, "sockets");
-  if (typeof args.registry === "string") cliConfig.registry = args.registry;
-  if (typeof args.cooldown === "string") cliConfig.cooldown = args.cooldown;
-
-  const cliInclude = parseArgList(args.include).map(cliPatternToRegex);
-  const cliExclude = parseArgList(args.exclude).map(cliPatternToRegex);
-  if (cliInclude.length) cliConfig.include = cliInclude;
-  if (cliExclude.length) cliConfig.exclude = cliExclude;
-
-  const cliTypes = parseArgList(args.types);
-  if (cliTypes.length) cliConfig.types = cliTypes;
-
-  const cliPin = parsePinArg(args.pin);
-  if (Object.keys(cliPin).length) cliConfig.pin = cliPin;
-
-  const cliModes = parseArgList(args.modes);
-  if (cliModes.length) cliConfig.modes = cliModes;
-
-  for (const key of ["greatest", "prerelease", "release", "patch", "minor"] as const) {
-    const val = argToConfigMixed(args[key]);
-    if (val !== undefined) cliConfig[key] = val;
+function argsToConfig(args: Record<string, Arg>, files: Array<string>): Record<string, unknown> {
+  const config: Record<string, unknown> = {};
+  const setNonEmpty = (key: string, list: Array<unknown>) => { if (list.length) config[key] = list; };
+  for (const option of ["json", "verbose", "no-cache", "update", "indirect", "error-on-outdated", "error-on-unchanged"]) {
+    if (args[option]) config[camelCase(option)] = true;
   }
-  const allowDowngrade = argToConfigMixed(args["allow-downgrade"]);
-  if (allowDowngrade !== undefined) cliConfig.allowDowngrade = allowDowngrade;
-
-  if (filesList.length) cliConfig.files = filesList;
-  for (const [option, key] of [["include-paths", "includePaths"], ["exclude-paths", "excludePaths"]] as const) {
-    const globs = Array.isArray(args[option]) ? args[option].filter(glob => typeof glob === "string").flatMap(splitGlobAlternatives) : [];
-    if (globs.length) cliConfig[key] = globs;
+  if (args.color) {config.color = true; config.noColor = false;}
+  if (args["no-color"]) {config.color = false; config.noColor = true;}
+  if (typeof args.timeout === "string") config.timeout = parsePositiveInt(args.timeout, "timeout");
+  if (typeof args.sockets === "string") config.sockets = parsePositiveInt(args.sockets, "sockets");
+  for (const key of ["registry", "cooldown", "forgeapi", "pypiapi", "jsrapi", "goproxy", "cargoapi", "dockerapi"]) {
+    if (typeof args[key] === "string") config[key] = args[key];
   }
-
-  for (const key of ["forgeapi", "pypiapi", "jsrapi", "goproxy", "cargoapi", "dockerapi"] as const) {
-    if (typeof args[key] === "string") cliConfig[key] = args[key];
+  for (const key of ["include", "exclude"]) setNonEmpty(key, parseArgList(args[key]).map(cliPatternToRegex));
+  setNonEmpty("types", parseArgList(args.types));
+  const pin = parsePinArg(args.pin);
+  if (Object.keys(pin).length) config.pin = pin;
+  setNonEmpty("modes", parseArgList(args.modes));
+  for (const option of optionalValueOptions) {
+    const parsed = parseMixedArg(args[option]);
+    if (parsed !== false) config[camelCase(option)] = parsed === true || Array.from(parsed, cliPatternToRegex);
   }
-
-  const config: UpdatesOptions = {...fileConfig, pin: undefined, ...cliConfig};
-  Object.defineProperty(config, cliBaseConfig, {value: {cliKeys: Object.keys(cliConfig)}});
+  setNonEmpty("files", files);
+  for (const option of ["include-paths", "exclude-paths"]) setNonEmpty(camelCase(option), parseArgList(args[option], splitGlobAlternatives));
   return config;
+}
+
+export async function resolveConfig(args: Record<string, Arg>, positionals: Array<string>): Promise<UpdatesOptions> {
+  const files = [...parseArgList(args.file), ...positionals];
+  const fileConfig = await loadConfig(deriveStartDir(files[0]));
+  const cliConfig = argsToConfig(args, files);
+  return Object.defineProperty({...fileConfig, pin: undefined, ...cliConfig}, cliBaseConfig, {value: {cliKeys: Object.keys(cliConfig)}});
 }
 
 type CliIo = {
@@ -183,68 +121,17 @@ type CliIo = {
   moduleUrl: string,
 };
 
-const valueOptions: Record<string, string> = {
-  d: "allow-downgrade", e: "exclude", f: "file", l: "pin", C: "cooldown", p: "prerelease", R: "release",
-  g: "greatest", t: "types", P: "patch", m: "minor", s: "sockets", T: "timeout", r: "registry", i: "include",
-  M: "modes", forgeapi: "forgeapi", pypiapi: "pypiapi", jsrapi: "jsrapi", goproxy: "goproxy",
-  cargoapi: "cargoapi", dockerapi: "dockerapi", L: "login", O: "logout", N: "include-paths", X: "exclude-paths",
-};
-const stringShortOptions = new Set(Object.keys(valueOptions));
-for (const long of Object.values(valueOptions)) valueOptions[long] = long;
-
 function hasFlag(args: Array<string>, long: string, short: string): boolean {
-  if (args.includes(`--${long}`)) return true;
-  for (const arg of args) {
-    if (!/^-[^-]/.test(arg)) continue;
-    const options = arg.slice(1);
-    const index = options.indexOf(short);
-    if (index !== -1 && Array.from(options.slice(0, index)).every(option => !stringShortOptions.has(option))) return true;
-  }
-  return false;
+  return args.some(arg => arg === `--${long}` || /^-[^-]/.test(arg) && arg.includes(short) &&
+    Array.from(arg.slice(1, arg.indexOf(short))).every(char => options[getOptionKey(char)]?.type !== "string"));
 }
 
-async function startPrewarm(rawArgs: Array<string>): Promise<void> {
-  const args: Record<string, unknown> = {};
-  let firstPositional: string | undefined;
-  for (let index = 0; index < rawArgs.length; index++) {
-    const arg = rawArgs[index];
-    if (!arg.startsWith("-")) {
-      firstPositional ??= arg;
-      continue;
-    }
-    const long = /^--([^=]+)(?:=(.*))?$/.exec(arg);
-    const short = /^-([A-Za-z])(.*)$/.exec(arg);
-    const option = long ? valueOptions[long[1]] : short ? valueOptions[short[1]] : undefined;
-    if (!option) continue;
-    const inline = long ? long[2] : short![2];
-    const value = inline || (rawArgs[index + 1]?.startsWith("-") === false ? rawArgs[++index] : undefined);
-    if (value === undefined) continue;
-    if (option === "file" || option === "modes") {
-      ((args[option] ??= []) as Array<string>).push(...value.split(","));
-    } else args[option] = value;
-  }
-  const first = (args.file as Array<string> | undefined)?.[0] ?? firstPositional;
-  const firstPath = first ? resolve(first) : cwd();
-  let startDir = first ? dirname(firstPath) : firstPath;
-  try { if (statSync(firstPath).isDirectory()) startDir = firstPath; } catch {}
-
-  let config: Record<string, unknown> = {};
-  configSearch:
-  for (let dir = startDir; ; dir = dirname(dir)) {
-    for (const extension of ["js", "ts", "mjs", "mts"]) {
-      const path = join(dir, `updates.config.${extension}`);
-      try {
-        if (!statSync(path).isFile()) continue;
-        config = (await import(pathToFileURL(path).href)).default ?? {};
-        break configSearch;
-      } catch {}
-    }
-    if (dirname(dir) === dir) break;
-  }
-  config = {...config, ...args};
-  const files = Array.isArray(config.file) ? config.file : config.files;
+async function startPrewarm(args: Record<string, Arg>, positionals: Array<string>): Promise<void> {
+  const files = parseArgList(args.file);
+  const startDir = deriveStartDir(files[0] ?? positionals[0]);
+  const fileConfig = await findConfigUp(startDir) ?? {};
   const {prewarmOrigins} = await import("./utils/prewarm.ts");
-  for (const origin of prewarmOrigins(startDir, {...config, files})) {
+  for (const origin of prewarmOrigins(startDir, {...fileConfig, ...argsToConfig(args, files)})) {
     const method = origin.endsWith("/rate_limit") ? "GET" : "HEAD";
     (async () => { try { await (await fetch(origin, {method})).arrayBuffer(); } catch {} })();
   }
@@ -263,19 +150,16 @@ function readHidden(stdin: ReadStream, prompt: string): Promise<string> {
     let value = "";
     const onData = (chunk: string) => {
       for (const char of chunk) {
-        if (char === "\u0003" || char === "\u0004") {
-          stdin.setRawMode(false);
-          stderr.write("\n");
-          exit(130);
-        } else if (char === "\r" || char === "\n") {
-          stdin.off("data", onData);
-          stdin.setRawMode(false);
-          stdin.pause();
-          stderr.write("\n");
-          return resolve(value);
-        } else {
+        if (!"\u0003\u0004\r\n".includes(char)) {
           value = char === "\b" || char === "\u007f" ? value.slice(0, -1) : value + char;
+          continue;
         }
+        stdin.off("data", onData);
+        stdin.setRawMode(false);
+        stdin.pause();
+        stderr.write("\n");
+        if (char === "\u0003" || char === "\u0004") exit(130);
+        return resolve(value);
       }
     };
     stdin.on("data", onData);
@@ -283,35 +167,17 @@ function readHidden(stdin: ReadStream, prompt: string): Promise<string> {
 }
 
 async function readToken(stdin: Readable | ReadStream, host: string): Promise<string> {
-  const raw = "isTTY" in stdin && stdin.isTTY ? await readHidden(stdin, `token for ${host}: `) : await text(stdin);
-  const token = raw.trim();
+  const token = ("isTTY" in stdin && stdin.isTTY ? await readHidden(stdin, `token for ${host}: `) : await text(stdin)).trim();
   if (!token) throw new Error(`token for ${host} is empty`);
   if (/[\s\p{C}]/u.test(token)) throw new Error(`token for ${host} contains invalid characters`);
   return token;
 }
 
-export async function runCli(
-  rawArgs: Array<string>,
-  io: CliIo,
-  prewarm = true,
-): Promise<number> {
-  let red: (text: string | number) => string = String;
-  let green: (text: string | number) => string = String;
+export async function runCli(rawArgs: Array<string>, io: CliIo, prewarm = true): Promise<number> {
+  let red: (text: string) => string = String;
+  let green: typeof red = String;
   let jsonOutput = hasFlag(rawArgs, "json", "j");
-  const writeLine = (text: string | number) => io.stdout(`${text}\n`);
-  const end = async (err?: Error, exitCode?: number): Promise<number> => {
-    if (err) {
-      const error = err.message ?? String(err);
-      writeLine(jsonOutput ? JSON.stringify({error}) : red(error));
-    }
-
-    if (platform === "win32" && Number(versions.node.split(".")[0]) >= 23) {
-      await new Promise(resolve => setTimeout(resolve, 50));
-    }
-
-    return exitCode ?? (err ? 1 : 0);
-  };
-
+  const writeLine = (text: string) => io.stdout(`${text}\n`);
   try {
     if (hasFlag(rawArgs, "help", "h")) {
       io.stdout(`usage: updates [options] [files...]
@@ -364,7 +230,7 @@ export async function runCli(
     $ updates -f docker-compose.yml
     $ updates -f Makefile
 `);
-      return await end();
+      return 0;
     }
 
     if (hasFlag(rawArgs, "version", "v")) {
@@ -373,40 +239,37 @@ export async function runCli(
         packageJson = readFileSync(new URL("../package.json", io.moduleUrl), "utf8");
       }
       writeLine(JSON.parse(packageJson).version);
-      return await end();
+      return 0;
     }
 
     const {args, positionals} = parseCliArgs(rawArgs);
     if (args.login !== undefined) {
       const host = normalizeHost(args.login, "login");
       const token = await readToken(io.stdin ?? stdin, host);
-      const forgeApiUrl = typeof args.forgeapi === "string" ? normalizeUrl(args.forgeapi) : undefined;
-      const login = await verifyToken(host, token, forgeApiUrl);
+      const login = await verifyToken(host, token, typeof args.forgeapi === "string" ? normalizeUrl(args.forgeapi) : undefined);
       await storeToken(host, token);
       writeLine(`stored token for ${host} (${login})`);
-      return await end();
+      return 0;
     }
     if (args.logout !== undefined) {
       const host = normalizeHost(args.logout, "logout");
       if (!await removeToken(host)) throw new Error(`no stored token for ${host}`);
       writeLine(`removed token for ${host}`);
-      return await end();
+      return 0;
     }
-    if (prewarm) {
-      try { await startPrewarm(rawArgs); } catch {}
-    }
+    try { if (prewarm) await startPrewarm(args, positionals); } catch {}
     const config = await resolveConfig(args, positionals);
     const {updates} = await import("./api.ts");
 
-    const useColor = !config.noColor && (config.color || io.stdoutIsTTY);
-    if (useColor) {
-      red = (text: string | number) => styleText("red", String(text), {validateStream: false});
-      green = (text: string | number) => styleText("green", String(text), {validateStream: false});
+    if (!config.noColor && (config.color || io.stdoutIsTTY)) {
+      red = text => styleText("red", text, {validateStream: false});
+      green = text => styleText("green", text, {validateStream: false});
     }
     jsonOutput = Boolean(config.json);
 
     const output = await updates(config);
-    const hasResults = Object.keys(output.results).length > 0;
+    const resultModes = Object.keys(output.results);
+    const hasResults = resultModes.length > 0;
     const errors = output.errors ?? [];
 
     if (config.json) {
@@ -415,36 +278,28 @@ export async function runCli(
         ...(hasResults && {results: output.results}),
         ...(errors.length && {errors}),
       }));
-    } else if (output.message) {
-      writeLine(output.message);
-    } else if (hasResults) {
-      writeLine(formatOutput(output, red, green));
-    }
-
-    if (config.update && !config.json) {
-      for (const mode of Object.keys(output.results)) writeLine(green(`✨ ${mode} updated`));
-    }
-
-    if (!config.json) {
+    } else {
+      if (output.message) writeLine(output.message);
+      else if (hasResults) writeLine(formatOutput(output, red, green));
+      if (config.update) for (const mode of resultModes) writeLine(green(`✨ ${mode} updated`));
       for (const {mode, name, error} of errors) writeLine(red(`${mode} ${name}: ${error}`));
     }
 
-    return await end(undefined, errors.length ? 1 : config.errorOnOutdated ? (hasResults ? 2 : 0) :
-      config.errorOnUnchanged ? (hasResults ? 0 : 2) : 0);
+    if (errors.length) return 1;
+    if (config.errorOnOutdated) return hasResults ? 2 : 0;
+    if (config.errorOnUnchanged) return hasResults ? 0 : 2;
+    return 0;
   } catch (err) {
-    return await end(err as Error);
+    const error = (err as Error).message ?? String(err);
+    writeLine(jsonOutput ? JSON.stringify({error}) : red(error));
+    return 1;
   }
 }
 
-function formatOutput(
-  output: Output,
-  red: (text: string | number) => string,
-  green: (text: string | number) => string,
-): string {
+function formatOutput(output: Output, red: (text: string) => string, green: (text: string) => string): string {
   const modes = Object.keys(output.results);
   const hasMultipleModes = modes.length > 1;
-  const header = hasMultipleModes ? ["NAME", "MODE", "OLD", "NEW", "AGE", "INFO"] : ["NAME", "OLD", "NEW", "AGE", "INFO"];
-  const arr = [header];
+  const arr = [["NAME", ...(hasMultipleModes ? ["MODE"] : []), "OLD", "NEW", "AGE", "INFO"]];
   const seen = new Set<string>();
 
   for (const mode of modes) {

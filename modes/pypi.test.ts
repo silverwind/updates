@@ -2,6 +2,18 @@ import {updatePyprojectToml, fetchPypiInfo, pypiSatisfies} from "./pypi.ts";
 import {type ModeContext, fetchTimeout, fieldSep} from "./shared.ts";
 import {parseUvDependencies} from "../utils/utils.ts";
 
+function pypiCtx(data: unknown, urls: Array<string> = []): ModeContext {
+  return {
+    pypiApiUrl: "https://pypi.org",
+    fetchTimeout,
+    noCache: true,
+    doFetch: (url: string) => {
+      urls.push(url);
+      return Promise.resolve({ok: true, text: () => Promise.resolve(JSON.stringify(data)), headers: new Headers()});
+    },
+  } as unknown as ModeContext;
+}
+
 test("updatePyprojectToml preserves unrelated content and dependency groups", () => {
   const input = [
     `[project]`,
@@ -45,36 +57,13 @@ test("updatePyprojectToml preserves unrelated content and dependency groups", ()
   );
 });
 
-test("fetchPypiInfo happy path", async () => {
-  const mockData = {info: {version: "2.31.0"}, releases: {"2.31.0": [{}]}};
-  let url = "";
-  const ctx = {
-    pypiApiUrl: "https://pypi.org",
-    fetchTimeout,
-    doFetch: (input: string) => {
-      url = input;
-      return Promise.resolve({ok: true, text: () => Promise.resolve(JSON.stringify(mockData)), headers: new Headers()});
-    },
-  } as unknown as ModeContext;
-  const result = await fetchPypiInfo("Foo_Bar.baz", ctx);
-  expect(result).toEqual([{...mockData, name: "Foo_Bar.baz"}, null]);
-  expect(url).toBe("https://pypi.org/pypi/foo-bar-baz/json");
-});
-
 test("fetchPypiInfo shares a normalized request in flight", async () => {
-  let requests = 0;
-  const ctx = {
-    pypiApiUrl: "https://pypi.org",
-    fetchTimeout,
-    noCache: true,
-    doFetch: async () => {
-      requests++;
-      await new Promise(resolve => setImmediate(resolve));
-      return {ok: true, text: () => Promise.resolve(JSON.stringify({info: {}, releases: {}})), headers: new Headers()};
-    },
-  } as unknown as ModeContext;
-  await Promise.all([fetchPypiInfo("Foo_Bar", ctx), fetchPypiInfo("foo-bar", ctx)]);
-  expect(requests).toBe(1);
+  const mockData = {info: {version: "2.31.0"}, releases: {"2.31.0": [{}]}};
+  const urls: Array<string> = [];
+  const ctx = pypiCtx(mockData, urls);
+  const [result] = await Promise.all([fetchPypiInfo("Foo_Bar.baz", ctx), fetchPypiInfo("foo-bar-baz", ctx)]);
+  expect(result).toEqual([{...mockData, name: "Foo_Bar.baz"}, null]);
+  expect(urls).toEqual(["https://pypi.org/pypi/foo-bar-baz/json"]);
 });
 
 test("fetchPypiInfo preserves yank and upload metadata through the size reducer", async () => {
@@ -85,13 +74,7 @@ test("fetchPypiInfo preserves yank and upload metadata through the size reducer"
     yanked: allYanked || idx === 39,
   }));
   const mockData = {info: {name: "pkg", version: "1.0.1"}, releases: {"1.0.0": files(false), "1.0.1": files(true)}};
-  const ctx = {
-    pypiApiUrl: "https://pypi.org",
-    fetchTimeout,
-    noCache: true,
-    doFetch: () => Promise.resolve({ok: true, text: () => Promise.resolve(JSON.stringify(mockData)), headers: new Headers()}),
-  } as unknown as ModeContext;
-  const [data] = await fetchPypiInfo("reduced-pkg", ctx);
+  const [data] = await fetchPypiInfo("reduced-pkg", pypiCtx(mockData));
   expect(data.releases["1.0.0"]).toHaveLength(40);
   expect(data.releases["1.0.0"][0]).toEqual({
     upload_time_iso_8601: "2025-01-01T00:00:00.000000Z",
@@ -113,12 +96,14 @@ test("fetchPypiInfo failure throws", async () => {
 test("pypiSatisfies handles allowedVersions forms", () => {
   expect(pypiSatisfies("2.1+corp", ">=2,<3")).toBe(true);
   expect(pypiSatisfies("2.1", "")).toBe(true);
-  expect(pypiSatisfies("2.1+corp", "2.1")).toBe(true);
+  expect(pypiSatisfies("2.1+corp", "2.1")).toBe(false);
   expect(pypiSatisfies("2.2", "2.1")).toBe(false);
   expect(pypiSatisfies("2.1", "[extra]>=2")).toBe(false);
   expect(pypiSatisfies("2.1", `>=2; python_version >= "3.12"`)).toBe(false);
   expect(pypiSatisfies("not-a-version", ">=2")).toBe(false);
   expect(pypiSatisfies("2.1", "not-a-range")).toBe(false);
+  expect(pypiSatisfies("1.0", "==1.0.dev1.*")).toBe(false);
+  expect(pypiSatisfies("1.0", "==1.0+corp.*")).toBe(false);
 });
 
 const quoted = (spec: string) => spec.includes(`"`) ? `'${spec}'` : `"${spec}"`;

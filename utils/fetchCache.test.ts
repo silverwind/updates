@@ -1,5 +1,5 @@
 import {createHash} from "node:crypto";
-import {mkdir, mkdtemp, readdir, rm, utimes, writeFile} from "node:fs/promises";
+import {mkdtemp, readdir, rm, utimes, writeFile} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import {basename, join} from "node:path";
 import {flushCacheWrites, getCache, maxCacheEntries, setCache} from "./fetchCache.ts";
@@ -14,11 +14,7 @@ afterAll(async () => {
   await rm(cacheRoot, {recursive: true, force: true});
 });
 
-async function makeCacheDir(name: string): Promise<string> {
-  const dir = join(cacheRoot, name);
-  await mkdir(dir);
-  return dir;
-}
+const makeCacheDir = (name: string) => mkdtemp(join(cacheRoot, name));
 
 test("setCache shares directory creation and getCache preserves newlines", async () => {
   const cacheDir = join(cacheRoot, "round-trip");

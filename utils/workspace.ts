@@ -6,11 +6,7 @@ import {env, platform} from "node:process";
 import {type Deps, fieldSep} from "../modes/shared.ts";
 import {getOrSet, pMap, pushTo, walkUpSync} from "./utils.ts";
 
-export type WorkspaceMember = {
-  absPath: string,
-  content: string,
-  memberPath: string,
-};
+export type WorkspaceMember = {absPath: string, content: string, memberPath: string};
 
 export function baseType(type: string): string {
   const idx = type.indexOf("|");
@@ -25,8 +21,7 @@ export function filterDepsForMember(allDeps: Deps, memberPath: string): Deps {
     for (const [key, dep] of Object.entries(allDeps)) {
       const [type, ...parts] = key.split(fieldSep);
       const separator = type.indexOf("|");
-      const path = separator === -1 ? "." : type.slice(separator + 1);
-      pushTo(result, path, [[baseType(type), ...parts].join(fieldSep), dep]);
+      pushTo(result, separator === -1 ? "." : type.slice(separator + 1), [[baseType(type), ...parts].join(fieldSep), dep]);
     }
     return result;
   });
@@ -34,9 +29,10 @@ export function filterDepsForMember(allDeps: Deps, memberPath: string): Deps {
 }
 
 const globChars = /[*?{[]/;
+const ignoredDirs = new Set(["node_modules", "bower_components"]);
 
 function globDirectories(pattern: string, cwd: string): Array<string> {
-  return globSync(pattern, {cwd, exclude: entry => entry.name === "node_modules", withFileTypes: true})
+  return globSync(pattern, {cwd, exclude: entry => ignoredDirs.has(entry.name), withFileTypes: true})
     .filter(entry => entry.isDirectory() || entry.isSymbolicLink())
     .map(entry => resolve(entry.parentPath, entry.name));
 }
@@ -46,22 +42,15 @@ export async function resolveWorkspaceMembers(patterns: string[], workspaceDir: 
   const excluded = new Set(patterns.filter(pattern => pattern.startsWith("!"))
     .flatMap(pattern => globDirectories(pattern.slice(1), workspaceDir))
     .map(dir => relative(workspaceDir, dir).replace(/\\/g, "/")));
-  const seen = new Set<string>();
-  const candidates: Array<{dir: string, memberPath: string}> = [];
+  const candidates = new Map<string, string>();
   for (const pattern of patterns) {
     if (pattern.startsWith("!")) continue;
-    const dirs = globChars.test(pattern) ?
-      globDirectories(pattern, workspaceDir) :
-      [resolve(join(workspaceDir, pattern))];
-    for (const dir of dirs) {
+    for (const dir of globChars.test(pattern) ? globDirectories(pattern, workspaceDir) : [resolve(join(workspaceDir, pattern))]) {
       const rel = relative(workspaceDir, dir).replace(/\\/g, "/");
-      if (excluded.has(rel)) continue;
-      if (seen.has(dir)) continue;
-      seen.add(dir);
-      candidates.push({dir, memberPath: `./${rel}`});
+      if (!excluded.has(rel) && !candidates.has(dir)) candidates.set(dir, `./${rel}`);
     }
   }
-  const reads = await pMap(candidates, async ({dir, memberPath}) => {
+  const reads = await pMap(candidates, async ([dir, memberPath]) => {
     try {
       const absPath = await realpath(join(dir, manifestFilename));
       const rel = relative(workspaceRoot, absPath);
@@ -71,16 +60,10 @@ export async function resolveWorkspaceMembers(patterns: string[], workspaceDir: 
       return null;
     }
   }, {concurrency});
-  return reads.filter((m): m is WorkspaceMember => m !== null);
+  return reads.filter(member => member !== null);
 }
 
-export type PnpmCatalogEntry = {
-  type: string,
-  name: string,
-  value: string,
-  lineIndex: number,
-  valueIndex: number,
-};
+type PnpmCatalogEntry = {type: string, name: string, value: string, lineIndex: number, valueIndex: number};
 
 const yamlPairRe = /^(\s*)(?:"([^"]*)"|'([^']*)'|([^\s#](?:[^:#]|:(?=\S))*?))\s*:(?:\s+(.*))?$/;
 const yamlCommentRe = /\s#/;
@@ -104,7 +87,7 @@ type FlowPair = {key: string, value: string, valueIndex: number};
 
 type FlowPart = {colon: number, start: number, text: string};
 
-function flowParts(content: string): Array<FlowPart> | null {
+function flowParts(content: string): Array<FlowPart> {
   const parts: Array<FlowPart> = [];
   let start = 1;
   let colon = -1;
@@ -113,17 +96,14 @@ function flowParts(content: string): Array<FlowPart> | null {
   for (let index = 1; index < content.length - 1; index++) {
     const char = content[index];
     if (quote) {
-      if (char === "\\" && quote === '"') index++;
-      else if (char === quote) {
-        if (quote === "'" && content[index + 1] === "'") index++;
-        else quote = "";
-      }
+      if ((char === "\\" && quote === '"') || (char === quote && quote === "'" && content[index + 1] === "'")) index++;
+      else if (char === quote) quote = "";
     } else if (char === '"' || char === "'") {
       quote = char;
     } else if (char === "{" || char === "[") {
       depth++;
     } else if (char === "}" || char === "]") {
-      if (depth === 0) return null;
+      if (depth === 0) return [];
       depth--;
     } else if (char === ":" && depth === 0 && colon === -1) {
       colon = index - start;
@@ -133,7 +113,7 @@ function flowParts(content: string): Array<FlowPart> | null {
       colon = -1;
     }
   }
-  if (quote || depth !== 0) return null;
+  if (quote || depth !== 0) return [];
   parts.push({colon, start, text: content.slice(start, -1)});
   return parts;
 }
@@ -145,34 +125,26 @@ function yamlScalar(content: string): {value: string, valueIndex: number} | null
   const quote = trimmed[0];
   if (quote === '"' || quote === "'") {
     const end = trimmed.indexOf(quote, 1); // anything past the closing quote is a comment
-    if (end === -1) return null;
-    return {value: trimmed.slice(1, end), valueIndex: leading + 1};
+    return end === -1 ? null : {value: trimmed.slice(1, end), valueIndex: leading + 1};
   }
   const commentIndex = trimmed.search(yamlCommentRe);
   return {value: (commentIndex === -1 ? trimmed : trimmed.slice(0, commentIndex)).trimEnd(), valueIndex: leading};
 }
 
-function flowPairs(content: string, contentIndex: number): FlowPair[] | null {
-  if (!content.startsWith("{") || !content.endsWith("}")) return null;
+function flowPairs(content: string, contentIndex: number): FlowPair[] {
+  if (!content.startsWith("{") || !content.endsWith("}")) return [];
   const result: FlowPair[] = [];
-  for (const part of flowParts(content) ?? []) {
-    if (part.colon === -1) return null;
+  for (const part of flowParts(content)) {
+    if (part.colon === -1) return [];
     const key = yamlScalar(part.text.slice(0, part.colon));
     const value = yamlScalar(part.text.slice(part.colon + 1));
-    if (!key || !value) return null;
-    result.push({
-      key: key.value,
-      value: value.value,
-      valueIndex: contentIndex + part.start + part.colon + 1 + value.valueIndex,
-    });
+    if (!key || !value) return [];
+    result.push({key: key.value, value: value.value, valueIndex: contentIndex + part.start + part.colon + 1 + value.valueIndex});
   }
   return result;
 }
 
-export type NpmRegistryConfig = {
-  registry?: string,
-  registries: Record<string, string>,
-};
+type NpmRegistryConfig = {registry?: string, registries: Record<string, string>};
 
 export function parsePnpmRegistryConfig(content: string): NpmRegistryConfig {
   let registry: string | undefined;
@@ -180,33 +152,24 @@ export function parsePnpmRegistryConfig(content: string): NpmRegistryConfig {
   let inRegistries = false;
   for (const line of content.split(/\r?\n/)) {
     const pair = parseYamlPair(line);
-    if (!pair) continue;
-    if (pair.indent === 0) {
+    if (pair?.indent === 0) {
       inRegistries = pair.key === "registries";
       if (pair.key === "registry" && pair.value) registry = pair.value;
-      if (inRegistries) {
-        for (const entry of flowPairs(pair.value, pair.valueIndex) ?? []) registries[entry.key] = entry.value;
-      }
-    } else if (inRegistries && pair.value) {
+      if (inRegistries) for (const entry of flowPairs(pair.value, pair.valueIndex)) registries[entry.key] = entry.value;
+    } else if (inRegistries && pair?.value) {
       registries[pair.key] = pair.value;
     }
   }
-  return {
-    registry,
-    registries: Object.fromEntries(Object.entries(registries).filter(([_scope, url]) => !url.includes("${"))),
-  };
+  return {registry, registries: Object.fromEntries(Object.entries(registries).filter(([_scope, url]) => !url.includes("${")))};
 }
 
-function readConfigUp(filename: string, startDir: string): string | null {
-  const found = walkUpSync(resolve(startDir), dir => {
-    try {
-      return {content: readFileSync(join(dir, filename), "utf8")};
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-    }
+function readIfExists(file: string): {content: string} | null {
+  try {
+    return {content: readFileSync(file, "utf8")};
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     return null;
-  });
-  return found ? found.content : null;
+  }
 }
 
 export function parseYamlMap(content: string): Record<string, any> {
@@ -217,12 +180,8 @@ export function parseYamlMap(content: string): Record<string, any> {
     if (!pair) continue;
     while (pair.indent <= stack.at(-1)!.indent) stack.pop();
     const map = stack.at(-1)!.map;
-    if (pair.value) {
-      map[pair.key] = pair.value;
-    } else {
-      map[pair.key] = {};
-      stack.push({indent: pair.indent, map: map[pair.key]});
-    }
+    map[pair.key] = pair.value || {};
+    if (!pair.value) stack.push({indent: pair.indent, map: map[pair.key]});
   }
   return root;
 }
@@ -250,10 +209,11 @@ export function parsePnpmAuth(value: unknown, source: string): PnpmAuth {
 const nativeRegistryCache = new Map<string, NpmRegistryConfig>();
 
 export function nativeNpmRegistryConfig(startDir: string): NpmRegistryConfig {
-  return getOrSet(nativeRegistryCache, startDir, () => parsePnpmRegistryConfig(readConfigUp("pnpm-workspace.yaml", startDir) ?? ""));
+  return getOrSet(nativeRegistryCache, startDir, () => parsePnpmRegistryConfig(
+    walkUpSync(resolve(startDir), dir => readIfExists(join(dir, "pnpm-workspace.yaml")))?.content ?? ""));
 }
 
-export type PnpmGlobalConfig = NpmRegistryConfig & {auth: PnpmAuth};
+type PnpmGlobalConfig = NpmRegistryConfig & {auth: PnpmAuth};
 
 const globalConfigCache = new Map<string, PnpmGlobalConfig>();
 
@@ -267,49 +227,34 @@ function pnpmConfigDir(): string {
 export function pnpmGlobalConfig(): PnpmGlobalConfig {
   const configDir = pnpmConfigDir();
   return getOrSet(globalConfigCache, configDir, () => {
-    let content = "";
-    try {
-      content = readFileSync(join(configDir, "config.yaml"), "utf8");
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-    }
+    const content = readIfExists(join(configDir, "config.yaml"))?.content ?? "";
     return {...parsePnpmRegistryConfig(content), auth: parsePnpmAuth(parseYamlMap(content)._auth, "config.yaml")};
   });
 }
 
+const flowEntries = (type: string, {value, valueIndex}: {value: string, valueIndex: number}, lineIndex: number) =>
+  flowPairs(value, valueIndex).map(entry => ({type, name: entry.key, value: entry.value, lineIndex, valueIndex: entry.valueIndex}));
+
 export function* pnpmCatalogEntries(content: string): Generator<PnpmCatalogEntry> {
   let section = "";
-  let catalogName = "";
+  let type = "";
   let nameIndent = -1;
   for (const [lineIndex, line] of content.split("\n").entries()) {
     const pair = parseYamlPair(line);
     if (!pair) continue;
     const {indent, key, value, valueIndex} = pair;
     if (indent === 0) {
-      section = key === "catalog" || key === "catalogs" ? key : "";
-      catalogName = "";
+      section = key;
+      type = key;
       nameIndent = -1;
-      if (key === "catalog") {
-        for (const entry of flowPairs(value, valueIndex) ?? []) yield {type: "catalog", name: entry.key, value: entry.value, lineIndex, valueIndex: entry.valueIndex};
-      } else if (key === "catalogs") {
-        for (const catalog of flowPairs(value, valueIndex) ?? []) {
-          for (const entry of flowPairs(catalog.value, catalog.valueIndex) ?? []) {
-            yield {type: `catalogs.${catalog.key}`, name: entry.key, value: entry.value, lineIndex, valueIndex: entry.valueIndex};
-          }
-        }
-      }
-    } else if (section === "catalog") {
-      if (value) yield {type: "catalog", name: key, value, lineIndex, valueIndex};
-    } else if (section === "catalogs") {
-      if (nameIndent === -1 || indent <= nameIndent) {
-        catalogName = key;
-        nameIndent = indent;
-        for (const entry of flowPairs(value, valueIndex) ?? []) {
-          yield {type: `catalogs.${catalogName}`, name: entry.key, value: entry.value, lineIndex, valueIndex: entry.valueIndex};
-        }
-      } else if (value) {
-        yield {type: `catalogs.${catalogName}`, name: key, value, lineIndex, valueIndex};
-      }
+      if (key === "catalog") yield* flowEntries(key, pair, lineIndex);
+      else if (key === "catalogs") for (const catalog of flowPairs(value, valueIndex)) yield* flowEntries(`catalogs.${catalog.key}`, catalog, lineIndex);
+    } else if (section === "catalogs" && (nameIndent === -1 || indent <= nameIndent)) {
+      type = `catalogs.${key}`;
+      nameIndent = indent;
+      yield* flowEntries(type, pair, lineIndex);
+    } else if (value && (section === "catalog" || section === "catalogs")) {
+      yield {type, name: key, value, lineIndex, valueIndex};
     }
   }
 }
@@ -328,27 +273,18 @@ export function updatePnpmWorkspace(content: string, deps: Deps): string {
 }
 
 export function parsePnpmWorkspace(content: string): string[] {
-  const patterns: string[] = [];
+  const items: string[] = [];
   let inPackages = false;
   for (const line of content.split(/\r?\n/)) {
     const pair = parseYamlPair(line);
     if (pair?.indent === 0 && pair.key === "packages") {
-      if (pair.value.startsWith("[") && pair.value.endsWith("]")) {
-        for (const part of flowParts(pair.value) ?? []) {
-          const scalar = yamlScalar(part.text);
-          if (scalar) patterns.push(scalar.value);
-        }
-      }
       inPackages = true;
-      continue;
-    }
-    if (inPackages) {
+      if (pair.value.startsWith("[") && pair.value.endsWith("]")) items.push(...flowParts(pair.value).map(part => part.text));
+    } else if (inPackages) {
       const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#")) continue;
-      if (!trimmed.startsWith("-")) break;
-      const scalar = yamlScalar(trimmed.slice(1));
-      if (scalar) patterns.push(scalar.value);
+      if (trimmed.startsWith("-")) items.push(trimmed.slice(1));
+      else if (trimmed && !trimmed.startsWith("#")) break;
     }
   }
-  return patterns;
+  return items.map(item => yamlScalar(item)?.value).filter(value => value !== undefined);
 }

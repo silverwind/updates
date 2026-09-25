@@ -59,7 +59,7 @@ export function passesPathFilters(path: string, {includePaths, excludePaths}: Pa
   return excludePaths.every(glob => !path.includes(glob) && !pathGlobRegex(glob).test(path));
 }
 
-export function isDependencyFile(path: string): boolean {
+function isDependencyFile(path: string): boolean {
   const filename = basename(path);
   return Object.hasOwn(modeByFileName, filename) || isDockerFileName(filename) || isMakeFileName(filename) ||
     isWorkflowFile(path);

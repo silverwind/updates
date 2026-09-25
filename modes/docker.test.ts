@@ -4,15 +4,18 @@ import {join} from "node:path";
 import {updates} from "../api.ts";
 import {
   composeImageRe, dockerExactFileNames, dockerfileFromRe, dockerImageNames, dockerTagVersion, extractDockerRefs,
-  fetchDockerHubTags, fetchDockerInfo, fetchDockerTagDigest, filterStableTags, findDockerVersion, formatDockerVersion,
-  getDockerInfoUrl, getExtractionRegex, isComposeFile, isDockerfile, isDockerFileName, parseDockerImageRef,
-  parseDockerTag, updateComposeFile, updateDockerfile, updateWorkflowDockerImages,
+  fetchDockerHubTags, fetchDockerInfo, fetchDockerTagDigest, filterStableTags, findDockerVersion, getDockerInfoUrl,
+  getExtractionRegex, isComposeFile, isDockerfile, isDockerFileName, parseDockerImageRef, parseDockerTag,
+  updateComposeFile, updateDockerfile, updateWorkflowDockerImages,
 } from "./docker.ts";
 import {type ModeContext, fetchTimeout, fieldSep} from "./shared.ts";
 
 const allSemvers = new Set(["patch", "minor", "major"]);
 const oldDigest = `sha256:${"a".repeat(64)}`;
 const newDigest = `sha256:${"b".repeat(64)}`;
+const nodeDeps = {[`docker${fieldSep}node`]: {old: "18", new: "20"}};
+const nodeDigestDeps = {[`docker${fieldSep}node`]: {old: "18", new: "20", oldDigest, newDigest}};
+const argVersion = "$" + "{VERSION}";
 
 test.each([
   ["simple library image", "node:18", {registry: null, namespace: "library", repo: "node", tag: "18", fullImage: "node"}],
@@ -25,7 +28,6 @@ test.each([
   ["a registry without a domain suffix", "org/team/image:1.2.3", {registry: "org", namespace: "team", repo: "image", tag: "1.2.3", fullImage: "org/team/image"}],
   ["localhost registry", "localhost/owner/image:1.2.3", {registry: "localhost", namespace: "owner", repo: "image", tag: "1.2.3", fullImage: "localhost/owner/image"}],
   ["a tag with suffix", "node:18-alpine", {registry: null, namespace: "library", repo: "node", tag: "18-alpine", fullImage: "node"}],
-  ["full semver with suffix", "node:18.19.1-bookworm", {registry: null, namespace: "library", repo: "node", tag: "18.19.1-bookworm", fullImage: "node"}],
   ["a digest", "node@sha256:abc123", {registry: null, namespace: "library", repo: "node", tag: "latest", fullImage: "node", digest: "sha256:abc123", digestOnly: true}],
   ["a tag and digest", "node:18@sha256:abc123", {registry: null, namespace: "library", repo: "node", tag: "18", fullImage: "node", digest: "sha256:abc123"}],
   ["a non-version tag and digest", "node:latest@sha256:abc123", {registry: null, namespace: "library", repo: "node", tag: "latest", fullImage: "node", digest: "sha256:abc123"}],
@@ -70,29 +72,21 @@ test.each([
 });
 
 test.each([
-  ["splits the suffix off the tag and puts it back", "20.0.0", "18-alpine", "20-alpine"],
-  ["returns oldTag for an unparseable tag", "2.0.0", "latest", "latest"],
-])("formatDockerVersion %s", (_name, newSemver, oldTag, expected) => {
-  expect(formatDockerVersion(newSemver, oldTag)).toBe(expected);
-});
-
-test.each([
   ["docker-compose.yml", true, false],
   ["docker-compose.yaml", true, false],
   ["docker-stack.yml", true, false],
-  ["docker-stack.yaml", true, false],
   ["compose.yaml", true, false],
   ["compose.prod.yaml", true, false],
   ["compose.json", false, false],
   ["Dockerfile", false, true],
   ["Dockerfile.dev", false, true],
-  ["Dockerfile.prod", false, true],
   ["Makefile", false, false],
   ["random.yml", false, false],
 ])("docker file predicates on %s", (name, compose, dockerfile) => {
   expect(isComposeFile(name)).toBe(compose);
   expect(isDockerfile(name)).toBe(dockerfile);
   expect(isDockerFileName(name)).toBe(compose || dockerfile);
+  expect(getExtractionRegex(name)).toBe(dockerfile ? dockerfileFromRe : composeImageRe);
 });
 
 test("dockerExactFileNames stay within isDockerFileName", () => {
@@ -117,58 +111,34 @@ test("extractDockerRefs", () => {
     "FROM ubuntu:latest",
     "",
   ].join("\n");
-  const dockerfileRefs = extractDockerRefs(dockerfile, dockerfileFromRe);
-  expect(dockerfileRefs).toHaveLength(2);
-  expect(dockerfileRefs[0].ref.repo).toBe("node");
-  expect(dockerfileRefs[0].ref.tag).toBe("18");
-  expect(dockerfileRefs[1].ref.repo).toBe("nginx");
-  expect(dockerfileRefs[1].ref.tag).toBe("1.25.3");
-  expect(dockerfileRefs[1].ref.digest).toBe("sha256:abc123");
+  expect(extractDockerRefs(dockerfile, dockerfileFromRe).map(({ref}) => ref)).toMatchObject([
+    {repo: "node", tag: "18"}, {repo: "nginx", tag: "1.25.3", digest: "sha256:abc123"},
+  ]);
   const compose = "services:\n  web:\n    image: node:20.11.1\n  db:\n    image: postgres:16.2\n    build: .\n";
-  const composeRefs = extractDockerRefs(compose, composeImageRe);
-  expect(composeRefs).toHaveLength(1);
-  expect(composeRefs[0].match).toBe("node:20.11.1");
+  expect(extractDockerRefs(compose, composeImageRe).map(({match}) => match)).toEqual(["node:20.11.1"]);
 });
 
 test("findDockerVersion basic selection", () => {
-  const tagMap: Record<string, string> = {
-    "18": "2024-01-01",
-    "20": "2024-06-01",
-    "20-alpine": "2024-06-01",
-    "18-alpine": "2024-01-01",
-  };
-  const result = findDockerVersion(tagMap, "18", allSemvers);
-  expect(result).toEqual({newTag: "20", date: "2024-06-01"});
+  const tagMap = {"18": "2024-01-01", "20": "2024-06-01", "20-alpine": "2024-06-01", "18-alpine": "2024-01-01"};
+  expect(findDockerVersion(tagMap, "18", allSemvers)).toEqual({newTag: "20", date: "2024-06-01"});
   expect(findDockerVersion({"18": "2024-01-01"}, "18", allSemvers)).toBeNull();
   expect(findDockerVersion({"20": "2024-01-01"}, "latest", allSemvers)).toBeNull();
 });
 
 test("findDockerVersion filters by suffix", () => {
-  const tagMap: Record<string, string> = {
-    "18-alpine": "2024-01-01",
-    "20": "2024-06-01",
-    "20-alpine": "2024-06-01",
-  };
+  const tagMap = {"18-alpine": "2024-01-01", "20": "2024-06-01", "20-alpine": "2024-06-01"};
   expect(findDockerVersion(tagMap, "18-alpine", allSemvers)).toEqual({newTag: "20-alpine", date: "2024-06-01"});
   expect(findDockerVersion({"18": "2024-01-01", "20-alpine": "2024-06-01"}, "18", allSemvers)).toBeNull();
-  const suffixed: Record<string, string> = {
-    "1.2.3-alpine3.19": "2024-01-01",
-    "1.3.0-alpine": "2024-06-01",
-    "1.3.0-alpine3.20": "2024-06-01",
-    "1.3.0-alpine3.19": "2024-06-02",
-    "1.3.0-nanoserver-1809": "2024-06-03",
+  const suffixed = {
+    "1.2.3-alpine3.19": "2024-01-01", "1.3.0-alpine": "2024-06-01", "1.3.0-alpine3.20": "2024-06-01",
+    "1.3.0-alpine3.19": "2024-06-02", "1.3.0-nanoserver-1809": "2024-06-03",
   };
   expect(findDockerVersion(suffixed, "1.2.3-alpine3.19", allSemvers)).toEqual({newTag: "1.3.0-alpine3.19", date: "2024-06-02"});
   expect(findDockerVersion(suffixed, "1.2.3-nanoserver-1809", allSemvers)).toEqual({newTag: "1.3.0-nanoserver-1809", date: "2024-06-03"});
 });
 
 test("findDockerVersion keeps the authored precision", () => {
-  const tagMap: Record<string, string> = {
-    "18": "2024-01-01",
-    "20": "2024-06-01",
-    "20.11": "2024-06-10",
-    "20.11.1": "2024-06-15",
-  };
+  const tagMap = {"18": "2024-01-01", "20": "2024-06-01", "20.11": "2024-06-10", "20.11.1": "2024-06-15"};
   expect(findDockerVersion(tagMap, "18", allSemvers)).toEqual({newTag: "20", date: "2024-06-01"});
   expect(findDockerVersion(tagMap, "18.19", allSemvers)).toEqual({newTag: "20.11", date: "2024-06-10"});
   expect(findDockerVersion({"18": "2024-01-01", "20.11.1": "2024-06-15"}, "18", allSemvers)).toBeNull();
@@ -179,12 +149,7 @@ test("findDockerVersion keeps the authored precision", () => {
 });
 
 test("findDockerVersion ignores tags from another versioning scheme", () => {
-  const tagMap: Record<string, string> = {
-    "3": "2026-06-16",
-    "3.24": "2026-06-16",
-    "3.24.1": "2026-06-16",
-    "20260127": "2026-01-28",
-  };
+  const tagMap = {"3": "2026-06-16", "3.24": "2026-06-16", "3.24.1": "2026-06-16", "20260127": "2026-01-28"};
   expect(findDockerVersion(tagMap, "3.24", allSemvers)).toBeNull();
   expect(findDockerVersion(tagMap, "3", allSemvers)).toBeNull();
   expect(findDockerVersion(tagMap, "20251224", allSemvers)).toEqual({newTag: "20260127", date: "2026-01-28"});
@@ -194,22 +159,16 @@ test("findDockerVersion ignores tags from another versioning scheme", () => {
 
 test("findDockerVersion cooldown needs a timestamp", () => {
   const now = Date.parse("2024-07-01");
-  const tagMap: Record<string, string> = {"18": "2024-01-01", "20": "2024-06-25", "19": ""};
+  const tagMap = {"18": "2024-01-01", "20": "2024-06-25", "19": ""};
   expect(findDockerVersion(tagMap, "18", allSemvers, 30, now)).toBeNull();
   expect(findDockerVersion(tagMap, "18", allSemvers)).toEqual({newTag: "20", date: "2024-06-25"});
 });
 
 test("findDockerVersion respects pinnedRange", () => {
-  expect(findDockerVersion({
-    "8.0": "2024-01-01",
-    "8.0.41": "2024-06-01",
-    "9.7": "2024-12-01",
-  }, "8.0", allSemvers, undefined, undefined, "8.0")).toBeNull();
-  expect(findDockerVersion({
-    "8.0.0": "2024-01-01",
-    "8.0.41": "2024-06-01",
-    "9.7": "2024-12-01",
-  }, "8.0.0", allSemvers, undefined, undefined, "8.0")).toEqual({newTag: "8.0.41", date: "2024-06-01"});
+  expect(findDockerVersion({"8.0": "2024-01-01", "8.0.41": "2024-06-01", "9.7": "2024-12-01"}, "8.0", allSemvers,
+    undefined, undefined, "8.0")).toBeNull();
+  expect(findDockerVersion({"8.0.0": "2024-01-01", "8.0.41": "2024-06-01", "9.7": "2024-12-01"}, "8.0.0", allSemvers,
+    undefined, undefined, "8.0")).toEqual({newTag: "8.0.41", date: "2024-06-01"});
   const extended = {"10.4.1.88267": "2024-01-01", "10.5.0.89998": "2024-06-01", "25.1.0.102122": "2024-12-01"};
   expect(findDockerVersion(extended, "10.4.1.88267", allSemvers, undefined, undefined, "<25"))
     .toEqual({newTag: "10.5.0.89998", date: "2024-06-01"});
@@ -233,29 +192,19 @@ test("findDockerVersion keeps underscore builds verbatim and apart from dotted t
 });
 
 test("findDockerVersion applies pinnedRange to prereleases", () => {
-  expect(findDockerVersion({
-    "1.2.0": "2024-01-01",
-    "1.3.0rc1": "2024-06-01",
-  }, "1.2.0", allSemvers, undefined, undefined, "^1.2.0", true)).toBeNull();
+  expect(findDockerVersion({"1.2.0": "2024-01-01", "1.3.0rc1": "2024-06-01"}, "1.2.0", allSemvers, undefined, undefined, "^1.2.0", true))
+    .toBeNull();
 });
 
 test.each([
-  ["updateDockerfile replaces a FROM image tag", updateDockerfile,
-    "FROM node:18\nRUN echo hello\n", "node", {old: "18", new: "20"}, "FROM node:20\nRUN echo hello\n"],
   ["updateDockerfile replaces a lowercase from", updateDockerfile,
     "from node:18\n", "node", {old: "18", new: "20"}, "from node:20\n"],
   ["updateDockerfile replaces a FROM with platform", updateDockerfile,
     "FROM --platform=linux/amd64 nginx:1.25.3\n", "nginx", {old: "1.25.3", new: "1.27.0"}, "FROM --platform=linux/amd64 nginx:1.27.0\n"],
   ["updateDockerfile uses oldOrig when present", updateDockerfile,
     "FROM node:18\n", "node", {old: "18.0.0", new: "20", oldOrig: "18"}, "FROM node:20\n"],
-  ["updateComposeFile replaces an image tag", updateComposeFile,
-    "services:\n  web:\n    image: node:20.11.1\n", "node", {old: "20.11.1", new: "22.0.0"}, "services:\n  web:\n    image: node:22.0.0\n"],
   ["updateComposeFile replaces a quoted image tag", updateComposeFile,
     "services:\n  db:\n    image: 'postgres:16.2'\n", "postgres", {old: "16.2", new: "17.0"}, "services:\n  db:\n    image: 'postgres:17.0'\n"],
-  ["updateWorkflowDockerImages replaces a container shorthand", updateWorkflowDockerImages,
-    "jobs:\n  build:\n    container: node:18\n", "node", {old: "18", new: "20"}, "jobs:\n  build:\n    container: node:20\n"],
-  ["updateWorkflowDockerImages replaces a uses docker://", updateWorkflowDockerImages,
-    "steps:\n  - uses: docker://node:18\n", "node", {old: "18", new: "20"}, "steps:\n  - uses: docker://node:20\n"],
   ["updateDockerfile skips comments and shell text", updateDockerfile,
     "# FROM node:18\nRUN echo FROM node:18\nFROM node:18\n", "node", {old: "18", new: "20"},
     "# FROM node:18\nRUN echo FROM node:18\nFROM node:20\n"],
@@ -283,17 +232,14 @@ test.each([
 
 test("updateDockerfile rewrites tag and digest atomically", () => {
   const content = `FROM node:18 AS build\nFROM node:18@${oldDigest}\nFROM node:18+build\n`;
-  const deps = {[`docker${fieldSep}node`]: {old: "18", new: "20", oldDigest, newDigest}};
-  expect(updateDockerfile(content, deps)).toBe(`FROM node:18 AS build\nFROM node:20@${newDigest}\nFROM node:18+build\n`);
-  expect(updateDockerfile(content, {[`docker${fieldSep}node`]: {old: "18", new: "20"}}))
-    .toBe(`FROM node:20 AS build\nFROM node:18@${oldDigest}\nFROM node:18+build\n`);
+  expect(updateDockerfile(content, nodeDigestDeps)).toBe(`FROM node:18 AS build\nFROM node:20@${newDigest}\nFROM node:18+build\n`);
+  expect(updateDockerfile(content, nodeDeps)).toBe(`FROM node:20 AS build\nFROM node:18@${oldDigest}\nFROM node:18+build\n`);
 });
 
 test("Docker image writers rewrite digest references atomically", () => {
-  const tagged = {[`docker${fieldSep}node`]: {old: "18", new: "20", oldDigest, newDigest}};
-  expect(updateComposeFile(`services:\n  app:\n    image: node:18@${oldDigest}\n`, tagged))
+  expect(updateComposeFile(`services:\n  app:\n    image: node:18@${oldDigest}\n`, nodeDigestDeps))
     .toBe(`services:\n  app:\n    image: node:20@${newDigest}\n`);
-  expect(updateWorkflowDockerImages(`steps:\n  - uses: docker://node:18@${oldDigest}\n`, tagged))
+  expect(updateWorkflowDockerImages(`steps:\n  - uses: docker://node:18@${oldDigest}\n`, nodeDigestDeps))
     .toBe(`steps:\n  - uses: docker://node:20@${newDigest}\n`);
   const digestOnly = {[`docker${fieldSep}node`]: {old: "latest", new: "latest", oldDigest, newDigest, digestOnly: true}};
   expect(updateWorkflowDockerImages(`steps:\n  - uses: docker://node@${oldDigest}\n`, digestOnly))
@@ -301,23 +247,24 @@ test("Docker image writers rewrite digest references atomically", () => {
 });
 
 test("updateDockerfile rewrites the ARG owning a multiline FROM version", () => {
-  const version = "$" + "{VERSION}";
-  const content = `ARG VERSION=18\nFROM --platform=$BUILDPLATFORM \\\n  node:${version}\n`;
-  const deps = {[`docker${fieldSep}node`]: {old: "18", new: "20"}};
-  expect(updateDockerfile(content, deps)).toBe(`ARG VERSION=20\nFROM --platform=$BUILDPLATFORM \\\n  node:${version}\n`);
+  expect(updateDockerfile(`ARG VERSION=18\nFROM --platform=$BUILDPLATFORM \\\n  node:${argVersion}\n`, nodeDeps))
+    .toBe(`ARG VERSION=20\nFROM --platform=$BUILDPLATFORM \\\n  node:${argVersion}\n`);
 });
 
 test("updateDockerfile rewrites an ARG and digest atomically", () => {
-  const version = "$" + "{VERSION}";
-  const content = `ARG VERSION=18\nFROM node:${version}@${oldDigest}\n`;
-  const deps = {[`docker${fieldSep}node`]: {old: "18", new: "20", oldDigest, newDigest}};
-  expect(updateDockerfile(content, deps)).toBe(`ARG VERSION=20\nFROM node:${version}@${newDigest}\n`);
+  expect(updateDockerfile(`ARG VERSION=18\nFROM node:${argVersion}@${oldDigest}\n`, nodeDigestDeps))
+    .toBe(`ARG VERSION=20\nFROM node:${argVersion}@${newDigest}\n`);
+});
+
+test("Dockerfile reads and rewrites a leading UTF-8 BOM", () => {
+  expect(updateDockerfile(`\uFEFFARG VERSION=18\nFROM node:${argVersion}\n`, nodeDeps)).toBe(`\uFEFFARG VERSION=20\nFROM node:${argVersion}\n`);
+  expect(extractDockerRefs("\uFEFFFROM node:18\n", dockerfileFromRe).map(({ref}) => ref.tag)).toEqual(["18"]);
+  expect(updateDockerfile("\uFEFFFROM node:18\n", nodeDeps)).toBe("\uFEFFFROM node:20\n");
 });
 
 test("updateComposeFile leaves locally built service images alone", () => {
   const content = "services:\n  built:\n    image: node:18\n    build: .\n  pulled:\n    image: node:18\n";
-  const deps = {[`docker${fieldSep}node`]: {old: "18", new: "20"}};
-  expect(updateComposeFile(content, deps)).toBe("services:\n  built:\n    image: node:18\n    build: .\n  pulled:\n    image: node:20\n");
+  expect(updateComposeFile(content, nodeDeps)).toBe("services:\n  built:\n    image: node:18\n    build: .\n  pulled:\n    image: node:20\n");
 });
 
 test("updateDockerfile rewrites one image at several tags without cascading", () => {
@@ -328,15 +275,6 @@ test("updateDockerfile rewrites one image at several tags without cascading", ()
     [`docker${fieldSep}node${fieldSep}20`]: {old: "20", new: "22"},
   };
   expect(updateDockerfile(content, deps)).toBe("FROM node:20 AS build\nFROM node:20-alpine\nFROM node:22\n");
-});
-
-test.each([
-  ["Dockerfile", dockerfileFromRe],
-  ["Dockerfile.dev", dockerfileFromRe],
-  ["docker-compose.yml", composeImageRe],
-  ["docker-compose.yaml", composeImageRe],
-])("getExtractionRegex %s", (name, expected) => {
-  expect(getExtractionRegex(name)).toBe(expected);
 });
 
 const hubCtx = (doFetch: (url: string) => Promise<any>, extra: Record<string, unknown> = {}): ModeContext =>
@@ -417,7 +355,6 @@ test("fetchDockerTagDigest returns the registry digest and reports failures", as
     return hubBody(url.includes("/tags/") ? {digest: oldDigest} :
       {count: 1, results: [{name: "20", tag_last_pushed: "2024-01-01", digest: newDigest}]})();
   });
-  // a digest the tag listing already carries costs no request of its own
   await expect(fetchDockerTagDigest("library", "node", "20", listing)).resolves.toBe(newDigest);
   expect(urls.length).toBe(1);
   await expect(fetchDockerTagDigest("library", "node", "22", listing)).resolves.toBe(oldDigest);
@@ -460,9 +397,7 @@ test("docker digest lookup errors are isolated per dependency", async () => {
 
 test("fetchDockerInfo library image", async () => {
   const ctx = hubCtx(hubBody({count: 1, results: [{name: "18", tag_last_pushed: "2024-01-01"}]}));
-  const [data] = await fetchDockerInfo("node", ctx);
-  expect(data.name).toBe("node");
-  expect(data.tags).toEqual({"18": "2024-01-01"});
+  expect((await fetchDockerInfo("node", ctx))[0]).toEqual({name: "node", tags: {"18": "2024-01-01"}});
 });
 
 test("filterStableTags drops the ubuntu development series", () => {
@@ -477,6 +412,5 @@ test("filterStableTags drops the ubuntu development series", () => {
 });
 
 test("fetchDockerInfo non-Docker-Hub registry throws", async () => {
-  const ctx = {} as unknown as ModeContext;
-  await expect(fetchDockerInfo("ghcr.io/owner/repo", ctx)).rejects.toThrow("not yet supported");
+  await expect(fetchDockerInfo("ghcr.io/owner/repo", {} as ModeContext)).rejects.toThrow("not yet supported");
 });

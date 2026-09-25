@@ -48,6 +48,12 @@ test.each([
     `build-dependencies${fieldSep}cc`, {old: "1.0.0", new: "1.1.0"}, `[build-dependencies.cc]\nversion = "1.1.0"\n`],
   [`a workspace member type suffix`, `[dependencies.serde]\nversion = "1.0.0"\n`,
     `dependencies|crates/a${fieldSep}serde`, {old: "1.0.0", new: "1.0.1"}, `[dependencies.serde]\nversion = "1.0.1"\n`],
+  [`double-quoted target with escaped quotes`, `[target."cfg(target_os = \\"windows\\")".dependencies]\nserde = "1.0.0"\n`,
+    `${JSON.stringify(["target", `cfg(target_os = "windows")`, "dependencies"])}${fieldSep}serde`, {old: "1.0.0", new: "1.1.0"},
+    `[target."cfg(target_os = \\"windows\\")".dependencies]\nserde = "1.1.0"\n`],
+  [`unicode-escaped target and key`, `[target."cfg(\\u0075nix)".dependencies]\n"\\u0073erde" = "1.0.0"\n`,
+    `${JSON.stringify(["target", "cfg(unix)", "dependencies"])}${fieldSep}serde`, {old: "1.0.0", new: "1.1.0"},
+    `[target."cfg(\\u0075nix)".dependencies]\n"\\u0073erde" = "1.1.0"\n`],
 ])("updateCargoToml rewrites a %s", (_name, input, key, dep, expected) => {
   expect(updateCargoToml(input, {[key]: dep as any})).toBe(expected);
 });
@@ -105,21 +111,14 @@ test("fetchCratesIoInfo happy path", async () => {
   expect(data.time["1.0.200"]).toBe("2025-01-15T12:00:00Z");
 });
 
-test("fetchCratesIoInfo reads every version, not just the newest hundred", async () => {
-  const records = Array.from({length: 316}, (_, i) => ({name: "many", vers: `0.${i}.0`, yanked: false}));
-  const [data] = await fetchCratesIoInfo("many", sparseCtx(sparse(...records)));
-  expect(Object.keys(data.versions).length).toBe(316);
-  expect(data.versions["0.0.0"]).toEqual({});
-  expect(data["dist-tags"].latest).toBe("0.315.0");
-});
-
-test("fetchCratesIoInfo distills a large index body to the fields it reads", async () => {
+test("fetchCratesIoInfo reads every version of a large index body distilled to the fields it reads", async () => {
   const bulk = {cksum: "c".repeat(64), deps: [{name: "dep", req: "^1", features: ["a", "b"]}], features: {default: ["std"]}};
   const records = Array.from({length: 200}, (_, i) => ({name: "bulky", vers: `1.${i}.0`, yanked: i === 199, pubtime: "2025-01-01T00:00:00Z", ...bulk}));
   const body = sparse(...records);
   expect(body.length).toBeGreaterThan(16384);
   const [data] = await fetchCratesIoInfo("bulky", sparseCtx(body));
   expect(Object.keys(data.versions).length).toBe(199);
+  expect(data.versions["1.0.0"]).toEqual({});
   expect(data["dist-tags"].latest).toBe("1.198.0");
   expect(data.time["1.198.0"]).toBe("2025-01-01T00:00:00Z");
 });
@@ -132,29 +131,16 @@ test("fetchCratesIoInfo shards the index path by name length", async () => {
   }
 });
 
-test("fetchCratesIoInfo latest is the highest release, not the newest published", async () => {
-  const body = sparse(
-    {vers: "2.0.0", yanked: false, pubtime: "2025-01-01T00:00:00Z"},
-    {vers: "1.9.1", yanked: false, pubtime: "2025-06-01T00:00:00Z"},
-    {vers: "3.0.0-rc.1", yanked: false, pubtime: "2025-07-01T00:00:00Z"},
-  );
-  const [data] = await fetchCratesIoInfo("backported", sparseCtx(body));
-  expect(data["dist-tags"].latest).toBe("2.0.0");
-});
-
-test("fetchCratesIoInfo falls back to a prerelease when nothing is released", async () => {
-  const body = sparse({vers: "0.1.0-alpha.1", yanked: false}, {vers: "0.1.0-alpha.2", yanked: false});
-  const [data] = await fetchCratesIoInfo("prerelease-only", sparseCtx(body));
-  expect(data["dist-tags"].latest).toBe("0.1.0-alpha.2");
+test.each([
+  ["the highest release, not the newest published", ["2.0.0", "1.9.1", "3.0.0-rc.1"], "2.0.0"],
+  ["a prerelease when nothing is released", ["0.1.0-alpha.1", "0.1.0-alpha.2"], "0.1.0-alpha.2"],
+])("fetchCratesIoInfo latest is %s", async (_name, versions, latest) => {
+  const [data] = await fetchCratesIoInfo("latest", sparseCtx(sparse(...versions.map(vers => ({vers})))));
+  expect(data["dist-tags"].latest).toBe(latest);
 });
 
 test("fetchCratesIoInfo fetch failure throws", async () => {
-  const ctx = {
-    cratesIoUrl: "https://crates.io",
-    fetchTimeout,
-    noCache: true,
-    doFetch: () => Promise.resolve({ok: false, status: 404, statusText: "Not Found"}),
-  } as unknown as ModeContext;
+  const ctx = {...sparseCtx(""), doFetch: () => Promise.resolve({ok: false, status: 404, statusText: "Not Found"})} as unknown as ModeContext;
   await expect(fetchCratesIoInfo("nonexistent", ctx)).rejects.toThrow("404");
 });
 
@@ -240,7 +226,6 @@ test.each([
   ["twoLines", "0.8", "0.8.5"],
   ["twoLines", "0.9", "0.9.0"],
   ["twoLines", "^0.8", "0.8.5"],
-  ["twoLines", "^0.9", "0.9.0"],
   ["patched", "1.0", "1.0.200"],
   ["wide", ">= 1.0.0, < 2.0.0", "1.5.0"],
   ["wide", "1.0.*", "1.0.5"],

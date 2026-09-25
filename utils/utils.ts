@@ -11,11 +11,7 @@ export function highlightDiff(a: string, b: string, colorFn: (str: string) => st
       i = j + 1;
     } else {
       let d = 0;
-      while (d < i) {
-        const code = a.charCodeAt(d);
-        if (code >= 48 && code <= 57) break;
-        d++;
-      }
+      while (d < i && (a.charCodeAt(d) < 48 || a.charCodeAt(d) > 57)) d++;
       i = d;
     }
   }
@@ -31,14 +27,8 @@ const plainVersionRe = /^v?\d[0-9a-z.!+_-]*$/i;
 
 export type Pep508Specifier = {lead: string, op: string, sep: string, version: string, trail: string};
 
-export type Pep508 = {
-  name: string;
-  extras: string;
-  specifiers: Array<Pep508Specifier> | null;
-  marker: string;
-  head: string;
-  open: string;
-  close: string;
+type Pep508 = {
+  name: string, extras: string, specifiers: Array<Pep508Specifier> | null, marker: string, head: string, open: string, close: string,
 };
 
 function parseSpecifiers(text: string): Array<Pep508Specifier> | null {
@@ -91,58 +81,25 @@ export function parseUvDependencies(specs: Array<unknown>) {
 }
 
 export const npmTypes = [
-  "dependencies",
-  "devDependencies",
-  "peerDependencies",
-  "optionalDependencies",
-  "resolutions",
-  "overrides",
-  "pnpm.overrides",
-  "packageManager",
+  "dependencies", "devDependencies", "peerDependencies", "optionalDependencies", "resolutions", "overrides",
+  "pnpm.overrides", "packageManager",
 ];
 
-export const nonPackageEngines = [
-  "node",
-  "deno",
-  "bun",
-];
+export const nonPackageEngines = ["node", "deno", "bun"];
 
 export const forgeDirs = [".github", ".gitea", ".forgejo"] as const;
 
 export const modeByFileName: Record<string, string> = {
-  "pnpm-workspace.yaml": "npm",
-  "package.json": "npm",
-  "pyproject.toml": "pypi",
-  "go.work": "go",
-  "go.mod": "go",
-  "Cargo.toml": "cargo",
+  "pnpm-workspace.yaml": "npm", "package.json": "npm", "pyproject.toml": "pypi", "go.work": "go", "go.mod": "go", "Cargo.toml": "cargo",
 };
 
-export const uvTypes = [
-  "project.dependencies",
-  "project.optional-dependencies.*",
-  "dependency-groups.*",
-];
+export const uvTypes = ["project.dependencies", "project.optional-dependencies.*", "dependency-groups.*"];
 
-export const goTypes = [
-  "deps",
-  "indirect",
-  "replace",
-  "tool",
-];
+export const goTypes = ["deps", "indirect", "replace", "tool"];
 
-export const cargoTypes = [
-  "dependencies",
-  "dev-dependencies",
-  "build-dependencies",
-  "workspace.dependencies",
-];
+export const cargoTypes = ["dependencies", "dev-dependencies", "build-dependencies", "workspace.dependencies"];
 
-export const cargoTargetTypes = [
-  "target.*.dependencies",
-  "target.*.dev-dependencies",
-  "target.*.build-dependencies",
-];
+export const cargoTargetTypes = ["target.*.dependencies", "target.*.dev-dependencies", "target.*.build-dependencies"];
 
 export function expandDepTypes(types: Array<string>, doc: Record<string, any>): Array<[string, any]> {
   const ret: Array<[string, any]> = [];
@@ -161,8 +118,7 @@ export function expandDepTypes(types: Array<string>, doc: Record<string, any>): 
 }
 
 export function matchesAny(str: string, set: Set<RegExp> | boolean): boolean {
-  if (set === true) return true;
-  if (!(set instanceof Set)) return false;
+  if (typeof set === "boolean") return set;
   for (const re of set) if (re.test(str)) return true;
   return false;
 }
@@ -209,14 +165,10 @@ export function textTable(rows: Array<Array<string>>, ansiLen: (str: string) => 
 const durationUnits: Record<string, number> = {y: 365, m: 30, w: 7, d: 1, h: 1 / 24, s: 1 / 86400};
 
 export function parseDuration(str: string): number {
-  const match = /^(\d+(?:\.\d+)?)\s*([a-z])$/i.exec(str);
-  if (match) {
-    const [_full, num, unit] = match;
-    const multiplier = durationUnits[unit.toLowerCase()];
-    if (multiplier) return Number(num) * multiplier;
-  }
-  if (!/^\d+(?:\.\d+)?$/.test(str)) throw new Error(`Invalid cooldown value: ${str}`);
-  return Number(str);
+  const [_full, num, unit] = /^(\d+(?:\.\d+)?)(?:\s*([a-z]))?$/i.exec(str) ?? [];
+  const multiplier = unit ? durationUnits[unit.toLowerCase()] : 1;
+  if (!num || !multiplier) throw new Error(`Invalid cooldown value: ${str}`);
+  return Number(num) * multiplier;
 }
 
 export function parsePositiveInt(value: string | number, label: string): number {
@@ -255,16 +207,15 @@ export function longestFirstAlternation(keys: Iterable<string>): string {
   return Array.from(keys).sort((a, b) => b.length - a.length).map(esc).join("|");
 }
 
-const predicateTests = new WeakMap<RegExp, (value: string) => boolean>();
-
 class PredicateRegExp extends RegExp {
+  #predicate: (value: string) => boolean;
   constructor(source: string, predicate: (value: string) => boolean, flags?: string) {
     super(source, flags);
-    predicateTests.set(this, predicate);
+    this.#predicate = predicate;
   }
 
   override test(value: string): boolean {
-    return predicateTests.get(this)!(value);
+    return this.#predicate(value);
   }
 }
 
@@ -348,28 +299,17 @@ function parseGlob(pattern: string): {source: string, tokens: Array<GlobToken>} 
         addChar(`[${content.replaceAll("\\", "\\\\")}]`);
         i = end;
       }
-    } else if (char === "{") {
-      const end = closingIndex(pattern, i, "{", "}");
-      if (end === -1) addChar("\\{");
-      else {
-        const alternatives = braceAlternatives(pattern.slice(i + 1, end)).map(parseGlob);
-        source += `(?:${alternatives.map(alternative => alternative.source).join("|")})`;
-        tokens.push({
-          kind: "alternatives",
-          alternatives: alternatives.map(alternative => alternative.tokens),
-          minimum: 1,
-          repeat: false,
-        });
-        i = end;
-      }
-    } else if ("@+?*!".includes(char) && pattern[i + 1] === "(") {
-      const end = closingIndex(pattern, i + 1, "(", ")");
+    } else if (char === "{" || "@+?*!".includes(char) && pattern[i + 1] === "(") {
+      const brace = char === "{";
+      const open = brace ? i : i + 1;
+      const end = closingIndex(pattern, open, pattern[open], brace ? "}" : ")");
       if (end === -1) addChar(esc(char));
       else {
-        const alternatives = splitGlobAlternatives(pattern.slice(i + 2, end)).map(parseGlob);
+        const body = pattern.slice(open + 1, end);
+        const alternatives = (brace ? braceAlternatives(body) : splitGlobAlternatives(body)).map(parseGlob);
         const alternativeSource = alternatives.map(alternative => alternative.source).join("|");
         source += char === "!" ? `(?!(?:${alternativeSource})(?:/|$))[^/]*` :
-          `(?:${alternativeSource})${char === "@" ? "" : char}`;
+          `(?:${alternativeSource})${brace || char === "@" ? "" : char}`;
         const alternativeTokens = alternatives.map(alternative => alternative.tokens);
         tokens.push(char === "!" ? {kind: "negative", alternatives: alternativeTokens} : {
           kind: "alternatives", alternatives: alternativeTokens, minimum: char === "?" || char === "*" ? 0 : 1,
@@ -394,11 +334,7 @@ function matchGlob(tokens: Array<GlobToken>, value: string): boolean {
     }
   };
   const matchSequence = (sequence: Array<GlobToken>, start: number): Set<number> => {
-    let byStart = memo.get(sequence);
-    if (!byStart) {
-      byStart = new Map();
-      memo.set(sequence, byStart);
-    }
+    const byStart = getOrSet(memo, sequence, () => new Map<number, Set<number>>());
     const cached = byStart.get(start);
     if (cached) return cached;
     let positions = new Set([start]);
@@ -454,41 +390,30 @@ export function patternToRegex(pattern: string | RegExp): RegExp {
   let negateCount = 0;
   while (pattern[negateCount] === "!" && pattern[negateCount + 1] !== "(") negateCount++;
   const negated = negateCount % 2 === 1;
-  const glob = pattern.slice(negateCount);
-  const {source, tokens} = parseGlob(glob);
-  const predicate = (value: string) => matchGlob(tokens, value);
-  return new PredicateRegExp(`^${source}$`, negated ? value => !predicate(value) : predicate, "i");
+  const {source, tokens} = parseGlob(pattern.slice(negateCount));
+  return new PredicateRegExp(`^${source}$`, value => negated !== matchGlob(tokens, value), "i");
 }
 
 export async function walkUp<T>(startDir: string, probe: (dir: string) => Promise<T | null>): Promise<T | null> {
-  let dir = startDir;
-  while (true) {
+  for (let dir = startDir; ; dir = dirname(dir)) {
     const found = await probe(dir);
     if (found) return found;
-    const parent = dirname(dir);
-    if (parent === dir) return null;
-    dir = parent;
+    if (dirname(dir) === dir) return null;
   }
 }
 
 export function walkUpSync<T>(startDir: string, probe: (dir: string) => T | null): T | null {
-  let dir = startDir;
-  while (true) {
+  for (let dir = startDir; ; dir = dirname(dir)) {
     const found = probe(dir);
     if (found) return found;
-    const parent = dirname(dir);
-    if (parent === dir) return null;
-    dir = parent;
+    if (dirname(dir) === dir) return null;
   }
 }
 
 export function pushTo<K, V>(map: Map<K, Array<V>>, key: K, value: V): void {
   const list = map.get(key);
-  if (list) {
-    list.push(value);
-  } else {
-    map.set(key, [value]);
-  }
+  if (list) list.push(value);
+  else map.set(key, [value]);
 }
 
 type MapLike<K, V> = {has: (key: K) => boolean, get: (key: K) => V | undefined, set: (key: K, value: V) => unknown};

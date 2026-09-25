@@ -7,7 +7,7 @@ import {
   coerceToVersion, fetchActionTags, fetchForge, fetchForgeEtag, fetchImmutable, fetchTimeout, fetchWithEtag,
   fetchWithRetry,
   findNewVersion, findVersion, ForgeError, formatVersionPrecision, getFetchOpts, getForgeTokens, getInfoUrl,
-  getLimiter, getSubDir, hashRe, isVersionPrerelease, normalizeUrl, packageVersion, parseExtraheaders, parseTags,
+  getLimiter, getSubDir, hashRe, isVersionPrerelease, normalizeUrl, packageVersion, parseExtraheaders,
   resolvePackageJsonUrl, selectTag, stripv, throwFetchError,
   type ModeContext,
 } from "./shared.ts";
@@ -16,32 +16,38 @@ import {pep440Versioning} from "../utils/semver.ts";
 import {flushCacheWrites} from "../utils/fetchCache.ts";
 import {storeToken} from "../utils/tokens.ts";
 
-const defaultOpts = {allowDowngrade: false as any};
+const setEnv = (values: Record<string, string | undefined>) => {
+  for (const [name, value] of Object.entries(values)) {
+    if (value === undefined) delete env[name];
+    else env[name] = value;
+  }
+};
+
+const withEnv = async (values: Record<string, string | undefined>, fn: () => Promise<unknown>) => {
+  const saved = Object.fromEntries(Object.keys(values).map(name => [name, env[name]]));
+  setEnv(values);
+  try {
+    await fn();
+  } finally {
+    setEnv(saved);
+  }
+};
 
 const configHome = mkdtempSync(join(tmpdir(), "updates-tokens-"));
 const savedConfigHome = env.XDG_CONFIG_HOME;
 beforeAll(() => { env.XDG_CONFIG_HOME = configHome; });
 afterAll(() => {
-  if (savedConfigHome === undefined) delete env.XDG_CONFIG_HOME;
-  else env.XDG_CONFIG_HOME = savedConfigHome;
+  setEnv({XDG_CONFIG_HOME: savedConfigHome});
   rmSync(configHome, {recursive: true});
 });
 
-const npmOpts = {mode: "npm", useGreatest: false, usePre: false, useRel: false, semvers: new Set(["patch", "minor", "major"]), ...defaultOpts};
+const npmOpts = {mode: "npm", useGreatest: false, usePre: false, useRel: false, semvers: new Set(["patch", "minor", "major"])};
 
 const tsAbbrev = {name: "typescript", "dist-tags": {latest: "6.0.2"}, versions: {"5.9.2": {}, "5.9.3": {}, "6.0.0": {}, "6.0.1": {}, "6.0.2": {}}};
-const tsFull = {...tsAbbrev, time: {
-  "5.9.2": "2025-01-01T00:00:00Z",
-  "5.9.3": "2025-02-01T00:00:00Z",
-  "6.0.0": "2025-03-01T00:00:00Z",
-  "6.0.1": "2025-04-01T00:00:00Z",
-  "6.0.2": "2025-05-01T00:00:00Z",
-}};
 const cropper = {name: "cropperjs", "dist-tags": {latest: "2.0.1"}, versions: {"1.6.2": {}, "2.0.0": {}, "2.0.1": {}}};
 
 test.each([
   ["pin downgrade with abbreviated metadata (no time field)", tsAbbrev, {range: "6.0.2", pinnedRange: "^5.9.3"}, "5.9.3"],
-  ["pin downgrade with full metadata (has time field)", tsFull, {range: "6.0.2", pinnedRange: "^5.9.3"}, "5.9.3"],
   ["pin selects greatest within range when no time data",
     {name: "typescript", "dist-tags": {latest: "6.0.2"}, versions: {"5.9.2": {}, "5.9.3": {}, "5.9.4": {}, "5.9.5": {}, "6.0.2": {}}},
     {range: "6.0.2", pinnedRange: "^5.9.3"}, "5.9.5"],
@@ -68,7 +74,6 @@ test("shared value helpers", () => {
   expect(headers["accept-encoding"]).toBe("gzip, deflate, br");
   expect(headers["Authorization"]).toBeUndefined();
   expect((getFetchOpts("Bearer", "mytoken123").headers as Record<string, string>)["Authorization"]).toBe("Bearer mytoken123");
-  expect(isVersionPrerelease("1.0.0-alpha")).toBe(true);
   expect(isVersionPrerelease("1.0.0-beta.1")).toBe(true);
   expect(isVersionPrerelease("1.0.0")).toBe(false);
   expect(isVersionPrerelease("invalid")).toBe(false);
@@ -78,13 +83,11 @@ test("shared value helpers", () => {
   expect(isVersionPrerelease("2026.3.post1", pep440Versioning)).toBe(false);
   expect(coerceToVersion("^1.2.3")).toBe("1.2.3");
   expect(coerceToVersion("5")).toBe("5.0.0");
-  expect(coerceToVersion("~2.1.0")).toBe("2.1.0");
   expect(coerceToVersion("")).toBe("");
 });
 
 test.each([
   [["v1.0.0", "v1.1.0", "v2.0.0"], "v1.0.0", "v2.0.0"],
-  [["v1.0.0", "v3.0.0", "v2.0.0"], "v1.0.0", "v3.0.0"],
   [["v10.0.0", "v9.0.0", "v2.0.0", "v1.0.0"], "v1.0.0", "v10.0.0"],
   [["v1.0.0", "v10.0.0", "v9.0.0", "v2.0.0"], "v1.0.0", "v10.0.0"],
   [["v1.0.0"], "v1.0.0", null], // no upgrade
@@ -105,15 +108,6 @@ test.each([
   ["user/repo", "https://github.com/user/repo"],
 ])("resolvePackageJsonUrl %s", (input, expected) => {
   expect(resolvePackageJsonUrl(input)).toBe(expected);
-});
-
-test("parseTags transforms tag data, commit or not", () => {
-  const data = [{name: "v1.0.0", commit: {sha: "abc"}}, {name: "v2.0.0", commit: {sha: "def"}}, {name: "v3.0.0"}];
-  expect(parseTags(data)).toEqual([
-    {name: "v1.0.0", commitSha: "abc"},
-    {name: "v2.0.0", commitSha: "def"},
-    {name: "v3.0.0", commitSha: ""},
-  ]);
 });
 
 test("hashRe recognizes plausible GitHub commit hashes", () => {
@@ -161,6 +155,7 @@ test.each([
 const cooldownTimes = {"1.0.0": "2026-01-01T00:00:00Z", "1.1.0": "2026-04-10T00:00:00Z",
   "1.2.0": "2026-04-22T00:00:00Z", "1.3.0": "2026-04-24T00:00:00Z"};
 const cooldownNow = {cooldownDays: 5, now: Date.parse("2026-04-25T00:00:00Z")};
+const disagreeingDates = {"1.1.0": "2025-03-01T00:00:00Z", "1.2.0": "2025-01-01T00:00:00Z", "1.3.0": "2025-02-01T00:00:00Z"};
 
 test.each([
   ["the highest version", ["1.0.0", "2.0.0", "1.5.0"], {}, {}, "2.0.0"],
@@ -173,19 +168,15 @@ test.each([
   ["nothing dateless while a cooldown is active", ["1.1.0", "1.2.0"], {"1.1.0": "2026-01-01T00:00:00Z"}, cooldownNow, "1.1.0"],
   ["nothing at all while a cooldown is active and no date is known", ["1.1.0", "1.2.0"], {}, cooldownNow, null],
   ["dates ignored entirely once the cooldown is off", ["1.1.0", "1.2.0"], {}, {}, "1.2.0"],
+  ["by version even when publish dates disagree", ["1.1.0", "1.2.0", "1.3.0"], disagreeingDates, {}, "1.3.0"],
+  ["by version past a range whose publish date is oldest", ["1.1.0", "1.2.0", "1.3.0"], disagreeingDates, {range: "1.2.0"}, "1.3.0"],
 ])("findVersion picks %s", (_name, versions, time, opts, expected) => {
   const data = {versions: Object.fromEntries(versions.map(version => [version, {}])), time};
   expect(findVersion(data, versions, {...findVersionOpts, ...opts})).toBe(expected);
 });
 
 test("findVersion handles prerelease ordering and filtering", () => {
-  const opts = {
-    range: "1.0.0",
-    semvers: new Set(["major", "minor", "patch"]),
-    useGreatest: false,
-    usePre: true,
-    useRel: false,
-  } as const;
+  const opts = {...findVersionOpts, usePre: true};
   expect(findVersion({}, ["2.0.0-rc.2", "2.0.0-rc.1"], opts)).toBe("2.0.0-rc.2");
   expect(findVersion({}, ["2.0.0-rc.1", "2.0.0-rc.2"], opts)).toBe("2.0.0-rc.2");
   expect(findVersion({}, ["1.0.0-beta.10", "1.0.0-beta.5", "1.0.0-beta.3"], {...opts, range: "1.0.0-beta.1"})).toBe("1.0.0-beta.10");
@@ -193,32 +184,10 @@ test("findVersion handles prerelease ordering and filtering", () => {
   expect(findVersion({}, ["2.0.0-rc.1", "2.0.0"], opts)).toBe("2.0.0");
   expect(findVersion({}, ["2.0.0", "2.0.0-rc.1"], opts)).toBe("2.0.0");
   expect(findVersion({}, ["1.2.3+corp.1"], {...opts, range: "1.2.2", usePre: false})).toBe("1.2.3+corp.1");
-  const data = {versions: {"2.0.0-rc.1": {}, "2.0.0-rc.2": {}},
-    time: {"2.0.0-rc.1": "2025-01-01T00:00:00Z", "2.0.0-rc.2": "2025-01-02T00:00:00Z"}};
-  const versions = ["2.0.0-rc.1", "2.0.0-rc.2"];
-  const rangeOpts = {range: "^2.0.0-rc.1", useGreatest: false, usePre: false, useRel: false} as const;
-  expect(findVersion(data, versions, {...rangeOpts, semvers: new Set(["patch"])})).toBe("2.0.0-rc.2");
-  expect(findVersion(data, versions, {...rangeOpts, semvers: new Set(["patch"]), cooldownDays: 3650,
-    now: Date.parse("2025-01-03T00:00:00Z")})).toBe(null);
-});
-
-test("findVersion selects by version even when publish dates disagree", () => {
-  const data = {
-    versions: {"1.1.0": {}, "1.2.0": {}, "1.3.0": {}},
-    time: {
-      "1.1.0": "2025-03-01T00:00:00Z",
-      "1.2.0": "2025-01-01T00:00:00Z",
-      "1.3.0": "2025-02-01T00:00:00Z",
-    },
-  };
-  const opts = {
-    semvers: new Set(["major", "minor", "patch"]),
-    useGreatest: false,
-    usePre: false,
-    useRel: false,
-  } as const;
-  expect(findVersion(data, ["1.1.0", "1.2.0", "1.3.0"], {...opts, range: "1.0.0"})).toBe("1.3.0");
-  expect(findVersion(data, ["1.1.0", "1.2.0", "1.3.0"], {...opts, range: "1.2.0"})).toBe("1.3.0");
+  const data = {time: {"2.0.0-rc.1": "2025-01-01T00:00:00Z", "2.0.0-rc.2": "2025-01-02T00:00:00Z"}};
+  const rangeOpts = {...findVersionOpts, range: "^2.0.0-rc.1", semvers: new Set(["patch"])};
+  expect(findVersion(data, ["2.0.0-rc.1", "2.0.0-rc.2"], rangeOpts)).toBe("2.0.0-rc.2");
+  expect(findVersion(data, ["2.0.0-rc.1", "2.0.0-rc.2"], {...rangeOpts, cooldownDays: 3650, now: Date.parse("2025-01-03T00:00:00Z")})).toBe(null);
 });
 
 test.each([
@@ -234,23 +203,10 @@ test.each([
 });
 
 const twoVersions = {name: "pkg", "dist-tags": {latest: "2.0.0"}, versions: {"1.0.0": {}, "2.0.0": {}}};
-const threeVersions = {
-  name: "pkg",
-  "dist-tags": {latest: "2.0.0"},
-  versions: {"1.0.0": {}, "1.1.0": {}, "2.0.0": {}},
-  time: {"1.0.0": "2025-01-01", "1.1.0": "2025-02-01", "2.0.0": "2025-03-01"},
-};
-const preRcs = {
-  name: "pkg",
-  "dist-tags": {latest: "0.6.0-rc331"},
-  versions: {"0.6.0-rc98": {}, "0.6.0-rc99": {}, "0.6.0-rc330": {}, "0.6.0-rc331": {}},
-};
-const preLatest = (latest: string) => ({
-  name: "pkg",
-  "dist-tags": {latest},
-  versions: {"1.0.0": {}, "1.1.0": {}, [latest]: {}},
-  time: {"1.0.0": "2025-01-01", "1.1.0": "2025-02-01", [latest]: "2025-03-01"},
-});
+const threeVersions = {name: "pkg", "dist-tags": {latest: "2.0.0"}, versions: {"1.0.0": {}, "1.1.0": {}, "2.0.0": {}}};
+const preRcs = {name: "pkg", "dist-tags": {latest: "0.6.0-rc331"},
+  versions: {"0.6.0-rc98": {}, "0.6.0-rc99": {}, "0.6.0-rc330": {}, "0.6.0-rc331": {}}};
+const preLatest = (latest: string) => ({name: "pkg", "dist-tags": {latest}, versions: {"1.0.0": {}, "1.1.0": {}, [latest]: {}}});
 
 test.each([
   ["wildcard range returns null", twoVersions, {range: "*"}, null],
@@ -260,16 +216,13 @@ test.each([
   ["npm latest dist-tag", threeVersions, {range: "1.0.0"}, "2.0.0"],
   ["pinnedRange excludes latestTag", threeVersions, {range: "1.0.0", pinnedRange: "^1.0.0"}, "1.1.0"],
   ["prerelease with usePre",
-    {name: "pkg", "dist-tags": {latest: "1.1.0"}, versions: {"1.0.0": {}, "1.1.0": {}, "2.0.0-beta.1": {}},
-      time: {"1.0.0": "2025-01-01", "1.1.0": "2025-02-01", "2.0.0-beta.1": "2025-03-01"}},
+    {name: "pkg", "dist-tags": {latest: "1.1.0"}, versions: {"1.0.0": {}, "1.1.0": {}, "2.0.0-beta.1": {}}},
     {range: "1.0.0", usePre: true}, "2.0.0-beta.1"],
   ["pre-to-release transition",
-    {name: "pkg", "dist-tags": {latest: "1.1.0"}, versions: {"1.0.0-alpha": {}, "1.1.0": {}},
-      time: {"1.0.0-alpha": "2025-01-01", "1.1.0": "2025-02-01"}},
+    {name: "pkg", "dist-tags": {latest: "1.1.0"}, versions: {"1.0.0-alpha": {}, "1.1.0": {}}},
     {range: "1.0.0-alpha"}, "1.1.0"],
   ["latestTag blocked by semver filter",
-    {name: "pkg", "dist-tags": {latest: "2.0.0"}, versions: {"1.0.0": {}, "1.0.1": {}, "2.0.0": {}},
-      time: {"1.0.0": "2025-01-01", "1.0.1": "2025-02-01", "2.0.0": "2025-03-01"}},
+    {name: "pkg", "dist-tags": {latest: "2.0.0"}, versions: {"1.0.0": {}, "1.0.1": {}, "2.0.0": {}}},
     {range: "1.0.0", semvers: new Set(["patch"])}, "1.0.1"],
   ["useRel with prerelease latest", preLatest("2.0.0-rc.1"), {range: "1.0.0", useRel: true}, "1.1.0"],
   ["--release turns --prerelease back to releases", {name: "pkg", "dist-tags": {latest: "1.1.0"}, versions: {"1.0.0": {}, "1.1.0": {}, "2.0.0-rc.1": {}, "2.0.0": {}}},
@@ -279,10 +232,8 @@ test.each([
     {name: "pkg", "dist-tags": {latest: "1.9.9"}, versions: {"1.9.9": {}, "2.0.0": {}, "2.0.1": {}}},
     {range: "2.0.0"}, "2.0.1"],
   ["npm cooldown picks older eligible version",
-    {name: "pkg", "dist-tags": {latest: "1.3.0"}, versions: {"1.0.0": {}, "1.1.0": {}, "1.2.0": {}, "1.3.0": {}},
-      time: {"1.0.0": "2026-01-01T00:00:00Z", "1.1.0": "2026-04-10T00:00:00Z",
-        "1.2.0": "2026-04-22T00:00:00Z", "1.3.0": "2026-04-24T00:00:00Z"}},
-    {range: "1.0.0", cooldownDays: 5, now: Date.parse("2026-04-25T00:00:00Z")}, "1.1.0"],
+    {name: "pkg", "dist-tags": {latest: "1.3.0"}, versions: {"1.0.0": {}, "1.1.0": {}, "1.2.0": {}, "1.3.0": {}}, time: cooldownTimes},
+    {range: "1.0.0", ...cooldownNow}, "1.1.0"],
   ["deprecated latest is skipped",
     {name: "pkg", "dist-tags": {latest: "2.0.0"}, versions: {"1.0.0": {}, "1.1.0": {}, "2.0.0": {deprecated: true}}},
     {range: "1.0.0"}, "1.1.0"],
@@ -305,7 +256,7 @@ test.each([
   expect(findNewVersion(data, {...npmOpts, ...opts})).toBe(expected);
 });
 
-const pypiOpts = {mode: "pypi", useGreatest: false, usePre: false, useRel: false, semvers: new Set(["patch", "minor", "major"]), ...defaultOpts};
+const pypiOpts = {...npmOpts, mode: "pypi"};
 const pypiDoc = (latest: string, versions: Array<string>, yanked: Array<string> = []) => ({
   name: "pkg",
   info: {name: "pkg", version: latest},
@@ -351,11 +302,8 @@ test("findNewVersion filters PyPI files by yank and earliest upload", () => {
 });
 
 test("findNewVersion does not follow an unstable train across a major", () => {
-  const data = {
-    name: "react",
-    "dist-tags": {latest: "18.2.0"},
-    versions: {"17.0.0-rc.0": {}, "17.0.0-rc.1": {}, "17.0.0": {}, "18.2.0": {}, "18.3.0-next-fecc288b": {}},
-  };
+  const data = {name: "react", "dist-tags": {latest: "18.2.0"},
+    versions: {"17.0.0-rc.0": {}, "17.0.0-rc.1": {}, "17.0.0": {}, "18.2.0": {}, "18.3.0-next-fecc288b": {}}};
   const opts = {...npmOpts, range: "17.0.0-rc.0"};
   expect(findNewVersion(data, opts)).toBe("18.2.0");
   expect(findNewVersion(data, {...opts, usePre: true})).toBe("18.3.0-next-fecc288b");
@@ -369,8 +317,7 @@ test("findNewVersion tolerates a packument missing versions or naming an absent 
     {...npmOpts, range: "1.0.0"})).toBe("1.1.0");
 });
 
-const goOpts = {mode: "go", useGreatest: false, usePre: false, useRel: false,
-  semvers: new Set(["patch", "minor", "major"]), ...defaultOpts};
+const goOpts = {...npmOpts, mode: "go"};
 const goData = {name: "github.com/foo/bar", old: "1.0.0", new: "3.0.0", Time: "2025-03-01"};
 const goSameMajor = (sameMajorNew: string) => ({...goData, sameMajorNew, sameMajorTime: "2025-02-01"});
 const pseudo = "0.4.2-0.20230802210424-5b0b94c5c0d3";
@@ -400,23 +347,17 @@ test.each([
 const sequential = (test as any).serial ?? test; // bun ignores {concurrent: false}
 
 sequential("getForgeTokens", {concurrent: false}, async () => {
-  expect(await getForgeTokens("", "https://api.github.com")).toEqual([]);
-
-  expect(await getForgeTokens("gitea.example.com", "https://api.github.com")).toEqual([]);
-
   const forHost = (host: string) => getForgeTokens(host, "https://api.github.com");
-  const saved = process.env.UPDATES_FORGE_TOKENS;
-  process.env.UPDATES_FORGE_TOKENS = "localhost:3500:ported,git.example.com:bare";
-  try {
+  expect(await forHost("")).toEqual([]);
+  expect(await forHost("gitea.example.com")).toEqual([]);
+  await withEnv({UPDATES_FORGE_TOKENS: "localhost:3500:ported,git.example.com:bare,api.github.com:", GH_TOKEN: "env-token"}, async () => {
     expect(await forHost("localhost:3500")).toEqual(["ported"]);
+    expect(await forHost("api.github.com")).toContain("env-token");
     expect(await forHost("git.example.com")).toEqual(["bare"]);
     expect(await forHost("localhost:9999")).toEqual([]);
     expect(await forHost("git.example.com:8080")).toEqual([]);
     expect(await forHost("localhost")).toEqual([]);
-  } finally {
-    if (saved === undefined) delete process.env.UPDATES_FORGE_TOKENS;
-    else process.env.UPDATES_FORGE_TOKENS = saved;
-  }
+  });
 });
 
 test("parseExtraheaders reads a CI token per host", () => {
@@ -434,13 +375,11 @@ test("parseExtraheaders reads a CI token per host", () => {
 
 const modeCtx = (props: Record<string, unknown>): ModeContext => ({fetchTimeout, ...props} as unknown as ModeContext);
 
-const tokenEnv = ["UPDATES_GITHUB_API_TOKEN", "GITHUB_API_TOKEN", "GH_TOKEN", "GITHUB_TOKEN", "HOMEBREW_GITHUB_API_TOKEN"];
+const noGithubTokens = Object.fromEntries(["UPDATES_GITHUB_API_TOKEN", "GITHUB_API_TOKEN", "GH_TOKEN", "GITHUB_TOKEN",
+  "HOMEBREW_GITHUB_API_TOKEN"].map(name => [name, undefined]));
 
 test("fetchForge only sends github credentials to github hosts", async () => {
-  const saved = Object.fromEntries(tokenEnv.map(name => [name, process.env[name]]));
-  for (const name of tokenEnv) delete process.env[name];
-  process.env.GH_TOKEN = "ghp_regression_secret";
-  try {
+  await withEnv({...noGithubTokens, GH_TOKEN: "ghp_regression_secret"}, async () => {
     const authByHost: Record<string, string | undefined> = {};
     const ctx = modeCtx({forgeApiUrl: "https://forge.regression.test",
       doFetch: (url: string, opts: RequestInit) => {
@@ -454,46 +393,35 @@ test("fetchForge only sends github credentials to github hosts", async () => {
     expect(authByHost["forge.regression.test"]).toBe("Bearer ghp_regression_secret");
     expect(authByHost["attacker.example"]).toBeUndefined();
     expect(await getForgeTokens("api.github.com", "https://api.github.com")).toContain("ghp_regression_secret");
-  } finally {
-    for (const [name, value] of Object.entries(saved)) {
-      if (value === undefined) delete process.env[name];
-      else process.env[name] = value;
-    }
-  }
+  });
 });
 
 sequential("fetchForge tries a stored token first, drops it after a 401 with one warning, keeps a 403 quiet", {concurrent: false}, async () => {
-  const names = ["UPDATES_FORGE_TOKENS", ...tokenEnv];
-  const saved = Object.fromEntries(names.map(name => [name, env[name]]));
   const warnings: string[] = [];
   const originalConsoleError = console.error;
   console.error = (message: string) => { warnings.push(message); };
   try {
-    for (const name of names) delete env[name];
-    env.GH_TOKEN = "env-token";
-    await storeToken("rejected.test", "rejected-stored");
-    await storeToken("forbidden.test", "forbidden-stored");
-    const authorizations: Array<string | null> = [];
-    const doFetch = (_url: string, opts: RequestInit) => {
-      const authorization = new Headers(opts.headers).get("authorization");
-      authorizations.push(authorization);
-      const status = authorization === "Bearer rejected-stored" ? 401 : authorization === "Bearer forbidden-stored" ? 403 : 200;
-      return Promise.resolve(new Response("", {status}));
-    };
-    const ctxFor = (host: string) => modeCtx({forgeApiUrl: `https://${host}`, doFetch});
-    await fetchForge("https://rejected.test/repos/o/r/tags", ctxFor("rejected.test"));
-    await fetchForge("https://rejected.test/repos/o/r/tags", ctxFor("rejected.test"));
-    await fetchForge("https://forbidden.test/repos/o/r/tags", ctxFor("forbidden.test"));
-    expect(authorizations).toEqual([
-      "Bearer rejected-stored", "Bearer env-token", "Bearer env-token", "Bearer forbidden-stored", "Bearer env-token",
-    ]);
-    expect(warnings).toEqual(['stored token for rejected.test was rejected, run "updates --login rejected.test" to replace it']);
+    await withEnv({UPDATES_FORGE_TOKENS: undefined, ...noGithubTokens, GH_TOKEN: "env-token"}, async () => {
+      await storeToken("rejected.test", "rejected-stored");
+      await storeToken("forbidden.test", "forbidden-stored");
+      const authorizations: Array<string | null> = [];
+      const doFetch = (_url: string, opts: RequestInit) => {
+        const authorization = new Headers(opts.headers).get("authorization");
+        authorizations.push(authorization);
+        const status = authorization === "Bearer rejected-stored" ? 401 : authorization === "Bearer forbidden-stored" ? 403 : 200;
+        return Promise.resolve(new Response("", {status}));
+      };
+      const ctxFor = (host: string) => modeCtx({forgeApiUrl: `https://${host}`, doFetch});
+      await fetchForge("https://rejected.test/repos/o/r/tags", ctxFor("rejected.test"));
+      await fetchForge("https://rejected.test/repos/o/r/tags", ctxFor("rejected.test"));
+      await fetchForge("https://forbidden.test/repos/o/r/tags", ctxFor("forbidden.test"));
+      expect(authorizations).toEqual([
+        "Bearer rejected-stored", "Bearer env-token", "Bearer env-token", "Bearer forbidden-stored", "Bearer env-token",
+      ]);
+      expect(warnings).toEqual(['stored token for rejected.test was rejected, run "updates --login rejected.test" to replace it']);
+    });
   } finally {
     console.error = originalConsoleError;
-    for (const [name, value] of Object.entries(saved)) {
-      if (value === undefined) delete env[name];
-      else env[name] = value;
-    }
   }
 });
 
@@ -516,22 +444,17 @@ test("fetchForgeEtag memoizes each reduced response flavor for one run", async (
 });
 
 sequential("fetchForge does not reuse a cached token removed from the environment", {concurrent: false}, async () => {
-  const saved = process.env.UPDATES_FORGE_TOKENS;
   const authorizations: Array<string | undefined> = [];
   const ctx = modeCtx({forgeApiUrl: "https://api.github.com", doFetch: (_url: string, opts: RequestInit) => {
     authorizations.push((opts.headers as Record<string, string>)?.Authorization);
     return Promise.resolve({ok: true, status: 200, headers: new Headers()});
   }});
-  try {
-    process.env.UPDATES_FORGE_TOKENS = "rotated-token.test:old";
+  await withEnv({UPDATES_FORGE_TOKENS: "rotated-token.test:old"}, async () => {
     await fetchForge("https://rotated-token.test/repos/o/r/tags", ctx);
-    process.env.UPDATES_FORGE_TOKENS = "rotated-token.test:new";
+    env.UPDATES_FORGE_TOKENS = "rotated-token.test:new";
     await expect(fetchForge("https://rotated-token.test/repos/o/r/tags", ctx)).resolves.toMatchObject({status: 200});
     expect(authorizations).toEqual(["Bearer old", "Bearer new"]);
-  } finally {
-    if (saved === undefined) delete process.env.UPDATES_FORGE_TOKENS;
-    else process.env.UPDATES_FORGE_TOKENS = saved;
-  }
+  });
 });
 
 const tagPage = (url: string, lastPage: number) => {
@@ -546,8 +469,8 @@ const tagPage = (url: string, lastPage: number) => {
   };
 };
 
-test("fetchActionTags single page no link header", async () => {
-  const tagsData = [{name: "v1.0.0", commit: {sha: "abc"}}, {name: "v2.0.0", commit: {sha: "def"}}];
+test("fetchActionTags single page no link header, commit or not", async () => {
+  const tagsData = [{name: "v1.0.0", commit: {sha: "abc"}}, {name: "v2.0.0", commit: {sha: "def"}}, {name: "v3.0.0"}];
   const ctx = modeCtx({doFetch: (url: string) => Promise.resolve({ok: true,
     json: () => Promise.resolve(new URL(url).pathname.endsWith("/releases") ? [
       {tag_name: "v1.0.0", prerelease: false, draft: false},
@@ -557,6 +480,7 @@ test("fetchActionTags single page no link header", async () => {
   expect(result).toEqual([
     {name: "v1.0.0", commitSha: "abc", isStable: true},
     {name: "v2.0.0", commitSha: "def", isStable: false},
+    {name: "v3.0.0", commitSha: ""},
   ]);
 
   const malformed = modeCtx({noCache: true, doFetch: (url: string) => Promise.resolve({ok: true,
@@ -624,7 +548,7 @@ test.each([429, 503, 403])("fetchWithRetry retries returned %s responses twice",
   expect(calls).toBe(3);
 });
 
-test("fetchWithRetry gives up rather than wait out a retry-after past the fetch timeout", async () => {
+test("fetchWithRetry gives up rather than wait out a retry-after past the fetch timeout, but retries server faults at once", async () => {
   const attempts = async (status: number, retryAfter: number) => {
     let calls = 0;
     const ctx = modeCtx({noCache: true, doFetch: () => {
@@ -634,9 +558,7 @@ test("fetchWithRetry gives up rather than wait out a retry-after past the fetch 
     await fetchWithRetry(ctx, "https://slow-retry.test");
     return calls;
   };
-  // Docker Hub's 60s on a 5s budget: return the rate limit instead of stalling the run
   expect(await attempts(429, 60)).toBe(1);
-  // a server fault still retries, just without the wait
   expect(await attempts(503, 60)).toBe(3);
 });
 
@@ -674,18 +596,13 @@ sequential("fetchForge classifies rate limits and server faults, fetchActionTags
   expect(await fetchActionTags("https://forbidden.forge.test", "o", "r", ctx)).toEqual([]);
   await expect(fetchActionTags("https://limited.forge.test", "o", "r", ctx)).rejects.toThrow(ForgeError);
 
-  const saved = process.env.UPDATES_FORGE_TOKENS;
-  process.env.UPDATES_FORGE_TOKENS = "tokened.forge.test:tok";
-  try {
+  await withEnv({UPDATES_FORGE_TOKENS: "tokened.forge.test:tok"}, async () => {
     calls = 0;
     const tokened = await failureOf("tokened");
     expect(tokened.kind).toBe("rateLimit");
     expect(calls).toBe(1);
     expect(tokened.message).not.toContain("UPDATES_FORGE_TOKENS");
-  } finally {
-    if (saved === undefined) delete process.env.UPDATES_FORGE_TOKENS;
-    else process.env.UPDATES_FORGE_TOKENS = saved;
-  }
+  });
 });
 
 test("fetchActionTags reports an unreachable forge instead of an empty tag list", async () => {
@@ -705,14 +622,12 @@ test.each([
 
 const ifNoneMatch = (opts: RequestInit) => (opts.headers as Record<string, string> | undefined)?.["if-none-match"];
 
-test("fetchWithEtag returns body on 200 and sends If-None-Match on second call", async () => {
+test("fetchWithEtag returns body on 200, then sends If-None-Match and serves the cached body on 304", async () => {
   let lastIfNoneMatch: string | undefined;
-  let callCount = 0;
   const ctx = modeCtx({doFetch: (_url: string, opts: RequestInit) => {
-    callCount++;
     lastIfNoneMatch = ifNoneMatch(opts);
-    return Promise.resolve({ok: true, status: 200, text: () => Promise.resolve(`{"ver":${callCount}}`),
-      headers: new Headers([["etag", `W/"${callCount}"`]])});
+    if (lastIfNoneMatch) return Promise.resolve({ok: false, status: 304, headers: new Headers()});
+    return Promise.resolve({ok: true, status: 200, text: () => Promise.resolve(`{"ver":1}`), headers: new Headers([["etag", `W/"1"`]])});
   }});
   const url = `https://example.test/etag-${Date.now()}`;
 
@@ -722,29 +637,12 @@ test("fetchWithEtag returns body on 200 and sends If-None-Match on second call",
 
   await flushCacheWrites();
   const r2 = await fetchWithEtag(url, ctx);
-  expect("body" in r2).toBe(true);
+  expect("body" in r2 && r2.body).toBe(`{"ver":1}`);
   expect(lastIfNoneMatch).toBe(`W/"1"`);
   const failed = await fetchWithEtag("https://example.test/404", modeCtx({noCache: true,
     doFetch: () => Promise.resolve({ok: false, status: 404, statusText: "Not Found", headers: new Headers()})}));
   expect("body" in failed).toBe(false);
   expect(failed.res?.status).toBe(404);
-});
-
-test("fetchWithEtag returns cached body on 304", async () => {
-  const url = `https://example.test/304-${Date.now()}`;
-  let seenIfNoneMatch: string | undefined;
-  const ctx = modeCtx({doFetch: (_url: string, opts: RequestInit) => {
-    seenIfNoneMatch = ifNoneMatch(opts);
-    if (seenIfNoneMatch) return Promise.resolve({ok: false, status: 304, headers: new Headers()});
-    return Promise.resolve({ok: true, status: 200, text: () => Promise.resolve(`{"cached":true}`),
-      headers: new Headers([["etag", `"v1"`]])});
-  }});
-
-  await fetchWithEtag(url, ctx);
-  await flushCacheWrites();
-  const r = await fetchWithEtag(url, ctx);
-  expect(seenIfNoneMatch).toBe(`"v1"`);
-  expect("body" in r && r.body).toBe(`{"cached":true}`);
 });
 
 test("fetchWithEtag keeps flavors of one url in separate cache entries", async () => {

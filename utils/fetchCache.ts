@@ -21,23 +21,20 @@ const cacheDir = join(
 
 const createdDirs = new Map<string, Promise<string | undefined>>();
 
-function cacheKey(url: string): string {
-  return createHash("sha256").update(url).digest("hex");
-}
+const cachePath = (url: string, dir: string) => join(dir, `${createHash("sha256").update(url).digest("hex")}.cache`);
 
 const maxAge = 7 * 24 * 60 * 60 * 1000;
 export const maxCacheEntries = 4096;
 
 export async function getCache(url: string, dir: string = cacheDir): Promise<{etag: string, body: string} | null> {
   try {
-    const path = join(dir, `${cacheKey(url)}.cache`);
+    const path = cachePath(url, dir);
     if (Date.now() - (await stat(path)).mtimeMs > maxAge) {
       await unlink(path);
       return null;
     }
     const content = await readFileUtf8(path);
     const idx = content.indexOf("\n");
-    if (idx === -1) return null;
     const etag = content.substring(0, idx);
     const body = content.substring(idx + 1);
     if (!etag || !body) return null;
@@ -54,20 +51,16 @@ let tmpCounter = 0;
 
 export function setCache(url: string, etag: string, body: string, dir: string = cacheDir): void {
   const write = (async () => {
-    try {
-      await getOrSet(createdDirs, dir, () => mkdir(dir, {recursive: true}));
-    } catch {
-      createdDirs.delete(dir);
-      return;
-    }
     let tmpFile: string | undefined;
     try {
-      const file = join(dir, `${cacheKey(url)}.cache`);
+      await getOrSet(createdDirs, dir, () => mkdir(dir, {recursive: true}));
+      const file = cachePath(url, dir);
       tmpFile = `${file}.${pid}-${tmpCounter++}.tmp`;
       await writeFile(tmpFile, `${etag}\n${body}`);
       await rename(tmpFile, file);
     } catch {
       if (tmpFile) await tryOrNull(unlink(tmpFile));
+      else createdDirs.delete(dir);
     }
   })();
   pendingWrites.add(write);
@@ -83,8 +76,6 @@ export async function flushCacheWrites(dir: string = cacheDir, maxEntries: numbe
       try { return {path, mtime: (await stat(path)).mtimeMs}; } catch { return null; }
     }))).filter(entry => entry !== null).sort((a, b) => b.mtime - a.mtime);
     const cutoff = Date.now() - maxAge;
-    const fresh = entries.filter(entry => entry.mtime >= cutoff);
-    await Promise.all([...entries.slice(fresh.length), ...fresh.slice(maxEntries)]
-      .map(entry => tryOrNull(unlink(entry.path))));
+    await Promise.all(entries.filter((entry, idx) => idx >= maxEntries || entry.mtime < cutoff).map(entry => tryOrNull(unlink(entry.path))));
   } catch {}
 }

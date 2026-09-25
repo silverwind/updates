@@ -2,34 +2,18 @@ import {resolve, join} from "node:path";
 import {readdirSync} from "node:fs";
 import {parse} from "../utils/semver.ts";
 import {
-  type ModeContext, commitHashRe, ForgeError, stripv, fetchForge, formatVersionPrecision, githubApiUrl, parseCommitDate,
+  type ModeContext, commitHashRe, ForgeError, fetchForge, formatVersionPrecision, githubApiUrl, parseCommitDate,
 } from "./shared.ts";
 import {getCache, setCache} from "../utils/fetchCache.ts";
 import {forgeDirs, longestFirstAlternation} from "../utils/utils.ts";
 
-export type ActionRef = {
-  host: string | null,
-  owner: string,
-  repo: string,
-  ref: string,
-  name: string,
-  isHash: boolean,
-};
+export type ActionRef = {host: string | null, owner: string, repo: string, ref: string, name: string, isHash: boolean};
 
 export function parseActionRef(uses: string): ActionRef | null {
-  if (uses.startsWith("docker://") || uses.startsWith("./")) return null;
-  const urlMatch = /^https?:\/\/([^/]+)\/(.+)$/.exec(uses);
-  const host = urlMatch?.[1] ?? null;
-  const rest = urlMatch?.[2] ?? uses;
-  const atIndex = rest.indexOf("@");
-  if (atIndex === -1) return null;
-  const pathPart = rest.substring(0, atIndex);
-  const ref = rest.substring(atIndex + 1);
-  if (!ref) return null;
-  const segments = pathPart.split("/");
-  if (segments.length < 2) return null;
-  const name = host ? `${host}/${pathPart}` : pathPart;
-  return {host, owner: segments[0], repo: segments[1], ref, name, isHash: commitHashRe.test(ref)};
+  const match = /^(?!\.\.?\/)(?:https?:\/\/([^/]+)\/)?(([^/@]+)\/([^/@]+)[^@]*)@(.+)$/.exec(uses);
+  if (!match) return null;
+  const [_match, host = null, path, owner, repo, ref] = match;
+  return {host, owner, repo, ref, name: host ? `${host}/${path}` : path, isHash: commitHashRe.test(ref)};
 }
 
 export function getForgeApiBaseUrl(host: string | null, forgeApiUrl: string): string {
@@ -39,10 +23,8 @@ export function getForgeApiBaseUrl(host: string | null, forgeApiUrl: string): st
 
 export async function fetchActionTagDate(apiUrl: string, owner: string, repo: string, commitSha: string, ctx: ModeContext): Promise<string | undefined> {
   const url = `${apiUrl}/repos/${owner}/${repo}/git/commits/${commitSha}`;
-  if (!ctx.noCache) {
-    const cached = await getCache(url);
-    if (cached) return cached.body;
-  }
+  const cached = ctx.noCache ? null : await getCache(url);
+  if (cached) return cached.body;
   try {
     const res = await fetchForge(url, ctx);
     if (res.status === 404) return "";
@@ -57,7 +39,7 @@ export async function fetchActionTagDate(apiUrl: string, owner: string, repo: st
 }
 
 export function formatActionVersion(newFullVersion: string, oldRef: string): string {
-  const bare = stripv(newFullVersion);
+  const bare = newFullVersion.replace(/^v/i, "");
   return formatVersionPrecision(parse(bare)?.version ?? bare, oldRef);
 }
 
@@ -77,37 +59,20 @@ export function walkYamlPair(line: string, path: Array<YamlPathEntry>): {indent:
 
 const pinTokenRe = /^\s*(?:(?:renovate\s*:\s*)?(?:pin\s+|tag\s*=\s*)?|ratchet:[\w-]+\/[.\w-]+(?:\/[.\w-]+)*)@?((?:[\w-]*[-/])?v?\d+(?:\.\d+(?:\.\d+)?)?(?:-[a-zA-Z0-9.]+)?)/;
 
-type UsesLine = {
-  prefix: string,
-  quote: string,
-  value: string,
-  gap: string,
-  comment: string,
-  pinnedVersion: string,
-  pinnedEnd: number,
-};
-
-export function parseUsesLine(line: string): UsesLine | null {
-  const match = /^(\s*(?:-\s*)?uses:\s*)(?:(["'])(.*?)\2|((?!["'])[^\s#]+))([^\n]*)$/.exec(line);
+export function parseUsesLine(line: string) {
+  const match = /^(\s*(?:-\s*)?uses:\s*)(?:(["'])(.*?)\2|((?!["'#])\S+))([^\n]*)$/.exec(line);
   if (!match) return null;
   const [_full, prefix, quote = "", quotedValue, plainValue, rest] = match;
   const value = quotedValue ?? plainValue;
   if (!value) return null;
-  const hash = rest.indexOf("#");
+  const hash = rest.search(/(?<=\s)#/);
   const comment = hash === -1 ? "" : rest.slice(hash);
   const pin = comment ? pinTokenRe.exec(comment.slice(1)) : null;
-  return {
-    prefix, quote, value,
-    gap: hash === -1 ? rest : rest.slice(0, hash),
-    comment,
-    pinnedVersion: pin?.[1] ?? "",
-    pinnedEnd: pin ? pin[0].length + 1 : 0,
-  };
+  return {prefix, quote, value, gap: hash === -1 ? rest : rest.slice(0, hash), comment,
+    pinnedVersion: pin?.[1] ?? "", pinnedEnd: pin ? pin[0].length + 1 : 0};
 }
 
 type ActionUpdate = {name: string, oldRef: string, newRef: string, oldComment?: string, newComment?: string};
-
-const schemeRe = /^https?:\/\//;
 
 export function updateWorkflowFile(content: string, actionDeps: Array<ActionUpdate>): string {
   const depByUses = new Map(actionDeps.map(dep => [`${dep.name}@${dep.oldRef}${dep.oldComment ? `#${dep.oldComment}` : ""}`, dep]));
@@ -120,23 +85,20 @@ export function updateWorkflowFile(content: string, actionDeps: Array<ActionUpda
     }
     const pair = walkYamlPair(line, yamlPath);
     if (!pair) return line;
-    const {indent, key} = pair;
-    const isUses = key === "uses" && (
+    const isUses = pair.key === "uses" && (
       yamlPath.length === 3 && yamlPath[0].key === "jobs" && yamlPath[2].key === "steps" ||
-      yamlPath.length === 2 && yamlPath[0].key === "runs" && yamlPath[1].key === "steps" ||
-      yamlPath.length === 2 && yamlPath[0].key === "jobs"
+      yamlPath.length === 2 && (yamlPath[0].key === "jobs" || yamlPath[0].key === "runs" && yamlPath[1].key === "steps")
     );
     const pairValue = pair.value.replace(/(?:^|\s)#.*$/, "").trim();
-    if (!pairValue) yamlPath.push({indent, key});
-    if (/^[>|](?:[+-]?\d?|\d[+-]?)$/.test(pairValue)) { blockIndent = indent; return line; }
-    if (!isUses) return line;
-    const parsed = parseUsesLine(line);
+    if (!pairValue) yamlPath.push(pair);
+    if (/^[>|](?:[+-]?\d?|\d[+-]?)$/.test(pairValue)) { blockIndent = pair.indent; return line; }
+    const parsed = isUses && parseUsesLine(line);
     if (!parsed) return line;
     const {prefix, quote, value, gap, comment, pinnedVersion, pinnedEnd} = parsed;
-    const scheme = schemeRe.exec(value)?.[0] ?? "";
+    const scheme = /^https?:\/\//.exec(value)?.[0] ?? "";
     const oldComment = pinnedVersion || /^#\s*(\S+)\s*$/.exec(comment)?.[1] || "";
-    const dep = depByUses.get(`${value.slice(scheme.length)}${oldComment ? `#${oldComment}` : ""}`) ??
-      depByUses.get(value.slice(scheme.length));
+    const unqualifiedUses = value.slice(scheme.length);
+    const dep = depByUses.get(`${unqualifiedUses}${oldComment ? `#${oldComment}` : ""}`) ?? depByUses.get(unqualifiedUses);
     if (!dep) return line;
     const newComment = dep.newComment && pinnedVersion ? `# ${dep.newComment}${comment.slice(pinnedEnd)}` : comment;
     return `${prefix}${quote}${scheme}${dep.name}@${dep.newRef}${quote}${gap}${newComment}`;
@@ -153,14 +115,14 @@ export function isWorkflowFile(file: string): boolean {
 export function resolveWorkflowFiles(forgeDir: string): Array<string> {
   const found = new Set<string>();
   try {
-    for (const f of readdirSync(join(forgeDir, "workflows"))) {
-      if (/\.ya?ml$/.test(f)) found.add(resolve(join(forgeDir, "workflows", f)));
+    const workflowDir = join(forgeDir, "workflows");
+    for (const file of readdirSync(workflowDir)) {
+      if (/\.ya?ml$/.test(file)) found.add(resolve(workflowDir, file));
     }
   } catch {}
   try {
     for (const entry of readdirSync(forgeDir, {recursive: true, withFileTypes: true})) {
-      if (!entry.isFile() || !/^action\.ya?ml$/.test(entry.name)) continue;
-      found.add(resolve(join(entry.parentPath, entry.name)));
+      if (entry.isFile() && /^action\.ya?ml$/.test(entry.name)) found.add(resolve(entry.parentPath, entry.name));
     }
   } catch {}
   return Array.from(found);

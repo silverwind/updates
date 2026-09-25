@@ -19,26 +19,18 @@ export type Dep = {
 export type Deps = {[name: string]: Dep};
 export type DepsByMode = {[mode: string]: Deps};
 
-export type Output = {
-  results: {[mode: string]: {[type: string]: Deps}},
-  message?: string,
-};
+export type Output = {results: {[mode: string]: {[type: string]: Deps}}, message?: string};
 
-export type CooldownOpts = {cooldownDays?: number, now?: number,
-  getVersionDate?: (version: string) => string | undefined};
-
-export type FindVersionOpts = {
+type FindVersionOpts = {
   range: string, semvers: Set<string>, useGreatest: boolean, usePre: boolean, useRel: boolean, latest?: string,
   pinnedRange?: string, pinNoDowngrade?: boolean, allowDowngrade?: boolean, versioning?: Versioning,
-} & CooldownOpts;
+  cooldownDays?: number, now?: number, getVersionDate?: (version: string) => string | undefined,
+};
 
-export type FindNewVersionOpts = Omit<FindVersionOpts, "latest"> & {mode: string};
+type FindNewVersionOpts = Omit<FindVersionOpts, "latest"> & {mode: string};
 
 export function passesCooldown(date: string | undefined, cooldownDays: number | undefined, now: number | undefined): boolean {
-  if (!cooldownDays || !now) return true;
-  const ms = date ? Date.parse(date) : NaN;
-  if (Number.isNaN(ms)) return false;
-  return (now - ms) / (24 * 3600 * 1000) >= cooldownDays;
+  return !cooldownDays || !now || (now - Date.parse(date || "")) / (24 * 3600 * 1000) >= cooldownDays;
 }
 
 export type PackageInfo = [Record<string, any>, string | null];
@@ -74,7 +66,7 @@ export const defaultApiUrls = {
   dockerapi: "https://hub.docker.com",
   goproxy: "https://proxy.golang.org",
 } as const;
-export const fetchRetries = 2;
+const fetchRetries = 2;
 
 export const stripv = (str: string): string => str[0] === "v" ? str.substring(1) : str;
 export const normalizeUrl = (url: string) => url.endsWith("/") ? url.slice(0, -1) : url;
@@ -117,13 +109,10 @@ export async function fetchWithRetry(
   for (let attempt = 0; ; attempt++) {
     try {
       const res = await limit(() => ctx.doFetch(url, {...opts, signal: AbortSignal.timeout(ctx.fetchTimeout)}));
-      const value = res?.headers?.get?.("retry-after")?.trim();
-      const date = value && !/^\d+$/.test(value) ? Date.parse(value) : NaN;
-      const retryAfter = !value ? null : /^\d+$/.test(value) ? Number(value) * 1000 :
-        Number.isNaN(date) ? null : Math.max(date - Date.now(), 0);
-      // Waiting longer for a retry than for the request itself never pays off in a one-shot run:
-      // Docker Hub asks for 60s and answers the retry with the same rate limit.
-      const maxRetryAfter = ctx.fetchTimeout;
+      const value = res?.headers?.get?.("retry-after")?.trim() ?? "";
+      const retryMs = /^\d+$/.test(value) ? Number(value) * 1000 : Math.max(Date.parse(value) - Date.now(), 0);
+      const retryAfter = Number.isNaN(retryMs) ? null : retryMs;
+      const maxRetryAfter = ctx.fetchTimeout; // waiting longer never pays off in a one-shot run, Docker Hub asks for 60s then rate-limits the retry
       const retryDelay = res.status >= 500 && res.status < 600 ?
         (retryAfter !== null && retryAfter <= maxRetryAfter ? retryAfter : 0) :
         (res.status === 429 || res.status === 403 && retryAfter !== null) &&
@@ -137,7 +126,7 @@ export async function fetchWithRetry(
   }
 }
 
-export type BodyReducer = (body: string) => string;
+type BodyReducer = (body: string) => string;
 const reduceThreshold = 16384;
 
 export const reduceJson = (reduce: (data: any) => any): BodyReducer =>
@@ -152,31 +141,25 @@ function fetchCached(
   const requestKey = JSON.stringify([url, cacheKey, immutable, opts.method ?? "GET",
     Array.from(new Headers(opts.headers).entries()), opts.body ?? null, reduce?.toString()]);
   const requests = getOrSet(fetchesByCtx, ctx, () => new Map<string, Promise<FetchResult>>());
-  let request = requests.get(requestKey);
-  if (!request) {
-    request = (async () => {
-      try {
-        const cached = ctx.noCache ? null : await getCache(cacheKey);
-        if (immutable && cached) return {body: cached.body};
-        const baseHeaders = opts.headers as Record<string, string> | undefined;
-        const headers = cached ? {...baseHeaders, "if-none-match": cached.etag} : baseHeaders;
-        const res = await fetchWithRetry(ctx, url, {...opts, headers});
-        if (res.status === 304 && cached) return {body: cached.body, res};
-        if (!res.ok) return {res};
-        let body = await res.text();
-        if (reduce && body.length >= reduceThreshold) {
-          try { body = reduce(body); } catch {}
-        }
-        const etag = immutable ? "immutable" : res.headers.get("etag");
-        if (etag && !ctx.noCache) setCache(cacheKey, etag, body);
-        return {body, res};
-      } finally {
-        requests.delete(requestKey);
+  return getOrSet(requests, requestKey, async () => {
+    try {
+      const cached = ctx.noCache ? null : await getCache(cacheKey);
+      if (immutable && cached) return {body: cached.body};
+      const headers = cached ? {...opts.headers as Record<string, string>, "if-none-match": cached.etag} : opts.headers;
+      const res = await fetchWithRetry(ctx, url, {...opts, headers});
+      if (res.status === 304 && cached) return {body: cached.body, res};
+      if (!res.ok) return {res};
+      let body = await res.text();
+      if (reduce && body.length >= reduceThreshold) {
+        try { body = reduce(body); } catch {}
       }
-    })();
-    requests.set(requestKey, request);
-  }
-  return request;
+      const etag = immutable ? "immutable" : res.headers.get("etag");
+      if (etag && !ctx.noCache) setCache(cacheKey, etag, body);
+      return {body, res};
+    } finally {
+      requests.delete(requestKey);
+    }
+  });
 }
 
 export function fetchWithEtag(
@@ -250,17 +233,11 @@ const sameReleasePrereleaseCache = new WeakMap<Set<string>, Set<string>>();
 
 export function prereleaseOpts(range: string, usePre: boolean, useRel: boolean, semvers: Set<string>, versioning: Versioning = semverVersioning) {
   const anyPrerelease = usePre || versioning.isRangePrerelease(range);
-  let effectiveSemvers = semvers;
-  if (anyPrerelease) {
-    const cache = usePre ? allPrereleaseCache : sameReleasePrereleaseCache;
-    effectiveSemvers = cache.get(semvers) ?? new Set(semvers).add("prerelease");
-    if (usePre) {
-      if (semvers.has("patch")) effectiveSemvers.add("prepatch");
-      if (semvers.has("minor")) effectiveSemvers.add("preminor");
-      if (semvers.has("major")) effectiveSemvers.add("premajor");
-    }
-    cache.set(semvers, effectiveSemvers);
-  }
+  const effectiveSemvers = anyPrerelease ? getOrSet(usePre ? allPrereleaseCache : sameReleasePrereleaseCache, semvers, () => {
+    const levels = new Set(semvers).add("prerelease");
+    if (usePre) for (const level of semvers) levels.add(`pre${level}`);
+    return levels;
+  }) : semvers;
   const skipsPrerelease = (parsed: any) => (!anyPrerelease || useRel) && Boolean(parsed) && versioning.isPrerelease(parsed);
   return {effectiveSemvers, skipsPrerelease};
 }
@@ -329,14 +306,11 @@ export function findNewVersion(data: any, {mode, range: authoredRange, useGreate
     const isViableFile = (file: any) => Boolean(file && !file.yanked);
     versions = Object.keys(releases).filter(version =>
       Array.isArray(releases[version]) && releases[version].some(isViableFile));
-    getVersionDate = (version: string) => releases[version].reduce(
-      (earliest: {date?: string, time: number}, file: any) => {
-        if (!isViableFile(file)) return earliest;
-        const date = file?.upload_time_iso_8601;
-        const time = typeof date === "string" ? Date.parse(date) : NaN;
-        return !Number.isNaN(time) && time < earliest.time ? {date, time} : earliest;
-      }, {time: Infinity},
-    ).date;
+    getVersionDate = (version: string) => releases[version].reduce((earliest: {date?: string, time: number}, file: any) => {
+      const date = file?.upload_time_iso_8601;
+      const time = isViableFile(file) && typeof date === "string" ? Date.parse(date) : NaN;
+      return time < earliest.time ? {date, time} : earliest;
+    }, {time: Infinity}).date;
     latestTag = data.info?.version ?? "";
   } else if (mode === "npm" || mode === "cargo") {
     if (!data?.versions) return null;
@@ -365,8 +339,7 @@ export function findNewVersion(data: any, {mode, range: authoredRange, useGreate
       const level = pseudo ? (d === "prerelease" ? "patch" : d?.replace(/^pre/, "")) : d;
       if (!level || !effectiveSemvers.has(level)) return false;
       if (!mayStepDown && parsed && oldParsed && versioning.compare(parsed, oldParsed) < 0) return false;
-      if (!passesCooldown(time, cooldownDays, now)) return false;
-      return !pinnedRange || satisfies(coerced, pinnedRange);
+      return passesCooldown(time, cooldownDays, now) && (!pinnedRange || satisfies(coerced, pinnedRange));
     };
 
     if (accepts(data.new, data.Time)) return data.new;
@@ -381,7 +354,7 @@ export function findNewVersion(data: any, {mode, range: authoredRange, useGreate
     pinnedRange, pinNoDowngrade, allowDowngrade, cooldownDays, now, getVersionDate, versioning});
 }
 
-export function urlHost(url: string): string {
+function urlHost(url: string): string {
   try {
     return new URL(url).host;
   } catch {
@@ -389,29 +362,15 @@ export function urlHost(url: string): string {
   }
 }
 
-function pairToken(host: string): string | null {
-  const entry = commaSeparatedToArray(env.UPDATES_FORGE_TOKENS ?? "").find(entry => {
-    const sep = entry.lastIndexOf(":");
-    return sep > 0 && entry.slice(0, sep) === host;
-  });
-  return entry ? entry.slice(entry.lastIndexOf(":") + 1) : null;
-}
-
 let execFilePromise: Promise<ExecFile> | undefined;
 export function getExecFile(): Promise<ExecFile> {
-  if (!execFilePromise) execFilePromise = (async () => {
+  return execFilePromise ??= (async () => {
     const [{execFile}, {promisify}] = await Promise.all([import("node:child_process"), import("node:util")]);
     return promisify(execFile) as ExecFile;
   })();
-  return execFilePromise;
 }
 
 const githubTokenEnvNames = ["UPDATES_GITHUB_API_TOKEN", "GITHUB_API_TOKEN", "GH_TOKEN", "GITHUB_TOKEN", "HOMEBREW_GITHUB_API_TOKEN"];
-
-export function getGithubTokens(): string[] {
-  return Array.from(new Set(githubTokenEnvNames
-    .map(name => env[name]).filter((value): value is string => Boolean(value))));
-}
 
 const reExtraheader = /^http\.(\S+)\/\.extraheader AUTHORIZATION:\s*basic\s+(\S+)$/i;
 
@@ -450,15 +409,13 @@ export function forgeHostOf(host: string): string {
 
 export async function getForgeTokens(host: string, forgeApiUrl: string): Promise<string[]> {
   if (!host) return [];
-
-  const hostToken = pairToken(host);
-  if (hostToken) return [hostToken];
+  const token = commaSeparatedToArray(env.UPDATES_FORGE_TOKENS ?? "")
+    .find(entry => entry.lastIndexOf(":") === host.length && entry.startsWith(host))?.slice(host.length + 1);
+  if (token) return [token];
 
   const forgeHost = forgeHostOf(host);
-  const isGithubHost = forgeHost === "github.com" || host === urlHost(forgeApiUrl);
-
   const stored = (await readTokens())[forgeHost];
-  const tokens = isGithubHost ? getGithubTokens() : [];
+  const tokens = forgeHost === "github.com" || host === urlHost(forgeApiUrl) ? githubTokenEnvNames.map(name => env[name]) : [];
   const header = (await getExtraheaderTokens()).get(forgeHost);
   return Array.from(new Set([stored, ...tokens, header].filter(Boolean) as string[]));
 }
@@ -471,21 +428,18 @@ export async function verifyToken(host: string, token: string, forgeApiUrl = git
   return (await res.json()).login;
 }
 
-export type ForgeErrorKind = "rateLimit" | "server" | "network";
+type ForgeErrorKind = "rateLimit" | "server" | "network";
 
 export class ForgeError extends Error {
   override readonly name = "ForgeError";
-  readonly kind: ForgeErrorKind;
-  readonly host: string;
-  readonly status: number;
-  readonly reset: number;
+  declare readonly kind: ForgeErrorKind;
+  declare readonly host: string;
+  declare readonly status: number;
+  declare readonly reset: number;
 
   constructor(kind: ForgeErrorKind, host: string, message: string, {status = 0, reset = 0, cause}: {status?: number, reset?: number, cause?: unknown} = {}) {
     super(message, {cause});
-    this.kind = kind;
-    this.host = host;
-    this.status = status;
-    this.reset = reset;
+    Object.assign(this, {kind, host, status, reset});
   }
 }
 
@@ -536,9 +490,7 @@ export async function fetchForge(url: string, ctx: ModeContext, extraHeaders?: R
       if (response.status === 401 && !rejectedTokens.has(token)) {
         rejectedTokens.add(token);
         const forgeHost = forgeHostOf(host);
-        if ((await readTokens())[forgeHost] === token) {
-          console.error(`stored token for ${forgeHost} was rejected, run "updates --login ${forgeHost}" to replace it`);
-        }
+        if ((await readTokens())[forgeHost] === token) console.error(`stored token for ${forgeHost} was rejected, run "updates --login ${forgeHost}" to replace it`);
       }
       if (token === cached) workingTokenCache.delete(host);
     }
@@ -550,11 +502,9 @@ export async function fetchForge(url: string, ctx: ModeContext, extraHeaders?: R
 }
 
 export function selectTag(tags: Array<string>, oldRef: string): string | null {
-  const oldParsed = semverVersioning.parse(stripv(oldRef));
-  if (!oldParsed) return null;
-
+  let bestParsed = semverVersioning.parse(stripv(oldRef));
+  if (!bestParsed) return null;
   let bestTag = "";
-  let bestParsed = oldParsed;
   for (const tag of tags) {
     const parsed = semverVersioning.parse(stripv(tag));
     if (parsed && semverVersioning.compare(parsed, bestParsed) > 0) {
@@ -567,14 +517,11 @@ export function selectTag(tags: Array<string>, oldRef: string): string | null {
 
 export function resolvePackageJsonUrl(url: string): string {
   const cleaned = url.replace("git@", "").replace(/.+?\/\//, "https://").replace(/\.git$/, "");
-  if (/^[a-z]+:[a-z0-9-]+\/[a-z0-9-]+$/.test(cleaned)) {
-    return cleaned.replace(/^(.+?):/, (_, p1) => `https://${p1}.com/`);
-  }
+  if (/^[a-z]+:[a-z0-9-]+\/[a-z0-9-]+$/.test(cleaned)) return cleaned.replace(/^(.+?):/, "https://$1.com/");
   return /^[a-z0-9-]+\/[a-z0-9-]+$/.test(cleaned) ? `https://github.com/${cleaned}` : cleaned;
 }
 
-const commitHashPattern = "(?:[0-9a-f]{6,7}|[0-9a-f]{40}|[0-9a-f]{64})";
-export const commitHashRe = new RegExp(`^${commitHashPattern}$`, "i");
+export const commitHashRe = /^(?:[0-9a-f]{6,7}|[0-9a-f]{40}|[0-9a-f]{64})$/i;
 export const hashRe = /^(?=.*[a-f])[0-9a-f]{7,40}$/i;
 
 export function isVersionLikeRef(ref: string): boolean {
@@ -588,25 +535,16 @@ export function parseCommitDate(data: any): string {
   return commit?.committer?.date || commit?.author?.date || "";
 }
 
-export function parseTags(data: Array<any>): Array<TagEntry> {
-  if (!Array.isArray(data)) throw new TypeError("Invalid Forge tags response");
-  return data.map((tag: any) => {
-    if (typeof tag?.name !== "string" || tag.commit?.sha !== undefined && typeof tag.commit.sha !== "string") {
-      throw new TypeError("Invalid Forge tag entry");
-    }
-    return {name: tag.name, commitSha: tag.commit?.sha || ""};
+function parseTags(data: any, cached: boolean): Array<TagEntry> {
+  const source = cached ? "cached Forge" : "Forge";
+  if (!Array.isArray(data)) throw new TypeError(`Invalid ${source} tags response`);
+  return data.map(tag => {
+    const validSha = cached ? typeof tag?.commitSha === "string" && (tag.isStable === undefined || typeof tag.isStable === "boolean") :
+      tag?.commit?.sha === undefined || typeof tag.commit.sha === "string";
+    if (typeof tag?.name !== "string" || !validSha) throw new TypeError(`Invalid ${source} tag entry`);
+    return cached ? tag : {name: tag.name, commitSha: tag.commit?.sha || ""};
   });
 }
-
-const parseTagPage = (data: any, cached: boolean): Array<TagEntry> => {
-  if (!cached) return parseTags(data);
-  if (!Array.isArray(data)) throw new TypeError("Invalid cached Forge tags response");
-  return data.map(tag => {
-    if (typeof tag?.name !== "string" || typeof tag.commitSha !== "string" ||
-      tag.isStable !== undefined && typeof tag.isStable !== "boolean") throw new TypeError("Invalid cached Forge tag entry");
-    return tag as TagEntry;
-  });
-};
 
 const forgeEtagsByCtx = new WeakMap<ModeContext, Map<string, Promise<string | null>>>();
 
@@ -681,22 +619,6 @@ async function fetchForgePages<T>(
   }
 }
 
-async function fetchReleaseStability(
-  owner: string, repo: string, ctx: ModeContext,
-): Promise<Map<string, boolean>> {
-  const stability = new Map<string, boolean>();
-  await fetchForgePages(
-    page => `${githubApiUrl}/repos/${owner}/${repo}/releases?per_page=100&page=${page}`,
-    ctx, "releases", parseReleases, entries => {
-      for (const release of entries) {
-        stability.set(release.name, release.isStable);
-      }
-      return false;
-    },
-  );
-  return stability;
-}
-
 export async function fetchForgeTags(
   apiUrl: string, owner: string, repo: string, ctx: ModeContext, oldRefs: Array<string> = [],
 ): Promise<Array<TagEntry>> {
@@ -705,7 +627,7 @@ export async function fetchForgeTags(
   const bounded = unresolved.size > 0;
   await fetchForgePages(
     page => `${apiUrl}/repos/${owner}/${repo}/tags?per_page=100&page=${page}`,
-    ctx, "tags", parseTagPage, entries => {
+    ctx, "tags", parseTags, entries => {
       for (const entry of entries) {
         for (const ref of unresolved) if (ref === entry.name || entry.commitSha.startsWith(ref)) unresolved.delete(ref);
         tags.push(entry);
@@ -720,14 +642,19 @@ export async function fetchActionTags(
   apiUrl: string, owner: string, repo: string, ctx: ModeContext, oldRefs: Array<string> = [], includeStability = true,
 ): Promise<Array<TagEntry>> {
   if (apiUrl !== githubApiUrl || !includeStability) return fetchForgeTags(apiUrl, owner, repo, ctx, oldRefs);
-  const [tagsResult, stability] = await Promise.allSettled([
+  const stability = new Map<string, boolean>();
+  const [tagsResult, releasesResult] = await Promise.allSettled([
     fetchForgeTags(apiUrl, owner, repo, ctx, oldRefs),
-    fetchReleaseStability(owner, repo, ctx),
+    fetchForgePages(page => `${githubApiUrl}/repos/${owner}/${repo}/releases?per_page=100&page=${page}`, ctx, "releases",
+      parseReleases, entries => {
+        for (const release of entries) stability.set(release.name, release.isStable);
+        return false;
+      }),
   ]);
   if (tagsResult.status === "rejected") throw tagsResult.reason;
-  if (stability.status === "rejected" && !(stability.reason instanceof ForgeError)) throw stability.reason;
-  if (stability.status === "fulfilled") {
-    for (const tag of tagsResult.value) if (stability.value.has(tag.name)) tag.isStable = stability.value.get(tag.name);
+  if (releasesResult.status === "rejected" && !(releasesResult.reason instanceof ForgeError)) throw releasesResult.reason;
+  if (releasesResult.status === "fulfilled") {
+    for (const tag of tagsResult.value) if (stability.has(tag.name)) tag.isStable = stability.get(tag.name);
   }
   return tagsResult.value;
 }
@@ -736,10 +663,7 @@ export type CheckResult = {key: string, newRange: string, user: string, repo: st
   newDate?: string};
 
 export function throwFetchError(res: Response | undefined, url: string, name: string, source: string): never {
-  if (res?.status && res.statusText) {
-    throw new Error(`Received ${res.status} ${res.statusText} from ${url}`);
-  }
-  throw new Error(`Unable to fetch ${name} from ${source}`);
+  throw new Error(res?.status && res.statusText ? `Received ${res.status} ${res.statusText} from ${url}` : `Unable to fetch ${name} from ${source}`);
 }
 
 export function formatVersionPrecision(newVersion: string, oldVersion: string, suffix = ""): string {
@@ -757,27 +681,13 @@ export function getSubDir(url: string): string {
 const pypiRepoKeys = ["repository", "Repository", "repo", "Repo", "source", "Source", "source code", "Source code", "Source Code", "homepage", "Homepage"];
 
 export function getInfoUrl({repository, homepage, info}: {repository?: PackageRepository, homepage?: string, info?: Record<string, any>}, registry: string | null, name: string): string {
+  if (registry === "https://npm.pkg.github.com") return `https://github.com/${name.replace(/^@/, "")}`;
   if (info) {
-    const urls = info.project_urls;
-    for (const key of pypiRepoKeys) {
-      if (!urls?.[key]) continue;
-      repository = urls[key];
-      break;
-    }
-    repository ??= `https://pypi.org/project/${name}/`;
+    const key = pypiRepoKeys.find(candidate => info.project_urls?.[candidate]);
+    repository = key ? info.project_urls[key] : repository ?? `https://pypi.org/project/${name}/`;
   }
-
-  let infoUrl = "";
-  if (registry === "https://npm.pkg.github.com") {
-    return `https://github.com/${name.replace(/^@/, "")}`;
-  }
-  if (repository) {
-    const url = typeof repository === "string" ? repository : repository.url;
-    infoUrl = resolvePackageJsonUrl(url);
-    if (infoUrl && typeof repository !== "string" && repository.directory) {
-      infoUrl += `/${getSubDir(infoUrl)}/${repository.directory}`;
-    }
-  }
-
+  if (!repository) return homepage || "";
+  const infoUrl = resolvePackageJsonUrl(typeof repository === "string" ? repository : repository.url);
+  if (infoUrl && typeof repository !== "string" && repository.directory) return `${infoUrl}/${getSubDir(infoUrl)}/${repository.directory}`;
   return infoUrl || homepage || "";
 }

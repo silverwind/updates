@@ -141,22 +141,15 @@ export const options: ParseArgsOptionsConfig = {
 };
 
 // the `[<dep,...>]` options in --help, valid on their own
-export const optionalValueOptions = new Set(["allow-downgrade", "greatest", "minor", "patch", "prerelease", "release"]);
+export const optionalValueOptions = new Set(["greatest", "prerelease", "release", "patch", "minor", "allow-downgrade"]);
 
 export function parseMixedArg(arg: Arg): boolean | Set<string> {
-  if (Array.isArray(arg)) {
-    return !arg.length || arg.includes(true) ||
-      new Set(arg.filter(val => typeof val === "string").flatMap(commaSeparatedToArray));
-  }
-  if (typeof arg === "string") return new Set([arg]);
-  if (typeof arg === "boolean") return arg;
-  return false;
+  if (!Array.isArray(arg)) return arg === true;
+  return !arg.length || arg.includes(true) || new Set(parseArgList(arg));
 }
 
 export function getOptionKey(name: string): string {
-  for (const [key, {short}] of Object.entries(options)) {
-    if (key === name || short === name) return key;
-  }
+  for (const [key, {short}] of Object.entries(options)) if (key === name || short === name) return key;
   return "";
 }
 
@@ -164,11 +157,8 @@ export function patternsToRegexSet(patterns: Array<string | RegExp>): Set<RegExp
   return new Set(patterns.map(patternToRegex));
 }
 
-export function parseArgList(arg: Arg): Array<string> {
-  if (Array.isArray(arg)) {
-    return arg.filter(v => typeof v === "string").flatMap(commaSeparatedToArray);
-  }
-  return [];
+export function parseArgList(arg: Arg, split = commaSeparatedToArray): Array<string> {
+  return Array.isArray(arg) ? arg.filter(value => typeof value === "string").flatMap(split) : [];
 }
 
 export function validatePin(pin: Config["pin"]): void {
@@ -195,7 +185,7 @@ export function configMixedToRegexes(val: boolean | Array<string | RegExp> | und
   return patternsToRegexSet(val);
 }
 
-const findConfigUp = memoizeAsync((startDir: string) => walkUp(startDir, async dir => {
+export const findConfigUp = memoizeAsync((startDir: string) => walkUp(startDir, async dir => {
   for (const ext of ["js", "ts", "mjs", "mts"]) {
     const filename = `updates.config.${ext}`;
     const fullPath = join(dir, filename);
@@ -206,8 +196,7 @@ const findConfigUp = memoizeAsync((startDir: string) => walkUp(startDir, async d
       throw new Error(`Unable to load config file ${filename}: ${err.message}`);
     }
     try {
-      const mod = await import(pathToFileURL(fullPath).href);
-      return mod.default ?? {};
+      return (await import(pathToFileURL(fullPath).href)).default ?? {};
     } catch (err: any) {
       throw new Error(`Unable to parse config file ${filename}: ${err?.message ?? err}`);
     }

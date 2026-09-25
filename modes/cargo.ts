@@ -1,6 +1,7 @@
 import {type Deps, type ModeContext, type PackageInfo, dedupe, fieldSep, fetchWithEtag, getFetchOpts, normalizeUrl, throwFetchError} from "./shared.ts";
-import {esc, pushTo} from "../utils/utils.ts";
+import {pushTo} from "../utils/utils.ts";
 import {gt, parse, valid, satisfies} from "../utils/semver.ts";
+import {splitDottedKey} from "../utils/toml.ts";
 import {updateVersionRange} from "./npm.ts";
 
 type SparseIndexRecord = {vers?: string; yanked?: boolean; pubtime?: string};
@@ -12,11 +13,6 @@ function indexSuffix(name: string): string {
   if (lower.length <= 2) return `${lower.length}/${lower}`;
   if (lower.length === 3) return `3/${lower[0]}/${lower}`;
   return `${lower.slice(0, 2)}/${lower.slice(2, 4)}/${lower}`;
-}
-
-function indexUrl(cratesIoUrl: string, name: string): string {
-  const base = normalizeUrl(cratesIoUrl);
-  return `${base === "https://crates.io" ? "https://index.crates.io" : base}/${indexSuffix(name)}`;
 }
 
 function reduceSparseIndex(body: string): string {
@@ -32,7 +28,8 @@ function reduceSparseIndex(body: string): string {
 }
 
 export async function fetchCratesIoInfo(name: string, ctx: ModeContext): Promise<PackageInfo> {
-  const url = indexUrl(ctx.cratesIoUrl, name);
+  const base = normalizeUrl(ctx.cratesIoUrl);
+  const url = `${base === "https://crates.io" ? "https://index.crates.io" : base}/${indexSuffix(name)}`;
 
   const data = await dedupe(cratesIoByCtx, ctx, url, async () => {
     const result = await fetchWithEtag(url, ctx, getFetchOpts(), reduceSparseIndex);
@@ -74,11 +71,7 @@ export function parseCargoLock(lockStr: string): Map<string, string[]> {
   for (const block of lockStr.split("[[package]]")) {
     const nameMatch = /\bname\s*=\s*"([^"]+)"/.exec(block);
     const versionMatch = /\bversion\s*=\s*"([^"]+)"/.exec(block);
-    if (!nameMatch || !versionMatch) continue;
-    const name = nameMatch[1];
-    const version = versionMatch[1];
-    if (!valid(version)) continue;
-    pushTo(map, name, version);
+    if (nameMatch && versionMatch && valid(versionMatch[1])) pushTo(map, nameMatch[1], versionMatch[1]);
   }
   return map;
 }
@@ -100,13 +93,11 @@ function updateComparator(comparator: string, newVersion: string): string {
 
   const wildcard = wildcardRe.exec(value);
   let updated: string;
-  if (wildcard) {
-    if (parse(newVersion)?.prerelease.length) {
-      updated = newVersion;
-    } else {
-      const [_full, digits, stars] = wildcard;
-      updated = `${newVersion.split(/[-+]/)[0].split(".").slice(0, digits.split(".").length).join(".")}${stars}`;
-    }
+  if (wildcard && parse(newVersion)?.prerelease.length) {
+    updated = newVersion;
+  } else if (wildcard) {
+    const [_full, digits, stars] = wildcard;
+    updated = `${newVersion.split(/[-+]/)[0].split(".").slice(0, digits.split(".").length).join(".")}${stars}`;
   } else if (startsWithDigitRe.test(value)) {
     updated = updateVersionRange(`^${value}`, newVersion, `^${value}`).replace(/^\^/, "");
   } else {
@@ -125,20 +116,14 @@ export function findLockedVersion(allVersions: Map<string, string[]>, name: stri
   const npmRange = cargoToNpmRange(range);
   let best: string | undefined;
   for (const version of versions) {
-    if (satisfies(version, npmRange) && (!best || gt(version, best))) {
-      best = version;
-    }
+    if (satisfies(version, npmRange) && (!best || gt(version, best))) best = version;
   }
   return best;
 }
 
-const tomlKey = (key: string) => {
-  const escaped = esc(key);
-  return `(?:${escaped}|"${escaped}"|'${escaped}')`;
-};
 const jsonStringArrayRe = /^\[(?:"(?:\\.|[^"\\])*"(?:,"(?:\\.|[^"\\])*")*)?\]/;
-
 const tableHeaderRe = /^[ \t]*\[(\[?)[ \t]*([^[\]]+?)[ \t]*\]\1[ \t]*(?:#.*)?[ \t\r]*$/;
+const versionLineRe = /^(\s*("(?:\\.|[^"\\])*"|'[^']*'|[\w-]+)\s*=\s*(?:\{(?:"[^"\n]*"|'[^'\n]*'|[^"'}\n])*?\bversion\s*=\s*)?["'])([^"'\n]*)(["'])/;
 
 function multilineDelim(line: string, delimiter: string): string {
   for (let index = 0; index < line.length; index++) {
@@ -163,8 +148,7 @@ function multilineDelim(line: string, delimiter: string): string {
   return delimiter.length === 3 ? delimiter : "";
 }
 
-type CargoRewrite = {simpleRe: RegExp, inlineRe: RegExp, versionRe?: RegExp, newValue: string};
-type CargoTable = {path: string, start: number, end: number, rewrites: Array<CargoRewrite>};
+type CargoTable = {path: string, start: number, end: number, rewrites: Map<string, Deps[string]>};
 
 function tableSpans(str: string): Array<CargoTable> {
   const spans: Array<CargoTable> = [];
@@ -174,7 +158,7 @@ function tableSpans(str: string): Array<CargoTable> {
     const header = delimiter ? null : tableHeaderRe.exec(line);
     if (header) {
       if (spans.length) spans.at(-1)!.end = pos;
-      spans.push({path: header[1] ? "" : header[2], start: pos, end: str.length, rewrites: []});
+      spans.push({path: header[1] ? "" : JSON.stringify(splitDottedKey(header[2])), start: pos, end: str.length, rewrites: new Map()});
     } else {
       delimiter = multilineDelim(line, delimiter);
     }
@@ -187,39 +171,24 @@ export function updateCargoToml(pkgStr: string, deps: Deps): string {
   const spans = tableSpans(pkgStr);
   for (const [key, dep] of Object.entries(deps)) {
     const [typeKey, name] = key.split(fieldSep);
-    const oldValue = dep.oldOrig || dep.old;
-    const newValue = dep.new;
-    const nameEsc = tomlKey(name);
-    const oldEsc = esc(oldValue);
     const typePath: Array<string> = typeKey.startsWith("[") ? JSON.parse(jsonStringArrayRe.exec(typeKey)![0]) :
       typeKey.split("|", 1)[0].split(".");
-    const dottedSeparator = "[ \\t]*\\.[ \\t]*";
-    const sectionEsc = typePath.map(tomlKey).join(dottedSeparator);
-    const ownRe = new RegExp(`^${sectionEsc}${dottedSeparator}${nameEsc}$`);
-    const sectionRe = new RegExp(`^${sectionEsc}$`);
-    const ownSpan = spans.find(entry => ownRe.test(entry.path));
-    const span = ownSpan ?? spans.find(entry => sectionRe.test(entry.path));
+    const ownPath = JSON.stringify([...typePath, name]);
+    const sectionPath = JSON.stringify(typePath);
+    const ownSpan = spans.find(entry => entry.path === ownPath);
+    const span = ownSpan ?? spans.find(entry => entry.path === sectionPath);
     if (!span) throw new Error(`Unable to locate Cargo table for ${typeKey}.${name}`);
-    span.rewrites.push({
-      simpleRe: new RegExp(`^(\\s*${nameEsc}\\s*=\\s*["'])${oldEsc}(["'].*)$`),
-      inlineRe: new RegExp(`^(\\s*${nameEsc}\\s*=\\s*\\{(?:"[^"\\n]*"|'[^'\\n]*'|[^"'}\\n])*?\\bversion\\s*=\\s*["'])${oldEsc}(["'])`),
-      ...(ownSpan && {versionRe: new RegExp(`^(\\s*version\\s*=\\s*["'])${oldEsc}(["'].*)$`)}),
-      newValue,
-    });
+    span.rewrites.set(ownSpan ? "version" : name, dep);
   }
   let result = pkgStr;
   for (const span of spans.reverse()) {
-    if (!span.rewrites.length) continue;
+    if (!span.rewrites.size) continue;
     let delimiter = "";
     const scope = pkgStr.slice(span.start, span.end).replace(/^.*$/gm, originalLine => {
-      let line = originalLine;
-      if (!delimiter) {
-        for (const rewrite of span.rewrites) {
-          line = line.replace(rewrite.simpleRe, `$1${rewrite.newValue}$2`)
-            .replace(rewrite.inlineRe, `$1${rewrite.newValue}$2`);
-          if (rewrite.versionRe) line = line.replace(rewrite.versionRe, `$1${rewrite.newValue}$2`);
-        }
-      }
+      const line = delimiter ? originalLine : originalLine.replace(versionLineRe, (match, prefix, rawKey, value, suffix) => {
+        const dep = span.rewrites.get(splitDottedKey(rawKey)[0]);
+        return dep && value === (dep.oldOrig || dep.old) ? `${prefix}${dep.new}${suffix}` : match;
+      });
       delimiter = multilineDelim(line, delimiter);
       return line;
     });

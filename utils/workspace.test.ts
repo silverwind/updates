@@ -80,19 +80,16 @@ test("resolveWorkspaceMembers resolves literals, globs and exclusions", async ()
   const broadDir = makeWorkspace({
     "packages/foo/package.json": "{\"name\": \"foo\"}",
     "node_modules/eslint/package.json": "{\"name\": \"eslint\"}",
+    "bower_components/jquery/package.json": "{\"name\": \"jquery\"}",
   });
   expect((await resolveWorkspaceMembers(["**"], broadDir, "package.json")).map(({memberPath}) => memberPath))
     .toEqual(["./packages/foo"]);
 });
 
-test("resolveWorkspaceMembers skips missing", async () => {
-  const dir = makeWorkspace();
-  expect(await resolveWorkspaceMembers(["nonexistent"], dir, "Cargo.toml")).toEqual([]);
-});
-
-test("resolveWorkspaceMembers skips unreadable manifests", async () => {
+test("resolveWorkspaceMembers skips missing and unreadable manifests", async () => {
   const dir = makeWorkspace();
   mkdirSync(join(dir, "member"));
+  expect(await resolveWorkspaceMembers(["nonexistent"], dir, "Cargo.toml")).toEqual([]);
   expect(await resolveWorkspaceMembers(["member"], dir, ".")).toEqual([]);
 });
 
@@ -121,9 +118,6 @@ test("parsePnpmWorkspace", () => {
   expect(parsePnpmWorkspace('packages:\n  - "packages/with space"\n')).toEqual(["packages/with space"]);
   expect(parsePnpmWorkspace("")).toEqual([]);
   expect(parsePnpmWorkspace("packages:\n  # comment\n  - libs/*\nnodeLinker: hoisted\n")).toEqual(["libs/*"]);
-});
-
-test("parsePnpmWorkspace parses quoted patterns with inline comments", () => {
   expect(parsePnpmWorkspace("packages:\n  - \"packages/*\" # app packages\n  - 'libs/*'  # libs\n  - plain/*\n"))
     .toEqual(["packages/*", "libs/*", "plain/*"]);
 });

@@ -2,7 +2,6 @@ import {resolve} from "node:path";
 import {mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {
-  type GoProxyEntry,
   parseGoProxy,
   resolveGoProxyChain,
   pickGoListVersion,
@@ -23,7 +22,7 @@ import {
   rewriteGoImportPaths,
   rewriteGoImports,
 } from "./go.ts";
-import {type ModeContext, fieldSep, isGoPseudoVersion} from "./shared.ts";
+import {type GoProxyEntry, type ModeContext, fieldSep, isGoPseudoVersion} from "./shared.ts";
 
 async function withGoProxyEnv(value: string | undefined, fn: () => void | Promise<void>): Promise<void> {
   const orig = process.env.GOPROXY;
@@ -146,6 +145,13 @@ test.each([
       tool: {"github.com/foo/bar": "v1.2.3"}, exclude: {"github.com/foo/bar": ["v1.3.0", "v1.4.0"]}}],
   ["a single-line require", ["module example.com/mod", "", "require foo v1.0.0"],
     {deps: {"foo": "v1.0.0"}, indirect: {}, replace: {}, tool: {}}],
+  ["invalid and placeholder versions are not update candidates",
+    ["module example.com/mod", "", "require (", "\texample.com/a v1.2",
+      "\texample.com/b v0.0.0-00010101000000-000000000000",
+      "\texample.com/c v0.0.0-20210101000000-000000000000", "\texample.com/d/v2 v2.0.0-00010101000000-000000000000", ")",
+      "replace example.com/x => example.com/fork v1.2",
+      "replace example.com/y => example.com/fork-placeholder v2.0.0-00010101000000-000000000000"],
+    {deps: {"example.com/c": "v0.0.0-20210101000000-000000000000"}, indirect: {}, replace: {}, tool: {}}],
   ["replace block syntax",
     ["module example.com/mod", "", "require (", "\tgithub.com/orig/mod v1.0.0", ")", "",
       "replace (", "\tgithub.com/orig/mod => github.com/fork/mod v2.0.0", ")"],

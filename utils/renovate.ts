@@ -2,94 +2,65 @@ import {join} from "node:path";
 import {readFile} from "node:fs/promises";
 import {parseJsonish} from "./json5.ts";
 import {validRange} from "./semver.ts";
-import {walkUp, patternToRegex, esc, getOrSet} from "./utils.ts";
+import {walkUp, patternToRegex, esc, getOrSet, tryOrNull} from "./utils.ts";
 import type {Config} from "../config.ts";
 
-const durationUnits: Record<string, number> = {
-  y: 365, year: 365, years: 365,
-  mo: 30, month: 30, months: 30,
-  w: 7, week: 7, weeks: 7,
-  d: 1, day: 1, days: 1,
-  h: 1 / 24, hour: 1 / 24, hours: 1 / 24,
-  min: 1 / 1440, minute: 1 / 1440, minutes: 1 / 1440,
-  s: 1 / 86400, second: 1 / 86400, seconds: 1 / 86400,
-};
+const daysPerUnit: Record<string, number> = {y: 365.25, w: 7, d: 1, h: 1 / 24, m: 1 / 1440, s: 1 / 86400, ms: 1 / 86400000};
 
-function parseRenovateDuration(str: string): number | undefined {
-  let total: number | undefined;
-  for (const match of str.matchAll(/(\d+(?:\.\d+)?)\s*([a-z]+)/gi)) {
-    const multiplier = durationUnits[match[2].toLowerCase()];
-    if (multiplier === undefined) return undefined;
-    total = (total ?? 0) + Number(match[1]) * multiplier;
+function parseRenovateDuration(value: unknown): number | undefined {
+  if (typeof value !== "string") return undefined;
+  const parts = value.split(/(.*?[a-z]+)/).map(part => part.trim()).filter(Boolean);
+  if (!parts.length) return undefined;
+  let total = 0;
+  for (const part of parts) {
+    const spec = part.replace(/^(\d+)\s*(?:months?|M)$/, (_match, months) => `${Number(months) * 30} days`);
+    if (spec.length > 100) return undefined;
+    const match = /^(-?\d*\.?\d+) *(milliseconds?|msecs?|ms|seconds?|secs?|s|minutes?|mins?|m|hours?|hrs?|h|days?|d|weeks?|w|years?|yrs?|y)?$/i.exec(spec);
+    if (!match) return undefined;
+    const unit = (match[2] ?? "ms").toLowerCase();
+    total += Number(match[1]) * daysPerUnit[/^m(?:s|il)/.test(unit) ? "ms" : unit[0]];
   }
   return total;
 }
 
-type RenovateConfig = {
-  enabled?: boolean;
-  minimumReleaseAge?: string;
-  ignoreDeps?: Array<string>;
-  packageRules?: Array<RenovatePackageRule>;
-  [key: string]: unknown;
-};
+type Matcher = string | RegExp;
 
-type RenovatePackageRule = {
-  enabled?: boolean;
-  allowedVersions?: string;
-  minimumReleaseAge?: string;
-  [key: string]: unknown;
-};
+const nameMatcherKeyRe = /^(?:(?:match|exclude)(?:Package|Dep)(?:Names|Patterns|Prefixes)|package(?:Name|Pattern)s?|excludedPackageNames)$/;
 
-export type Matcher = string | RegExp;
-
-type MatcherTarget = "package" | "dep";
-
-const packageNameKeys: Record<string, {target: MatcherTarget, convert: (value: string) => string}> = {
-  packageName: {target: "package", convert: name => name},
-  packagePattern: {target: "package", convert: pattern => pattern === "*" ? "*" : `/${pattern}/`},
-  matchPackageNames: {target: "package", convert: name => name},
-  packageNames: {target: "package", convert: name => name},
-  matchPackagePatterns: {target: "package", convert: pattern => pattern === "*" ? "*" : `/${pattern}/`},
-  packagePatterns: {target: "package", convert: pattern => pattern === "*" ? "*" : `/${pattern}/`},
-  matchPackagePrefixes: {target: "package", convert: prefix => `${prefix}{/,}**`},
-  excludePackageNames: {target: "package", convert: name => `!${name}`},
-  excludedPackageNames: {target: "package", convert: name => `!${name}`},
-  excludePackagePatterns: {target: "package", convert: pattern => `!/${pattern}/`},
-  excludePackagePrefixes: {target: "package", convert: prefix => `!${prefix}{/,}**`},
-  matchDepNames: {target: "dep", convert: name => name},
-  matchDepPatterns: {target: "dep", convert: pattern => `/${pattern}/`},
-  matchDepPrefixes: {target: "dep", convert: prefix => `${prefix}{/,}**`},
-  excludeDepNames: {target: "dep", convert: name => `!${name}`},
-  excludeDepPatterns: {target: "dep", convert: pattern => `!/${pattern}/`},
-  excludeDepPrefixes: {target: "dep", convert: prefix => `!${prefix}{/,}**`},
-};
+function convertNameMatcher(key: string, value: string): string { // renovate's packageRules migration
+  const negation = key.startsWith("exclude") ? "!" : "";
+  if (key.endsWith("Prefixes")) return `${negation}${value}{/,}**`;
+  if (!/Patterns?$/.test(key)) return `${negation}${value}`;
+  return value === "*" && !negation && !key.includes("Dep") ? "*" : `${negation}/${value}/`;
+}
 
 const legacyMatcherKeys = new Set([
   "updateTypes", "managers", "datasources", "depTypeList", "paths", "languages", "baseBranchList",
   "sourceUrlPrefixes", "matchFiles", "matchPaths",
 ]);
 
-function compileRule(rule: RenovatePackageRule): {matchers: RenovateVersionRule, literals: Array<string>} | undefined {
-  const names = {Package: [] as Array<string>, Dep: [] as Array<string>};
+function compileRule(rule: Record<string, unknown>): {matchers: RenovateVersionRule, literals: Array<string>} | undefined {
+  const names: {Package?: Array<string>, Dep?: Array<string>} = {};
   for (const [key, value] of Object.entries(rule)) {
-    const matcher = Object.hasOwn(packageNameKeys, key) ? packageNameKeys[key] : undefined;
-    if (!matcher) {
+    if (!nameMatcherKeyRe.test(key)) {
       if (key.startsWith("match") || key.startsWith("exclude") || legacyMatcherKeys.has(key)) return undefined;
       continue;
     }
     const list = typeof value === "string" || key === "packageName" || key === "packagePattern" ? [value] : value;
     if (!Array.isArray(list)) return undefined;
+    const targetNames = names[key.includes("Dep") ? "Dep" : "Package"] ??= [];
     for (const entry of list) {
       if (typeof entry !== "string" || !entry) return undefined;
-      names[matcher.target === "package" ? "Package" : "Dep"].push(matcher.convert(entry));
+      targetNames.push(convertNameMatcher(key, entry));
     }
   }
   const matchers: RenovateVersionRule = {};
   const literals: Array<string> = [];
-  for (const [target, values] of Object.entries(names) as Array<["Package" | "Dep", Array<string>]>) {
+  for (const target of ["Package", "Dep"] as const) {
+    if (names[target]?.length === 0) return undefined;
     const include: Array<Matcher> = [];
     const exclude: Array<Matcher> = [];
-    for (const name of values) {
+    for (const name of names[target] ?? []) {
       const negated = name.startsWith("!");
       const value = negated ? name.slice(1) : name;
       const regex = renovateRegex(value);
@@ -135,16 +106,15 @@ export function matchesRenovateRule(rule: RenovateVersionRule, packageName: stri
     matchesRuleList(depName, rule.matchDepNames, rule.excludeDepNames);
 }
 
-const nameMatcherTests = new WeakMap<RegExp, (packageName: string, depName: string) => boolean>();
-
 class RenovateNameMatcher extends RegExp {
+  #predicate: (packageName: string, depName: string) => boolean;
   constructor(source: string, predicate: (packageName: string, depName: string) => boolean) {
     super(source);
-    nameMatcherTests.set(this, predicate);
+    this.#predicate = predicate;
   }
 
   testNames(packageName: string, depName: string): boolean {
-    return nameMatcherTests.get(this)!(packageName, depName);
+    return this.#predicate(packageName, depName);
   }
 
   override test(name: string): boolean {
@@ -156,9 +126,7 @@ export function testRenovateMatcher(matcher: RegExp, value: string, packageName:
   return matcher instanceof RenovateNameMatcher ? matcher.testNames(packageName, depName) : matcher.test(value);
 }
 
-function applyRules(rules: Array<RenovatePackageRule>, inheritCooldown: boolean): {
-  disabled?: RegExp, pin: Record<string, string>, versionRules: Array<RenovateVersionRule>
-} {
+function applyRules(rules: Array<Record<string, unknown>>, inheritCooldown: boolean) {
   const enabledRules: Array<{enabled: boolean, matchers: RenovateVersionRule}> = [];
   const pin: Record<string, string> = {};
   const pinCandidates = new Set<string>();
@@ -172,16 +140,12 @@ function applyRules(rules: Array<RenovatePackageRule>, inheritCooldown: boolean)
     if (typeof rule.enabled === "boolean") enabledRules.push({enabled: rule.enabled, matchers});
     const versionRule: RenovateVersionRule = {...matchers};
 
-    if (inheritCooldown && typeof rule.minimumReleaseAge === "string") {
-      const days = parseRenovateDuration(rule.minimumReleaseAge);
-      if (days !== undefined) versionRule.cooldownDays = days;
-    }
+    const days = inheritCooldown ? parseRenovateDuration(rule.minimumReleaseAge) : undefined;
+    if (days !== undefined) versionRule.cooldownDays = days;
 
     if (typeof rule.allowedVersions === "string") {
       const allowedRange = validRange(rule.allowedVersions);
-      if (!allowedRange && !renovateRegex(rule.allowedVersions)) {
-        throw new Error(`Invalid renovate allowedVersions: ${rule.allowedVersions}`);
-      }
+      if (!allowedRange && !renovateRegex(rule.allowedVersions)) throw new Error(`Invalid renovate allowedVersions: ${rule.allowedVersions}`);
       versionRule.allowedVersions = rule.allowedVersions;
       if (allowedRange) for (const name of literals) pinCandidates.add(name);
     }
@@ -194,28 +158,18 @@ function applyRules(rules: Array<RenovatePackageRule>, inheritCooldown: boolean)
     if (allowedVersions && validRange(allowedVersions)) pin[name] = allowedVersions;
   }
 
-  let disabled: RegExp | undefined;
-  if (enabledRules.some(rule => !rule.enabled)) {
-    disabled = new RenovateNameMatcher("renovate-package-rules", (packageName, depName) => {
-      let enabled = true;
-      for (const rule of enabledRules) {
-        if (matchesRenovateRule(rule.matchers, packageName, depName)) enabled = rule.enabled;
-      }
-      return !enabled;
-    });
-  }
+  const disabled = enabledRules.some(rule => !rule.enabled) ? new RenovateNameMatcher("renovate-package-rules", (packageName, depName) =>
+    enabledRules.findLast(rule => matchesRenovateRule(rule.matchers, packageName, depName))?.enabled === false) : undefined;
   return {disabled, pin, versionRules};
 }
 
-function normalize(raw: RenovateConfig, opts: RenovateImportOptions): Partial<Config> {
+function normalize(raw: Record<string, unknown>, opts: RenovateImportOptions): Partial<Config> {
   if (raw.enabled === false) return {exclude: ["*"]};
 
-  const out: Partial<Config> = {};
+  const out: Partial<Config> & {renovateVersionRules?: Array<RenovateVersionRule>} = {};
 
-  if (opts.cooldown && typeof raw.minimumReleaseAge === "string") {
-    const days = parseRenovateDuration(raw.minimumReleaseAge);
-    if (days !== undefined && days > 0) out.cooldown = days;
-  }
+  const cooldown = opts.cooldown ? parseRenovateDuration(raw.minimumReleaseAge) : undefined;
+  if (cooldown && cooldown > 0) out.cooldown = cooldown;
 
   const ignored: Array<Matcher> = Array.isArray(raw.ignoreDeps) ? raw.ignoreDeps
     .filter(dep => typeof dep === "string" && Boolean(dep))
@@ -228,35 +182,28 @@ function normalize(raw: RenovateConfig, opts: RenovateImportOptions): Partial<Co
     out.pin = pin;
     out.pinNoDowngrade = true;
   }
-  if (versionRules.length) (out as Partial<Config> & {renovateVersionRules: Array<RenovateVersionRule>}).renovateVersionRules = versionRules;
+  if (versionRules.length) out.renovateVersionRules = versionRules;
 
   return out;
 }
-
-const renovateConfigFilenames = ["renovate.json", "renovate.jsonc", "renovate.json5"];
 
 export async function loadRenovateConfig(
   rootDir: string, opts: RenovateImportOptions = {},
 ): Promise<Partial<Config>> {
   const found = await walkUp(rootDir, async dir => {
-    for (const filename of renovateConfigFilenames) {
+    for (const filename of ["renovate.json", "renovate.jsonc", "renovate.json5"]) {
       const path = join(dir, filename);
-      let text: string;
-      try {
-        text = await readFile(path, "utf8");
-      } catch {
-        continue;
-      }
+      const text = await tryOrNull(readFile(path, "utf8"));
+      if (text === null) continue;
       let parsed: unknown;
       try {
         parsed = parseJsonish(text);
       } catch (err: any) {
         throw new Error(`Unable to parse renovate config ${path}: ${err.message}`);
       }
-      if (parsed && typeof parsed === "object") return {parsed: parsed as RenovateConfig, path};
+      if (parsed && typeof parsed === "object") return parsed as Record<string, unknown>;
     }
     return null;
   });
-  if (!found) return {};
-  return normalize(found.parsed, opts);
+  return found ? normalize(found, opts) : {};
 }

@@ -5,7 +5,8 @@ import {join} from "node:path";
 import {loadRenovateConfig} from "./renovate.ts";
 import {esc, patternToRegex} from "./utils.ts";
 
-const created: Array<string> = [];
+const root = mkdtempSync(join(tmpdir(), "updates-renovate-"));
+const makeDir = () => mkdtempSync(join(root, "case-"));
 const exact = (name: string) => new RegExp(`^${esc(name)}$`);
 
 type ExpectedImport = Record<string, unknown> & {$disabled?: Array<string>, $enabled?: Array<string>};
@@ -21,15 +22,7 @@ function expectImport(actual: Record<string, any>, {$disabled = [], $enabled = [
   expect(rest).toEqual(expected);
 }
 
-function makeDir(): string {
-  const d = mkdtempSync(join(tmpdir(), "updates-renovate-"));
-  created.push(d);
-  return d;
-}
-
-afterAll(() => {
-  for (const d of created) rmSync(d, {recursive: true, force: true});
-});
+afterAll(() => rmSync(root, {recursive: true, force: true}));
 
 test.each([
   ["no config at all", null, null, {}],
@@ -94,6 +87,11 @@ test.each([
     {matchPackageNames: ["qux"], excludePackageNames: ["qux"], enabled: false},
     {matchPackageNames: ["@qux/{/,}**"], enabled: false},
   ]}, {$disabled: ["singular", "patterned", "foo", "barrel", "@baz/pkg", "@qux/pkg"], $enabled: ["qux"]}],
+  ["an empty name selector cannot match unless legacy matchers fill it", "renovate.json", {packageRules: [
+    {matchPackageNames: [], enabled: false},
+    {matchDepNames: [], enabled: false},
+    {matchPackageNames: [], matchPackagePatterns: ["^@types/"], enabled: false},
+  ]}, {$disabled: ["@types/node"], $enabled: ["foo"]}],
   ["a packageRule mixing positive and negated matchers", "renovate.json",
     {packageRules: [{matchPackageNames: ["@babel/*", "!@babel/core"], enabled: false}]},
     {$disabled: ["@babel/parser"], $enabled: ["@babel/core", "react"]}],
@@ -136,7 +134,10 @@ test("regex allowedVersions forms are preserved for release filtering", async ()
   ]});
 });
 
-test.each([["3 days", 3], ["1 week", 7], ["12 hours", 0.5]])("minimumReleaseAge %s → cooldown", async (age, cooldown) => {
+test.each([
+  ["3 days", 3], ["1 week", 7], ["12 hours", 0.5], ["1m", 1 / 1440], ["1M", 30], ["1y", 365.25],
+  ["1 day 2 hours", 1 + 2 / 24], ["1mo", undefined], ["garbage 1 day", undefined], [`${"1".repeat(101)}M`, undefined],
+])("minimumReleaseAge %s → cooldown", async (age, cooldown) => {
   const dir = makeDir();
   writeFileSync(join(dir, "renovate.json"), JSON.stringify({minimumReleaseAge: age}));
   expect(await loadRenovateConfig(dir, {cooldown: true})).toEqual({cooldown});

@@ -8,6 +8,9 @@ import {
 } from "./npm.ts";
 import {type ModeContext, fetchTimeout, fieldSep} from "./shared.ts";
 
+const tempRoot = mkdtempSync(join(tmpdir(), "updates-npm-"));
+afterAll(() => rmSync(tempRoot, {recursive: true}));
+
 test("dependency reference classifiers", () => {
   for (const [value, expected] of [["npm:@jsr/std__semver@1.0.5", true], ["jsr:@std/semver@1.0.5", true],
     ["jsr:1.0.5", true], ["^1.0.0", false], ["npm:something", false], ["", false]] as const) {
@@ -22,7 +25,7 @@ test("dependency reference classifiers", () => {
 });
 
 test("parseNpmAlias", () => {
-  expect(parseNpmAlias("npm:left-pad@^1.2.0")).toEqual({name: "left-pad", range: "^1.2.0"});
+  expect(parseNpmAlias("  npm:left-pad@^1.2.0  ")).toEqual({name: "left-pad", range: "^1.2.0"});
   expect(parseNpmAlias("npm:@hapi/hapi@18.3.0")).toEqual({name: "@hapi/hapi", range: "18.3.0"});
   for (const [range, updated] of [
     ["~>1.2.3", "~>2.0.0"],
@@ -110,6 +113,10 @@ test("package selector normalization", () => {
   expect(resolutionsBasePackage("foo/bar@1.0.0")).toBe("bar");
   expect(resolutionsBasePackage("@verdaccio/core/ajv@8.17.1")).toBe("ajv");
   expect(resolutionsBasePackage("foo/@babel/core@7.0.0")).toBe("@babel/core");
+  expect(resolutionsBasePackage("parent@^1>child@^2")).toBe("child");
+  expect(resolutionsBasePackage("@scope/parent>@other/child@^2")).toBe("@other/child");
+  expect(resolutionsBasePackage("semver@>=7.0.0 <7.5.2")).toBe("semver");
+  expect(resolutionsBasePackage("foo@>1")).toBe("foo");
   expect(normalizeRange("^5")).toBe("^5.0.0");
   expect(normalizeRange("^5.9")).toBe("^5.9.0");
   expect(normalizeRange("^5.9.3")).toBe("^5.9.3");
@@ -117,23 +124,9 @@ test("package selector normalization", () => {
 });
 
 test("updatePackageJson", () => {
-  const pkg = JSON.stringify({
-    dependencies: {"foo": "^1.0.0"},
-    packageManager: "pnpm@8.0.0",
-  }, null, 2);
-
-  const depsKey = `dependencies${fieldSep}foo`;
-  const pmKey = `packageManager${fieldSep}pnpm`;
-
-  const result1 = updatePackageJson(pkg, {
-    [depsKey]: {old: "^1.0.0", new: "^2.0.0"},
-  });
-  expect(result1).toContain(`"foo": "^2.0.0"`);
-
-  const result2 = updatePackageJson(pkg, {
-    [pmKey]: {old: "8.0.0", new: "9.0.0"},
-  });
-  expect(result2).toContain(`"packageManager": "pnpm@9.0.0"`);
+  const pkg = JSON.stringify({dependencies: {"foo": "^1.0.0"}, packageManager: "pnpm@8.0.0"}, null, 2);
+  expect(updatePackageJson(pkg, {[`dependencies${fieldSep}foo`]: {old: "^1.0.0", new: "^2.0.0"}})).toContain(`"foo": "^2.0.0"`);
+  expect(updatePackageJson(pkg, {[`packageManager${fieldSep}pnpm`]: {old: "8.0.0", new: "9.0.0"}})).toContain(`"packageManager": "pnpm@9.0.0"`);
   const sections = ["dependencies", "peerDependencies", "overrides", "scripts", "resolutions", "invented"];
   const sectionPkg = JSON.stringify({
     ...Object.fromEntries(sections.map(section => [section, {"react": "^18.0.0"}])),
@@ -152,37 +145,23 @@ test("updatePackageJson", () => {
     packageManager: "pnpm@11.20.0",
   });
 
-  const nested = JSON.stringify({
-    pnpm: {overrides: {"react": "^18.0.0"}},
-    overrides: {"react": "^18.0.0"},
-  }, null, 2);
+  const nested = JSON.stringify({pnpm: {overrides: {"react": "^18.0.0"}}, overrides: {"react": "^18.0.0"}}, null, 2);
+  expect(JSON.parse(updatePackageJson(nested, {[`overrides${fieldSep}react`]: {old: "^18.0.0", new: "^19.0.0"}})))
+    .toEqual({pnpm: {overrides: {"react": "^18.0.0"}}, overrides: {"react": "^19.0.0"}});
 
-  expect(JSON.parse(updatePackageJson(nested, {
-    [`overrides${fieldSep}react`]: {old: "^18.0.0", new: "^19.0.0"},
-  }))).toEqual({
-    pnpm: {overrides: {"react": "^18.0.0"}},
-    overrides: {"react": "^19.0.0"},
-  });
-
-  const outOfOrder = JSON.stringify({
-    dependencies: {"foo": "github:u/r#v1.0.0", "bar": "^1.0.0"},
-    optionalDependencies: {"foo": "github:u/r#v1.0.0"},
-  }, null, 2);
-
+  const outOfOrder = JSON.stringify({dependencies: {"foo": "github:u/r#v1.0.0", "bar": "^1.0.0"}, optionalDependencies: {"foo": "github:u/r#v1.0.0"}}, null, 2);
   expect(JSON.parse(updatePackageJson(outOfOrder, {
     [`dependencies${fieldSep}bar`]: {old: "^1.0.0", new: "^1.1.0"},
     [`dependencies${fieldSep}foo`]: {old: "github:u/r#v1.0.0", new: "github:u/r#v2.0.0"},
     [`optionalDependencies${fieldSep}foo`]: {old: "github:u/r#v1.0.0", new: "github:u/r#v2.0.0"},
-  }))).toEqual({
-    dependencies: {"foo": "github:u/r#v2.0.0", "bar": "^1.1.0"},
-    optionalDependencies: {"foo": "github:u/r#v2.0.0"},
-  });
+  }))).toEqual({dependencies: {"foo": "github:u/r#v2.0.0", "bar": "^1.1.0"}, optionalDependencies: {"foo": "github:u/r#v2.0.0"}});
 });
 
 const modeCtx = (props: Record<string, unknown>): ModeContext => ({fetchTimeout, ...props} as unknown as ModeContext);
 const forgeCtx = (props: Record<string, unknown>) => modeCtx({forgeApiUrl: "https://api.github.com", ...props});
 const textRes = (body: unknown) => Promise.resolve({ok: true, text: () => Promise.resolve(JSON.stringify(body)), headers: new Headers()});
 const jsonRes = (body: unknown) => Promise.resolve({ok: true, json: () => Promise.resolve(body), headers: new Headers()});
+const tempDir = () => mkdtempSync(join(tempRoot, "dir-"));
 
 test("fetchJsrInfo", async () => {
   const jsrData = {latest: "1.0.0", versions: {"1.0.0": {createdAt: "2025-01-01T00:00:00Z"}, "0.9.0": {createdAt: "2024-06-01T00:00:00Z"}}};
@@ -223,7 +202,7 @@ test.each([
     "pnpm-workspace.yaml": "registry: https://pnpm.test\nregistries:\n  '@myorg': https://scope.pnpm.test\n",
   }, ["https://scope.pnpm.test/@myorg%2fpkg", "https://pnpm.test/lodash"]],
 ])("fetchNpmInfo honors %s", async (_name, files, expected) => {
-  const dir = mkdtempSync(join(tmpdir(), "updates-registry-"));
+  const dir = tempDir();
   const fetchUrl = async (name: string) => {
     let fetchedUrl = "";
     await fetchNpmInfo(name, "dependencies", {}, {}, modeCtx({noCache: true, doFetch: (url: string) => {
@@ -232,16 +211,12 @@ test.each([
     }}), dir);
     return fetchedUrl;
   };
-  try {
-    for (const [filename, content] of Object.entries(files)) writeFileSync(join(dir, filename), content);
-    expect(await Promise.all([fetchUrl("@myorg/pkg"), fetchUrl("lodash")])).toEqual(expected);
-  } finally {
-    rmSync(dir, {recursive: true});
-  }
+  for (const [filename, content] of Object.entries(files)) writeFileSync(join(dir, filename), content);
+  expect(await Promise.all([fetchUrl("@myorg/pkg"), fetchUrl("lodash")])).toEqual(expected);
 });
 
 test("fetchNpmInfo prefers a scoped npmrc registry over a native default", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "updates-registry-specificity-"));
+  const dir = tempDir();
   let fetchedUrl = "";
   let authorization: string | null = null;
   const ctx = modeCtx({noCache: true, doFetch: (url: string, opts: RequestInit) => {
@@ -249,44 +224,36 @@ test("fetchNpmInfo prefers a scoped npmrc registry over a native default", async
     authorization = new Headers(opts.headers).get("authorization");
     return textRes({});
   }});
-  try {
-    writeFileSync(join(dir, "pnpm-workspace.yaml"), "registry: https://registry.npmjs.org\n");
-    writeFileSync(join(dir, ".npmrc"), "@company:registry=https://npm.company.example\n//npm.company.example/:_authToken=secret\n");
-    await fetchNpmInfo("@company/pkg", "dependencies", {}, {}, ctx, dir);
-    expect([fetchedUrl, authorization]).toEqual([
-      "https://npm.company.example/@company%2fpkg",
-      "Bearer secret",
-    ]);
-  } finally {
-    rmSync(dir, {recursive: true});
-  }
+  writeFileSync(join(dir, "pnpm-workspace.yaml"), "registry: https://registry.npmjs.org\n");
+  writeFileSync(join(dir, ".npmrc"), "@company:registry=https://npm.company.example\n//npm.company.example/:_authToken=secret\n");
+  await fetchNpmInfo("@company/pkg", "dependencies", {}, {}, ctx, dir);
+  expect([fetchedUrl, authorization]).toEqual(["https://npm.company.example/@company%2fpkg", "Bearer secret"]);
 });
 
 test("fetchNpmInfo never sends unscoped _auth to a repository registry", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "updates-auth-"));
+  const dir = tempDir();
   const home = join(dir, "home");
   const project = join(dir, "project");
-  const homeVar = platform === "win32" ? "USERPROFILE" : "HOME";
-  const originalHome = env[homeVar];
   const authorizations: Array<string | null> = [];
   const ctx = modeCtx({noCache: true, doFetch: (_url: string, opts: RequestInit) => {
     authorizations.push(new Headers(opts.headers).get("authorization"));
     return textRes({});
   }});
+  mkdirSync(home);
+  mkdirSync(project);
+  writeFileSync(join(home, ".npmrc"), "_auth=dXNlcjpzZWNyZXQ=\n");
+  writeFileSync(join(project, ".npmrc"), "registry=https://attacker.example\n");
+  const homeVar = platform === "win32" ? "USERPROFILE" : "HOME";
+  const originalHome = env[homeVar];
+  env[homeVar] = home;
   try {
-    mkdirSync(home);
-    mkdirSync(project);
-    writeFileSync(join(home, ".npmrc"), "_auth=dXNlcjpzZWNyZXQ=\n");
-    writeFileSync(join(project, ".npmrc"), "registry=https://attacker.example\n");
-    env[homeVar] = home;
     await fetchNpmInfo("untrusted", "dependencies", {}, {}, ctx, project);
     await fetchNpmInfo("trusted", "dependencies", {registry: "https://registry.npmjs.org"}, {}, ctx, project);
-    expect(authorizations).toEqual([null, "Basic dXNlcjpzZWNyZXQ="]);
   } finally {
     if (originalHome === undefined) delete env[homeVar];
     else env[homeVar] = originalHome;
-    rmSync(dir, {recursive: true});
   }
+  expect(authorizations).toEqual([null, "Basic dXNlcjpzZWNyZXQ="]);
 });
 
 test("fetchNpmInfo requests the full doc only when dates are needed, never reusing the abbreviated one", async () => {
@@ -354,10 +321,13 @@ const urlDepCases = [
   ["git+ssh://git@github.com/user/repo.git#v1.2.3", "git+ssh://git@github.com/user/repo.git#v2.0.0"],
   ["git@github.com:user/repo.git#v1.2.3", "git@github.com:user/repo.git#v2.0.0"],
   ["github:user/repo#semver:^1", "github:user/repo#semver:^2"],
+  ["https://github.com/user/repo-v1.2.3/tarball/v1.2.3", "https://github.com/user/repo-v1.2.3/tarball/v2.0.0"],
+  ["https://github.com/user/repo/abc1234", "https://github.com/user/repo/def5678"],
 ] as const;
 const urlDepResults = Promise.all(urlDepCases.map(([old]) => {
   const tags = [{name: "v1.2.3", commit: {sha: "abc"}}, {name: "v2.0.0", commit: {sha: "def"}}];
-  const ctx = forgeCtx({noCache: true, doFetch: (url: string) => jsonRes(url.includes("/releases?") ? [] : tags)});
+  const ctx = forgeCtx({noCache: true, doFetch: (url: string) => url.endsWith("/commits") ?
+    textRes([{sha: "def5678901234", commit: {}}]) : jsonRes(url.includes("/releases?") ? [] : tags)});
   return checkUrlDep("key", {old, new: ""}, ctx);
 }));
 
@@ -366,13 +336,3 @@ test.each(urlDepCases.map(([old, expected], index) => [old, expected, index] as 
     expect((await urlDepResults)[index]!.newRange).toBe(expected);
   },
 );
-
-test("checkUrlDep updates GitHub path refs at their trailing occurrence", async () => {
-  const tags = [{name: "v1.2.3", commit: {sha: "abc"}}, {name: "v2.0.0", commit: {sha: "def"}}];
-  const ctx = forgeCtx({noCache: true, doFetch: (url: string) => url.endsWith("/commits") ?
-    textRes([{sha: "def5678901234", commit: {}}]) : jsonRes(url.includes("/releases?") ? [] : tags)});
-  expect((await checkUrlDep("key", {old: "https://github.com/user/repo-v1.2.3/tarball/v1.2.3", new: ""}, ctx))?.newRange)
-    .toBe("https://github.com/user/repo-v1.2.3/tarball/v2.0.0");
-  expect((await checkUrlDep("key", {old: "https://github.com/user/repo/abc1234", new: ""}, ctx))?.newRange)
-    .toBe("https://github.com/user/repo/def5678");
-});

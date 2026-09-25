@@ -2,6 +2,7 @@ import {
   type Deps, type ModeContext, type PackageInfo, dedupe, fieldSep, fetchWithEtag, reduceJson, throwFetchError,
 } from "./shared.ts";
 import {type Pep440, comparePep440, parsePep440} from "../utils/semver.ts";
+import {unquotedIndex} from "../utils/toml.ts";
 import {type Pep508Specifier, anchorSpecifier, getOrSet, longestFirstAlternation, parsePep508, serializePep508} from "../utils/utils.ts";
 
 const pypiNameSeparatorRe = /[-_.]+/g;
@@ -30,11 +31,9 @@ export async function fetchPypiInfo(name: string, ctx: ModeContext): Promise<Pac
       const {name: reducedName, version, project_urls} = data.info ?? {};
       return {info: {name: reducedName, version, project_urls}, releases: reducePypiReleases(data.releases)};
     }));
-    if ("body" in result) {
-      const responseData = JSON.parse(result.body);
-      return {...responseData, releases: reducePypiReleases(responseData.releases)};
-    }
-    throwFetchError(result.res, url, name, ctx.pypiApiUrl);
+    if (!("body" in result)) throwFetchError(result.res, url, name, ctx.pypiApiUrl);
+    const responseData = JSON.parse(result.body);
+    return {...responseData, releases: reducePypiReleases(responseData.releases)};
   });
   return [{...data, name}, null];
 }
@@ -43,7 +42,7 @@ function specifierAllows(version: Pep440, {op, version: text}: Pep508Specifier):
   if (op === "===") return text === version.version;
   if (text.endsWith(".*")) {
     const prefix = parsePep440(text.slice(0, -2));
-    if (!prefix || op !== "==" && op !== "!=") return false;
+    if (!prefix || prefix.dev !== null || prefix.local || op !== "==" && op !== "!=") return false;
     const matches = prefix.epoch === version.epoch &&
       prefix.release.every((part, idx) => (version.release[idx] ?? 0) === part);
     return op === "==" ? matches : !matches;
@@ -67,8 +66,9 @@ function specifierAllows(version: Pep440, {op, version: text}: Pep508Specifier):
     parsed.release.slice(0, -1).every((part, idx) => (version.release[idx] ?? 0) === part);
 }
 
-function orderedVersion(version: Pep440, release = version.release): string {
-  if (!version.local && release === version.release) return version.version;
+function orderedVersion(version: Pep440, length = version.release.length): string {
+  if (!version.local && length === version.release.length) return version.version;
+  const release = Array.from({length}, (_, idx) => version.release[idx] ?? 0);
   const epoch = version.epoch || /^[vV]?\d+!/.test(version.version) ? `${version.epoch}!` : "";
   const pre = version.pre ? `${version.pre[0]}${version.pre[1]}` : "";
   const post = version.post === null ? "" : `.post${version.post}`;
@@ -89,28 +89,25 @@ export function pypiSatisfies(version: string, range: string): boolean {
   if (!parsed) return false;
   const trimmed = range.trim();
   if (!trimmed) return true;
-  if (parsePep440(trimmed)) {
-    return specifierAllows(parsed, {lead: "", op: "==", sep: "", version: trimmed, trail: ""});
-  }
+  const bareVersion = parsePep440(trimmed);
+  if (bareVersion) return comparePep440(parsed, bareVersion) === 0;
   const requirement = parsePep508(`x${trimmed}`);
-  const specifiers = requirement?.specifiers;
-  if (!requirement || requirement.extras || requirement.marker || !specifiers?.length) return false;
-  return specifiers.every(specifier => specifierAllows(parsed, specifier));
+  if (!requirement?.specifiers?.length || requirement.extras || requirement.marker) return false;
+  return requirement.specifiers.every(specifier => specifierAllows(parsed, specifier));
 }
 
 export function updateRequirement(text: string, oldValue: string, newValue: string): string | null {
   const parsed = parsePep508(text);
-  const specifiers = parsed?.specifiers;
   const oldParsed = parsePep440(oldValue);
   const newParsed = parsePep440(newValue);
-  if (!parsed || !specifiers || !oldParsed || !newParsed) return null;
+  if (!parsed?.specifiers || !oldParsed || !newParsed) return null;
+  const specifiers = parsed.specifiers;
   const anchor = anchorSpecifier(specifiers);
   if (anchor?.version !== oldValue) return null;
   for (const specifier of specifiers) {
     if (specifier === anchor) {
-      specifier.version = specifier.op === "~=" ? oldParsed.release.length === newParsed.release.length ? orderedVersion(newParsed) :
-        orderedVersion(newParsed, Array.from({length: oldParsed.release.length}, (_, idx) => newParsed.release[idx] ?? 0)) :
-        specifier.op === "==" || specifier.op === "===" ? newValue : orderedVersion(newParsed);
+      const releaseLength = specifier.op === "~=" ? oldParsed.release.length : newParsed.release.length;
+      specifier.version = specifier.op === "==" || specifier.op === "===" ? newValue : orderedVersion(newParsed, releaseLength);
     } else if (specifierAllows(newParsed, specifier)) {
       continue;
     } else {
@@ -139,41 +136,19 @@ function splitTomlPath(text: string): Array<string> {
   return parts;
 }
 
-function assignmentIndex(line: string): number {
-  let quote = "";
-  let escaped = false;
-  for (let idx = 0; idx < line.length; idx++) {
-    const char = line[idx];
-    if (quote) {
-      if (quote === `"` && char === `\\` && !escaped) escaped = true;
-      else {
-        if (char === quote && !escaped) quote = "";
-        escaped = false;
-      }
-    } else if (char === `"` || char === `'`) quote = char;
-    else if (char === "=") return idx;
-    else if (char === "#") return -1;
-  }
-  return -1;
-}
-
 function arrayEnd(text: string, start: number): number {
   const open = text.indexOf("[", start);
   if (open === -1 || text.slice(start, open).trim()) return -1;
   let depth = 0;
   let quote = "";
-  let escaped = false;
   let comment = false;
   for (let idx = open; idx < text.length; idx++) {
     const char = text[idx];
     if (comment) {
       if (char === "\n") comment = false;
     } else if (quote) {
-      if (quote === `"` && char === `\\` && !escaped) escaped = true;
-      else {
-        if (char === quote && !escaped) quote = "";
-        escaped = false;
-      }
+      if (quote === `"` && char === `\\`) idx++;
+      else if (char === quote) quote = "";
     } else if (char === `"` || char === `'`) quote = char;
     else if (char === "#") comment = true;
     else if (char === "[") depth++;
@@ -182,7 +157,7 @@ function arrayEnd(text: string, start: number): number {
   return -1;
 }
 
-function dependencyArrays(text: string, depTypes: Set<string>): Map<string, [number, number]> {
+function dependencyArrays(text: string, depTypes: Map<string, unknown>): Map<string, [number, number]> {
   const spans = new Map<string, [number, number]>();
   let section: Array<string> = [];
   let offset = 0;
@@ -190,7 +165,7 @@ function dependencyArrays(text: string, depTypes: Set<string>): Map<string, [num
     const table = /^\[([^\]]+)\](?:\s*#.*)?$/.exec(line.trim());
     if (table) section = splitTomlPath(table[1]);
     else {
-      const eq = assignmentIndex(line);
+      const eq = unquotedIndex(line, "=", "#");
       const depType = eq === -1 ? "" : [...section, ...splitTomlPath(line.slice(0, eq))].join(".");
       if (depTypes.has(depType) && !spans.has(depType)) {
         const start = offset + eq + 1;
@@ -209,9 +184,9 @@ export function updatePyprojectToml(pkgStr: string, deps: Deps): string {
     const [depType, name] = key.split(fieldSep);
     getOrSet(depsByType, depType, () => new Map()).set(name, dep);
   }
-  const spans = dependencyArrays(pkgStr, new Set(depsByType.keys()));
+  const spans = dependencyArrays(pkgStr, depsByType);
   let newPkgStr = pkgStr;
-  for (const [depType, span] of Array.from(spans).sort((left, right) => right[1][0] - left[1][0])) {
+  for (const [depType, span] of Array.from(spans).reverse()) {
     const byName = depsByType.get(depType)!;
     const names = longestFirstAlternation(byName.keys());
     const value = newPkgStr.slice(...span).replace(

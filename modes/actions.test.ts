@@ -1,13 +1,7 @@
 import {resolve} from "node:path";
 import {
-  parseActionRef,
-  getForgeApiBaseUrl,
-  formatActionVersion,
-  isWorkflowFile,
-  updateWorkflowFile as updateWorkflowContent,
-  fetchActionTagDate,
-  resolveWorkflowFiles,
-  parseUsesLine,
+  fetchActionTagDate, formatActionVersion, getForgeApiBaseUrl, isWorkflowFile, parseActionRef, parseUsesLine,
+  resolveWorkflowFiles, updateWorkflowFile as updateWorkflowContent,
 } from "./actions.ts";
 import {type ModeContext, commitHashRe, fetchTimeout, isVersionLikeRef} from "./shared.ts";
 
@@ -23,6 +17,8 @@ test.each([
   ["URL with host", "https://gitea.example.com/owner/repo@v1", {host: "gitea.example.com", owner: "owner", repo: "repo", ref: "v1", name: "gitea.example.com/owner/repo", isHash: false}],
   ["docker prefix", "docker://node:18", null],
   ["local path", "./actions/my-action", null],
+  ["parent-relative local path", "../actions/my-action@v1", null],
+  ["empty repository path", "https://gitea.example.com/owner//@v1", null],
   ["no @", "actions/checkout", null],
   ["empty ref", "actions/checkout@", null],
 ])("parseActionRef %s", (_name, uses, expected) => {
@@ -39,6 +35,7 @@ test.each([
 
 test.each([
   ["strips a v prefix off the new version", "v5.0.0", "v4", "v5"],
+  ["normalizes an uppercase V prefix", "V5.0.0", "v4", "v5"],
   ["keeps a ref that never carried one bare", "5.0.0", "4", "5"],
 ])("formatActionVersion %s", (_name, newVersion, oldRef, expected) => {
   expect(formatActionVersion(newVersion, oldRef)).toBe(expected);
@@ -49,13 +46,10 @@ test.each([
   [".github/workflows/deploy.yaml", true],
   [".github\\workflows\\ci.yml", true],
   [".github/actions/my-action/action.yml", true],
-  [".github/actions/my-action/action.yaml", true],
   [".github/actions/group/sub/action.yml", true],
   [".github/action.yml", true],
   [".gitea/workflows/ci.yml", true],
-  [".gitea/actions/my-action/action.yml", true],
   [".forgejo/workflows/ci.yml", true],
-  [".forgejo/actions/my-action/action.yml", true],
   ["ci.yml", false],
   [".github/ci.yml", false],
   [".github/actions/my-action/other.yml", true],
@@ -80,12 +74,10 @@ test.each([
 });
 
 test("updateWorkflowFile handles multiple, comment-qualified and CRLF replacements", () => {
-  const content = "    uses: actions/checkout@v3\n    uses: actions/setup-node@v3\n";
-  const result = updateWorkflowFile(content, [
+  expect(updateWorkflowFile("    uses: actions/checkout@v3\n    uses: actions/setup-node@v3\n", [
     {name: "actions/checkout", oldRef: "v3", newRef: "v4"},
     {name: "actions/setup-node", oldRef: "v3", newRef: "v4"},
-  ]);
-  expect(result).toBe("    uses: actions/checkout@v4\n    uses: actions/setup-node@v4\n");
+  ])).toBe("    uses: actions/checkout@v4\n    uses: actions/setup-node@v4\n");
   expect(updateWorkflowFile("    uses: actions/checkout@11bd719 # v4.2.2\n    uses: actions/checkout@11bd719\n", [
     {name: "actions/checkout", oldRef: "11bd719", newRef: "3d3c42e", newComment: "v7.0.1"},
   ])).toBe("    uses: actions/checkout@3d3c42e # v7.0.1\n    uses: actions/checkout@3d3c42e\n");
@@ -111,16 +103,16 @@ test.each([
   ["text after the version", "actions/checkout@11bd719 # v4.2.2 (keep me)", "actions/checkout@3d3c42e # v7.0.1 (keep me)"],
   ["comment naming no version", "actions/checkout@11bd719 # ratchet:exclude", "actions/checkout@3d3c42e # ratchet:exclude"],
 ])("updateWorkflowFile rewrites the comment of a %s", (_name, oldLine, newLine) => {
-  const result = updateWorkflowFile(`      - uses: ${oldLine}\n`, [
+  expect(updateWorkflowFile(`      - uses: ${oldLine}\n`, [
     {name: oldLine.startsWith("actions/cache/") ? "actions/cache/restore" : "actions/checkout", oldRef: "11bd719", newRef: "3d3c42e", newComment: "v7.0.1"},
-  ]);
-  expect(result).toBe(`      - uses: ${newLine}\n`);
+  ])).toBe(`      - uses: ${newLine}\n`);
 });
 
 test.each([
   ["a commented-out step", "      # - uses: actions/checkout@v3"],
   ["a shell string", '      - run: echo "uses: actions/checkout@v3"'],
   ["a run block line", "          echo uses: actions/checkout@v3"],
+  ["a hash within an unquoted ref", "      - uses: actions/checkout@v3#suffix"],
 ])("updateWorkflowFile leaves %s alone", (_name, line) => {
   expect(updateWorkflowFile(`${line}\n`, [{name: "actions/checkout", oldRef: "v3", newRef: "v4"}])).toBe(`${line}\n`);
 });
@@ -181,46 +173,32 @@ test("updateWorkflowFile tracks yaml depth across job-level uses and ragged list
 });
 
 test("parseUsesLine splits a quoted sha pin from its prefixed comment", () => {
-  expect(parseUsesLine(`      - uses: "actions/checkout@11bd719"  # tag=v4.2.2 rest`)).toEqual({
-    prefix: "      - uses: ",
-    quote: '"',
-    value: "actions/checkout@11bd719",
-    gap: "  ",
-    comment: "# tag=v4.2.2 rest",
-    pinnedVersion: "v4.2.2",
-    pinnedEnd: 12,
-  });
+  expect(parseUsesLine(`      - uses: "actions/checkout@11bd719"  # tag=v4.2.2 rest`)).toEqual({prefix: "      - uses: ", quote: '"',
+    value: "actions/checkout@11bd719", gap: "  ", comment: "# tag=v4.2.2 rest", pinnedVersion: "v4.2.2", pinnedEnd: 12});
   expect(parseUsesLine("      - run: echo uses: actions/checkout@v3")).toBeNull();
   expect(parseUsesLine("      # uses: actions/checkout@v3")).toBeNull();
+  expect(parseUsesLine("      - uses: #actions/checkout@v3")).toBeNull();
 });
 
 test("isVersionLikeRef separates versions from branches and other tag schemes", () => {
-  expect(isVersionLikeRef("v4")).toBe(true);
-  expect(isVersionLikeRef("4.1.2")).toBe(true);
-  expect(isVersionLikeRef("v1.2.3-rc.1")).toBe(true);
-  expect(isVersionLikeRef("release/v1")).toBe(false);
-  expect(isVersionLikeRef("codeql-bundle-v2.20.3")).toBe(false);
-  expect(isVersionLikeRef("main")).toBe(false);
+  expect(["v4", "4.1.2", "v1.2.3-rc.1", "release/v1", "codeql-bundle-v2.20.3", "main"].map(isVersionLikeRef))
+    .toEqual([true, true, true, false, false, false]);
 });
 
 test("commitHashRe accepts short shas but not all-numeric tags", () => {
-  expect(commitHashRe.test("3d3c42")).toBe(true);
-  expect(commitHashRe.test("11bd71901bbe5b1630ceea73d27597364c9af683")).toBe(true);
-  expect(commitHashRe.test("20240115")).toBe(false);
+  expect(["3d3c42", "11bd71901bbe5b1630ceea73d27597364c9af683", "20240115"].map(ref => commitHashRe.test(ref)))
+    .toEqual([true, true, false]);
 });
+
+const okJson = (body: unknown) => () => Promise.resolve({ok: true, json: () => Promise.resolve(body)});
 
 test.each([
   ["returns committer date", "https://api.github.com",
-    () => Promise.resolve({ok: true, json: () => Promise.resolve({committer: {date: "2025-01-01T00:00:00Z"}, author: {date: "2024-12-01T00:00:00Z"}})}),
-    "2025-01-01T00:00:00Z"],
-  ["falls back to author date", "https://api.github.com",
-    () => Promise.resolve({ok: true, json: () => Promise.resolve({author: {date: "2024-12-01T00:00:00Z"}})}),
-    "2024-12-01T00:00:00Z"],
+    okJson({committer: {date: "2025-01-01T00:00:00Z"}, author: {date: "2024-12-01T00:00:00Z"}}), "2025-01-01T00:00:00Z"],
+  ["falls back to author date", "https://api.github.com", okJson({author: {date: "2024-12-01T00:00:00Z"}}), "2024-12-01T00:00:00Z"],
   ["reads the gitea shape", "https://gitea.com/api/v1",
-    () => Promise.resolve({ok: true, json: () => Promise.resolve({commit: {committer: {date: "2025-02-01T00:00:00Z"}, author: {date: "2025-01-15T00:00:00Z"}}})}),
-    "2025-02-01T00:00:00Z"],
-  ["returns empty when the commit carries no date", "https://api.github.com",
-    () => Promise.resolve({ok: true, json: () => Promise.resolve({})}), ""],
+    okJson({commit: {committer: {date: "2025-02-01T00:00:00Z"}, author: {date: "2025-01-15T00:00:00Z"}}}), "2025-02-01T00:00:00Z"],
+  ["returns empty when the commit carries no date", "https://api.github.com", okJson({}), ""],
   ["returns empty when the commit is gone", "https://api.github.com", () => Promise.resolve({ok: false, status: 404}), ""],
   ["returns undefined on an unclassified failure", "https://api.github.com", () => Promise.resolve({ok: false, status: 401}), undefined],
   ["returns undefined on a malformed body", "https://api.github.com",

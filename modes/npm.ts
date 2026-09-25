@@ -10,7 +10,6 @@ import {
   reduceJson, stripv,
 } from "./shared.ts";
 
-type Npmrc = Record<string, any> & {registry: string};
 type AuthAndRegistry = {auth: {token: string, type: string} | undefined, registry: string};
 
 const npmVersionRe = /[0-9]+(\.[0-9]+)?(\.[0-9]+)?/g;
@@ -18,19 +17,15 @@ const npmVersionRe = /[0-9]+(\.[0-9]+)?(\.[0-9]+)?/g;
 export const selectorTypes = new Set(["resolutions", "overrides"]);
 
 export function resolutionsBasePackage(name: string): string {
-  return /(?:^|\/)((?:@[^/]+\/)?[^/@]+)(?:@[^/]*)?$/.exec(name)?.[1] ?? name;
+  const target = name.replace(/^.*?[^ |@]>/, "").trim();
+  return /(?:^|\/)((?:@[^/]+\/)?[^/@]+)(?:@[^/]*)?$/.exec(target)?.[1] ?? (target || name);
 }
 
 const defaultRegistry = defaultApiUrls.registry;
-const npmrcCache = new Map<string, Npmrc>();
+const npmrcCache = new Map<string, Record<string, any>>();
 const pnpmAuthCache = new Map<string, PnpmAuth>();
 
 const replaceEnvVar = (token: string): string => token.replace(/^\$\{?([^}]*)\}?$/, (_, envVar) => env[envVar] || "");
-
-function pnpmEnvAuth(): PnpmAuth {
-  const raw = env.pnpm_config__auth || env.PNPM_CONFIG__AUTH || undefined;
-  return getOrSet(pnpmAuthCache, raw ?? "", () => parsePnpmAuth(raw, "pnpm_config__auth"));
-}
 
 function registryAuthKeys(registryUrl: string): string[] {
   const parsed = new URL(registryUrl.startsWith("//") ? `http:${registryUrl}` : registryUrl);
@@ -44,7 +39,7 @@ function registryAuthKeys(registryUrl: string): string[] {
   return keys;
 }
 
-function getRegistryAuthToken(registryUrl: string, config: Npmrc, scope: string): AuthAndRegistry["auth"] {
+function getRegistryAuthToken(registryUrl: string, config: Record<string, any>, scope: string): AuthAndRegistry["auth"] {
   const keys = registryAuthKeys(registryUrl);
   const get = (regUrl: string, key: string) => config[`${regUrl}:${key}`] || config[`${regUrl}/:${key}`];
   const scopedToken = scope && keys.map(regUrl => get(regUrl, `${scope}:_authToken`)).find(Boolean);
@@ -61,13 +56,14 @@ function getRegistryAuthToken(registryUrl: string, config: Npmrc, scope: string)
     const legacyToken = get(regUrl, "_auth");
     if (legacyToken) return {token: replaceEnvVar(legacyToken), type: "Basic"};
   }
-  if (registryUrl === defaultRegistry && config["_auth"]) return {token: replaceEnvVar(config["_auth"]), type: "Basic"};
+  if (registryUrl === defaultRegistry && config._auth) return {token: replaceEnvVar(config._auth), type: "Basic"};
   return undefined;
 }
 
 function resolveNpmRegistry(name: string, config: Config, dir: string | undefined): AuthAndRegistry {
-  const npmrcConfig = getOrSet(npmrcCache, dir ?? "", () => rc("npm", {registry: defaultRegistry}, dir) as Npmrc);
-  const envAuth = pnpmEnvAuth();
+  const npmrcConfig = getOrSet(npmrcCache, dir ?? "", () => rc("npm", {registry: defaultRegistry}, dir));
+  const rawEnvAuth = env.pnpm_config__auth || env.PNPM_CONFIG__AUTH || undefined;
+  const envAuth = getOrSet(pnpmAuthCache, rawEnvAuth ?? "", () => parsePnpmAuth(rawEnvAuth, "pnpm_config__auth"));
   const global = pnpmGlobalConfig();
   const workspace = dir ? nativeNpmRegistryConfig(dir) : {registries: {}};
   const scope = name.startsWith("@") ? name.split("/")[0] : "";
@@ -79,10 +75,7 @@ function resolveNpmRegistry(name: string, config: Config, dir: string | undefine
   return {auth: getRegistryAuthToken(registry, {...npmrcConfig, ...global.auth.tokens, ...envAuth.tokens}, scope), registry};
 }
 
-const npmPackageUrl = (registry: string, name: string, version?: string): string => {
-  const base = `${registry}/${name.replace(/\//g, "%2f")}`;
-  return version ? `${base}/${version}` : base;
-};
+const npmPackageUrl = (registry: string, name: string): string => `${registry}/${name.replace(/\//g, "%2f")}`;
 
 const npmDataByCtx = new WeakMap<ModeContext, Map<string, Promise<Record<string, any>>>>();
 const npmVersionInfoByCtx = new WeakMap<ModeContext, Map<string, Promise<NpmVersionInfo>>>();
@@ -106,8 +99,7 @@ export async function fetchNpmInfo(name: string, type: string, config: Config, a
   const cacheKey = docCacheKey(url, Boolean(args.needsDates));
   const data = await dedupe(npmDataByCtx, ctx, cacheKey, async () => {
     const opts = getFetchOpts(auth?.type, auth?.token);
-    if (!args.needsDates) opts.headers = {...opts.headers as Record<string, string>,
-      "accept": "application/vnd.npm.install-v1+json"};
+    if (!args.needsDates) opts.headers = {...opts.headers as Record<string, string>, "accept": "application/vnd.npm.install-v1+json"};
     const result = await fetchWithEtag(url, ctx, opts, reduceJson(reduceNpmDoc), cacheKey);
     if (!("body" in result)) throwFetchError(result.res, url, name, registry);
     return JSON.parse(result.body);
@@ -115,13 +107,14 @@ export async function fetchNpmInfo(name: string, type: string, config: Config, a
   return [data, registry];
 }
 
-export type NpmVersionInfo = {repository?: PackageRepository, homepage?: string, date?: string};
+type NpmVersionInfo = {repository?: PackageRepository, homepage?: string, date?: string};
 
 export async function fetchNpmVersionInfo(name: string, version: string, config: Config, args: Record<string, any>, ctx: ModeContext, dir?: string): Promise<NpmVersionInfo> {
   const {auth, registry} = resolveNpmRegistry(name, config, dir);
-  const url = npmPackageUrl(registry, name, version);
+  const fullUrl = npmPackageUrl(registry, name);
+  const url = `${fullUrl}/${version}`;
 
-  return dedupe(npmVersionInfoByCtx, ctx, url, async (): Promise<NpmVersionInfo> => {
+  return dedupe(npmVersionInfoByCtx, ctx, url, async () => {
     try {
       const fetchOpts = getFetchOpts(auth?.type, auth?.token);
       const result = await fetchImmutable(url, ctx, fetchOpts, reduceJson(data => ({
@@ -131,10 +124,8 @@ export async function fetchNpmVersionInfo(name: string, version: string, config:
       })));
       if (!("body" in result)) return {};
       const data = JSON.parse(result.body);
-      let date = "";
       const match = /(\d{13})/.exec(data?._npmOperationalInternal?.tmp ?? "");
-      if (match) date = new Date(Number(match[1])).toISOString();
-      const fullUrl = npmPackageUrl(registry, name);
+      let date = match ? new Date(Number(match[1])).toISOString() : "";
       if (!date && args.needsDates) date = (await npmDataByCtx.get(ctx)?.get(docCacheKey(fullUrl, true)))?.time?.[version] || "";
       if (!date) {
         const fullData = await tryOrNull(dedupe(npmFullDataByCtx, ctx, fullUrl, async () => {
@@ -150,22 +141,14 @@ export async function fetchNpmVersionInfo(name: string, version: string, config:
   });
 }
 
-export function isJsr(value: string): boolean {
-  return value.startsWith("npm:@jsr/") || value.startsWith("jsr:");
-}
-
-export function isLocalDep(value: string): boolean {
-  return value.startsWith("link:") || value.startsWith("file:");
-}
-
-export function isCatalogRef(value: string): boolean {
-  return value.startsWith("catalog:");
-}
+export const isJsr = (value: string): boolean => value.startsWith("npm:@jsr/") || value.startsWith("jsr:");
+export const isLocalDep = (value: string): boolean => value.startsWith("link:") || value.startsWith("file:");
+export const isCatalogRef = (value: string): boolean => value.startsWith("catalog:");
 
 const npmAliasRe = /^npm:((?:@[^/@]+\/)?[^@/][^@]*)@(.+)$/;
 
 export function parseNpmAlias(value: string): {name: string, range: string} | null {
-  const match = npmAliasRe.exec(value);
+  const match = npmAliasRe.exec(value.trim());
   return match && validRange(match[2]) ? {name: match[1], range: match[2]} : null;
 }
 
@@ -187,9 +170,7 @@ export async function fetchJsrInfo(packageName: string, ctx: ModeContext): Promi
   const url = `${ctx.jsrApiUrl}/${packageName}/meta.json`;
 
   const data = await dedupe(jsrDataByCtx, ctx, url, async () => {
-    const result = await fetchWithEtag(url, ctx, {
-      headers: {"accept-encoding": "gzip, deflate, br"},
-    }, reduceJson(data => ({
+    const result = await fetchWithEtag(url, ctx, {headers: {"accept-encoding": "gzip, deflate, br"}}, reduceJson(data => ({
       latest: data.latest,
       versions: Object.fromEntries(Object.entries(data.versions ?? {}).map(([version, meta]) => [version, {createdAt: (meta as Record<string, any>)?.createdAt}])),
     })));
@@ -224,28 +205,21 @@ export function updatePackageJson(pkgStr: string, deps: Deps): string {
     whitespace();
     if (pkgStr[position] === '"') {
       spans.set(JSON.stringify(path), string());
-    } else if (pkgStr[position] === "{") {
-      position++;
+    } else if (pkgStr[position] === "{" || pkgStr[position] === "[") {
+      const close = pkgStr[position++] === "{" ? "}" : "]";
       whitespace();
-      while (pkgStr[position] !== "}" && position < pkgStr.length) {
-        const key = string().value;
-        whitespace();
-        if (pkgStr[position++] !== ":") return;
+      for (let index = 0; pkgStr[position] !== close && position < pkgStr.length; index++) {
+        let key: string | number = index;
+        if (close === "}") {
+          key = string().value;
+          whitespace();
+          if (pkgStr[position++] !== ":") return;
+        }
         value([...path, key]);
         whitespace();
         if (pkgStr[position] === ",") { position++; whitespace(); } else break;
       }
-      if (pkgStr[position] === "}") position++;
-    } else if (pkgStr[position] === "[") {
-      position++;
-      let index = 0;
-      whitespace();
-      while (pkgStr[position] !== "]" && position < pkgStr.length) {
-        value([...path, index++]);
-        whitespace();
-        if (pkgStr[position] === ",") { position++; whitespace(); } else break;
-      }
-      if (pkgStr[position] === "]") position++;
+      if (pkgStr[position] === close) position++;
     } else {
       while (position < pkgStr.length && !/[,}\]]/.test(pkgStr[position])) position++;
     }
@@ -254,19 +228,12 @@ export function updatePackageJson(pkgStr: string, deps: Deps): string {
   const edits: Array<{start: number, end: number, value: string}> = [];
   for (const [key, dep] of Object.entries(deps)) {
     const [depType, name, identity] = key.split(fieldSep);
-    let oldValue = dep.oldOrig || dep.old;
-    let span = spans.get(identity || JSON.stringify([depType, name]));
-    let newValue = dep.new;
-    if (!span) {
-      span = spans.get(JSON.stringify([depType]));
-      oldValue = `${name}@${oldValue}`;
-      newValue = `${name}@${newValue}`;
-    }
-    if (span?.value === oldValue) edits.push({...span, value: JSON.stringify(newValue)});
+    const direct = spans.get(identity || JSON.stringify([depType, name]));
+    const span = direct ?? spans.get(JSON.stringify([depType]));
+    const prefix = direct ? "" : `${name}@`;
+    if (span?.value === `${prefix}${dep.oldOrig || dep.old}`) edits.push({...span, value: JSON.stringify(`${prefix}${dep.new}`)});
   }
-  for (const edit of edits.sort((left, right) => right.start - left.start)) {
-    pkgStr = `${pkgStr.slice(0, edit.start)}${edit.value}${pkgStr.slice(edit.end)}`;
-  }
+  for (const edit of edits.sort((left, right) => right.start - left.start)) pkgStr = `${pkgStr.slice(0, edit.start)}${edit.value}${pkgStr.slice(edit.end)}`;
   return pkgStr;
 }
 
@@ -335,9 +302,7 @@ export function normalizeRange(range: string): string {
   return range.replace(npmVersionRe, coerceToVersion(versionMatches[0]));
 }
 
-type CommitInfo = {hash: string, commit: Record<string, any>};
-
-export async function getLatestCommit(user: string, repo: string, ctx: ModeContext): Promise<CommitInfo> {
+export async function getLatestCommit(user: string, repo: string, ctx: ModeContext): Promise<{hash: string, commit: Record<string, any>}> {
   const url = `${ctx.forgeApiUrl}/repos/${user}/${repo}/commits`;
   const body = await fetchForgeEtag(url, ctx, "commits", async res => {
     const [latest] = JSON.parse(await res.text());
@@ -348,26 +313,17 @@ export async function getLatestCommit(user: string, repo: string, ctx: ModeConte
 }
 
 export async function getTags(user: string, repo: string, oldRef: string, ctx: ModeContext): Promise<Array<string>> {
-  const entries = await fetchForgeTags(ctx.forgeApiUrl, user, repo, ctx, [oldRef]);
-  return entries.map(entry => entry.name);
+  return (await fetchForgeTags(ctx.forgeApiUrl, user, repo, ctx, [oldRef])).map(entry => entry.name);
 }
 
-type GitHubSpec = {user: string, repo: string, ref: string, selector: string | null};
-
-function parseGitHubSpec(value: string): GitHubSpec | null {
+function parseGitHubSpec(value: string): {user: string, repo: string, ref: string, selector: string | null} | null {
   const hash = value.lastIndexOf("#");
   if (hash === value.length - 1) return null;
   let source = value.slice(0, hash === -1 ? value.length : hash).replace(/^git\+/i, "");
   let fragment = hash === -1 ? "" : value.slice(hash + 1);
-  if (/^github:/i.test(source)) source = source.slice(7);
-  else if (/^git@github\.com:/i.test(source)) source = source.replace(/^git@github\.com:/i, "");
-  else if (/^(?:https?|git|ssh):/i.test(source)) {
-    const match = /^(?:https?|git|ssh):\/\/(?:[^/@]+@)?github\.com[/:](.+)$/i.exec(source);
-    if (!match) return null;
-    source = match[1];
-  } else if (source.includes(":")) {
-    return null;
-  }
+  const prefixed = /^(?:github:|git@github\.com:|(?:https?|git|ssh):\/\/(?:[^/@]+@)?github\.com[/:])(.+)$/i.exec(source);
+  if (prefixed) source = prefixed[1];
+  else if (source.includes(":")) return null;
   if (!fragment) {
     const match = /^([^/]+\/[^/]+)\/(?:.*\/)?([0-9a-f]+|v?[0-9]+\.[0-9]+\.[0-9]+)$/i.exec(source);
     if (!match) return null;
@@ -386,29 +342,18 @@ export async function checkUrlDep(key: string, dep: Dep, ctx: ModeContext): Prom
   const parsed = parseGitHubSpec(dep.old);
   if (!parsed) return null;
   const {user, repo, ref: oldRef, selector} = parsed;
-
   const replaceRef = (ref: string) => {
     const index = dep.old.lastIndexOf(oldRef);
     return `${dep.old.slice(0, index)}${ref}${dep.old.slice(index + oldRef.length)}`;
   };
-
   if (hashRe.test(oldRef)) {
     const {hash, commit} = await getLatestCommit(user, repo, ctx);
-    if (!hash) return null;
-
-    const newDate = parseCommitDate(commit);
     const newRef = hash.substring(0, oldRef.length);
-    if (oldRef.toLowerCase() !== newRef.toLowerCase()) {
-      return {key, newRange: replaceRef(newRef), user, repo, oldRef, newRef, newDate};
-    }
-  } else {
-    const tags = await getTags(user, repo, oldRef, ctx);
-    const newTag = selectTag(tags, selector ? coerceToVersion(selector) : oldRef);
-    if (newTag) {
-      const newRef = selector ? updateVersionRange(selector, stripv(newTag), selector) : newTag;
-      if (newRef !== oldRef) return {key, newRange: replaceRef(newRef), user, repo, oldRef, newRef};
-    }
+    if (!hash || oldRef.toLowerCase() === newRef.toLowerCase()) return null;
+    return {key, newRange: replaceRef(newRef), user, repo, oldRef, newRef, newDate: parseCommitDate(commit)};
   }
-
-  return null;
+  const newTag = selectTag(await getTags(user, repo, oldRef, ctx), selector ? coerceToVersion(selector) : oldRef);
+  if (!newTag) return null;
+  const newRef = selector ? updateVersionRange(selector, stripv(newTag), selector) : newTag;
+  return newRef === oldRef ? null : {key, newRange: replaceRef(newRef), user, repo, oldRef, newRef};
 }

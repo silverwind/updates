@@ -49,8 +49,8 @@ test("package.json prewarms only the registry its dependency uses", () => {
   const dir = makeDir({"package.json": "{}"});
   expect(prewarmOrigins(dir, {})).toEqual(npmOrigins);
   expect(prewarmOrigins(makeDir({"pnpm-workspace.yaml": ""}), {})).toEqual(expect.arrayContaining(npmOrigins));
-  expect(prewarmOrigins(dir, {modes: "docker"})).toEqual([]);
-  expect(prewarmOrigins(makeDir({".github/workflows/ci.yml": ""}), {modes: "docker"})).toEqual(["https://hub.docker.com/"]);
+  expect(prewarmOrigins(dir, {modes: ["docker"]})).toEqual([]);
+  expect(prewarmOrigins(makeDir({".github/workflows/ci.yml": ""}), {modes: ["docker"]})).toEqual(["https://hub.docker.com/"]);
   expect(prewarmOrigins(makeDir({".github/workflows/ci.yml": "steps:\n  - run: |\n      uses: docker://node:18\n"}), {})).toEqual([]);
 });
 
@@ -59,7 +59,8 @@ test.each([
   ["Cargo.toml", "https://crates.io/"],
   ["go.mod", "https://proxy.golang.org/"],
   ["go.work", "https://proxy.golang.org/"],
-  ["Dockerfile", "https://hub.docker.com/"],
+  ...["Dockerfile", "docker-compose.yml", "compose.yaml", "compose.prod.yaml", "docker-stack.yml", "Dockerfile.dev"]
+    .map(filename => [filename, "https://hub.docker.com/"]),
 ])("%s triggers its registry", (filename, origin) => {
   expect(prewarmOrigins(makeDir({[filename]: ""}), {})).toEqual([origin]);
 });
@@ -77,23 +78,13 @@ test("GOPROXY decides the go origin", () => {
   delete process.env.GOPROXY;
 });
 
-test.each(["docker-compose.yml", "compose.yaml", "compose.prod.yaml", "docker-stack.yml", "Dockerfile.dev"])(
-  "%s triggers hub.docker.com", (filename) => {
-    expect(prewarmOrigins(makeDir({[filename]: ""}), {})).toEqual(["https://hub.docker.com/"]);
-  });
-
 test.each(["Makefile", "makefile", "GNUmakefile", "tools.mk"])("%s triggers proxy.golang.org + hub.docker.com", (filename) => {
-  expect(prewarmOrigins(makeDir({[filename]: ""}), {})).toEqual(expect.arrayContaining([
-    "https://proxy.golang.org/",
-    "https://hub.docker.com/",
-  ]));
+  expect(prewarmOrigins(makeDir({[filename]: ""}), {})).toEqual(expect.arrayContaining(["https://proxy.golang.org/", "https://hub.docker.com/"]));
 });
 
 test.each(forgeDirs)("%s/workflows dir triggers github + hub.docker.com", (forgeDir) => {
-  expect(prewarmOrigins(makeDir({[`${forgeDir}/workflows/ci.yml`]: ""}), {})).toEqual(expect.arrayContaining([
-    "https://api.github.com/rate_limit",
-    "https://hub.docker.com/",
-  ]));
+  expect(prewarmOrigins(makeDir({[`${forgeDir}/workflows/ci.yml`]: ""}), {}))
+    .toEqual(expect.arrayContaining(["https://api.github.com/rate_limit", "https://hub.docker.com/"]));
 });
 
 test("API override args redirect origins", () => {
@@ -104,12 +95,7 @@ test("API override args redirect origins", () => {
     jsrapi: "http://127.0.0.1:2345",
     forgeapi: "http://127.0.0.1:3456/sub/path",
   });
-  expect(origins).toEqual(expect.arrayContaining([
-    "http://127.0.0.1:1234/",
-    "http://127.0.0.1:2345/",
-    "http://127.0.0.1:3456/",
-  ]));
-  expect(origins).toHaveLength(3);
+  expect(origins.toSorted()).toEqual(["http://127.0.0.1:1234/", "http://127.0.0.1:2345/", "http://127.0.0.1:3456/"]);
 });
 
 test("registry args override .npmrc", () => {
@@ -118,20 +104,14 @@ test("registry args override .npmrc", () => {
   expect(prewarmOrigins(dir, {registry: "http://127.0.0.1:5678/"})).toContain("http://127.0.0.1:5678/");
 });
 
-test("unparsable override skips the origin", () => {
+test("per-ecosystem overrides redirect origins and unparsable ones skip them", () => {
+  expect(prewarmOrigins(makeDir({"pyproject.toml": ""}), {pypiapi: "http://127.0.0.1:1/"})).toEqual(["http://127.0.0.1:1/"]);
+  expect(prewarmOrigins(makeDir({"Dockerfile": ""}), {dockerapi: "http://127.0.0.1:3/"})).toEqual(["http://127.0.0.1:3/"]);
   expect(prewarmOrigins(makeDir({"Cargo.toml": ""}), {cargoapi: "not a url"})).toEqual([]);
 });
 
-test("per-ecosystem overrides", () => {
-  expect(prewarmOrigins(makeDir({"pyproject.toml": ""}), {pypiapi: "http://127.0.0.1:1/"})).toEqual(["http://127.0.0.1:1/"]);
-  expect(prewarmOrigins(makeDir({"go.mod": ""}), {goproxy: "http://127.0.0.1:2/"})).toEqual(["http://127.0.0.1:2/"]);
-  expect(prewarmOrigins(makeDir({"Dockerfile": ""}), {dockerapi: "http://127.0.0.1:3/"})).toEqual(["http://127.0.0.1:3/"]);
-});
-
 test("multi-mode project: package.json + Cargo.toml dedupes correctly", () => {
-  const origins = prewarmOrigins(makeDir({"package.json": "{}", "Cargo.toml": ""}), {});
-  expect(origins).toEqual(expect.arrayContaining([...npmOrigins, "https://crates.io/"]));
-  expect(origins).toHaveLength(2);
+  expect(prewarmOrigins(makeDir({"package.json": "{}", "Cargo.toml": ""}), {}).toSorted()).toEqual(["https://crates.io/", ...npmOrigins]);
 });
 
 test("local npm dependencies do not prewarm a registry", () => {

@@ -1,8 +1,8 @@
 import {env} from "node:process";
 import {resolve} from "node:path";
-import {dedupe, fetchWithRetry, fieldSep, type ModeContext} from "./shared.ts";
+import {dedupe, fieldSep, type ModeContext} from "./shared.ts";
 import {esc} from "../utils/utils.ts";
-import {fetchFromGoProxyChain, fetchGoLatestOnce, isGoNoProxy, goProxyHeaders} from "./go.ts";
+import {fetchGoLatest, goProxyChainFor} from "./go.ts";
 import {type DockerImageRef, parseDockerImageRef} from "./docker.ts";
 
 export const makeExactFileNames = ["Makefile", "makefile", "GNUmakefile"];
@@ -10,8 +10,6 @@ export const makeExactFileNames = ["Makefile", "makefile", "GNUmakefile"];
 export function isMakeFileName(filename: string): boolean {
   return makeExactFileNames.includes(filename) || filename.endsWith(".mk");
 }
-
-type MakeInstall = {installPath: string, version: string};
 
 const makeAssignRe = /^\s*(?:(?:export|override|private|unexport)\s+)*[A-Za-z_][\w.]*\s*(?:::=|:=|\?=|\+=|=)\s*(.*)$/;
 const makeGoInstallRe = /^([^@\s]+)@(v\d\S*)$/;
@@ -50,22 +48,16 @@ function* makeAssignmentValues(content: string): Generator<string> {
   }
 }
 
-export function parseMakeGoInstalls(content: string): Array<MakeInstall> {
-  const installs: Array<MakeInstall> = [];
+export function parseMakeGoInstalls(content: string) {
+  const installs: Array<{installPath: string, version: string}> = [];
   for (const value of makeAssignmentValues(content)) {
     const match = makeGoInstallRe.exec(value);
-    if (!match || !goHostRe.test(match[1])) continue;
-    const [_full, installPath, version] = match;
-    installs.push({installPath, version});
+    if (match && goHostRe.test(match[1])) installs.push({installPath: match[1], version: match[2]});
   }
   return installs;
 }
 
-export type MakeDockerImage = {
-  writtenImage: string,
-  ref: DockerImageRef,
-  digest: string | null,
-};
+export type MakeDockerImage = {writtenImage: string, ref: DockerImageRef, digest: string | null};
 
 const makeImageDigestRe = /@(sha256:[0-9a-f]{64})$/;
 
@@ -75,15 +67,14 @@ export function formatMakeImageSpec(writtenImage: string, tag: string, digest: s
 
 export function parseMakeImageValue(value: string): MakeDockerImage | null {
   const digestMatch = makeImageDigestRe.exec(value);
-  const digest = digestMatch?.[1] ?? null;
   const imageWithTag = digestMatch ? value.slice(0, digestMatch.index) : value;
   const ref = parseDockerImageRef(imageWithTag.replace(/^docker\.io\//, ""));
   if (!ref || ref.registry || ref.namespace === "library") return null;
-  return {writtenImage: imageWithTag.slice(0, imageWithTag.lastIndexOf(":")), ref, digest};
+  return {writtenImage: imageWithTag.slice(0, imageWithTag.lastIndexOf(":")), ref, digest: digestMatch?.[1] ?? null};
 }
 
 export function parseMakeDockerImages(content: string): Array<MakeDockerImage> {
-  return Array.from(makeAssignmentValues(content)).flatMap(value => parseMakeImageValue(value) ?? []);
+  return Array.from(makeAssignmentValues(content), parseMakeImageValue).filter(image => image !== null);
 }
 
 const midMajorRe = /\/v(?:[2-9]|[1-9]\d+)(?=\/|$)/;
@@ -116,54 +107,33 @@ function probeDirectGoModule(candidate: string, goCwd: string, ctx: ModeContext)
   }, false);
 }
 
-async function probeGoModuleRoot(
-  candidate: string, goCwd: string, ctx: ModeContext, chain: ModeContext["goProxyChain"],
-): Promise<boolean> {
-  return await fetchFromGoProxyChain(chain, async url => {
-    if (url === "off") return false;
-    if (url !== "direct") {
-      return await fetchGoLatestOnce(
-        ctx, "primary", requestUrl => fetchWithRetry(ctx, requestUrl, {headers: goProxyHeaders}), url, candidate,
-      ) ? true : null;
-    }
-    return probeDirectGoModule(candidate, goCwd, ctx);
-  }) ?? false;
-}
-
 export async function resolveGoModuleRoot(installPath: string, goCwd: string, ctx: ModeContext, goNoProxy: Array<string>): Promise<string | null> {
   const major = midMajorRe.exec(installPath);
   if (major) return installPath.slice(0, major.index + major[0].length);
-  const chain = isGoNoProxy(installPath, goNoProxy) ? [{url: "direct", fallback: ","} as const] :
-    ctx.goProxyChain;
-  if (chain[0].url === "off") return null;
   const parts = installPath.split("/");
   const candidates = Array.from({length: parts.length - 1}, (_, idx) => parts.slice(0, parts.length - idx).join("/"));
   // One entry at a time, all candidates at once: the first entry that knows the module decides the root.
-  for (const entry of chain) {
-    const probes = await Promise.allSettled(candidates.map(
-      candidate => probeGoModuleRoot(candidate, goCwd, ctx, [entry]),
-    ));
-    const hit = probes.findIndex(probe => probe.status === "fulfilled" && probe.value);
-    const failed = probes.slice(0, hit === -1 ? undefined : hit).find(probe => probe.status === "rejected");
-    if (failed) throw failed.reason;
-    if (hit !== -1) return candidates[hit];
+  for (const {url, fallback} of goProxyChainFor(installPath, ctx, goNoProxy)) {
+    if (url === "off") break;
+    const probes = await Promise.allSettled(candidates.map(async candidate => url === "direct" ?
+      probeDirectGoModule(candidate, goCwd, ctx) : Boolean(await fetchGoLatest(ctx, "primary", url, candidate))));
+    for (const [index, probe] of probes.entries()) {
+      if (probe.status === "rejected" && fallback === ",") throw probe.reason;
+      if (probe.status === "fulfilled" && probe.value) return candidates[index];
+    }
   }
   return null;
 }
 
-type MakeRewrite = {oldSpec: string, newSpec: string};
-
-export function updateMakefile(content: string, rewrites: Array<MakeRewrite>): string {
+export function updateMakefile(content: string, rewrites: Array<{oldSpec: string, newSpec: string}>): string {
   const bySpec = new Map(rewrites.map(({oldSpec, newSpec}) => [oldSpec, newSpec]));
   if (!bySpec.size) return content;
-  const specs = Array.from(bySpec.keys()).sort((a, b) => b.length - a.length)
+  const specs = Array.from(bySpec.keys()).sort((left, right) => right.length - left.length)
     .map(spec => Array.from(spec, esc).join(`["']*`)).join("|");
   const specRe = new RegExp(`(?<![\\w./@:-])(${specs})(?=[\\s#"']|$)`, "g");
   return content.replace(/^[^#\n]*/gm, code => code.replace(specRe, authoredSpec => {
-    const oldSpec = authoredSpec.replace(/["']/g, "");
-    const newSpec = bySpec.get(oldSpec)!;
+    const newSpec = bySpec.get(authoredSpec.replace(/["']/g, ""))!;
     let newIndex = 0;
-    const result = authoredSpec.replace(/[^"']/g, () => newSpec[newIndex++] ?? "");
-    return result + newSpec.slice(newIndex);
+    return authoredSpec.replace(/[^"']/g, () => newSpec[newIndex++] ?? "") + newSpec.slice(newIndex);
   }));
 }

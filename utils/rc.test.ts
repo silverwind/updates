@@ -1,6 +1,7 @@
 import {mkdtempSync, writeFileSync} from "node:fs";
 import {join} from "node:path";
 import {tmpdir} from "node:os";
+import {env} from "node:process";
 import rc, {parseIni, parseEnvVars} from "./rc.ts";
 
 test("parseIni", () => {
@@ -17,6 +18,8 @@ test("parseIni", () => {
     ["mismatched quotes", "key=\"value'", {key: "\"value'"}],
     ["single quote character", "key=\"", {key: "\""}],
     ["Windows lines", "a=1\r\nb=2\r\n", {a: "1", b: "2"}],
+    ["CR lines and literal backslashes", "a=1\rcafile=C:\\new\\ca.pem", {a: "1", cafile: "C:\\new\\ca.pem"}],
+    ["inline comments", "a=1 # note\nb=2; note\nc=3\\#4\\;5\nd=\"6#7;8\"", {a: "1", b: "2", c: "3#4;5", d: "6#7;8"}],
     ["JSON", "{\"key\": \"value\"}", {key: "value"}],
     ["empty", "", {}],
     ["only comments", "# comment\n; another", {}],
@@ -44,27 +47,21 @@ test("project config is found from the supplied directory", () => {
   expect(rc("npm", {registry: "https://default.test"}).registry).not.toBe("https://from-manifest-dir.test");
 });
 
-function withEnv(vars: Record<string, string>, fn: () => void) {
-  const originals = Object.keys(vars).map(key => [key, process.env[key]] as const);
-  Object.assign(process.env, vars);
-  try {
-    fn();
-  } finally {
-    for (const [key, value] of originals) {
-      if (value === undefined) delete process.env[key];
-      else process.env[key] = value;
-    }
-  }
-}
-
 test("parseEnvVars", () => {
-  withEnv({testrc_option: "42"}, () => expect(parseEnvVars("testrc_")).toEqual({option: "42"}));
-  withEnv({testrc2_someOpt__a: "42", testrc2_someOpt__z: "99"}, () => {
+  const vars = {
+    testrc_option: "42", testrc2_someOpt__a: "42", testrc2_someOpt__z: "99", testrc3_a__b__c: "deep", TESTRC4_upperCase: "187",
+    testrc5_opt__a: "42", testrc5_opt__a__b: "186", testrc6_w__w__: "18629", testrc7___z__i__: "9999",
+  };
+  Object.assign(env, vars);
+  try {
+    expect(parseEnvVars("testrc_")).toEqual({option: "42"});
     expect(parseEnvVars("testrc2_")).toEqual({someOpt: {a: "42", z: "99"}});
-  });
-  withEnv({testrc3_a__b__c: "deep"}, () => expect(parseEnvVars("testrc3_").a.b.c).toBe("deep"));
-  withEnv({TESTRC4_upperCase: "187"}, () => expect(parseEnvVars("testrc4_").upperCase).toBe("187"));
-  withEnv({testrc5_opt__a: "42", testrc5_opt__a__b: "186"}, () => expect(parseEnvVars("testrc5_").opt.a).toBe("42"));
-  withEnv({testrc6_w__w__: "18629"}, () => expect(parseEnvVars("testrc6_").w.w).toBe("18629"));
-  withEnv({testrc7___z__i__: "9999"}, () => expect(parseEnvVars("testrc7_").z.i).toBe("9999"));
+    expect(parseEnvVars("testrc3_").a.b.c).toBe("deep");
+    expect(parseEnvVars("testrc4_").upperCase).toBe("187");
+    expect(parseEnvVars("testrc5_").opt.a).toBe("42");
+    expect(parseEnvVars("testrc6_").w.w).toBe("18629");
+    expect(parseEnvVars("testrc7_").z.i).toBe("9999");
+  } finally {
+    for (const key of Object.keys(vars)) delete env[key];
+  }
 });

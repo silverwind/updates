@@ -1,13 +1,6 @@
 import {getOrSet} from "./utils.ts";
 
-export type SemVer = {
-  major: number;
-  minor: number;
-  patch: number;
-  prerelease: ReadonlyArray<string | number>;
-  raw: string;
-  version: string;
-};
+type SemVer = {major: number, minor: number, patch: number, prerelease: ReadonlyArray<string | number>, raw: string, version: string};
 
 const numericIdentifier = "0|[1-9]\\d*";
 const numericIdentifierRe = /^(?:0|[1-9]\d*)$/;
@@ -16,7 +9,7 @@ const semverRe = new RegExp(`^v?(${numericIdentifier})\\.(${numericIdentifier})\
 
 const parseCache = new Map<string, SemVer | null>();
 
-function parseVersion(v: string): SemVer | null {
+export function parse(v: string): SemVer | null {
   if (typeof v !== "string") return null;
   return getOrSet(parseCache, v, () => {
     const m = semverRe.exec(v.trim());
@@ -53,27 +46,18 @@ function compareMain(a: SemVer, b: SemVer): number {
 function compareParsed(a: SemVer, b: SemVer): number {
   const main = compareMain(a, b);
   if (main !== 0) return main;
-  const aHasPre = a.prerelease.length > 0;
-  const bHasPre = b.prerelease.length > 0;
-  if (!aHasPre && !bHasPre) return 0;
-  if (aHasPre && !bHasPre) return -1;
-  if (!aHasPre && bHasPre) return 1;
-  const len = Math.max(a.prerelease.length, b.prerelease.length);
-  for (let i = 0; i < len; i++) {
-    if (a.prerelease[i] === undefined) return -1;
-    if (b.prerelease[i] === undefined) return 1;
+  const aLength = a.prerelease.length;
+  const bLength = b.prerelease.length;
+  if (!aLength || !bLength) return bLength - aLength;
+  for (let i = 0; i < aLength && i < bLength; i++) {
     const cmp = compareIdentifiers(a.prerelease[i], b.prerelease[i]);
     if (cmp !== 0) return cmp;
   }
-  return 0;
+  return aLength - bLength;
 }
 
 export function valid(v: string): string | null {
-  return parseVersion(v)?.version ?? null;
-}
-
-export function parse(v: string): SemVer | null {
-  return parseVersion(v);
+  return parse(v)?.version ?? null;
 }
 
 const coerceCache = new Map<string, {version: string} | null>();
@@ -88,10 +72,9 @@ export function coerce(v: string): {version: string} | null {
 }
 
 export function diff(v1: string, v2: string): string | null {
-  const a = parseVersion(v1);
-  const b = parseVersion(v2);
-  if (!a || !b) return null;
-  return diffParsed(a, b);
+  const a = parse(v1);
+  const b = parse(v2);
+  return a && b ? diffParsed(a, b) : null;
 }
 
 function diffParsed(a: SemVer, b: SemVer): string | null {
@@ -100,16 +83,10 @@ function diffParsed(a: SemVer, b: SemVer): string | null {
   const highVersion = cmp > 0 ? a : b;
   const lowVersion = cmp > 0 ? b : a;
   const highHasPre = highVersion.prerelease.length > 0;
-  const lowHasPre = lowVersion.prerelease.length > 0;
-
-  if (lowHasPre && !highHasPre) {
+  if (lowVersion.prerelease.length > 0 && !highHasPre) {
     if (!lowVersion.patch && !lowVersion.minor) return "major";
-    if (compareMain(lowVersion, highVersion) === 0) {
-      if (lowVersion.minor && !lowVersion.patch) return "minor";
-      return "patch";
-    }
+    if (compareMain(lowVersion, highVersion) === 0) return lowVersion.minor && !lowVersion.patch ? "minor" : "patch";
   }
-
   const prefix = highHasPre ? "pre" : "";
   if (a.major !== b.major) return `${prefix}major`;
   if (a.minor !== b.minor) return `${prefix}minor`;
@@ -117,56 +94,32 @@ function diffParsed(a: SemVer, b: SemVer): string | null {
   return "prerelease";
 }
 
-function compare(v1: string, v2: string): number | null {
-  const a = parseVersion(v1);
-  const b = parseVersion(v2);
-  return a && b ? compareParsed(a, b) : null;
-}
-
 export function gt(v1: string, v2: string): boolean {
-  return (compare(v1, v2) ?? -1) > 0;
+  const a = parse(v1);
+  const b = parse(v2);
+  return Boolean(a && b && compareParsed(a, b) > 0);
 }
 
-type Comparator = {
-  op: string;
-  semver: SemVer;
-};
-
-type PartialVersion = {
-  major: number | null;
-  minor: number | null;
-  patch: number | null;
-  suffix: string;
-};
+type Comparator = {op: string, semver: SemVer};
+type PartialVersion = {major: number | null, minor: number | null, patch: number | null, suffix: string};
 
 function parsePartial(value: string): PartialVersion | null {
   const match = /^v?([^.+-]+(?:\.[^.+-]+){0,2})(-[0-9a-zA-Z.-]+)?(\+[0-9a-zA-Z.-]+)?$/.exec(value);
   if (!match) return null;
-  const parts = match[1].split(".");
   const parsed: Array<number | null> = [];
-  let wildcard = false;
-  for (const part of parts) {
-    if (/^[xX*]$/.test(part)) {
-      wildcard = true;
-      parsed.push(null);
-    } else {
-      if (wildcard || !numericIdentifierRe.test(part)) return null;
-      const number = Number(part);
-      if (!Number.isSafeInteger(number)) return null;
-      parsed.push(number);
-    }
+  for (const part of match[1].split(".")) {
+    if (/^[xX*]$/.test(part)) parsed.push(null);
+    else if (parsed.includes(null) || !numericIdentifierRe.test(part) || !Number.isSafeInteger(Number(part))) return null;
+    else parsed.push(Number(part));
   }
   while (parsed.length < 3) parsed.push(null);
-  if ((match[2] || match[3]) && parsed.some(part => part === null)) return null;
-  if (match[2] || match[3]) {
-    const complete = `${parsed.join(".")}${match[2] ?? ""}${match[3] ?? ""}`;
-    if (!parseVersion(complete)) return null;
-  }
-  return {major: parsed[0], minor: parsed[1], patch: parsed[2], suffix: `${match[2] ?? ""}${match[3] ?? ""}`};
+  const suffix = `${match[2] ?? ""}${match[3] ?? ""}`;
+  if (suffix && (parsed.includes(null) || !parse(`${parsed.join(".")}${suffix}`))) return null;
+  return {major: parsed[0], minor: parsed[1], patch: parsed[2], suffix};
 }
 
 function comparator(op: string, major: number, minor: number, patch: number, suffix = ""): Comparator | null {
-  const semver = parseVersion(`${major}.${minor}.${patch}${suffix}`);
+  const semver = parse(`${major}.${minor}.${patch}${suffix}`);
   return semver ? {op, semver} : null;
 }
 
@@ -192,51 +145,33 @@ function upperComparator(major: number, minor: number, patch: number): Comparato
 
 function partialBounds(partial: PartialVersion, op: string): Array<Comparator> | null {
   if (partial.major === null) return op === ">" || op === "<" ? comparators(upperComparator(0, 0, 0)) : [];
-  const major = partial.major;
+  const {major, suffix} = partial;
   const minor = partial.minor ?? 0;
   const patch = partial.patch ?? 0;
+  const [nextMajor, nextMinor] = partial.minor === null ? [major + 1, 0] : [major, minor + 1];
   if (op === "^" || op === "~") {
-    const lower = comparator(">=", major, minor, patch, partial.suffix);
-    if (partial.minor === null) return comparators(lower, upperComparator(major + 1, 0, 0));
-    if (op === "~") return comparators(lower, upperComparator(major, minor + 1, 0));
-    if (major !== 0) return comparators(lower, upperComparator(major + 1, 0, 0));
-    if (partial.patch !== null && minor === 0) return comparators(lower, upperComparator(0, 0, patch + 1));
-    return comparators(lower, upperComparator(0, minor + 1, 0));
+    const lower = comparator(">=", major, minor, patch, suffix);
+    if (op === "^" && major !== 0) return comparators(lower, upperComparator(major + 1, 0, 0));
+    if (op === "^" && partial.patch !== null && minor === 0) return comparators(lower, upperComparator(0, 0, patch + 1));
+    return comparators(lower, upperComparator(nextMajor, nextMinor, 0));
   }
-  if (partial.minor !== null && partial.patch !== null) return comparators(comparator(op || "=", major, minor, patch, partial.suffix));
-  if (!op || op === "=") {
-    return partial.minor === null ?
-      comparators(comparator(">=", major, 0, 0), upperComparator(major + 1, 0, 0)) :
-      comparators(comparator(">=", major, minor, 0), upperComparator(major, minor + 1, 0));
-  }
-  if (op === ">") return partial.minor === null ? comparators(comparator(">=", major + 1, 0, 0)) : comparators(comparator(">=", major, minor + 1, 0));
-  if (op === "<=") return partial.minor === null ? comparators(upperComparator(major + 1, 0, 0)) : comparators(upperComparator(major, minor + 1, 0));
-  if (op === "<") return partial.minor === null ? comparators(upperComparator(major, 0, 0)) : comparators(upperComparator(major, minor, 0));
+  if (partial.patch !== null) return comparators(comparator(op || "=", major, minor, patch, suffix));
+  if (!op || op === "=") return comparators(comparator(">=", major, minor, 0), upperComparator(nextMajor, nextMinor, 0));
+  if (op === ">") return comparators(comparator(">=", nextMajor, nextMinor, 0));
+  if (op === "<=") return comparators(upperComparator(nextMajor, nextMinor, 0));
+  if (op === "<") return comparators(upperComparator(major, minor, 0));
   return comparators(comparator(">=", major, minor, 0));
-}
-
-function parseHyphen(fromValue: string, toValue: string): Array<Comparator> | null {
-  const from = parsePartial(fromValue);
-  const to = parsePartial(toValue);
-  if (!from || !to) return null;
-  const result: Array<Comparator> = [];
-  if (from.major !== null) {
-    const lower = comparator(">=", from.major, from.minor ?? 0, from.patch ?? 0, from.suffix);
-    if (!lower) return null;
-    result.push(lower);
-  }
-  if (to.major === null) return result;
-  const upper = to.minor === null ? upperComparator(to.major + 1, 0, 0) :
-    to.patch === null ? upperComparator(to.major, to.minor + 1, 0) :
-      comparator("<=", to.major, to.minor, to.patch, to.suffix);
-  if (!upper) return null;
-  result.push(upper);
-  return result;
 }
 
 function parseComparatorSet(group: string): Array<Comparator> | null {
   const hyphen = /^(\S+)\s+-\s+(\S+)$/.exec(group);
-  if (hyphen) return parseHyphen(hyphen[1], hyphen[2]);
+  if (hyphen) {
+    const from = parsePartial(hyphen[1]);
+    const to = parsePartial(hyphen[2]);
+    const lower = from && partialBounds(from, ">=");
+    const upper = to && partialBounds(to, "<=");
+    return lower && upper ? [...lower, ...upper] : null;
+  }
   const normalized = group.replace(/~\s*>\s*/g, "~").replace(/(>=|<=|>|<|=|~|\^)\s+/g, "$1");
   const result: Array<Comparator> = [];
   for (const token of normalized.split(/\s+/).filter(Boolean)) {
@@ -254,7 +189,7 @@ const rangeCache = new Map<string, Array<Array<Comparator>> | null>();
 function parseRange(range: string): Array<Array<Comparator>> | null {
   return getOrSet(rangeCache, range, () => {
     const groups = range.split("||").map(group => parseComparatorSet(group.trim()));
-    return groups.some(group => group === null) ? null : groups as Array<Array<Comparator>>;
+    return groups.every(group => group !== null) ? groups : null;
   });
 }
 
@@ -265,29 +200,20 @@ function testWithPrerelease(version: SemVer, comparators: Array<Comparator>): bo
 }
 
 function satisfiesParsed(v: SemVer, range: string): boolean {
-  const parsed = parseRange(range);
-  return Boolean(parsed?.some(group => testWithPrerelease(v, group)));
+  return Boolean(parseRange(range)?.some(group => testWithPrerelease(v, group)));
 }
 
 export function satisfies(version: string, range: string): boolean {
-  const v = parseVersion(version);
+  const v = parse(version);
   return Boolean(v && satisfiesParsed(v, range));
 }
 
 export function validRange(range: string): string | null {
-  if (typeof range !== "string") return null;
-  return parseRange(range) ? range : null;
+  return typeof range === "string" && parseRange(range) ? range : null;
 }
 
-export type Pep440 = {
-  epoch: number;
-  release: Array<number>;
-  pre: [string, number] | null;
-  post: number | null;
-  dev: number | null;
-  local: Array<string | number> | null;
-  version: string;
-};
+export type Pep440 = {epoch: number, release: Array<number>, pre: [string, number] | null, post: number | null, dev: number | null,
+  local: Array<string | number> | null, version: string};
 
 const pep440Pattern = "v?(?:(\\d+)!)?(\\d+(?:\\.\\d+)*)(?:[-_.]?(a|b|c|rc|alpha|beta|pre|preview)[-_.]?(\\d+)?)?(?:-(\\d+)|[-_.]?(post|rev|r)[-_.]?(\\d+)?)?(?:[-_.]?(dev)[-_.]?(\\d+)?)?(?:\\+([a-z0-9]+(?:[-_.][a-z0-9]+)*))?";
 const pep440Re = new RegExp(`^${pep440Pattern}$`, "i");
@@ -397,10 +323,8 @@ const actionsParseCache = new Map<string, SemVer | null>();
 function parseActionsVersion(v: string): SemVer | null {
   return getOrSet(actionsParseCache, v, () => {
     const stripped = v.trim().replace(/^v/i, "");
-    const parsed = parse(stripped) ?? parse(stripped.replace(/^(\d+\.\d+)(-.+)$/, "$1.0$2"));
-    if (parsed) return parsed;
-    if (!/^\d/.test(stripped)) return null;
-    return parse(coerce(stripped)?.version ?? "");
+    return parse(stripped) ?? parse(stripped.replace(/^(\d+\.\d+)(-.+)$/, "$1.0$2")) ??
+      (/^\d/.test(stripped) ? parse(coerce(stripped)?.version ?? "") : null);
   });
 }
 

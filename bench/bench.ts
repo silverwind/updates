@@ -4,7 +4,7 @@ import {fileURLToPath} from "node:url";
 import {mkdtempSync, rmSync, mkdirSync, cpSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
-import {execPath, argv, stdout, stderr, env, exit} from "node:process";
+import {execPath, argv, stdout, stderr, env} from "node:process";
 import {startBenchServer} from "./server.ts";
 
 const execFileAsync = promisify(execFile);
@@ -12,18 +12,12 @@ const execFileAsync = promisify(execFile);
 const script = fileURLToPath(new URL("../dist/index.js", import.meta.url));
 const fixturesRoot = fileURLToPath(new URL("../fixtures", import.meta.url));
 
-type Scenario = {
-  name: string,
-  fixture: string,
-  modes: string,
-  extraArgs?: string[],
-  writes?: boolean,
-};
+type Scenario = {name: string, fixture: string, modes: string, update?: boolean};
 
 const scenarios: Scenario[] = [
   {name: "npm-small", fixture: "npm-test", modes: "npm"},
   {name: "npm-1500", fixture: "npm-1500", modes: "npm"},
-  {name: "npm-1500-update", fixture: "npm-1500", modes: "npm", extraArgs: ["-u"], writes: true},
+  {name: "npm-1500-update", fixture: "npm-1500", modes: "npm", update: true},
   {name: "pnpm-workspace", fixture: "pnpm-workspace", modes: "npm"},
   {name: "pypi", fixture: "uv", modes: "pypi"},
   {name: "go", fixture: "go", modes: "go"},
@@ -44,36 +38,20 @@ function stats(nums: number[]): {median: number, p95: number} {
   };
 }
 
-async function runOnce(scenario: Scenario, url: string, cacheDir: string): Promise<number> {
-  let fixtureDir = join(fixturesRoot, scenario.fixture);
-  let tmpFixture: string | null = null;
-  if (scenario.writes) {
-    tmpFixture = mkdtempSync(join(tmpdir(), "updates-bench-fixture-"));
-    cpSync(fixtureDir, tmpFixture, {recursive: true});
-    fixtureDir = tmpFixture;
-  }
-  const args = [
-    script, "-j", "-n", "-M", scenario.modes,
-    "-f", fixtureDir,
-    "--forgeapi", url,
-    "--pypiapi", url,
-    "--jsrapi", url,
-    "--goproxy", url,
-    "--cargoapi", url,
-    "--dockerapi", url,
-    "--registry", url,
-    ...(scenario.extraArgs ?? []),
-  ];
+async function runOnce({fixture, modes, update}: Scenario, url: string, cacheDir: string): Promise<number> {
+  const fixtureDir = update ? mkdtempSync(join(tmpdir(), "updates-bench-fixture-")) : join(fixturesRoot, fixture);
+  if (update) cpSync(join(fixturesRoot, fixture), fixtureDir, {recursive: true});
+  const apiFlags = ["forgeapi", "pypiapi", "jsrapi", "goproxy", "cargoapi", "dockerapi", "registry"].flatMap(flag => [`--${flag}`, url]);
   const start = performance.now();
   try {
-    await execFileAsync(execPath, args, {
+    await execFileAsync(execPath, [script, "-j", "-n", "-M", modes, "-f", fixtureDir, ...apiFlags, ...(update ? ["-u"] : [])], {
       env: {...env, XDG_CACHE_HOME: cacheDir, XDG_CONFIG_HOME: cacheDir, LOCALAPPDATA: cacheDir, GH_TOKEN: "",
         GITHUB_TOKEN: "", UPDATES_GITHUB_API_TOKEN: ""},
       maxBuffer: 32 * 1024 * 1024,
     });
     return performance.now() - start;
   } finally {
-    if (tmpFixture) rmSync(tmpFixture, {recursive: true, force: true});
+    if (update) rmSync(fixtureDir, {recursive: true, force: true});
   }
 }
 
@@ -81,9 +59,8 @@ type Result = {scenario: string, mode: "cold" | "warm", median: number, p95: num
 
 async function benchScenario(scenario: Scenario, url: string, iters: number): Promise<Result[]> {
   const cacheDir = mkdtempSync(join(tmpdir(), "updates-bench-"));
-  // Discarded warmup absorbs JIT + server-side response-cache priming bias.
-  await runOnce(scenario, url, cacheDir);
   try {
+    await runOnce(scenario, url, cacheDir); // Discarded warmup absorbs JIT and server response-cache priming bias.
     const cold: number[] = [];
     for (let iter = 0; iter < iters; iter++) {
       rmSync(cacheDir, {recursive: true, force: true});
@@ -101,42 +78,22 @@ async function benchScenario(scenario: Scenario, url: string, iters: number): Pr
   }
 }
 
-function fmt(ms: number): string {
-  return `${ms.toFixed(0).padStart(5)}ms`;
-}
+const fmt = (ms: number) => `${ms.toFixed(0).padStart(5)}ms`;
+const iters = Number(argv[2]) || 5;
+const latencyMs = Number(env.BENCH_LATENCY_MS) || 0;
+const {server, url, requests} = await startBenchServer(latencyMs);
+stderr.write(`bench server: ${url}\niterations:   ${iters}\n${latencyMs ? `latency:      ${latencyMs}ms per request\n` : ""}\n`);
 
-async function main() {
-  const iters = Number(argv[2]) || 5;
-  const filter = argv[3];
-  const latencyMs = Number(env.BENCH_LATENCY_MS) || 0;
-
-  const {server, url, requests} = await startBenchServer(0, latencyMs);
-  stderr.write(`bench server: ${url}\n`);
-  stderr.write(`iterations:   ${iters}\n`);
-  if (latencyMs) stderr.write(`latency:      ${latencyMs}ms per request\n`);
-  stderr.write("\n");
-
-  const all: Result[] = [];
-  try {
-    for (const scenario of scenarios) {
-      if (filter && !scenario.name.includes(filter)) continue;
-      const startReq = requests.count;
-      stderr.write(`> ${scenario.name.padEnd(20)} `);
-      const [cold, warm] = await benchScenario(scenario, url, iters);
-      const reqs = requests.count - startReq;
-      stderr.write(`cold ${fmt(cold.median)} (p95 ${fmt(cold.p95)})  warm ${fmt(warm.median)} (p95 ${fmt(warm.p95)})  reqs=${reqs}\n`);
-      all.push(cold, warm);
-    }
-  } finally {
-    server.close();
-  }
-
-  stdout.write(`${JSON.stringify({iters, results: all}, null, 2)}\n`);
-}
-
+const results: Result[] = [];
 try {
-  await main();
-} catch (err: any) {
-  stderr.write(`bench failed: ${err?.stack || err}\n`);
-  exit(1);
+  for (const scenario of scenarios.filter(({name}) => !argv[3] || name.includes(argv[3]))) {
+    const startRequests = requests.count;
+    stderr.write(`> ${scenario.name.padEnd(20)} `);
+    const [cold, warm] = await benchScenario(scenario, url, iters);
+    stderr.write(`cold ${fmt(cold.median)} (p95 ${fmt(cold.p95)})  warm ${fmt(warm.median)} (p95 ${fmt(warm.p95)})  reqs=${requests.count - startRequests}\n`);
+    results.push(cold, warm);
+  }
+} finally {
+  server.close();
 }
+stdout.write(`${JSON.stringify({iters, results}, null, 2)}\n`);

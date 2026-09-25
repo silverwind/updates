@@ -3,32 +3,10 @@ import {basename, dirname, join, resolve} from "node:path";
 import {existsSync, globSync, readFileSync, realpathSync} from "node:fs";
 import {
   type Deps, type GoProxyEntry, type ModeContext, type PackageInfo, dedupe, fieldSep, stripv, getSubDir, normalizeUrl,
-  fetchWithRetry, defaultApiUrls, isVersionPrerelease,
-  throwFetchError,
+  fetchWithRetry, defaultApiUrls, isVersionPrerelease, throwFetchError,
 } from "./shared.ts";
 import {gt, valid} from "../utils/semver.ts";
 import {esc, getOrSet, pushTo, tryOrNull} from "../utils/utils.ts";
-
-export type {GoProxyEntry};
-
-function goProxyEntryUrl(url: string): string {
-  const absolute = url.includes(":/") || url.startsWith("/");
-  return normalizeUrl(!absolute && /[.:/]/.test(url) ? `https://${url}` : url);
-}
-
-export async function fetchFromGoProxyChain<T>(
-  chain: Array<GoProxyEntry>, fetchEntry: (url: string) => Promise<T | null>,
-): Promise<T | null> {
-  for (const {url, fallback} of chain) {
-    try {
-      const result = await fetchEntry(url);
-      if (result !== null) return result;
-    } catch (error) {
-      if (fallback === ",") throw error;
-    }
-  }
-  return null;
-}
 
 export function parseGoProxy(value: string): Array<GoProxyEntry> {
   const entries: Array<GoProxyEntry> = [];
@@ -37,40 +15,38 @@ export function parseGoProxy(value: string): Array<GoProxyEntry> {
     if (!url) continue;
     const fallback = match[2] === "|" ? "|" : ",";
     if (url === "off" || url === "direct") { entries.push({url, fallback}); break; }
-    entries.push({url: goProxyEntryUrl(url), fallback});
+    const absolute = url.includes(":/") || url.startsWith("/");
+    entries.push({url: normalizeUrl(!absolute && /[.:/]/.test(url) ? `https://${url}` : url), fallback});
   }
   return entries;
 }
 
 export function resolveGoProxyChain(override?: string): Array<GoProxyEntry> {
   if (typeof override === "string") return [{url: normalizeUrl(override), fallback: ","}];
-  const value = env.GOPROXY || `${defaultApiUrls.goproxy},direct`;
-  const list = parseGoProxy(value);
+  const list = parseGoProxy(env.GOPROXY || `${defaultApiUrls.goproxy},direct`);
   if (!list.length) throw new Error("GOPROXY list is not the empty string, but contains no entries");
   return list;
 }
 
 export function parseGoNoProxy(): Array<string> {
-  const value = env.GONOPROXY || env.GOPRIVATE || "";
-  return value.split(",").map(entry => entry.trim().replace(/\/+$/, "")).filter(Boolean);
+  return (env.GONOPROXY || env.GOPRIVATE || "").split(",").map(entry => entry.trim().replace(/\/+$/, "")).filter(Boolean);
 }
 
 const goPatternCache = new Map<string, RegExp>();
 
-function goPatternToRegex(pattern: string): RegExp {
-  return getOrSet(goPatternCache, pattern, () => {
+export function isGoNoProxy(modulePath: string, goNoProxy: Array<string>): boolean {
+  return goNoProxy.some(pattern => getOrSet(goPatternCache, pattern, () => {
     let body = "";
-    for (const match of pattern.matchAll(/\[([^\]]*)\]|./gs)) {
-      const [token, characterClass] = match;
+    for (const [token, characterClass] of pattern.matchAll(/\[([^\]]*)\]|./gs)) {
       body += characterClass !== undefined ? `[${characterClass.replace(/\\/g, "\\\\")}]` :
         token === "*" ? "[^/]*" : token === "?" ? "[^/]" : esc(token);
     }
     return new RegExp(`^${body}(?:/.*)?$`);
-  });
+  }).test(modulePath));
 }
 
-export function isGoNoProxy(modulePath: string, goNoProxy: Array<string>): boolean {
-  return goNoProxy.some(pattern => goPatternToRegex(pattern).test(modulePath));
+export function goProxyChainFor(modulePath: string, ctx: ModeContext, goNoProxy: Array<string>): Array<GoProxyEntry> {
+  return isGoNoProxy(modulePath, goNoProxy) ? [{url: "direct", fallback: ","}] : ctx.goProxyChain;
 }
 
 export function encodeGoModulePath(modulePath: string): string {
@@ -80,15 +56,13 @@ export function encodeGoModulePath(modulePath: string): string {
 const goMajorSuffixRe = /\/v(\d+)$/;
 const gopkgMajorSuffixRe = /^gopkg\.in\/.*?\.v(\d+)$/;
 
-export function extractGoMajor(name: string): number {
+export function extractGoMajor(name: string, unversioned = 1): number {
   const match = gopkgMajorSuffixRe.exec(name) ?? goMajorSuffixRe.exec(name);
-  return match ? Number.parseInt(match[1]) : 1;
+  return match ? Number.parseInt(match[1]) : unversioned;
 }
 
 export function buildGoModulePath(name: string, major: number): string {
-  if (name.startsWith("gopkg.in/")) {
-    return `${name.replace(/\.v\d+$/, "")}.v${major}`;
-  }
+  if (name.startsWith("gopkg.in/")) return `${name.replace(/\.v\d+$/, "")}.v${major}`;
   const base = name.replace(goMajorSuffixRe, "");
   return major <= 1 ? base : `${base}/v${major}`;
 }
@@ -101,7 +75,6 @@ export function goModulePathForVersion(modulePath: string, version: string): str
 }
 
 type GoDirectiveKind = "module" | "require" | "replace" | "exclude" | "tool" | "use";
-type GoDirective = {kind: GoDirectiveKind, value: string, lineNumber: number};
 
 const directiveRe = /^(module|require|replace|exclude|tool|use)(?:\s*\(\s*(?:\/\/.*)?$|\s+(.+)$)/;
 const requireEntryRe = /^(\S+)\s+(v\S+)/;
@@ -109,27 +82,25 @@ const replaceInBlockRe = /^(\S+)(?:\s+(v\S+))?\s+=>\s+(\S+)(?:\s+(v\S+))?/;
 type ParsedReplace = {origModule: string, origVersion: string, targetModule: string, targetVersion: string};
 
 const trimQuotes = (str: string): string => str.replace(/^"(.*)"$/, "$1");
-
-function isLocalReplaceTarget(target: string): boolean {
-  return target.startsWith("./") || target.startsWith("/") || target.startsWith("../");
-}
+const goVersionRe = /^v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[a-z-][\da-z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-z-][\da-z-]*))*)?(?:\+[\da-z-]+(?:\.[\da-z-]+)*)?$/i;
+const isUsableGoVersion = (version: string): boolean => goVersionRe.test(version) &&
+  !version.endsWith("-00010101000000-000000000000");
+const isLocalReplaceTarget = (target: string): boolean =>
+  target.startsWith("./") || target.startsWith("/") || target.startsWith("../");
 
 function parseReplaceDirective(value: string): ParsedReplace | null {
   const match = replaceInBlockRe.exec(value);
-  if (!match) return null;
-  const [_full, origModule, origVersion, targetModule, targetVersion] = match;
-  return {origModule: trimQuotes(origModule), origVersion: origVersion ?? "", targetModule: trimQuotes(targetModule), targetVersion: targetVersion ?? ""};
+  return match && {origModule: trimQuotes(match[1]), origVersion: match[2] ?? "", targetModule: trimQuotes(match[3]), targetVersion: match[4] ?? ""};
 }
 
-function* scanGoDirectives(lines: Array<string>): Generator<GoDirective> {
+function* scanGoDirectives(lines: Array<string>): Generator<{kind: GoDirectiveKind, value: string, lineNumber: number}> {
   let block: GoDirectiveKind | null = null;
-
   for (const [lineNumber, line] of lines.entries()) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith("//")) continue;
     if (block) {
-      if (/^\)\s*(?:\/\/.*)?$/.test(trimmed)) { block = null; continue; }
-      yield {kind: block, value: trimmed, lineNumber};
+      if (/^\)\s*(?:\/\/.*)?$/.test(trimmed)) block = null;
+      else yield {kind: block, value: trimmed, lineNumber};
       continue;
     }
     const match = directiveRe.exec(trimmed);
@@ -137,41 +108,6 @@ function* scanGoDirectives(lines: Array<string>): Generator<GoDirective> {
     if (match[2] === undefined) block = match[1] as GoDirectiveKind;
     else yield {kind: match[1] as GoDirectiveKind, value: match[2], lineNumber};
   }
-}
-
-function shouldSkipMajorProbe(name: string): boolean {
-  return name.startsWith("golang.org/x/");
-}
-
-type ProbeResult = {Version: string, Time: string, path: string};
-
-async function probeMajorVersions(
-  currentMajor: number,
-  firstProbe: ProbeResult | null,
-  probeFn: (major: number) => Promise<ProbeResult | null>,
-): Promise<ProbeResult | null> {
-  let highest = firstProbe;
-  let highestRelease = firstProbe && !isVersionPrerelease(firstProbe.Version) ? firstProbe : null;
-
-  for (let major = currentMajor + 2; highest; major++) {
-    const result = await probeFn(major);
-    if (!result) break;
-    highest = result;
-    if (!isVersionPrerelease(result.Version)) highestRelease = result;
-  }
-
-  return highestRelease ?? highest;
-}
-
-function buildGoPackageInfo(
-  name: string, currentVersion: string, probe: ProbeResult | null, latest: ProbeResult,
-): PackageInfo {
-  const highest = probe ?? latest;
-  return [{
-    name, old: currentVersion, new: stripv(highest.Version), Time: highest.Time,
-    ...(highest.path !== name && {newPath: highest.path}),
-    sameMajorNew: stripv(latest.Version), sameMajorTime: latest.Time,
-  }, null];
 }
 
 export function parseGoModule(content: string): string {
@@ -190,29 +126,21 @@ export function parseGoMod(content: string) {
   const replacedModules = new Set<string>();
   const toolPaths: string[] = [];
 
-  for (const directive of scanGoDirectives(content.split(/\r?\n/))) {
-    if (directive.kind === "tool") {
-      toolPaths.push(trimQuotes(directive.value.split(/\s/, 1)[0]));
-      continue;
-    }
-    if (directive.kind === "exclude") {
-      const match = requireEntryRe.exec(directive.value);
-      if (match) (exclude[trimQuotes(match[1])] ??= []).push(match[2]);
-      continue;
-    }
-    if (directive.kind === "replace") {
-      const parsed = parseReplaceDirective(directive.value);
-      if (parsed) {
-        if (parsed.targetVersion && !isLocalReplaceTarget(parsed.targetModule)) {
-          replace[parsed.targetModule] = parsed.targetVersion;
-        }
-        if (!parsed.origVersion) replacedModules.add(parsed.origModule);
+  for (const {kind, value} of scanGoDirectives(content.split(/\r?\n/))) {
+    if (kind === "tool") {
+      toolPaths.push(trimQuotes(value.split(/\s/, 1)[0]));
+    } else if (kind === "replace") {
+      const parsed = parseReplaceDirective(value);
+      if (parsed && isUsableGoVersion(parsed.targetVersion) && !isLocalReplaceTarget(parsed.targetModule)) {
+        replace[parsed.targetModule] = parsed.targetVersion;
       }
-      continue;
+      if (parsed && !parsed.origVersion) replacedModules.add(parsed.origModule);
+    } else if (kind === "exclude" || kind === "require") {
+      const match = requireEntryRe.exec(value);
+      if (!match) continue;
+      if (kind === "exclude") (exclude[trimQuotes(match[1])] ??= []).push(match[2]);
+      else if (isUsableGoVersion(match[2])) (value.includes("// indirect") ? indirect : deps)[trimQuotes(match[1])] = match[2];
     }
-    if (directive.kind !== "require") continue;
-    const match = requireEntryRe.exec(directive.value);
-    if (match) (directive.value.includes("// indirect") ? indirect : deps)[trimQuotes(match[1])] = match[2];
   }
 
   for (const mod of replacedModules) { delete deps[mod]; delete indirect[mod]; }
@@ -240,9 +168,8 @@ type GoExcludes = Map<string, Set<string>>;
 const goExcludesByCtx = new WeakMap<ModeContext, Map<string, GoExcludes | null>>();
 
 function getGoExcludes(goCwd: string, type: string, ctx: ModeContext): GoExcludes {
-  const suffix = type.includes("|") ? type.slice(type.indexOf("|") + 1) : "";
   // multi-root workspaces prefix the member with `<relWorkspaceFile>:`
-  const memberPath = suffix.includes(":") ? suffix.slice(suffix.indexOf(":") + 1) : suffix;
+  const memberPath = /\|(?:[^:]*:)?(.*)/s.exec(type)?.[1] ?? "";
   const byManifest = getOrSet(goExcludesByCtx, ctx, () => new Map<string, GoExcludes | null>());
   for (const manifest of memberPath ? [join(goCwd, memberPath, "go.mod"), join(goCwd, "go.mod")] : [join(goCwd, "go.mod")]) {
     const manifestPath = resolve(manifest);
@@ -260,50 +187,67 @@ function getGoExcludes(goCwd: string, type: string, ctx: ModeContext): GoExclude
   return new Map();
 }
 
-async function fetchGoVcsInfo(
-  name: string, currentVersion: string, goCwd: string, ctx: ModeContext, excludes: GoExcludes,
-): Promise<PackageInfo> {
-  const currentMajor = extractGoMajor(name);
+type ProbeResult = {Version: string, Time: string, path: string};
+type GoFetchKind = "primary" | "probe";
 
-  const goListQuery = async (modulePath: string, timeout: number, version?: string): Promise<ProbeResult & {Versions?: Array<string>}> => {
+async function fetchGoModuleInfo(
+  name: string, currentVersion: string, lookup: (path: string, kind: GoFetchKind) => Promise<ProbeResult | null>,
+): Promise<PackageInfo | null> {
+  const currentMajor = extractGoMajor(name);
+  const probe = (major: number) => tryOrNull(lookup(buildGoModulePath(name, major), "probe"));
+  const [latest, firstProbe] = await Promise.all([
+    lookup(name, "primary"), name.startsWith("golang.org/x/") ? null : probe(currentMajor + 1),
+  ]);
+  if (!latest) return null;
+  const majors: Array<ProbeResult> = [];
+  let result = firstProbe;
+  for (let major = currentMajor + 2; result; major++) {
+    majors.push(result);
+    result = await probe(major);
+  }
+  const newest = majors.findLast(result => !isVersionPrerelease(result.Version)) ?? majors.at(-1) ?? latest;
+  return [{
+    name, old: currentVersion, new: stripv(newest.Version), Time: newest.Time,
+    ...(newest.path !== name && {newPath: newest.path}),
+    sameMajorNew: stripv(latest.Version), sameMajorTime: latest.Time,
+  }, null];
+}
+
+function fetchGoVcsInfo(
+  name: string, currentVersion: string, goCwd: string, ctx: ModeContext, excludes: GoExcludes,
+): Promise<PackageInfo | null> {
+  const goListQuery = async (modulePath: string, timeout: number, version?: string) => {
+    const spec = `${modulePath}@${version ?? "latest"}`;
     try {
-      const query = version ?? "latest";
-      const args = ["list", "-m", ...(!version ? ["-versions"] : []), "-json", `${modulePath}@${query}`];
+      const args = ["list", "-m", ...(!version ? ["-versions"] : []), "-json", spec];
       const {stdout} = await ctx.execFile("go", args, {timeout, cwd: goCwd, env: {...env, GOPROXY: "direct"}});
       const data = JSON.parse(stdout) as {Version: string, Time?: string, Versions?: Array<string>};
       return {Version: data.Version, Time: data.Time || "", path: modulePath, Versions: data.Versions};
     } catch (err: any) {
       const reason = String(err?.stderr ?? "").trim().split("\n")[0] || err?.message || String(err);
-      throw new Error(`go list -m ${modulePath}@${version ?? "latest"} failed: ${reason}`);
+      throw new Error(`go list -m ${spec} failed: ${reason}`);
     }
   };
-  const latestQuery = async (modulePath: string, timeout: number) => {
+  return fetchGoModuleInfo(name, currentVersion, async (modulePath, kind) => {
+    const timeout = kind === "probe" ? ctx.goProbeTimeout : ctx.fetchTimeout;
     const latest = await goListQuery(modulePath, timeout);
     const excluded = excludes.get(modulePath);
     if (!excluded?.has(latest.Version)) return latest;
-    const available = pickGoListVersion((latest.Versions ?? []).join("\n"), goPathMajor(modulePath), excluded);
+    const available = pickGoListVersion((latest.Versions ?? []).join("\n"), extractGoMajor(modulePath, 0), excluded);
     if (!available) throw new Error(`No non-excluded versions found for ${modulePath}`);
     return goListQuery(modulePath, timeout, available.Version);
-  };
-  const probeQuery = (modulePath: string) => tryOrNull(latestQuery(modulePath, ctx.goProbeTimeout));
-
-  const [latest, firstProbe] = await Promise.all([
-    latestQuery(name, ctx.fetchTimeout),
-    shouldSkipMajorProbe(name) ? null : probeQuery(buildGoModulePath(name, currentMajor + 1)),
-  ]);
-
-  return buildGoPackageInfo(
-    name, currentVersion,
-    await probeMajorVersions(currentMajor, firstProbe, major => probeQuery(buildGoModulePath(name, major))),
-    latest,
-  );
+  });
 }
 
-export const goProxyHeaders = {"accept-encoding": "gzip, deflate, br"};
+const goProxyHeaders = {"accept-encoding": "gzip, deflate, br"};
 
-type ProxyFetch = (url: string) => Promise<Response>;
-
-const isGoProxyMiss = (status: number): boolean => status === 404 || status === 410;
+async function fetchGoProxy(ctx: ModeContext, kind: GoFetchKind, url: string, path: string, base: string): Promise<Response | null> {
+  const res = await (kind === "primary" ? fetchWithRetry(ctx, url, {headers: goProxyHeaders}) :
+    ctx.doFetch(url, {signal: AbortSignal.timeout(ctx.goProbeTimeout), headers: goProxyHeaders}));
+  if (res.ok) return res;
+  if (res.status === 404 || res.status === 410) return null;
+  throwFetchError(res, url, path, base);
+}
 
 async function readGoProxyInfo(res: Response, url: string, path: string): Promise<ProbeResult> {
   try {
@@ -313,22 +257,14 @@ async function readGoProxyInfo(res: Response, url: string, path: string): Promis
   throw new Error(`Invalid response from ${url}`);
 }
 
-const fetchGoLatest = async (doFetch: ProxyFetch, base: string, path: string): Promise<ProbeResult | null> => {
-  const url = `${base}/${encodeGoModulePath(path)}/@latest`;
-  const res = await doFetch(url);
-  if (res.ok) return readGoProxyInfo(res, url, path);
-  if (isGoProxyMiss(res.status)) return null;
-  throwFetchError(res, url, path, base);
-};
-
-type GoFetchKind = "primary" | "probe";
 const goFetchesByCtx = new WeakMap<ModeContext, Map<string, Promise<ProbeResult | null>>>();
 
-export function fetchGoLatestOnce(
-  ctx: ModeContext, kind: GoFetchKind, doFetch: ProxyFetch, base: string, path: string,
-): Promise<ProbeResult | null> {
-  return dedupe(goFetchesByCtx, ctx, `latest${fieldSep}${kind}${fieldSep}${base}/${path}`,
-    () => fetchGoLatest(doFetch, base, path));
+export function fetchGoLatest(ctx: ModeContext, kind: GoFetchKind, base: string, path: string): Promise<ProbeResult | null> {
+  return dedupe(goFetchesByCtx, ctx, `latest${fieldSep}${kind}${fieldSep}${base}/${path}`, async () => {
+    const url = `${base}/${encodeGoModulePath(path)}/@latest`;
+    const res = await fetchGoProxy(ctx, kind, url, path, base);
+    return res && readGoProxyInfo(res, url, path);
+  });
 }
 
 export function pickGoListVersion(body: string, major = 0, excluded = new Set<string>()): {Version: string, Time: string} | null {
@@ -346,91 +282,54 @@ export function pickGoListVersion(body: string, major = 0, excluded = new Set<st
   return best;
 }
 
-function goPathMajor(path: string): number {
-  return goMajorSuffixRe.test(path) || gopkgMajorSuffixRe.test(path) ? extractGoMajor(path) : 0;
-}
-
-async function fetchGoList(doFetch: ProxyFetch, base: string, path: string, excluded = new Set<string>()): Promise<ProbeResult | null> {
-  const encoded = encodeGoModulePath(path);
-  const url = `${base}/${encoded}/@v/list`;
-  const res = await doFetch(url);
-  if (!res.ok) {
-    if (isGoProxyMiss(res.status)) return null;
-    throwFetchError(res, url, path, base);
-  }
-  const best = pickGoListVersion(await res.text(), goPathMajor(path), excluded);
-  if (!best) return null;
-  if (best.Time) return {...best, path};
-  const infoUrl = `${base}/${encoded}/@v/${encodeGoModulePath(best.Version)}.info`;
-  try {
-    const infoRes = await doFetch(infoUrl);
-    if (infoRes.ok) return await readGoProxyInfo(infoRes, infoUrl, path);
-  } catch {}
-  return {...best, path};
-}
-
-function fetchGoListOnce(
-  ctx: ModeContext, kind: GoFetchKind, doFetch: ProxyFetch, base: string, path: string,
-  excluded = new Set<string>(),
-): Promise<ProbeResult | null> {
+function fetchGoList(ctx: ModeContext, kind: GoFetchKind, base: string, path: string, excluded = new Set<string>()): Promise<ProbeResult | null> {
   const key = `list${fieldSep}${kind}${fieldSep}${base}/${path}${fieldSep}${Array.from(excluded).sort().join(fieldSep)}`;
-  return dedupe(goFetchesByCtx, ctx, key, () => fetchGoList(doFetch, base, path, excluded));
+  return dedupe(goFetchesByCtx, ctx, key, async () => {
+    const encoded = encodeGoModulePath(path);
+    const res = await fetchGoProxy(ctx, kind, `${base}/${encoded}/@v/list`, path, base);
+    const best = res && pickGoListVersion(await res.text(), extractGoMajor(path, 0), excluded);
+    if (!best) return null;
+    if (best.Time) return {...best, path};
+    const infoUrl = `${base}/${encoded}/@v/${encodeGoModulePath(best.Version)}.info`;
+    try {
+      const infoRes = await fetchGoProxy(ctx, kind, infoUrl, path, base);
+      if (infoRes) return await readGoProxyInfo(infoRes, infoUrl, path);
+    } catch {}
+    return {...best, path};
+  });
 }
 
-async function fetchGoProxyModule(
+function fetchGoProxyModule(
   base: string, name: string, currentVersion: string, ctx: ModeContext, excludes: GoExcludes,
 ): Promise<PackageInfo | null> {
-  const currentMajor = extractGoMajor(name);
-  const primaryFetch: ProxyFetch = url => fetchWithRetry(ctx, url, {headers: goProxyHeaders});
-  const probeFetch: ProxyFetch = url => ctx.doFetch(url, {signal: AbortSignal.timeout(ctx.goProbeTimeout), headers: goProxyHeaders});
-  const primaryLatestPromise = fetchGoLatestOnce(ctx, "primary", primaryFetch, base, name);
-  const primaryPromise = (async () => {
-    const primaryLatest = await primaryLatestPromise;
-    const excluded = excludes.get(name);
-    return primaryLatest && !excluded?.has(primaryLatest.Version) ? primaryLatest :
-      fetchGoListOnce(ctx, "primary", primaryFetch, base, name, excluded);
-  })();
-  const probe = async (path: string) => {
-    try {
-      const [latest, primaryLatest] = await Promise.all([
-        fetchGoLatestOnce(ctx, "probe", probeFetch, base, path), primaryLatestPromise,
-      ]);
-      const excluded = excludes.get(path);
-      if (latest && !excluded?.has(latest.Version)) return latest;
-      if (!latest && primaryLatest) return null;
-      return await fetchGoListOnce(ctx, "probe", probeFetch, base, path, excluded);
-    } catch {
-      return null;
-    }
-  };
-
-  const [primary, firstProbe] = await Promise.all([
-    primaryPromise,
-    shouldSkipMajorProbe(name) ? null : probe(buildGoModulePath(name, currentMajor + 1)),
-  ]);
-  if (!primary) return null;
-
-  return buildGoPackageInfo(
-    name, currentVersion,
-    await probeMajorVersions(currentMajor, firstProbe, major => probe(buildGoModulePath(name, major))),
-    primary,
-  );
+  const primaryLatestPromise = fetchGoLatest(ctx, "primary", base, name);
+  return fetchGoModuleInfo(name, currentVersion, async (path, kind) => {
+    const [latest, primaryLatest] = await Promise.all([fetchGoLatest(ctx, kind, base, path), primaryLatestPromise]);
+    const excluded = excludes.get(path);
+    if (latest && !excluded?.has(latest.Version)) return latest;
+    if (!latest && primaryLatest) return null;
+    return fetchGoList(ctx, kind, base, path, excluded);
+  });
 }
 
 export async function fetchGoProxyInfo(name: string, type: string, currentVersion: string, goCwd: string, ctx: ModeContext, goNoProxy: Array<string>): Promise<PackageInfo> {
   const excludes = getGoExcludes(goCwd, type, ctx);
-  if (isGoNoProxy(name, goNoProxy)) return fetchGoVcsInfo(name, currentVersion, goCwd, ctx, excludes);
-
-  const info = await fetchFromGoProxyChain(ctx.goProxyChain, async url => {
-    if (url === "off") throw new Error("Module lookup disabled by GOPROXY=off");
-    if (url === "direct") return fetchGoVcsInfo(name, currentVersion, goCwd, ctx, excludes);
-    return fetchGoProxyModule(url, name, currentVersion, ctx, excludes);
-  });
-  if (info) return info;
+  for (const {url, fallback} of goProxyChainFor(name, ctx, goNoProxy)) {
+    try {
+      if (url === "off") throw new Error("Module lookup disabled by GOPROXY=off");
+      const info = url === "direct" ? await fetchGoVcsInfo(name, currentVersion, goCwd, ctx, excludes) :
+        await fetchGoProxyModule(url, name, currentVersion, ctx, excludes);
+      if (info) return info;
+    } catch (error) {
+      if (fallback === ",") throw error;
+    }
+  }
   throw new Error(`Unable to find ${name} on any GOPROXY entry`);
 }
 
 const quotedPath = (name: string) => `("?)${esc(name)}\\2`;
+const versionedPathRe = (prefix: string, name: string, version: string) =>
+  new RegExp(`(${prefix})${quotedPath(name)}(\\s+)v${version}(?=\\s*(?://.*)?$)`);
 
 export function updateGoMod(pkgStr: string, deps: Deps): [string, Record<string, string>] {
   const majorVersionRewrites: Record<string, string> = {};
@@ -438,9 +337,9 @@ export function updateGoMod(pkgStr: string, deps: Deps): [string, Record<string,
   if (!entries.length) return [pkgStr, majorVersionRewrites];
   const lineEndings = pkgStr.match(/\r?\n/g) ?? [];
   const lines = pkgStr.split(/\r?\n/);
-  const rewriteLines = (lineNumbers: Array<number> | undefined, pattern: RegExp, replacement: string): boolean => {
+  const rewriteLines = (lineNumbers: Array<number> = [], pattern: RegExp, replacement: string): boolean => {
     let rewritten = false;
-    for (const lineNumber of lineNumbers ?? []) {
+    for (const lineNumber of lineNumbers) {
       const line = lines[lineNumber];
       lines[lineNumber] = line.replace(pattern, replacement);
       rewritten ||= lines[lineNumber] !== line;
@@ -450,20 +349,18 @@ export function updateGoMod(pkgStr: string, deps: Deps): [string, Record<string,
   const requireLines = new Map<string, Array<number>>();
   const replaceDirectives = new Map<string, Array<ParsedReplace & {lineNumber: number}>>();
   const toolLines = new Map<string, Array<number>>();
-  for (const directive of scanGoDirectives(lines)) {
-    if (directive.kind === "require") {
-      const match = requireEntryRe.exec(directive.value);
-      if (match) pushTo(requireLines, trimQuotes(match[1]), directive.lineNumber);
-    } else if (directive.kind === "replace") {
-      const parsed = parseReplaceDirective(directive.value);
-      if (parsed) pushTo(replaceDirectives, parsed.targetModule, {...parsed, lineNumber: directive.lineNumber});
-    } else if (directive.kind === "tool") {
-      let name = trimQuotes(directive.value.split(/\s/, 1)[0]);
-      while (name) {
-        pushTo(toolLines, name, directive.lineNumber);
-        const slash = name.lastIndexOf("/");
-        if (slash === -1) break;
-        name = name.slice(0, slash);
+  for (const {kind, value, lineNumber} of scanGoDirectives(lines)) {
+    if (kind === "require") {
+      const match = requireEntryRe.exec(value);
+      if (match) pushTo(requireLines, trimQuotes(match[1]), lineNumber);
+    } else if (kind === "replace") {
+      const parsed = parseReplaceDirective(value);
+      if (parsed) pushTo(replaceDirectives, parsed.targetModule, {...parsed, lineNumber});
+    } else if (kind === "tool") {
+      let path = trimQuotes(value.split(/\s/, 1)[0]);
+      while (path) {
+        pushTo(toolLines, path, lineNumber);
+        path = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
       }
     }
   }
@@ -471,33 +368,20 @@ export function updateGoMod(pkgStr: string, deps: Deps): [string, Record<string,
     const [depType, name] = key.split(fieldSep);
     const oldValue = oldOrig || old;
     const newPath = goModulePathForVersion(name, newValue);
+    const replacement = `$1$2${newPath}$2$3v${newValue}`;
+    let requireVersion: string | null = esc(oldValue);
     if (depType === "replace") {
-      let selfReplace = false;
-      for (const parsed of replaceDirectives.get(name) ?? []) {
-        if (stripv(parsed.targetVersion) !== oldValue) continue;
-        const {lineNumber} = parsed;
-        lines[lineNumber] = lines[lineNumber].replace(
-          new RegExp(`(=>\\s+)${quotedPath(name)}(\\s+)v${esc(oldValue)}(?=\\s*(?://.*)?$)`),
-          `$1$2${newPath}$2$3v${newValue}`,
-        );
-        if (newPath !== name && parsed.origModule === name && !parsed.origVersion) {
-          lines[lineNumber] = lines[lineNumber].replace(
-            new RegExp(`(^\\s*(?:replace\\s+)?)${quotedPath(name)}(?=\\s+=>)`),
-            `$1$2${newPath}$2`,
-          );
-          selfReplace = true;
-        }
+      requireVersion = null;
+      for (const {targetVersion, origModule, origVersion, lineNumber} of replaceDirectives.get(name) ?? []) {
+        if (stripv(targetVersion) !== oldValue) continue;
+        rewriteLines([lineNumber], versionedPathRe("=>\\s+", name, esc(oldValue)), replacement);
+        if (newPath === name || origModule !== name || origVersion) continue;
+        rewriteLines([lineNumber], new RegExp(`(^\\s*(?:replace\\s+)?)${quotedPath(name)}(?=\\s+=>)`), `$1$2${newPath}$2`);
+        requireVersion = "\\S+";
       }
-      if (selfReplace && rewriteLines(
-        requireLines.get(name), new RegExp(`(^\\s*(?:require\\s+)?)${quotedPath(name)}(\\s+)v\\S+(?=\\s*(?://.*)?$)`),
-        `$1$2${newPath}$2$3v${newValue}`,
-      )) majorVersionRewrites[name] = newPath;
-      continue;
     }
-
-    if (rewriteLines(
-      requireLines.get(name), new RegExp(`(^\\s*(?:require\\s+)?)${quotedPath(name)}(\\s+)v${esc(oldValue)}(?=\\s*(?://.*)?$)`),
-      `$1$2${newPath}$2$3v${newValue}`,
+    if (requireVersion !== null && rewriteLines(
+      requireLines.get(name), versionedPathRe("^\\s*(?:require\\s+)?", name, requireVersion), replacement,
     ) && newPath !== name) majorVersionRewrites[name] = newPath;
     if (depType === "tool" && newPath !== name) {
       rewriteLines(
@@ -573,24 +457,20 @@ export function rewriteGoImports(projectDir: string, majorVersionRewrites: Recor
 export function parseGoWork(content: string): {use: string[], replace: Record<string, string>} {
   const use: string[] = [];
   const replace: Record<string, string> = {};
-  for (const directive of scanGoDirectives(content.split(/\r?\n/))) {
-    if (directive.kind === "use") {
-      use.push(directive.value.split(/\s/, 1)[0]);
-    } else if (directive.kind === "replace") {
-      const parsed = parseReplaceDirective(directive.value);
-      if (parsed?.targetVersion && !isLocalReplaceTarget(parsed.targetModule)) {
-        replace[parsed.targetModule] = parsed.targetVersion;
-      }
+  for (const {kind, value} of scanGoDirectives(content.split(/\r?\n/))) {
+    if (kind === "use") {
+      use.push(value.split(/\s/, 1)[0]);
+    } else if (kind === "replace") {
+      const parsed = parseReplaceDirective(value);
+      if (parsed && isUsableGoVersion(parsed.targetVersion) && !isLocalReplaceTarget(parsed.targetModule)) replace[parsed.targetModule] = parsed.targetVersion;
     }
   }
-
   return {use, replace};
 }
 
 export function resolveGoWorkModule(workspaceDir: string, usePath: string): string | null {
   try {
-    const root = realpathSync(resolve(workspaceDir));
-    return realpathSync(join(root, usePath, "go.mod"));
+    return realpathSync(join(realpathSync(resolve(workspaceDir)), usePath, "go.mod"));
   } catch {
     return null;
   }
@@ -599,14 +479,10 @@ export function resolveGoWorkModule(workspaceDir: string, usePath: string): stri
 export function getGoInfoUrl(name: string): string {
   const str = `https://${shortenGoModule(name)}`;
   const url = new URL(str);
-  const pathParts = url.pathname.split("/");
-  if (pathParts.length > 3) {
-    const [_root, user, repo, ...other] = pathParts;
-    url.pathname = `/${user}/${repo}/${getSubDir(str)}/${other.join("/")}`;
-    return url.href;
-  } else {
-    return str;
-  }
+  const [_root, user, repo, ...other] = url.pathname.split("/");
+  if (!other.length) return str;
+  url.pathname = `/${user}/${repo}/${getSubDir(str)}/${other.join("/")}`;
+  return url.href;
 }
 
 export function shortenGoModule(module: string): string {

@@ -16,16 +16,20 @@ const defaults = {
 } as const;
 
 const dependencyFields = ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies", "resolutions"];
-const modeByName = (filename: string) => filename === "package.json" || filename === "pnpm-workspace.yaml" ? "npm" :
-  filename === "pyproject.toml" ? "pypi" : filename === "Cargo.toml" ? "cargo" :
-    filename === "go.mod" || filename === "go.work" ? "go" :
-      /^(?:[Dd]ocker|[Cc]ontainer)file|\.(?:[Dd]ocker|[Cc]ontainer)file$/.test(filename) || /^(?:docker-|compose).*\.ya?ml$/.test(filename) ? "docker" :
-        ["Makefile", "makefile", "GNUmakefile"].includes(filename) || filename.endsWith(".mk") ? "make" :
-          /\.ya?ml$/.test(filename) ? "actions" : "";
+function modeByName(filename: string): string {
+  if (filename === "package.json" || filename === "pnpm-workspace.yaml") return "npm";
+  if (filename === "pyproject.toml") return "pypi";
+  if (filename === "Cargo.toml") return "cargo";
+  if (filename === "go.mod" || filename === "go.work") return "go";
+  if (/^(?:[Dd]ocker|[Cc]ontainer)file|\.(?:[Dd]ocker|[Cc]ontainer)file$/.test(filename) ||
+    /^(?:docker-|compose).*\.ya?ml$/.test(filename)) return "docker";
+  if (["Makefile", "makefile", "GNUmakefile"].includes(filename) || filename.endsWith(".mk")) return "make";
+  if (/\.ya?ml$/.test(filename)) return "actions";
+  return "";
+}
 
 export function prewarmOrigins(dir: string, args: Record<string, unknown>): string[] {
-  const enabledModes = Array.isArray(args.modes) ? new Set(args.modes) : typeof args.modes === "string" ?
-    new Set(args.modes.split(",")) : null;
+  const enabledModes = Array.isArray(args.modes) ? new Set(args.modes) : null;
   const resources = new Set<keyof typeof defaults>();
   const candidates = new Set<string>();
   const paths = Array.isArray(args.files) && args.files.length ? args.files.filter(path => typeof path === "string") : [dir];
