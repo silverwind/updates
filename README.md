@@ -3,7 +3,7 @@
 
 ![](./screenshot.png)
 
-`updates` is a CLI tool that checks for dependency updates, usually in under a second.
+`updates` is a CLI tool that checks for dependency updates with zero dependencies.
 
 ## Supported files
 
