@@ -17,12 +17,14 @@
 
 ## Usage
 
-```bash
+```sh
+pnpm add -D updates
+
 # check for updates
-npx updates
+pnpm exec updates
 
 # update package.json and install new dependencies
-npx updates -u && npm i
+pnpm exec updates -u && pnpm i
 ```
 
 ## Options
