@@ -44,7 +44,7 @@
     "bun": "*"
   },
   "devDependencies": {
-    "@types/node": "26.6.2",
+    "@types/node": "26.6.3",
     "@typescript/native-preview": "7.0.0-dev.20260707.2",
     "@vitest/coverage-v8": "5.0.2",
     "eslint": "10.11.0",
@@ -57,6 +57,6 @@
     "updates-config-silverwind": "4.0.7",
     "versions": "15.5.1",
     "vitest": "5.0.2",
-    "vitest-config-silverwind": "12.0.4"
+    "vitest-config-silverwind": "12.0.5"
   }
 }
