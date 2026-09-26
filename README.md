@@ -18,13 +18,11 @@
 ## Usage
 
 ```sh
-pnpm add -D updates
-
 # check for updates
-pnpm exec updates
+pnpm dlx updates
 
 # update package.json and install new dependencies
-pnpm exec updates -u && pnpm i
+pnpm dlx updates -u && pnpm i
 ```
 
 ## Options
