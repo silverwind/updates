@@ -192,7 +192,10 @@ async function fetchGoModuleInfo(
   name: string, currentVersion: string, lookup: (path: string, kind: GoFetchKind) => Promise<ProbeResult | null>,
 ): Promise<PackageInfo | null> {
   const currentMajor = extractGoMajor(name);
-  const probe = (major: number) => tryOrNull(lookup(buildGoModulePath(name, major), "probe"));
+  const probe = async (major: number) => {
+    const result = await tryOrNull(lookup(buildGoModulePath(name, major), "probe"));
+    return result && Number.parseInt(stripv(result.Version)) === major ? result : null;
+  };
   const [latest, firstProbe] = await Promise.all([
     lookup(name, "primary"), name.startsWith("golang.org/x/") ? null : probe(currentMajor + 1),
   ]);

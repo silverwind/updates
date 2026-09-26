@@ -328,12 +328,17 @@ test("primary and probe Go lookups keep their retry semantics separate", async (
   expect(seen.filter(url => url === `${goProxyBase}/${modPath}/v2/@latest`)).toHaveLength(4);
 });
 
-test("fetchGoProxyInfo stops major probing at the first absent major", async () => {
+test.each([
+  ["absent", {}],
+  ["mismatched", {[`${goProxyBase}/${modPath}/v2/@latest`]: JSON.stringify({Version: "v1.2.0", Time: ""})}],
+])("fetchGoProxyInfo stops major probing at the first %s major", async (_name, routes) => {
   const seen: Array<string> = [];
   const [data] = await infoFor(makeGoCtx({
     [`${goProxyBase}/${modPath}/@latest`]: JSON.stringify({Version: "v1.2.0", Time: "2024-01-01T00:00:00Z"}),
+    ...routes,
   }, seen));
   expect(data.new).toBe("1.2.0");
+  expect(data.newPath).toBeUndefined();
   expect(seen).toHaveLength(2);
   expect(seen).toContain(`${goProxyBase}/${modPath}/@latest`);
   expect(seen).toContain(`${goProxyBase}/${modPath}/v2/@latest`);
