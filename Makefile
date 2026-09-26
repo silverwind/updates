@@ -1,4 +1,5 @@
 SOURCE_FILES := index.ts api.ts cli.ts config.ts $(filter-out %.test.ts,$(wildcard modes/*.ts utils/*.ts))
+DIST_FILES := dist/index.js
 
 node_modules: pnpm-lock.yaml
 	pnpm install
@@ -35,29 +36,29 @@ bench: node_modules build
 	node bench/bench.ts
 
 .PHONY: build
-build: node_modules dist/index.js
+build: node_modules $(DIST_FILES)
 
-dist/index.js: $(SOURCE_FILES) pnpm-lock.yaml tsdown.config.ts
+$(DIST_FILES): $(SOURCE_FILES) pnpm-lock.yaml package.json tsconfig.json tsdown.config.ts
 	pnpm exec tsdown
-
-.PHONY: update
-update: update-js update-actions
-
-.PHONY: update-js
-update-js: node_modules
-	./dist/index.js -u -f package.json
-	rm -rf node_modules pnpm-lock.yaml
-	pnpm install
-	@touch node_modules
 
 .PHONY: publish
 publish: node_modules
 	pnpm publish --no-git-checks
 
+.PHONY: update
+update: update-js update-actions
+
+.PHONY: update-js
+update-js: node_modules build
+	./dist/index.js -u -f package.json
+	rm -rf node_modules pnpm-lock.yaml
+	pnpm install
+	@touch node_modules
+
+.PHONY: update-actions
+update-actions: node_modules build
+	./dist/index.js -u -M actions
+
 .PHONY: patch minor major
 patch minor major: node_modules lint test
 	pnpm exec versions -R $@ package.json
-
-.PHONY: update-actions
-update-actions: node_modules
-	./dist/index.js -u -M actions
