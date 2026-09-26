@@ -2,7 +2,7 @@ import {env} from "node:process";
 import {resolve} from "node:path";
 import {dedupe, fieldSep, type ModeContext} from "./shared.ts";
 import {esc} from "../utils/utils.ts";
-import {fetchGoLatest, goProxyChainFor} from "./go.ts";
+import {fetchGoLatest, goListError, goProxyChainFor} from "./go.ts";
 import {type DockerImageRef, parseDockerImageRef} from "./docker.ts";
 
 export const makeExactFileNames = ["Makefile", "makefile", "GNUmakefile"];
@@ -87,9 +87,8 @@ function probeDirectGoModule(candidate: string, goCwd: string, ctx: ModeContext)
       ({stdout} = await ctx.execFile("go", ["list", "-m", "-e", "-json", `${candidate}@latest`], {
         timeout: ctx.fetchTimeout, cwd: goCwd, env: {...env, GOPROXY: "direct"},
       }));
-    } catch (err: any) {
-      const reason = String(err?.stderr ?? "").trim().split("\n")[0] || err?.message || String(err);
-      throw new Error(`go list -m ${candidate}@latest failed: ${reason}`);
+    } catch (err) {
+      throw goListError(`${candidate}@latest`, err);
     }
     let result: {Version?: string, Error?: {Err?: string}, Origin?: unknown};
     try {

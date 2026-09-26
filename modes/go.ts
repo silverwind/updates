@@ -211,6 +211,10 @@ async function fetchGoModuleInfo(
   }, null];
 }
 
+export function goListError(spec: string, err: any): Error {
+  return new Error(`go list -m ${spec} failed: ${String(err?.stderr ?? "").trim().split("\n")[0] || err?.message || String(err)}`);
+}
+
 function fetchGoVcsInfo(
   name: string, currentVersion: string, goCwd: string, ctx: ModeContext, excludes: GoExcludes,
 ): Promise<PackageInfo | null> {
@@ -221,9 +225,8 @@ function fetchGoVcsInfo(
       const {stdout} = await ctx.execFile("go", args, {timeout, cwd: goCwd, env: {...env, GOPROXY: "direct"}});
       const data = JSON.parse(stdout) as {Version: string, Time?: string, Versions?: Array<string>};
       return {Version: data.Version, Time: data.Time || "", path: modulePath, Versions: data.Versions};
-    } catch (err: any) {
-      const reason = String(err?.stderr ?? "").trim().split("\n")[0] || err?.message || String(err);
-      throw new Error(`go list -m ${spec} failed: ${reason}`);
+    } catch (err) {
+      throw goListError(spec, err);
     }
   };
   return fetchGoModuleInfo(name, currentVersion, async (modulePath, kind) => {

@@ -2,6 +2,7 @@ import {env, platform} from "node:process";
 import {homedir} from "node:os";
 import {dirname, join} from "node:path";
 import {mkdir, readFile, rename, writeFile} from "node:fs/promises";
+import {getOrSet} from "./utils.ts";
 
 type Tokens = Record<string, string>;
 
@@ -30,8 +31,7 @@ async function readTokensFile(path: string): Promise<Tokens> {
 
 export function readTokens(): Promise<Tokens> {
   const path = tokensPath();
-  if (!memo.has(path)) memo.set(path, readTokensFile(path));
-  return memo.get(path)!;
+  return getOrSet(memo, path, () => readTokensFile(path));
 }
 
 async function writeTokens(tokens: Tokens): Promise<void> {
