@@ -3,7 +3,6 @@ type TomlObject = {[key: string]: TomlValue};
 
 const arrayTableRe = /^\[\[([^\]]+)\]\]$/;
 const tableRe = /^\[([^[\]]+)\]$/;
-const mlDelims = ['"""', "'''"];
 
 const emptyTable = (): TomlObject => Object.create(null);
 
@@ -44,8 +43,8 @@ export function parseToml(input: string): TomlObject {
     const keys = splitDottedKey(line.slice(0, eqIdx));
     const finalKey = keys.pop()!;
     const target = descend(current, keys);
-    const mlDelim = mlDelims.find(delimiter =>
-      rawVal.startsWith(delimiter) && !rawVal.includes(delimiter, 3)) ?? "";
+    const mlDelim = rawVal.startsWith('"""') && !rawVal.includes('"""', 3) ? '"""' :
+      rawVal.startsWith("'''") && !rawVal.includes("'''", 3) ? "'''" : "";
     const state: ScanState = {depth: 0, inStr: null};
 
     if ((rawVal.startsWith("[") || rawVal.startsWith("{")) && !scanClose(rawVal, state)) {

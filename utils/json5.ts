@@ -1,5 +1,4 @@
-const identStart = /[A-Za-z_$]/;
-const identPart = /[A-Za-z0-9_$]/;
+const identifier = /[A-Za-z_$][A-Za-z0-9_$]*/y;
 
 export function parseJsonish(text: string): unknown {
   let out = "";
@@ -71,11 +70,11 @@ export function parseJsonish(text: string): unknown {
       continue;
     }
 
-    if (identStart.test(ch)) {
-      const start = i;
-      while (i < n && identPart.test(text[i])) i++;
-      const ident = text.slice(start, i);
-      out += text[skipTrivia(i)] === ":" ? `"${ident}"` : ident;
+    identifier.lastIndex = i;
+    const match = identifier.exec(text);
+    if (match) {
+      i = identifier.lastIndex;
+      out += text[skipTrivia(i)] === ":" ? `"${match[0]}"` : match[0];
       continue;
     }
 

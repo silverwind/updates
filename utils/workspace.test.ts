@@ -45,7 +45,7 @@ test("filterDepsForMember", () => {
 
 test("filterDepsForMember preserves dependency identities", () => {
   const directIdentity = JSON.stringify(["overrides", "prismjs"]);
-  const nestedIdentity = JSON.stringify(["overrides", "parent", "prismjs"]);
+  const nestedIdentity = JSON.stringify(["overrides", "parent|peer", "prismjs"]);
   const allDeps = {
     [`overrides|./app${fieldSep}prismjs${fieldSep}${directIdentity}`]: {old: "1.29.0", new: "1.30.0"},
     [`overrides|./app${fieldSep}prismjs${fieldSep}${nestedIdentity}`]: {old: "1.28.0", new: "1.30.0"},

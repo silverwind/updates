@@ -145,13 +145,11 @@ export function parseGoMod(content: string) {
 
   for (const mod of replacedModules) { delete deps[mod]; delete indirect[mod]; }
 
-  const allModules = [...Object.keys(indirect), ...Object.keys(deps)];
+  const allModules = new Set([...Object.keys(indirect), ...Object.keys(deps)]);
   for (const toolPath of toolPaths) {
-    let bestMatch = "";
-    for (const mod of allModules) {
-      if ((toolPath === mod || toolPath.startsWith(`${mod}/`)) && mod.length > bestMatch.length) {
-        bestMatch = mod;
-      }
+    let bestMatch = toolPath;
+    while (bestMatch && !allModules.has(bestMatch)) {
+      bestMatch = bestMatch.includes("/") ? bestMatch.slice(0, bestMatch.lastIndexOf("/")) : "";
     }
     const source = indirect[bestMatch] ? indirect : deps;
     if (source[bestMatch]) {

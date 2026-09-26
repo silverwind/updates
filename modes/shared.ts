@@ -269,9 +269,9 @@ export function findVersion(data: any, versions: Array<string>, {range, semvers,
     const parsed = versioning.parse(version);
     if (!parsed || skipsPrerelease(parsed)) continue;
 
+    if (newVersionParsed && versioning.compare(parsed, newVersionParsed) <= 0) continue;
     const stepDown = versioning.compare(parsed, oldParsed) <= 0;
     if (stepDown && !intoPin && !ontoTag) continue;
-    if (newVersionParsed && versioning.compare(parsed, newVersionParsed) <= 0) continue;
     if (stepDown && !intoPin && ceiling && versioning.compare(parsed, ceiling) !== 0) continue;
     if (!stepDown && ceiling && !pastCeiling && versioning.compare(parsed, ceiling) > 0) continue;
 

@@ -170,6 +170,10 @@ test.each([
   ["an empty tool block",
     ["module example.com/mod", "", "require github.com/a/b v1.0.0", "", "tool (", ")"],
     {deps: {"github.com/a/b": "v1.0.0"}, indirect: {}, replace: {}, tool: {}}],
+  ["overlapping requirements and repeated tool paths",
+    ["module example.com/mod", "", "require (", "\tgithub.com/a v1.0.0", "\tgithub.com/a/b v1.1.0", ")", "",
+      "tool (", "\tgithub.com/a/b/cmd/first", "\tgithub.com/a/b/cmd/second", ")"],
+    {deps: {"github.com/a": "v1.0.0"}, indirect: {}, replace: {}, tool: {"github.com/a/b": "v1.1.0"}}],
 ])("parseGoMod %s", (_name, lines, expected) => {
   expect(parseGoMod(lines.join("\n"))).toEqual(expected);
 });

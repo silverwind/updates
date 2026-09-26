@@ -238,8 +238,8 @@ const firstVersionField = (version: string) => Number(stripv(version).split(dock
 
 // every part is numeric by construction, dockerTagRe only admits digits between separators
 function coerceDockerVersion(version: string): string {
-  const parts = stripv(version).split(dockerVersionSep).slice(0, 3);
-  return [...parts.map(part => String(Number(part))), ...new Array(3 - parts.length).fill("0")].join(".");
+  const parts = stripv(version).split(dockerVersionSep);
+  return `${Number(parts[0])}.${Number(parts[1] || 0)}.${Number(parts[2] || 0)}`;
 }
 
 function compareExtendedDockerTags(left: DockerTag, right: DockerTag): number {

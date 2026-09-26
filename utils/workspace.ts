@@ -19,9 +19,9 @@ export function filterDepsForMember(allDeps: Deps, memberPath: string): Deps {
   const byMember = getOrSet(depsByMember, allDeps, () => {
     const result = new Map<string, Array<[string, Deps[string]]>>();
     for (const [key, dep] of Object.entries(allDeps)) {
-      const [type, ...parts] = key.split(fieldSep);
+      const type = key.split(fieldSep, 1)[0];
       const separator = type.indexOf("|");
-      pushTo(result, separator === -1 ? "." : type.slice(separator + 1), [[baseType(type), ...parts].join(fieldSep), dep]);
+      pushTo(result, separator === -1 ? "." : type.slice(separator + 1), [`${baseType(type)}${key.slice(type.length)}`, dep]);
     }
     return result;
   });
@@ -260,16 +260,14 @@ export function* pnpmCatalogEntries(content: string): Generator<PnpmCatalogEntry
 }
 
 export function updatePnpmWorkspace(content: string, deps: Deps): string {
-  const lines = content.split("\n");
-  let changed = false;
+  let lines: string[] | undefined;
   for (const {type, name, value, lineIndex, valueIndex} of Array.from(pnpmCatalogEntries(content)).reverse()) {
     const dep = deps[`${type}${fieldSep}${name}`];
     if (!dep || (dep.oldOrig || dep.old) !== value) continue;
-    const line = lines[lineIndex];
+    const line = (lines ??= content.split("\n"))[lineIndex];
     lines[lineIndex] = line.slice(0, valueIndex) + dep.new + line.slice(valueIndex + value.length);
-    changed = true;
   }
-  return changed ? lines.join("\n") : content;
+  return lines ? lines.join("\n") : content;
 }
 
 export function parsePnpmWorkspace(content: string): string[] {
