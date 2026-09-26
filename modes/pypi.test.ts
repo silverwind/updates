@@ -27,17 +27,12 @@ test("updatePyprojectToml preserves unrelated content and dependency groups", ()
     `]`,
     ``,
   ].join("\n");
-  const updates = {
+  expect(updatePyprojectToml(input, {
     [`project.dependencies${fieldSep}flask`]: {old: "2.3.0", new: "2.4.0"} as any,
     [`project.dependencies${fieldSep}click`]: {old: "8.1.0", new: "8.2.0"} as any,
     [`project.dependencies${fieldSep}requests`]: {old: "2.28.0", new: "2.31.0"} as any,
-  };
-  const result = updatePyprojectToml(input, updates);
-  expect(result).toContain(`"flask >=2.4.0"`);
-  expect(result).toContain(`name = "my-project"`);
-  expect(result).toContain(`"requests >=2.31.0"`);
-  expect(result).toContain(`"requests-oauthlib >=2.28.0"`);
-  expect(result).toContain(`"click >=8.2.0"`);
+  })).toBe(input
+    .replace(`"requests >=2.28.0"`, `"requests >=2.31.0"`).replace(`"flask >=2.3.0"`, `"flask >=2.4.0"`).replace(`"click >=8.1.0"`, `"click >=8.2.0"`));
   const groupedInput = [
     `[project]`,
     `dependencies = ["pkg>=1.0"]`,
@@ -49,12 +44,8 @@ test("updatePyprojectToml preserves unrelated content and dependency groups", ()
     `"test.unit" = ["pkg>=1.0"]`,
     ``,
   ].join("\n");
-  const groupedUpdates = {
-    [`project.optional-dependencies.extra${fieldSep}pkg`]: {old: "1.0", new: "2.0"} as any,
-  };
-  expect(updatePyprojectToml(groupedInput, groupedUpdates)).toBe(
-    groupedInput.replace(`extra = ["pkg>=1.0"]`, `extra = ["pkg>=2.0"]`),
-  );
+  expect(updatePyprojectToml(groupedInput, {[`project.optional-dependencies.extra${fieldSep}pkg`]: {old: "1.0", new: "2.0"} as any}))
+    .toBe(groupedInput.replace(`extra = ["pkg>=1.0"]`, `extra = ["pkg>=2.0"]`));
 });
 
 test("fetchPypiInfo shares a normalized request in flight", async () => {
@@ -94,16 +85,10 @@ test("fetchPypiInfo failure throws", async () => {
 });
 
 test("pypiSatisfies handles allowedVersions forms", () => {
-  expect(pypiSatisfies("2.1+corp", ">=2,<3")).toBe(true);
-  expect(pypiSatisfies("2.1", "")).toBe(true);
-  expect(pypiSatisfies("2.1+corp", "2.1")).toBe(false);
-  expect(pypiSatisfies("2.2", "2.1")).toBe(false);
-  expect(pypiSatisfies("2.1", "[extra]>=2")).toBe(false);
-  expect(pypiSatisfies("2.1", `>=2; python_version >= "3.12"`)).toBe(false);
-  expect(pypiSatisfies("not-a-version", ">=2")).toBe(false);
-  expect(pypiSatisfies("2.1", "not-a-range")).toBe(false);
-  expect(pypiSatisfies("1.0", "==1.0.dev1.*")).toBe(false);
-  expect(pypiSatisfies("1.0", "==1.0+corp.*")).toBe(false);
+  expect([
+    ["2.1+corp", ">=2,<3"], ["2.1", ""], ["2.1+corp", "2.1"], ["2.2", "2.1"], ["2.1", "[extra]>=2"], ["2.1", `>=2; python_version >= "3.12"`],
+    ["not-a-version", ">=2"], ["2.1", "not-a-range"], ["1.0", "==1.0.dev1.*"], ["1.0", "==1.0+corp.*"],
+  ].map(([version, range]) => pypiSatisfies(version, range))).toEqual([true, true, false, false, false, false, false, false, false, false]);
 });
 
 const quoted = (spec: string) => spec.includes(`"`) ? `'${spec}'` : `"${spec}"`;
@@ -162,8 +147,6 @@ test.each([
 
 test("anchors on the whole version, not a prefix of a longer one", () => {
   const input = `dependencies = [\n  "tomli>=1.1",\n]\ndev = [\n  "tomli>=1.1.5",\n]\n`;
-  const deps = {
-    [`dependencies${fieldSep}tomli`]: {old: "1.1", new: "2.2.1"} as any,
-  };
-  expect(updatePyprojectToml(input, deps)).toBe(`dependencies = [\n  "tomli>=2.2.1",\n]\ndev = [\n  "tomli>=1.1.5",\n]\n`);
+  expect(updatePyprojectToml(input, {[`dependencies${fieldSep}tomli`]: {old: "1.1", new: "2.2.1"} as any}))
+    .toBe(input.replace(`"tomli>=1.1"`, `"tomli>=2.2.1"`));
 });

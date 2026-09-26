@@ -24,15 +24,19 @@ import {
 } from "./go.ts";
 import {type GoProxyEntry, type ModeContext, fieldSep, isGoPseudoVersion} from "./shared.ts";
 
-async function withGoProxyEnv(value: string | undefined, fn: () => void | Promise<void>): Promise<void> {
-  const orig = process.env.GOPROXY;
-  if (value === undefined) delete process.env.GOPROXY;
-  else process.env.GOPROXY = value;
+async function withEnv(values: Record<string, string | undefined>, fn: () => void | Promise<void>): Promise<void> {
+  const assign = (entries: Record<string, string | undefined>) => {
+    for (const [name, value] of Object.entries(entries)) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+  };
+  const saved = Object.fromEntries(Object.keys(values).map(name => [name, process.env[name]]));
+  assign(values);
   try {
     await fn();
   } finally {
-    if (orig === undefined) delete process.env.GOPROXY;
-    else process.env.GOPROXY = orig;
+    assign(saved);
   }
 }
 
@@ -43,22 +47,20 @@ test("parseGoProxy", () => {
     {url: "https://c", fallback: ","},
   ]);
   expect(parseGoProxy(" https://a/ , direct ")).toEqual([{url: "https://a", fallback: ","}, {url: "direct", fallback: ","}]);
-  expect(parseGoProxy("off,https://a")).toEqual([{url: "off", fallback: ","}]);
-  expect(parseGoProxy("direct,https://a")).toEqual([{url: "direct", fallback: ","}]);
-  expect(parseGoProxy("")).toEqual([]);
-  expect(parseGoProxy(",,")).toEqual([]);
-  expect(parseGoProxy("proxy.corp/mod")).toEqual([{url: "https://proxy.corp/mod", fallback: ","}]);
+  expect(["off,https://a", "direct,https://a", "", ",,", "proxy.corp/mod"].map(parseGoProxy)).toEqual([
+    [{url: "off", fallback: ","}], [{url: "direct", fallback: ","}], [], [], [{url: "https://proxy.corp/mod", fallback: ","}],
+  ]);
 });
 
 test("resolveGoProxyChain", async () => {
-  await withGoProxyEnv("https://a,https://b", () => {
+  await withEnv({GOPROXY: "https://a,https://b"}, () => {
     expect(resolveGoProxyChain()).toEqual([{url: "https://a", fallback: ","}, {url: "https://b", fallback: ","}]);
     expect(resolveGoProxyChain("http://127.0.0.1:1/")).toEqual([{url: "http://127.0.0.1:1", fallback: ","}]);
   });
-  await withGoProxyEnv(",,", () => expect(() => resolveGoProxyChain()).toThrow(/contains no entries/));
-  await withGoProxyEnv(undefined, () => expect(resolveGoProxyChain()[0].url).toBe("https://proxy.golang.org"));
-  await withGoProxyEnv("direct", () => expect(resolveGoProxyChain()[0].url).toBe("direct"));
-  await withGoProxyEnv("off,https://backup.proxy", () => expect(resolveGoProxyChain()[0].url).toBe("off"));
+  await withEnv({GOPROXY: ",,"}, () => expect(() => resolveGoProxyChain()).toThrow(/contains no entries/));
+  for (const [value, url] of [[undefined, "https://proxy.golang.org"], ["direct", "direct"], ["off,https://backup.proxy", "off"]]) {
+    await withEnv({GOPROXY: value}, () => expect(resolveGoProxyChain()[0].url).toBe(url));
+  }
 });
 
 test("pickGoListVersion", () => {
@@ -71,68 +73,43 @@ test("pickGoListVersion", () => {
   expect(pickGoListVersion("v1.0.0\nv2.1.0\nv3.0.0\n", 2)).toEqual({Version: "v2.1.0", Time: ""});
 });
 
-test("parseGoNoProxy", () => {
-  const origNoProxy = process.env.GONOPROXY;
-  const origPrivate = process.env.GOPRIVATE;
-
-  delete process.env.GONOPROXY;
-  delete process.env.GOPRIVATE;
-  expect(parseGoNoProxy()).toEqual([]);
-
-  process.env.GONOPROXY = "github.com/private";
-  expect(parseGoNoProxy()).toEqual(["github.com/private"]);
-
-  process.env.GONOPROXY = "a.com/x, b.com/y";
-  expect(parseGoNoProxy()).toEqual(["a.com/x", "b.com/y"]);
-
-  if (origNoProxy === undefined) delete process.env.GONOPROXY;
-  else process.env.GONOPROXY = origNoProxy;
-  if (origPrivate === undefined) delete process.env.GOPRIVATE;
-  else process.env.GOPRIVATE = origPrivate;
+test("parseGoNoProxy", async () => {
+  for (const [value, expected] of [[undefined, []], ["github.com/private", ["github.com/private"]], ["a.com/x, b.com/y", ["a.com/x", "b.com/y"]]] as const) {
+    await withEnv({GONOPROXY: value, GOPRIVATE: undefined}, () => expect(parseGoNoProxy()).toEqual(expected));
+  }
 });
 
 test("isGoNoProxy", () => {
-  expect(isGoNoProxy("github.com/private", ["github.com/private"])).toBe(true);
-  expect(isGoNoProxy("github.com/private/sub", ["github.com/private"])).toBe(true);
-  expect(isGoNoProxy("github.com/public", ["github.com/private"])).toBe(false);
-  expect(isGoNoProxy("anything", [])).toBe(false);
-  expect(isGoNoProxy("github.com/mycorp/secret", ["github.com/mycorp/*"])).toBe(true);
-  expect(isGoNoProxy("github.com/mycorp/secret/sub", ["github.com/mycorp/*"])).toBe(true);
-  expect(isGoNoProxy("git.corp.example.com/a/b", ["*.corp.example.com"])).toBe(true);
-  expect(isGoNoProxy("github.com/other/x", ["github.com/mycorp/*"])).toBe(false);
+  expect(["github.com/private", "github.com/private/sub", "github.com/public"].map(path => isGoNoProxy(path, ["github.com/private"])))
+    .toEqual([true, true, false]);
+  expect(["github.com/mycorp/secret", "github.com/mycorp/secret/sub", "github.com/other/x"].map(path => isGoNoProxy(path, ["github.com/mycorp/*"])))
+    .toEqual([true, true, false]);
+  expect([isGoNoProxy("anything", []), isGoNoProxy("git.corp.example.com/a/b", ["*.corp.example.com"])]).toEqual([false, true]);
 });
 
 test("encodeGoModulePath", () => {
-  expect(encodeGoModulePath("github.com/BurntSushi/toml")).toBe("github.com/!burnt!sushi/toml");
-  expect(encodeGoModulePath("github.com/foo/bar")).toBe("github.com/foo/bar");
-  expect(encodeGoModulePath("github.com/Azure/azure-sdk")).toBe("github.com/!azure/azure-sdk");
+  expect(["github.com/BurntSushi/toml", "github.com/foo/bar", "github.com/Azure/azure-sdk"].map(encodeGoModulePath))
+    .toEqual(["github.com/!burnt!sushi/toml", "github.com/foo/bar", "github.com/!azure/azure-sdk"]);
 });
 
 test("Go module path transforms", () => {
-  expect(extractGoMajor("github.com/foo/bar")).toBe(1);
-  expect(extractGoMajor("github.com/foo/bar/v2")).toBe(2);
-  expect(extractGoMajor("github.com/foo/bar/v15")).toBe(15);
-  expect(extractGoMajor("gopkg.in/yaml.v2")).toBe(2);
-  expect(buildGoModulePath("github.com/foo/bar/v2", 3)).toBe("github.com/foo/bar/v3");
-  expect(buildGoModulePath("github.com/foo/bar/v2", 1)).toBe("github.com/foo/bar");
-  expect(buildGoModulePath("github.com/foo/bar", 2)).toBe("github.com/foo/bar/v2");
-  expect(buildGoModulePath("github.com/foo/bar", 1)).toBe("github.com/foo/bar");
-  expect(buildGoModulePath("gopkg.in/yaml.v2", 3)).toBe("gopkg.in/yaml.v3");
-  expect(buildGoModulePath("gopkg.in/yaml.v2", 1)).toBe("gopkg.in/yaml.v1");
-  expect(goModulePathForVersion("github.com/foo/bar/v2", "3.0.0")).toBe("github.com/foo/bar/v3");
-  expect(goModulePathForVersion("github.com/foo/bar", "2.1.0")).toBe("github.com/foo/bar/v2");
-  expect(goModulePathForVersion("github.com/foo/bar/v2", "2.5.0")).toBe("github.com/foo/bar/v2");
-  expect(goModulePathForVersion("github.com/foo/bar", "1.4.0")).toBe("github.com/foo/bar");
-  expect(goModulePathForVersion("github.com/foo/bar", "3.0.0+incompatible")).toBe("github.com/foo/bar");
-  expect(goModulePathForVersion("github.com/foo/bar/v2", "garbage")).toBe("github.com/foo/bar/v2");
-  expect(goModulePathForVersion("gopkg.in/yaml.v2", "3.0.1")).toBe("gopkg.in/yaml.v3");
-  expect(goModulePathForVersion("github.com/foo/bar/v2", "1.5.0")).toBe("github.com/foo/bar");
+  expect(["github.com/foo/bar", "github.com/foo/bar/v2", "github.com/foo/bar/v15", "gopkg.in/yaml.v2"].map(name => extractGoMajor(name)))
+    .toEqual([1, 2, 15, 2]);
+  for (const [path, major, expected] of [
+    ["github.com/foo/bar/v2", 3, "github.com/foo/bar/v3"], ["github.com/foo/bar/v2", 1, "github.com/foo/bar"],
+    ["github.com/foo/bar", 2, "github.com/foo/bar/v2"], ["github.com/foo/bar", 1, "github.com/foo/bar"],
+    ["gopkg.in/yaml.v2", 3, "gopkg.in/yaml.v3"], ["gopkg.in/yaml.v2", 1, "gopkg.in/yaml.v1"],
+  ] as const) expect(buildGoModulePath(path, major)).toBe(expected);
+  for (const [path, version, expected] of [
+    ["github.com/foo/bar/v2", "3.0.0", "github.com/foo/bar/v3"], ["github.com/foo/bar", "2.1.0", "github.com/foo/bar/v2"],
+    ["github.com/foo/bar/v2", "2.5.0", "github.com/foo/bar/v2"], ["github.com/foo/bar", "1.4.0", "github.com/foo/bar"],
+    ["github.com/foo/bar", "3.0.0+incompatible", "github.com/foo/bar"], ["github.com/foo/bar/v2", "garbage", "github.com/foo/bar/v2"],
+    ["gopkg.in/yaml.v2", "3.0.1", "gopkg.in/yaml.v3"], ["github.com/foo/bar/v2", "1.5.0", "github.com/foo/bar"],
+  ]) expect(goModulePathForVersion(path, version)).toBe(expected);
 });
 
 test("isGoPseudoVersion", () => {
-  expect(isGoPseudoVersion("v0.0.0-20221128193559-754e69321358")).toBe(true);
-  expect(isGoPseudoVersion("v1.2.3")).toBe(false);
-  expect(isGoPseudoVersion("v0.0.0-20221128193559")).toBe(false);
+  expect(["v0.0.0-20221128193559-754e69321358", "v1.2.3", "v0.0.0-20221128193559"].map(isGoPseudoVersion)).toEqual([true, false, false]);
 });
 
 test.each([
@@ -179,14 +156,11 @@ test.each([
 });
 
 test("Go display transforms", () => {
-  expect(shortenGoModule("github.com/foo/bar/v2")).toBe("github.com/foo/bar");
-  expect(shortenGoModule("github.com/foo/bar/v10")).toBe("github.com/foo/bar");
-  expect(shortenGoModule("github.com/foo/bar")).toBe("github.com/foo/bar");
-  expect(shortenGoVersion("v0.0.0-20221128193559-754e69321358")).toBe("v0.0.0-2022112");
-  expect(shortenGoVersion("v1.2.3")).toBe("v1.2.3");
-  expect(getGoInfoUrl("github.com/foo/bar")).toBe("https://github.com/foo/bar");
-  expect(getGoInfoUrl("github.com/foo/bar/v2")).toBe("https://github.com/foo/bar");
-  expect(getGoInfoUrl("github.com/foo/bar/pkg/sub")).toBe("https://github.com/foo/bar/tree/HEAD/pkg/sub");
+  expect(["github.com/foo/bar/v2", "github.com/foo/bar/v10", "github.com/foo/bar"].map(shortenGoModule))
+    .toEqual(["github.com/foo/bar", "github.com/foo/bar", "github.com/foo/bar"]);
+  expect(["v0.0.0-20221128193559-754e69321358", "v1.2.3"].map(shortenGoVersion)).toEqual(["v0.0.0-2022112", "v1.2.3"]);
+  expect(["github.com/foo/bar", "github.com/foo/bar/v2", "github.com/foo/bar/pkg/sub"].map(getGoInfoUrl))
+    .toEqual(["https://github.com/foo/bar", "https://github.com/foo/bar", "https://github.com/foo/bar/tree/HEAD/pkg/sub"]);
 });
 
 const goMod = (...lines: Array<string>) => `module example.com/mod\n\n${lines.join("\n")}\n`;
@@ -339,10 +313,7 @@ test.each([
   }, seen));
   expect(data.new).toBe("1.2.0");
   expect(data.newPath).toBeUndefined();
-  expect(seen).toHaveLength(2);
-  expect(seen).toContain(`${goProxyBase}/${modPath}/@latest`);
-  expect(seen).toContain(`${goProxyBase}/${modPath}/v2/@latest`);
-  expect(seen.some(url => url.endsWith("/@v/list"))).toBe(false);
+  expect(seen.toSorted()).toEqual([`${goProxyBase}/${modPath}/@latest`, `${goProxyBase}/${modPath}/v2/@latest`]);
 });
 
 test.each([

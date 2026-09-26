@@ -1,4 +1,3 @@
-import {test, expect} from "vitest";
 import {parseJsonish} from "./json5.ts";
 
 test.each([

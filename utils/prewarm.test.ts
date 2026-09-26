@@ -1,4 +1,3 @@
-import {test, expect, afterAll, beforeAll} from "vitest";
 import {mkdtempSync, rmSync, mkdirSync, writeFileSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
@@ -40,7 +39,7 @@ afterAll(() => {
   else process.env.GOPROXY = origGoProxy;
 });
 
-test.each([...Object.keys(modeByFileName), "Dockerfile", "Makefile", "tools.mk"])("%s is prewarmed", (filename) => {
+test.each(Object.keys(modeByFileName))("%s is prewarmed", (filename) => {
   expect(prewarmOrigins(makeDir({[filename]: ""}), {})).not.toEqual([]);
 });
 

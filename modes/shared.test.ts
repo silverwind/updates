@@ -61,29 +61,17 @@ test.each([
 });
 
 test("shared value helpers", () => {
-  expect(stripv("v1.0.0")).toBe("1.0.0");
-  expect(stripv("1.0.0")).toBe("1.0.0");
-  for (const str of ["foo.bar", "a[b]", "no-special", "plain", "a+b*c?", "(x)|{y}^$"]) {
-    expect(new RegExp(`^${esc(str)}$`).test(str)).toBe(true);
-  }
+  expect(["v1.0.0", "1.0.0"].map(stripv)).toEqual(["1.0.0", "1.0.0"]);
+  expect(["foo.bar", "a[b]", "no-special", "plain", "a+b*c?", "(x)|{y}^$"].every(str => new RegExp(`^${esc(str)}$`).test(str))).toBe(true);
   expect(new RegExp(`^${esc("a.b")}$`).test("axb")).toBe(false);
-  expect(normalizeUrl("https://example.com/")).toBe("https://example.com");
-  expect(normalizeUrl("https://example.com")).toBe("https://example.com");
-  const headers = getFetchOpts().headers as Record<string, string>;
-  expect(headers["user-agent"]).toBe(`updates/${packageVersion}`);
-  expect(headers["accept-encoding"]).toBe("gzip, deflate, br");
-  expect(headers["Authorization"]).toBeUndefined();
-  expect((getFetchOpts("Bearer", "mytoken123").headers as Record<string, string>)["Authorization"]).toBe("Bearer mytoken123");
-  expect(isVersionPrerelease("1.0.0-beta.1")).toBe(true);
-  expect(isVersionPrerelease("1.0.0")).toBe(false);
-  expect(isVersionPrerelease("invalid")).toBe(false);
-  expect(isVersionPrerelease("2.0.0b1")).toBe(false);
-  expect(isVersionPrerelease("2.0.0b1", pep440Versioning)).toBe(true);
-  expect(isVersionPrerelease("1.1.0.dev1", pep440Versioning)).toBe(true);
-  expect(isVersionPrerelease("2026.3.post1", pep440Versioning)).toBe(false);
-  expect(coerceToVersion("^1.2.3")).toBe("1.2.3");
-  expect(coerceToVersion("5")).toBe("5.0.0");
-  expect(coerceToVersion("")).toBe("");
+  expect(["https://example.com/", "https://example.com"].map(normalizeUrl)).toEqual(["https://example.com", "https://example.com"]);
+  const headers = {"user-agent": `updates/${packageVersion}`, "accept-encoding": "gzip, deflate, br"};
+  expect([getFetchOpts(), getFetchOpts("Bearer", "mytoken123")])
+    .toStrictEqual([{headers}, {headers: {...headers, Authorization: "Bearer mytoken123"}}]);
+  expect(["1.0.0-beta.1", "1.0.0", "invalid", "2.0.0b1"].map(version => isVersionPrerelease(version))).toEqual([true, false, false, false]);
+  expect(["2.0.0b1", "1.1.0.dev1", "2026.3.post1"].map(version => isVersionPrerelease(version, pep440Versioning)))
+    .toEqual([true, true, false]);
+  expect(["^1.2.3", "5", ""].map(coerceToVersion)).toEqual(["1.2.3", "5.0.0", ""]);
 });
 
 test.each([
@@ -92,8 +80,8 @@ test.each([
   [["v1.0.0", "v10.0.0", "v9.0.0", "v2.0.0"], "v1.0.0", "v10.0.0"],
   [["v1.0.0"], "v1.0.0", null],
   [["v1.0.0"], "not-semver", null],
-  [["v2.0.0+a", "v2.0.0+b"], "v1.0.0", "v2.0.0+a"], // equal precedence keeps the first tag
-])("selectTag %s over %s", (tags, oldRef, expected) => {
+  [["v2.0.0+a", "v2.0.0+b"], "v1.0.0", "v2.0.0+a"],
+])("selectTag %s over %s picks the highest, first among equal precedence", (tags, oldRef, expected) => {
   expect(selectTag(tags, oldRef)).toBe(expected);
 });
 
@@ -283,7 +271,7 @@ test.each([
   expect(findNewVersion(data, {...pypiOpts, ...opts} as any)).toBe(expected);
 });
 
-test("findNewVersion filters PyPI files by yank and earliest upload", () => {
+test("findNewVersion filters PyPI files by yank and earliest upload, dating the cooldown by a viable file", () => {
   const data = {info: {version: "1.4.0"}, releases: {
     "1.0.0": [{upload_time_iso_8601: "2025-01-01T00:00:00Z"}],
     "1.1.0": [
@@ -292,7 +280,7 @@ test("findNewVersion filters PyPI files by yank and earliest upload", () => {
     ],
     "1.2.0": [{upload_time_iso_8601: "2026-04-24T00:00:00Z"}],
     "1.3.0": [{upload_time_iso_8601: "2026-04-01T00:00:00Z", yanked: true}],
-    "1.4.0": [ // cooldown must use the viable file, not the older yanked one
+    "1.4.0": [
       {upload_time_iso_8601: "2026-04-01T00:00:00Z", yanked: true},
       {upload_time_iso_8601: "2026-04-24T00:00:00Z"},
     ],
@@ -344,7 +332,7 @@ test.each([
   expect(findNewVersion(data, {...goOpts, ...opts})).toBe(expected);
 });
 
-const sequential = (test as any).serial ?? test; // bun ignores {concurrent: false}
+const sequential = (test as any).serial ?? test;
 
 sequential("getForgeTokens", {concurrent: false}, async () => {
   const forHost = (host: string) => getForgeTokens(host, "https://api.github.com");
@@ -362,15 +350,11 @@ sequential("getForgeTokens", {concurrent: false}, async () => {
 
 test("parseExtraheaders reads a CI token per host", () => {
   const enc = (token: string) => Buffer.from(`x-access-token:${token}`).toString("base64");
-  const tokens = parseExtraheaders([
+  expect(parseExtraheaders([
     `http.https://github.com/.extraheader AUTHORIZATION: basic ${enc("gh-tok")}`,
     `http.https://gitea.example.com:8443/.extraheader AUTHORIZATION: basic ${enc("gitea-tok")}`,
     "http.https://other.example.com/.extraheader AUTHORIZATION: bearer not-basic",
-  ].join("\n"));
-  expect(tokens.get("github.com")).toEqual("gh-tok");
-  expect(tokens.get("gitea.example.com:8443")).toEqual("gitea-tok");
-  expect(tokens.has("gitea.example.com")).toEqual(false);
-  expect(tokens.has("other.example.com")).toEqual(false);
+  ].join("\n"))).toEqual(new Map([["github.com", "gh-tok"], ["gitea.example.com:8443", "gitea-tok"]]));
 });
 
 const modeCtx = (props: Record<string, unknown>): ModeContext => ({fetchTimeout, ...props} as unknown as ModeContext);

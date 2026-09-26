@@ -112,14 +112,13 @@ test("resolveWorkspaceMembers rejects traversal and escaping symlinks", async ()
 });
 
 test("parsePnpmWorkspace", () => {
-  expect(parsePnpmWorkspace("packages:\n  - \"packages/*\"\n  - 'apps/*'\n")).toEqual(["packages/*", "apps/*"]);
-  expect(parsePnpmWorkspace("packages:\n  - packages/*\n")).toEqual(["packages/*"]);
-  expect(parsePnpmWorkspace("packages: [packages/*, apps/*]\n")).toEqual(["packages/*", "apps/*"]);
-  expect(parsePnpmWorkspace('packages:\n  - "packages/with space"\n')).toEqual(["packages/with space"]);
-  expect(parsePnpmWorkspace("")).toEqual([]);
-  expect(parsePnpmWorkspace("packages:\n  # comment\n  - libs/*\nnodeLinker: hoisted\n")).toEqual(["libs/*"]);
-  expect(parsePnpmWorkspace("packages:\n  - \"packages/*\" # app packages\n  - 'libs/*'  # libs\n  - plain/*\n"))
-    .toEqual(["packages/*", "libs/*", "plain/*"]);
+  expect([
+    "packages:\n  - \"packages/*\"\n  - 'apps/*'\n", "packages:\n  - packages/*\n", "packages: [packages/*, apps/*]\n",
+    'packages:\n  - "packages/with space"\n', "", "packages:\n  # comment\n  - libs/*\nnodeLinker: hoisted\n",
+    "packages:\n  - \"packages/*\" # app packages\n  - 'libs/*'  # libs\n  - plain/*\n",
+  ].map(parsePnpmWorkspace)).toEqual([
+    ["packages/*", "apps/*"], ["packages/*"], ["packages/*", "apps/*"], ["packages/with space"], [], ["libs/*"], ["packages/*", "libs/*", "plain/*"],
+  ]);
 });
 
 test("parse pnpm registry config", () => {
@@ -165,33 +164,22 @@ catalogs:
 `;
 
 test("pnpmCatalogEntries", () => {
-  expect(Array.from(pnpmCatalogEntries(catalogYaml), ({type, name, value}) => [type, name, value])).toEqual([
-    ["catalog", "react", "^18.0.0"],
-    ["catalog", "prismjs", "^1.0.0"],
-    ["catalogs.tools", "typescript", "^4.9.5"],
-    ["catalogs.legacy", "react", "^17.0.0"],
-  ]);
-  expect(Array.from(pnpmCatalogEntries("packages:\n  - \"packages/*\"\n"))).toEqual([]);
-  expect(Array.from(pnpmCatalogEntries("catalog: {react: ^18, vue: '~3'}\n"), ({type, name, value}) => [type, name, value])).toEqual([
-    ["catalog", "react", "^18"],
-    ["catalog", "vue", "~3"],
-  ]);
-  expect(Array.from(pnpmCatalogEntries("catalogs: {web: {react: ^18}}\n"), ({type, name, value}) => [type, name, value])).toEqual([
-    ["catalogs.web", "react", "^18"],
+  expect([catalogYaml, "packages:\n  - \"packages/*\"\n", "catalog: {react: ^18, vue: '~3'}\n", "catalogs: {web: {react: ^18}}\n"]
+    .map(yaml => Array.from(pnpmCatalogEntries(yaml), ({type, name, value}) => [type, name, value]))).toEqual([
+    [["catalog", "react", "^18.0.0"], ["catalog", "prismjs", "^1.0.0"], ["catalogs.tools", "typescript", "^4.9.5"], ["catalogs.legacy", "react", "^17.0.0"]],
+    [],
+    [["catalog", "react", "^18"], ["catalog", "vue", "~3"]],
+    [["catalogs.web", "react", "^18"]],
   ]);
 });
 
 test("updatePnpmWorkspace", () => {
-  const updated = updatePnpmWorkspace(catalogYaml, {
+  expect(updatePnpmWorkspace(catalogYaml, {
     [`catalog${fieldSep}react`]: {old: "^18.0.0", new: "^19.1.0"},
     [`catalog${fieldSep}prismjs`]: {old: "^1.0.0", new: "^1.30.0"},
     [`catalogs.tools${fieldSep}typescript`]: {old: "^4.9.5", new: "^5.9.2"},
     [`catalogs.legacy${fieldSep}react`]: {old: "^16.0.0", new: "^19.1.0"},
-  });
-  expect(updated).toContain("  react: ^19.1.0\n");
-  expect(updated).toContain("  'prismjs': \"^1.30.0\"  # pinned\n");
-  expect(updated).toContain("    typescript: ^5.9.2\n");
-  expect(updated).toContain("    react: ^17.0.0\n");
+  })).toBe(catalogYaml.replace("react: ^18.0.0", "react: ^19.1.0").replace('"^1.0.0"', '"^1.30.0"').replace("^4.9.5", "^5.9.2"));
   expect(updatePnpmWorkspace(catalogYaml, {})).toBe(catalogYaml);
   expect(updatePnpmWorkspace("catalog: {react: ^18, vue: ~3}\n", {
     [`catalog${fieldSep}react`]: {old: "^18", new: "^19.1.0"},

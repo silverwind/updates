@@ -13,8 +13,9 @@ import {type ModeContext, fetchTimeout, fieldSep} from "./shared.ts";
 const allSemvers = new Set(["patch", "minor", "major"]);
 const oldDigest = `sha256:${"a".repeat(64)}`;
 const newDigest = `sha256:${"b".repeat(64)}`;
-const nodeDeps = {[`docker${fieldSep}node`]: {old: "18", new: "20"}};
-const nodeDigestDeps = {[`docker${fieldSep}node`]: {old: "18", new: "20", oldDigest, newDigest}};
+const nodeDep = {old: "18", new: "20"};
+const nodeDigestDep = {...nodeDep, oldDigest, newDigest};
+const rcDep = {old: "1.0", oldOrig: "1.0-RC1", new: "1.1-RC1"};
 const argVersion = "$" + "{VERSION}";
 
 test.each([
@@ -116,6 +117,7 @@ test("extractDockerRefs", () => {
   ]);
   const compose = "services:\n  web:\n    image: node:20.11.1\n  db:\n    image: postgres:16.2\n    build: .\n";
   expect(extractDockerRefs(compose, composeImageRe).map(({match}) => match)).toEqual(["node:20.11.1"]);
+  expect(extractDockerRefs("\uFEFFFROM node:18\n", dockerfileFromRe).map(({ref}) => ref.tag)).toEqual(["18"]);
 });
 
 test("findDockerVersion basic selection", () => {
@@ -177,9 +179,7 @@ test("findDockerVersion respects pinnedRange", () => {
 });
 
 test("dockerTagVersion matches ranges on the release, with docker's own coercion", () => {
-  expect(dockerTagVersion("1.27rc3")).toBe("1.27.0");
-  expect(dockerTagVersion("21_35")).toBe("21.35.0");
-  expect(dockerTagVersion("latest")).toBe("");
+  expect(["1.27rc3", "21_35", "latest"].map(dockerTagVersion)).toEqual(["1.27.0", "21.35.0", ""]);
 });
 
 test("findDockerVersion keeps underscore builds verbatim and apart from dotted tags", () => {
@@ -197,8 +197,7 @@ test("findDockerVersion applies pinnedRange to prereleases", () => {
 });
 
 test.each([
-  ["updateDockerfile replaces a lowercase from", updateDockerfile,
-    "from node:18\n", "node", {old: "18", new: "20"}, "from node:20\n"],
+  ["updateDockerfile replaces a lowercase from", updateDockerfile, "from node:18\n", "node", nodeDep, "from node:20\n"],
   ["updateDockerfile replaces a FROM with platform", updateDockerfile,
     "FROM --platform=linux/amd64 nginx:1.25.3\n", "nginx", {old: "1.25.3", new: "1.27.0"}, "FROM --platform=linux/amd64 nginx:1.27.0\n"],
   ["updateDockerfile uses oldOrig when present", updateDockerfile,
@@ -206,65 +205,45 @@ test.each([
   ["updateComposeFile replaces a quoted image tag", updateComposeFile,
     "services:\n  db:\n    image: 'postgres:16.2'\n", "postgres", {old: "16.2", new: "17.0"}, "services:\n  db:\n    image: 'postgres:17.0'\n"],
   ["updateDockerfile skips comments and shell text", updateDockerfile,
-    "# FROM node:18\nRUN echo FROM node:18\nFROM node:18\n", "node", {old: "18", new: "20"},
-    "# FROM node:18\nRUN echo FROM node:18\nFROM node:20\n"],
+    "# FROM node:18\nRUN echo FROM node:18\nFROM node:18\n", "node", nodeDep, "# FROM node:18\nRUN echo FROM node:18\nFROM node:20\n"],
   ["updateComposeFile skips a commented image", updateComposeFile,
-    "services:\n  a:\n    # image: node:18\n    image: node:18\n", "node", {old: "18", new: "20"},
-    "services:\n  a:\n    # image: node:18\n    image: node:20\n"],
+    "services:\n  a:\n    # image: node:18\n    image: node:18\n", "node", nodeDep, "services:\n  a:\n    # image: node:18\n    image: node:20\n"],
   ["updateWorkflowDockerImages skips a commented container", updateWorkflowDockerImages,
-    "jobs:\n  a:\n    # container: node:18\n    container: node:18\n", "node", {old: "18", new: "20"},
+    "jobs:\n  a:\n    # container: node:18\n    container: node:18\n", "node", nodeDep,
     "jobs:\n  a:\n    # container: node:18\n    container: node:20\n"],
   ["updateComposeFile replaces a flow-style image", updateComposeFile,
-    "services:\n  web:\n    image: node:18\n  api: {image: node:18}\n", "node", {old: "18", new: "20"},
+    "services:\n  web:\n    image: node:18\n  api: {image: node:18}\n", "node", nodeDep,
     "services:\n  web:\n    image: node:20\n  api: {image: node:20}\n"],
-  ["updateDockerfile replaces an uppercase tag", updateDockerfile,
-    "FROM foo/bar:1.0-RC1\n", "foo/bar", {old: "1.0", oldOrig: "1.0-RC1", new: "1.1-RC1"}, "FROM foo/bar:1.1-RC1\n"],
-  ["updateComposeFile replaces an uppercase tag", updateComposeFile,
-    "    image: foo/bar:1.0-RC1\n", "foo/bar", {old: "1.0", oldOrig: "1.0-RC1", new: "1.1-RC1"}, "    image: foo/bar:1.1-RC1\n"],
+  ["updateComposeFile leaves locally built service images alone", updateComposeFile,
+    "services:\n  built:\n    image: node:18\n    build: .\n  pulled:\n    image: node:18\n", "node", nodeDep,
+    "services:\n  built:\n    image: node:18\n    build: .\n  pulled:\n    image: node:20\n"],
+  ["updateDockerfile replaces an uppercase tag", updateDockerfile, "FROM foo/bar:1.0-RC1\n", "foo/bar", rcDep, "FROM foo/bar:1.1-RC1\n"],
+  ["updateComposeFile replaces an uppercase tag", updateComposeFile, "    image: foo/bar:1.0-RC1\n", "foo/bar", rcDep, "    image: foo/bar:1.1-RC1\n"],
   ["updateWorkflowDockerImages replaces an uppercase container tag", updateWorkflowDockerImages,
-    "    container: foo/bar:1.0-RC1\n", "foo/bar", {old: "1.0", oldOrig: "1.0-RC1", new: "1.1-RC1"}, "    container: foo/bar:1.1-RC1\n"],
+    "    container: foo/bar:1.0-RC1\n", "foo/bar", rcDep, "    container: foo/bar:1.1-RC1\n"],
   ["updateWorkflowDockerImages replaces an uppercase uses tag", updateWorkflowDockerImages,
-    "      - uses: docker://foo/bar:1.0-RC1\n", "foo/bar", {old: "1.0", oldOrig: "1.0-RC1", new: "1.1-RC1"},
-    "      - uses: docker://foo/bar:1.1-RC1\n"],
+    "      - uses: docker://foo/bar:1.0-RC1\n", "foo/bar", rcDep, "      - uses: docker://foo/bar:1.1-RC1\n"],
+  ["updateDockerfile rewrites a tag and digest atomically", updateDockerfile, `FROM node:18 AS build\nFROM node:18@${oldDigest}\nFROM node:18+build\n`,
+    "node", nodeDigestDep, `FROM node:18 AS build\nFROM node:20@${newDigest}\nFROM node:18+build\n`],
+  ["updateDockerfile leaves a digest pin alone on a tag-only update", updateDockerfile,
+    `FROM node:18 AS build\nFROM node:18@${oldDigest}\nFROM node:18+build\n`, "node", nodeDep,
+    `FROM node:20 AS build\nFROM node:18@${oldDigest}\nFROM node:18+build\n`],
+  ["updateComposeFile rewrites a tag and digest atomically", updateComposeFile,
+    `services:\n  app:\n    image: node:18@${oldDigest}\n`, "node", nodeDigestDep, `services:\n  app:\n    image: node:20@${newDigest}\n`],
+  ["updateWorkflowDockerImages rewrites a tag and digest atomically", updateWorkflowDockerImages,
+    `steps:\n  - uses: docker://node:18@${oldDigest}\n`, "node", nodeDigestDep, `steps:\n  - uses: docker://node:20@${newDigest}\n`],
+  ["updateWorkflowDockerImages rewrites a digest-only reference", updateWorkflowDockerImages, `steps:\n  - uses: docker://node@${oldDigest}\n`,
+    "node", {old: "latest", new: "latest", oldDigest, newDigest, digestOnly: true}, `steps:\n  - uses: docker://node@${newDigest}\n`],
+  ["updateDockerfile rewrites the ARG owning a multiline FROM version", updateDockerfile,
+    `ARG VERSION=18\nFROM --platform=$BUILDPLATFORM \\\n  node:${argVersion}\n`, "node", nodeDep,
+    `ARG VERSION=20\nFROM --platform=$BUILDPLATFORM \\\n  node:${argVersion}\n`],
+  ["updateDockerfile rewrites an ARG and digest atomically", updateDockerfile,
+    `ARG VERSION=18\nFROM node:${argVersion}@${oldDigest}\n`, "node", nodeDigestDep, `ARG VERSION=20\nFROM node:${argVersion}@${newDigest}\n`],
+  ["updateDockerfile rewrites an ARG after a leading UTF-8 BOM", updateDockerfile,
+    `\uFEFFARG VERSION=18\nFROM node:${argVersion}\n`, "node", nodeDep, `\uFEFFARG VERSION=20\nFROM node:${argVersion}\n`],
+  ["updateDockerfile rewrites a FROM after a leading UTF-8 BOM", updateDockerfile, "\uFEFFFROM node:18\n", "node", nodeDep, "\uFEFFFROM node:20\n"],
 ])("%s", (_name, update, content, image, dep, expected) => {
   expect(update(content, {[`docker${fieldSep}${image}`]: dep})).toBe(expected);
-});
-
-test("updateDockerfile rewrites tag and digest atomically", () => {
-  const content = `FROM node:18 AS build\nFROM node:18@${oldDigest}\nFROM node:18+build\n`;
-  expect(updateDockerfile(content, nodeDigestDeps)).toBe(`FROM node:18 AS build\nFROM node:20@${newDigest}\nFROM node:18+build\n`);
-  expect(updateDockerfile(content, nodeDeps)).toBe(`FROM node:20 AS build\nFROM node:18@${oldDigest}\nFROM node:18+build\n`);
-});
-
-test("Docker image writers rewrite digest references atomically", () => {
-  expect(updateComposeFile(`services:\n  app:\n    image: node:18@${oldDigest}\n`, nodeDigestDeps))
-    .toBe(`services:\n  app:\n    image: node:20@${newDigest}\n`);
-  expect(updateWorkflowDockerImages(`steps:\n  - uses: docker://node:18@${oldDigest}\n`, nodeDigestDeps))
-    .toBe(`steps:\n  - uses: docker://node:20@${newDigest}\n`);
-  const digestOnly = {[`docker${fieldSep}node`]: {old: "latest", new: "latest", oldDigest, newDigest, digestOnly: true}};
-  expect(updateWorkflowDockerImages(`steps:\n  - uses: docker://node@${oldDigest}\n`, digestOnly))
-    .toBe(`steps:\n  - uses: docker://node@${newDigest}\n`);
-});
-
-test("updateDockerfile rewrites the ARG owning a multiline FROM version", () => {
-  expect(updateDockerfile(`ARG VERSION=18\nFROM --platform=$BUILDPLATFORM \\\n  node:${argVersion}\n`, nodeDeps))
-    .toBe(`ARG VERSION=20\nFROM --platform=$BUILDPLATFORM \\\n  node:${argVersion}\n`);
-});
-
-test("updateDockerfile rewrites an ARG and digest atomically", () => {
-  expect(updateDockerfile(`ARG VERSION=18\nFROM node:${argVersion}@${oldDigest}\n`, nodeDigestDeps))
-    .toBe(`ARG VERSION=20\nFROM node:${argVersion}@${newDigest}\n`);
-});
-
-test("Dockerfile reads and rewrites a leading UTF-8 BOM", () => {
-  expect(updateDockerfile(`\uFEFFARG VERSION=18\nFROM node:${argVersion}\n`, nodeDeps)).toBe(`\uFEFFARG VERSION=20\nFROM node:${argVersion}\n`);
-  expect(extractDockerRefs("\uFEFFFROM node:18\n", dockerfileFromRe).map(({ref}) => ref.tag)).toEqual(["18"]);
-  expect(updateDockerfile("\uFEFFFROM node:18\n", nodeDeps)).toBe("\uFEFFFROM node:20\n");
-});
-
-test("updateComposeFile leaves locally built service images alone", () => {
-  const content = "services:\n  built:\n    image: node:18\n    build: .\n  pulled:\n    image: node:18\n";
-  expect(updateComposeFile(content, nodeDeps)).toBe("services:\n  built:\n    image: node:18\n    build: .\n  pulled:\n    image: node:20\n");
 });
 
 test("updateDockerfile rewrites one image at several tags without cascading", () => {

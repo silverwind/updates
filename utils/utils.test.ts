@@ -4,28 +4,15 @@ import {
   npmTypes,
 } from "./utils.ts";
 
-const c = (s: string) => `[${s}]`;
-
 test("highlightDiff", () => {
-  expect(highlightDiff("1.0.0", "1.0.0", c)).toBe("1.0.0");
-  expect(highlightDiff("1.0.0", "2.0.0", c)).toBe("[1.0.0]");
-  expect(highlightDiff("2.0.0", "1.0.0", c)).toBe("[2.0.0]");
-  expect(highlightDiff("1.0.0", "1.2.0", c)).toBe("1.[0.0]");
-  expect(highlightDiff("1.2.0", "1.0.0", c)).toBe("1.[2.0]");
-  expect(highlightDiff("1.0.0", "1.0.3", c)).toBe("1.0.[0]");
-  expect(highlightDiff("1.0.3", "1.0.0", c)).toBe("1.0.[3]");
-  expect(highlightDiff("10.0.0", "12.0.0", c)).toBe("[10.0.0]");
-  expect(highlightDiff("12.0.0", "10.0.0", c)).toBe("[12.0.0]");
-  expect(highlightDiff("1.10.0", "1.12.0", c)).toBe("1.[10.0]");
-  expect(highlightDiff("v5", "v6", c)).toBe("v[5]");
-  expect(highlightDiff("v10", "v12", c)).toBe("v[10]");
-  expect(highlightDiff("v10.0", "v12.0", c)).toBe("v[10.0]");
-  expect(highlightDiff("^4", "^5", c)).toBe("^[4]");
-  expect(highlightDiff("^1.0.0", "^2.0.0", c)).toBe("^[1.0.0]");
-  expect(highlightDiff("~1.0.0", "~1.5.0", c)).toBe("~1.[0.0]");
-  expect(highlightDiff(">=2.0.0", ">=2.6.5", c)).toBe(">=2.[0.0]");
-  expect(highlightDiff("4.0.0-alpha.2", "4.0.0-beta.11", c)).toBe("4.0.0-[alpha.2]");
-  expect(highlightDiff("537ccb7", "6941e05", c)).toBe("[537ccb7]");
+  for (const [oldValue, newValue, expected] of [
+    ["1.0.0", "1.0.0", "1.0.0"], ["1.0.0", "2.0.0", "[1.0.0]"], ["2.0.0", "1.0.0", "[2.0.0]"], ["1.0.0", "1.2.0", "1.[0.0]"],
+    ["1.2.0", "1.0.0", "1.[2.0]"], ["1.0.0", "1.0.3", "1.0.[0]"], ["1.0.3", "1.0.0", "1.0.[3]"], ["10.0.0", "12.0.0", "[10.0.0]"],
+    ["12.0.0", "10.0.0", "[12.0.0]"], ["1.10.0", "1.12.0", "1.[10.0]"], ["v5", "v6", "v[5]"], ["v10", "v12", "v[10]"],
+    ["v10.0", "v12.0", "v[10.0]"], ["^4", "^5", "^[4]"], ["^1.0.0", "^2.0.0", "^[1.0.0]"], ["~1.0.0", "~1.5.0", "~1.[0.0]"],
+    [">=2.0.0", ">=2.6.5", ">=2.[0.0]"], ["4.0.0-alpha.2", "4.0.0-beta.11", "4.0.0-[alpha.2]"],
+    ["537ccb7", "6941e05", "[537ccb7]"],
+  ]) expect(highlightDiff(oldValue, newValue, str => `[${str}]`), `${oldValue} to ${newValue}`).toBe(expected);
 });
 
 test("parseUvDependencies", () => {
@@ -108,8 +95,7 @@ test("expandDepTypes", () => {
 });
 
 test("default npm dependency types", () => {
-  expect(npmTypes).toContain("overrides");
-  expect(npmTypes).toContain("pnpm.overrides");
+  expect(npmTypes).toEqual(expect.arrayContaining(["overrides", "pnpm.overrides"]));
 });
 
 test.each([

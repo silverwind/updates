@@ -54,13 +54,10 @@ test("parseEnvVars", () => {
   };
   Object.assign(env, vars);
   try {
-    expect(parseEnvVars("testrc_")).toEqual({option: "42"});
-    expect(parseEnvVars("testrc2_")).toEqual({someOpt: {a: "42", z: "99"}});
-    expect(parseEnvVars("testrc3_").a.b.c).toBe("deep");
-    expect(parseEnvVars("testrc4_").upperCase).toBe("187");
-    expect(parseEnvVars("testrc5_").opt.a).toBe("42");
-    expect(parseEnvVars("testrc6_").w.w).toBe("18629");
-    expect(parseEnvVars("testrc7_").z.i).toBe("9999");
+    expect([parseEnvVars("testrc_"), parseEnvVars("testrc2_")]).toEqual([{option: "42"}, {someOpt: {a: "42", z: "99"}}]);
+    expect(["testrc3_", "testrc4_", "testrc5_", "testrc6_", "testrc7_"].map(prefix => parseEnvVars(prefix))).toMatchObject([
+      {a: {b: {c: "deep"}}}, {upperCase: "187"}, {opt: {a: "42"}}, {w: {w: "18629"}}, {z: {i: "9999"}},
+    ]);
   } finally {
     for (const key of Object.keys(vars)) delete env[key];
   }

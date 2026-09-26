@@ -82,17 +82,12 @@ test("updateCargoToml rewrites multiple dependencies within one table", () => {
     `version = "1.0.0"`,
     ``,
   ].join("\n");
-  const deps = {
+  expect(updateCargoToml(input, {
     [`dependencies${fieldSep}serde`]: {old: "1.0.0", new: "1.0.1"} as any,
     [`dependencies${fieldSep}tokio`]: {old: "1.28.0", new: "1.30.0"} as any,
     [`dependencies${fieldSep}serde_json`]: {old: "1.0.0", new: "1.0.2"} as any,
-  };
-  const result = updateCargoToml(input, deps);
-  expect(result).toContain(`"serde" = "1.0.1"`);
-  expect(result).toContain(`version = "1.30.0", features = ["full"]`);
-  expect(result).toContain(`name = "my-crate"`);
-  expect(result).toContain(`[dev-dependencies]\nrand = "0.8.5"\nserde = "1.0.0"`);
-  expect(result).toContain(`[dependencies."serde_json"]\nversion = "1.0.2"`);
+  })).toBe(input.replace(`"serde" = "1.0.0"`, `"serde" = "1.0.1"`).replace(`version = "1.28.0"`, `version = "1.30.0"`)
+    .replace(`[dependencies."serde_json"]\nversion = "1.0.0"`, `[dependencies."serde_json"]\nversion = "1.0.2"`));
 });
 
 test("fetchCratesIoInfo happy path", async () => {
@@ -105,10 +100,8 @@ test("fetchCratesIoInfo happy path", async () => {
   const [data, registry] = await fetchCratesIoInfo("serde", sparseCtx(body, urls));
   expect(urls).toEqual(["https://index.crates.io/se/rd/serde"]);
   expect(registry).toBeNull();
-  expect(data.name).toBe("serde");
-  expect(data["dist-tags"].latest).toBe("1.0.200");
+  expect(data).toMatchObject({name: "serde", "dist-tags": {latest: "1.0.200"}, time: {"1.0.200": "2025-01-15T12:00:00Z"}});
   expect(Object.keys(data.versions)).toEqual(["1.0.0", "1.0.100", "1.0.200"]);
-  expect(data.time["1.0.200"]).toBe("2025-01-15T12:00:00Z");
 });
 
 test("fetchCratesIoInfo reads every version of a large index body distilled to the fields it reads", async () => {
@@ -149,10 +142,7 @@ test("fetchCratesIoInfo invalid JSON throws", async () => {
 });
 
 test("fetchCratesIoInfo empty versions", async () => {
-  const [data] = await fetchCratesIoInfo("serde-empty", sparseCtx(""));
-  expect(data.versions).toEqual({});
-  expect(data.time).toEqual({});
-  expect(data["dist-tags"].latest).toBe("");
+  expect((await fetchCratesIoInfo("serde-empty", sparseCtx("")))[0]).toEqual({name: "serde-empty", versions: {}, time: {}, "dist-tags": {latest: ""}});
 });
 
 test("target sections", () => {
@@ -170,19 +160,15 @@ test("target sections", () => {
     `libc = "0.2.0"`,
     ``,
   ].join("\n");
-  const deps = {
+  expect(updateCargoToml(input, {
     [`${JSON.stringify(["target", `cfg(feature = "foo.bar")`, "dependencies"])}|crates/a${fieldSep}libc`]:
       {old: "0.2.0", new: "0.2.1"} as any,
     [`${JSON.stringify(["target", "x86_64-pc-windows-msvc", "dependencies"])}${fieldSep}winapi`]:
       {old: "0.3.0", new: "0.3.9"} as any,
     [`${JSON.stringify(["target", "cfg(windows)", "build-dependencies"])}${fieldSep}cc`]:
       {old: "1.0.0", new: "1.1.0"} as any,
-  };
-  const result = updateCargoToml(input, deps);
-  expect(result).toContain(`libc = "0.2.1"`);
-  expect(result).toContain(`[target . x86_64-pc-windows-msvc . dependencies . winapi]\nversion = "0.3.9"`);
-  expect(result).toContain(`[target.'cfg(windows)'.build-dependencies.cc]\nversion = "1.1.0"`);
-  expect(result).toContain(`[dev-dependencies]\nlibc = "0.2.0"`);
+  })).toBe(input.replace(`libc = "0.2.0"`, `libc = "0.2.1"`).replace(`version = "0.3.0"`, `version = "0.3.9"`)
+    .replace(`version = "1.0.0"`, `version = "1.1.0"`));
 });
 
 test("parseCargoLock collects valid package versions", () => {
@@ -205,12 +191,8 @@ name = "rand"
 version = "0.8.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 `;
-  const map = parseCargoLock(lock);
-  expect(map.get("serde")).toEqual(["1.0.200", "1.0.201"]);
-  expect(map.get("rand")).toEqual(["0.8.5"]);
-  expect(map.size).toBe(2);
-  expect(map.has("bad")).toBe(false);
-  expect(parseCargoLock("").size).toBe(0);
+  expect(parseCargoLock(lock)).toEqual(new Map([["serde", ["1.0.200", "1.0.201"]], ["rand", ["0.8.5"]]]));
+  expect(parseCargoLock("")).toEqual(new Map());
 });
 
 const locked = new Map([
@@ -266,10 +248,6 @@ test.each([
 });
 
 test("cargoToNpmRange swaps comma separators for whitespace", () => {
-  expect(cargoToNpmRange(">= 1.0.0, < 2.0.0")).toBe(">= 1.0.0 < 2.0.0");
-  expect(cargoToNpmRange(">=1.0.0,<2.0.0")).toBe(">=1.0.0 <2.0.0");
-  expect(cargoToNpmRange("  1.0.0")).toBe("^1.0.0");
-  expect(cargoToNpmRange("0.1.0, 0.1.4, 0.1.6")).toBe("^0.1.0 ^0.1.4 ^0.1.6");
-  expect(cargoToNpmRange("1.*, 2.*")).toBe("1.* 2.*");
-  expect(cargoToNpmRange("^1.0")).toBe("^1.0");
+  expect([">= 1.0.0, < 2.0.0", ">=1.0.0,<2.0.0", "  1.0.0", "0.1.0, 0.1.4, 0.1.6", "1.*, 2.*", "^1.0"].map(cargoToNpmRange))
+    .toEqual([">= 1.0.0 < 2.0.0", ">=1.0.0 <2.0.0", "^1.0.0", "^0.1.0 ^0.1.4 ^0.1.6", "1.* 2.*", "^1.0"]);
 });

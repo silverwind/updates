@@ -25,12 +25,8 @@ TOOLS += \\
   'github.com/foo/quoted@v1.2.3' github.com/foo/aggregate@v2.0.0`;
 
 test("isMakeFileName matches make filenames", () => {
-  expect(isMakeFileName("Makefile")).toBe(true);
-  expect(isMakeFileName("makefile")).toBe(true);
-  expect(isMakeFileName("GNUmakefile")).toBe(true);
-  expect(isMakeFileName("build.mk")).toBe(true);
-  expect(isMakeFileName("go.mod")).toBe(false);
-  expect(isMakeFileName("Dockerfile")).toBe(false);
+  expect(["Makefile", "makefile", "GNUmakefile", "build.mk", "go.mod", "Dockerfile"].map(isMakeFileName))
+    .toEqual([true, true, true, true, false, false]);
 });
 
 test("parseMakeGoInstalls extracts go install specs across assignment operators", () => {
@@ -171,7 +167,7 @@ test("resolveGoModuleRoot returns null when nothing resolves and throws when a p
   expect(await resolveGoModuleRoot(path, ".", slow, [])).toBe(path);
 });
 
-test("resolveGoModuleRoot uses VCS origin metadata through a direct fallback", async () => {
+test("resolveGoModuleRoot uses VCS origin metadata through a direct fallback, and no entry after the one resolving the root", async () => {
   const moduleRoot = "golang.org/x/vuln";
   const seen: Array<string> = [];
   const probed: Array<string> = [];
@@ -196,7 +192,6 @@ test("resolveGoModuleRoot uses VCS origin metadata through a direct fallback", a
   expect(probed.filter(candidate => candidate === moduleRoot)).toHaveLength(2);
   expect(seen).toContain(`https://empty/${moduleRoot}/@latest`);
 
-  // the entry that resolves the root ends the walk, so no later entry is paid for
   probed.length = 0;
   const backed: Array<string> = [];
   const backupChain: Array<GoProxyEntry> = [
@@ -240,10 +235,7 @@ test("parseMakeImageValue parses a Hub image with registry prefix and digest", (
     ref: {registry: null, namespace: "koalaman", repo: "shellcheck", tag: "v0.11.0", fullImage: "koalaman/shellcheck"},
     digest: digestA,
   });
-  expect(parseMakeImageValue("mysql:3306")).toBeNull();
-  expect(parseMakeImageValue("golang:1.21")).toBeNull();
-  expect(parseMakeImageValue("ghcr.io/foo/bar:1.2.3")).toBeNull();
-  expect(parseMakeImageValue("plain-no-tag")).toBeNull();
+  expect(["mysql:3306", "golang:1.21", "ghcr.io/foo/bar:1.2.3", "plain-no-tag"].map(parseMakeImageValue)).toEqual([null, null, null, null]);
 });
 
 test("parseMakeDockerImages extracts only namespaced Hub images, skipping comments", () => {

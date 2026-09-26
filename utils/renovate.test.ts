@@ -1,4 +1,3 @@
-import {test, expect, afterAll} from "vitest";
 import {mkdtempSync, rmSync, mkdirSync, readFileSync, writeFileSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
