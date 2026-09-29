@@ -6,6 +6,7 @@ import {braceAlternatives, closingIndex, esc, forgeDirs, getOrSet, modeByFileNam
 import {isWorkflowFile} from "../modes/actions.ts";
 import {isDockerFileName} from "../modes/docker.ts";
 import {isMakeFileName} from "../modes/make.ts";
+import {isShellFileName} from "../modes/shell.ts";
 
 const execFileAsync = promisify(execFile);
 const forgeDirNames = new Set<string>(forgeDirs);
@@ -62,7 +63,7 @@ export function passesPathFilters(path: string, {includePaths, excludePaths}: Pa
 function isDependencyFile(path: string): boolean {
   const filename = basename(path);
   return Object.hasOwn(modeByFileName, filename) || isDockerFileName(filename) || isMakeFileName(filename) ||
-    isWorkflowFile(path);
+    isShellFileName(filename) || isWorkflowFile(path);
 }
 
 async function gitFiles(root: string): Promise<Array<string> | null> {

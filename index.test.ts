@@ -130,6 +130,7 @@ beforeAll(async () => {
     ["/docker/v2/repositories/library/redis/tags", fixtureText("docker/redis-tags.json")],
     ["/docker/v2/repositories/koalaman/shellcheck/tags", dockerTags(["v0.11.0", "2025-01-01T00:00:00Z"], ["v0.12.0", "2025-06-01T00:00:00Z"])],
     ["/docker/v2/repositories/koalaman/shellcheck/tags/v0.12.0", JSON.stringify({digest: "sha256:list-new"})],
+    ["/docker/v2/repositories/example/image/tags", dockerTags(["1.0", "2025-01-01T00:00:00Z"], ["1.1", "2025-06-01T00:00:00Z"])],
     ["/docker/v2/repositories/example/makeallowed/tags",
       dockerTags(["1.0", "2025-01-01T00:00:00Z"], ["1.1", "2025-03-01T00:00:00Z"], ["2.0", "2025-06-01T00:00:00Z"])],
     ["/cargo/se/rd/serde", fixtureText("cargo/serde-index.ndjson")],
@@ -157,6 +158,7 @@ beforeAll(async () => {
     const gz = await promisify(gzip)(await body, gzipOptions);
     routes.set(path, (_, res) => res.send(gz));
   }));
+  routes.set("/docker/v2/repositories/example/broken/tags", (_, res) => { res.writeHead(500).end(); });
   routes.set("/github/user", (req, res) => {
     res.writeHead(req.headers.authorization === "Bearer tok" ? 200 : 401).end(JSON.stringify({login: "someone"}));
   });
@@ -538,6 +540,39 @@ test("make mode bumps docker image tags and re-resolves digests in Makefiles", a
     "SHELLCHECK_IMAGE ?= docker.io/koalaman/shellcheck:v0.12.0@sha256:list-new  # renovate: datasource=docker",
     "PLAIN := koalaman/shellcheck:v0.12.0",
     "TEST_MYSQL_HOST ?= mysql:3306",
+  ));
+});
+
+test("make and shell modes bump discovered files alike, leaving current, unresolvable, excluded and failed values untouched", async () => {
+  const digest = `sha256:${"a".repeat(64)}`;
+  const tools = [
+    "github.com/example/testpkg/v2@v2.0.0", "github.com/example/pseudoupd@v1", "github.com/example/missing@v1.0.0",
+    "github.com/example/excluded@v1.0.0",
+  ].join(" ");
+  const images = `example/makeallowed:1.0@${digest} example/broken:1.0`;
+  const dir = writeTree("shell", {
+    "Makefile": lines("TOOL ?= github.com/example/testpkg@v1.0.0", "IMAGE := example/image:1.0"),
+    "build.sh": lines(
+      `TOOL="\${TOOL:-github.com/example/testpkg@v1.0.0}"`,
+      "export IMAGE=example/image:1.0",
+      `TOOLS=(github.com/example/testpkg@v1.0.0 ${tools})`,
+      `IMAGES=(example/image:1.0 ${images})`,
+    ),
+    "noop.sh": "echo done\n",
+  });
+  const {results, errors} = await updates({
+    files: [dir], modes: ["make", "shell"], exclude: ["github.com/example/excluded"], goproxy: goProxyUrl, dockerapi: dockerUrl,
+    update: true, color: false, noCache: true,
+  });
+  expect(Object.fromEntries(Object.entries(results).map(([mode, files]) => [mode, Object.keys(files).map(file => basename(file))])))
+    .toEqual({make: ["Makefile"], shell: ["build.sh"]});
+  expect(errors!.map(({mode, name}) => [mode, name])).toEqual([["shell", "example/broken"]]);
+  expect(read(dir, "Makefile")).toBe(lines("TOOL ?= github.com/example/testpkg/v2@v2.0.0", "IMAGE := example/image:1.1"));
+  expect(read(dir, "build.sh")).toBe(lines(
+    `TOOL="\${TOOL:-github.com/example/testpkg/v2@v2.0.0}"`,
+    "export IMAGE=example/image:1.1",
+    `TOOLS=(github.com/example/testpkg/v2@v2.0.0 ${tools})`,
+    `IMAGES=(example/image:1.1 ${images})`,
   ));
 });
 

@@ -47,9 +47,10 @@ import {
 } from "./modes/docker.ts";
 import {
   type MakeDockerImage,
-  isMakeFileName, makeExactFileNames, parseMakeGoInstalls, parseMakeDockerImages,
+  isMakeFileName, makeExactFileNames, makeAssignmentValues, parseGoInstalls, parseImages,
   resolveGoModuleRoot, formatMakeImageSpec, updateMakefile,
 } from "./modes/make.ts";
+import {isShellFileName, shellAssignmentValues} from "./modes/shell.ts";
 import {fetchCratesIoInfo, updateCargoToml, updateCargoRange, cargoToNpmRange, parseCargoLock, findLockedVersion} from "./modes/cargo.ts";
 import {
   baseType, filterDepsForMember, resolveWorkspaceMembers, parsePnpmWorkspace, pnpmCatalogEntries,
@@ -78,7 +79,7 @@ export type Output = ModeOutput & {errors?: Array<DepError>};
 export type {Config, Override, Dep, Deps, DepsByMode};
 export {cliBaseConfig as cliConfigBaseDir, defaultExcludePaths};
 
-const modeOrder = [...new Set(Object.values(modeByFileName)), "actions", "docker", "make"];
+const modeOrder = [...new Set(Object.values(modeByFileName)), "actions", "docker", "make", "shell"];
 const defaultModes = new Set(modeOrder);
 
 const semversByPrecision = {
@@ -531,6 +532,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
     const filename = basename(file);
     if (isDockerFileName(filename)) return enabledModes.has("docker");
     if (isMakeFileName(filename)) return enabledModes.has("make");
+    if (isShellFileName(filename)) return enabledModes.has("shell");
     return enabledModes.has(modeByFileName[filename]);
   }), async (file): Promise<[string, string]> => {
     try {
@@ -541,7 +543,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
   }, {concurrency}));
 
   const fileData: Record<string, {
-    absPath: string, content: string, fileType?: "dockerfile" | "compose" | "workflow" | "make", workflowLines?: Set<number>,
+    absPath: string, content: string, fileType?: "dockerfile" | "compose" | "workflow", workflowLines?: Set<number>,
   }> = {};
 
   const goModFiles: WorkspaceMember[] = [];
@@ -553,7 +555,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
 
   const actionDepInfos: Array<ActionRef & {key: string, apiUrl: string, filters: FileFilters, comment: string}> = [];
   const dockerDepInfos: Array<{key: string, ref: DockerImageRef, filters: FileFilters}> = [];
-  type MakeDepInfo = {key: string, name: string, oldSpec: string, filters: FileFilters, newSpec?: string} & (
+  type MakeDepInfo = {mode: "make" | "shell", key: string, name: string, oldSpec: string, filters: FileFilters, newSpec?: string} & (
     {kind: "go", installPath: string, version: string} |
     {kind: "docker", image: MakeDockerImage}
   );
@@ -733,27 +735,34 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
       continue;
     }
 
-    if (isMakeFileName(filename)) {
+    const specMode = isMakeFileName(filename) ? "make" : isShellFileName(filename) ? "shell" : null;
+    if (specMode) {
+      const values = specMode === "make" ? makeAssignmentValues(content) : shellAssignmentValues(content);
+      const goInstalls = parseGoInstalls(values);
+      const images = parseImages(values);
+      if (!goInstalls.length && !images.length) continue;
       const relPath = toRelPath(file);
       const filters = await resolveDirConfig(dirname(file));
-      fileData[relPath] = {absPath: file, content, fileType: "make"};
-      deps.make ??= {};
-      for (const {installPath, version} of parseMakeGoInstalls(content)) {
-        if (!canInclude(installPath, "make", filters, "make", "go")) continue;
+      fileData[relPath] = {absPath: file, content};
+      const modeDeps = deps[specMode] ??= {};
+      for (const {installPath, version} of goInstalls) {
+        if (!canInclude(installPath, specMode, filters, specMode, "go")) continue;
         const key = dependencyKey(relPath, installPath, version);
-        if (deps.make[key]) continue;
-        deps.make[key] = {old: stripv(version), oldOrig: version} as Dep;
-        makeDepInfos.push({kind: "go", key, name: installPath, oldSpec: `${installPath}@${version}`, installPath, version, filters});
+        if (modeDeps[key]) continue;
+        modeDeps[key] = {old: stripv(version), oldOrig: version} as Dep;
+        makeDepInfos.push({
+          mode: specMode, kind: "go", key, name: installPath, oldSpec: `${installPath}@${version}`, installPath, version, filters,
+        });
       }
-      for (const image of parseMakeDockerImages(content)) {
-        if (!canInclude(image.writtenImage, "make", filters, "make", "docker")) continue;
+      for (const image of images) {
+        if (!canInclude(image.writtenImage, specMode, filters, specMode, "docker")) continue;
         const key = dependencyKey(relPath, image.writtenImage, image.ref.tag);
-        if (deps.make[key]) continue;
+        if (modeDeps[key]) continue;
         const parsed = parseDockerTag(image.ref.tag);
         if (!parsed) continue;
         const oldSpec = formatMakeImageSpec(image.writtenImage, image.ref.tag, image.digest);
-        deps.make[key] = {old: parsed.version, oldOrig: image.ref.tag} as Dep;
-        makeDepInfos.push({kind: "docker", key, name: image.writtenImage, oldSpec, image, filters});
+        modeDeps[key] = {old: parsed.version, oldOrig: image.ref.tag} as Dep;
+        makeDepInfos.push({mode: specMode, kind: "docker", key, name: image.writtenImage, oldSpec, image, filters});
       }
       continue;
     }
@@ -1190,20 +1199,21 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
 
   const makeTask = pMap(makeDepInfos, async (info) => {
     const opts = resolveVersionOpts(info.filters, info.kind, info.name, info.name);
-    const dep = deps.make[info.key];
+    const modeDeps = deps[info.mode];
+    const dep = modeDeps[info.key];
     try {
       if (info.kind === "go") {
         const {projectDir} = info.filters;
         const modulePath = await resolveGoModuleRoot(info.installPath, projectDir, ctx, goNoProxy);
-        if (!modulePath) { delete deps.make[info.key]; return; }
+        if (!modulePath) { delete modeDeps[info.key]; return; }
         const [rawData] = await fetchGoProxyInfo(modulePath, "tool", stripv(info.version), projectDir, ctx, goNoProxy);
         const data = filterVersionData(rawData, "go", opts.allowedVersions);
         const newVersion = findNewVersion(data, {...opts, mode: "go", range: stripv(info.version)});
-        if (!newVersion) { delete deps.make[info.key]; return; }
+        if (!newVersion) { delete modeDeps[info.key]; return; }
         const newModulePath = data.newPath ?? goModulePathForVersion(modulePath, newVersion);
         const newInstallPath = `${newModulePath}${info.installPath.slice(modulePath.length)}`;
         const formattedVersion = formatVersionPrecision(newVersion, info.version);
-        if (newInstallPath === info.installPath && formattedVersion === info.version) { delete deps.make[info.key]; return; }
+        if (newInstallPath === info.installPath && formattedVersion === info.version) { delete modeDeps[info.key]; return; }
         info.newSpec = `${newInstallPath}@${formattedVersion}`;
         dep.new = formattedVersion;
         dep.info = getGoInfoUrl(newModulePath);
@@ -1214,17 +1224,17 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
           filterVersionData(data, "docker", opts.allowedVersions).tags, info.image.ref.tag, opts.semvers, opts.cooldownDays,
           opts.now, opts.pinnedRange, opts.usePre, opts.useRel,
         );
-        if (!dockerUpdate) { delete deps.make[info.key]; return; }
+        if (!dockerUpdate) { delete modeDeps[info.key]; return; }
         const newDigest = info.image.digest ?
           await resolveDockerTagDigest(info.image.ref.namespace, info.image.ref.repo, dockerUpdate.newTag) : null;
-        if (info.image.digest && !newDigest) { delete deps.make[info.key]; return; }
+        if (info.image.digest && !newDigest) { delete modeDeps[info.key]; return; }
         info.newSpec = formatMakeImageSpec(info.image.writtenImage, dockerUpdate.newTag, newDigest);
         dep.new = dockerUpdate.newTag;
         dep.info = getDockerInfoUrl(info.image.ref);
         setDepAge(dep, dockerUpdate.date);
       }
     } catch (err) {
-      rejectDep("make", info.key, err);
+      rejectDep(info.mode, info.key, err);
     }
   }, {concurrency});
 
@@ -1288,8 +1298,8 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
                 workflowLines!.has(lineNumber) ? updateWorkflowDockerImages(line, workflowDeps) : line).join("\n");
           write(absPath, updateFn(content, Object.fromEntries(entries)));
         }
-      } else if (mode === "make") {
-        const makeUpdates = makeDepInfos.filter(info => info.newSpec && deps.make[info.key]);
+      } else if (mode === "make" || mode === "shell") {
+        const makeUpdates = makeDepInfos.filter(info => info.newSpec && deps[mode][info.key]);
         for (const [relPath, infos] of Map.groupBy(makeUpdates, info => info.key.split(fieldSep)[0])) {
           const {absPath, content} = fileData[relPath];
           write(absPath, updateMakefile(content, infos.map(info => ({oldSpec: info.oldSpec, newSpec: info.newSpec!}))));

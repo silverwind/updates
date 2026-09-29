@@ -24,6 +24,7 @@ function modeByName(filename: string): string {
   if (/^(?:[Dd]ocker|[Cc]ontainer)file|\.(?:[Dd]ocker|[Cc]ontainer)file$/.test(filename) ||
     /^(?:docker-|compose).*\.ya?ml$/.test(filename)) return "docker";
   if (["Makefile", "makefile", "GNUmakefile"].includes(filename) || filename.endsWith(".mk")) return "make";
+  if (filename.endsWith(".sh")) return "shell";
   if (/\.ya?ml$/.test(filename)) return "actions";
   return "";
 }
@@ -82,9 +83,9 @@ export function prewarmOrigins(dir: string, args: Record<string, unknown>): stri
         if (/^\s*(?:require\s+)?\S+\s+v\d/m.test(content)) resources.add("goproxy");
       } else if (mode === "docker") {
         if (/^\s*(?:FROM\s+(?:--\S+\s+)*|image\s*:\s*)[^\s#]+[:@]/im.test(content)) resources.add("dockerapi");
-      } else if (mode === "make") {
-        if (/\bgo\s+install\s+\S+@v\d/.test(content)) resources.add("goproxy");
-        if (/\b(?:docker|image)\b[^\n]*[\w./-]+:[\w.-]+/i.test(content)) resources.add("dockerapi");
+      } else if (mode === "make" || mode === "shell") {
+        if (/[\w-]+\.[\w.-]+\/\S*@v\d/.test(content)) resources.add("goproxy");
+        if (/[\w.-]+\/[\w.-]+:[\w.-]+/.test(content)) resources.add("dockerapi");
       } else {
         let blockIndent = -1;
         for (const line of content.split(/\r?\n/)) {

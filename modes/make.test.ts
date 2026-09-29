@@ -1,8 +1,9 @@
 import {
   isMakeFileName,
-  parseMakeGoInstalls,
+  makeAssignmentValues,
+  parseGoInstalls,
+  parseImages,
   parseMakeImageValue,
-  parseMakeDockerImages,
   resolveGoModuleRoot,
   updateMakefile,
 } from "./make.ts";
@@ -29,8 +30,8 @@ test("isMakeFileName matches make filenames", () => {
     .toEqual([true, true, true, true, false, false]);
 });
 
-test("parseMakeGoInstalls extracts go install specs across assignment operators", () => {
-  expect(parseMakeGoInstalls(sample)).toEqual([
+test("parseGoInstalls extracts go install specs across make assignment operators", () => {
+  expect(parseGoInstalls(makeAssignmentValues(sample))).toEqual([
     {installPath: "github.com/golangci/golangci-lint/v2/cmd/golangci-lint", version: "v2.12.2"},
     {installPath: "github.com/air-verse/air", version: "v1.65.1"},
     {installPath: "github.com/go-delve/delve/cmd/dlv", version: "v1"},
@@ -84,6 +85,10 @@ test.each([
   ["does not match inside a registry prefix", "PREFIXED := docker.io/koalaman/shellcheck:v0.11.0\n",
     [{oldSpec: "koalaman/shellcheck:v0.11.0", newSpec: "koalaman/shellcheck:v0.12.0"}],
     "PREFIXED := docker.io/koalaman/shellcheck:v0.11.0\n"],
+  ["rewrites specs delimited by shell syntax",
+    `A="\${A:-org/app:1.0}"\nB=(org/app:1.0)\nC=org/app:1.0;\n`,
+    [{oldSpec: "org/app:1.0", newSpec: "org/app:1.1"}],
+    `A="\${A:-org/app:1.1}"\nB=(org/app:1.1)\nC=org/app:1.1;\n`],
   ["rewrites tag and digest", "SHELLCHECK_IMAGE ?= docker.io/koalaman/shellcheck:v0.11.0@sha256:aaa  # renovate: datasource=docker\n",
     [{oldSpec: "docker.io/koalaman/shellcheck:v0.11.0@sha256:aaa", newSpec: "docker.io/koalaman/shellcheck:v0.12.0@sha256:bbb"}],
     "SHELLCHECK_IMAGE ?= docker.io/koalaman/shellcheck:v0.12.0@sha256:bbb  # renovate: datasource=docker\n"],
@@ -238,7 +243,7 @@ test("parseMakeImageValue parses a Hub image with registry prefix and digest", (
   expect(["mysql:3306", "golang:1.21", "ghcr.io/foo/bar:1.2.3", "plain-no-tag"].map(parseMakeImageValue)).toEqual([null, null, null, null]);
 });
 
-test("parseMakeDockerImages extracts only namespaced Hub images, skipping comments", () => {
+test("parseImages extracts only namespaced Hub images from make assignments, skipping comments", () => {
   const content = [
     `SHELLCHECK_IMAGE ?= docker.io/koalaman/shellcheck:v0.11.0@${digestA}  # renovate: datasource=docker`,
     "PLAIN := koalaman/shellcheck:0.9.0",
@@ -247,7 +252,7 @@ test("parseMakeDockerImages extracts only namespaced Hub images, skipping commen
     "MYSQL_HOST ?= mysql:3306",
     `# DISABLED := koalaman/shellcheck:0.1.0@${digestB}`,
   ].join("\n");
-  expect(parseMakeDockerImages(content).map(i => ({image: i.writtenImage, tag: i.ref.tag, digest: i.digest}))).toEqual([
+  expect(parseImages(makeAssignmentValues(content)).map(i => ({image: i.writtenImage, tag: i.ref.tag, digest: i.digest}))).toEqual([
     {image: "docker.io/koalaman/shellcheck", tag: "v0.11.0", digest: digestA},
     {image: "koalaman/shellcheck", tag: "0.9.0", digest: null},
     {image: "koalaman/shellcheck", tag: "0.10.0", digest: null},

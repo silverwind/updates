@@ -14,7 +14,7 @@ const sampleContent = (path: string, content: string) => {
   if (path.endsWith("Cargo.toml")) return '[dependencies]\nserde = "1"\n';
   if (path.endsWith("go.mod") || path.endsWith("go.work")) return "require example.com/pkg v1.0.0\n";
   if (path.includes("Dockerfile") || /compose|docker-stack/.test(path)) return "FROM node:22\n";
-  if (/Makefile|makefile|GNUmakefile|\.mk$/.test(path)) return "go install example.com/tool@v1.0.0\ndocker image node:22\n";
+  if (/Makefile|makefile|GNUmakefile|\.mk$|\.sh$/.test(path)) return "TOOL=example.com/tool@v1.0.0\nIMAGE=org/app:1.0\n";
   if (/\.ya?ml$/.test(path)) return "uses: actions/checkout@v4\ncontainer: node:22\n";
   return content;
 };
@@ -77,7 +77,7 @@ test("GOPROXY decides the go origin", () => {
   delete process.env.GOPROXY;
 });
 
-test.each(["Makefile", "makefile", "GNUmakefile", "tools.mk"])("%s triggers proxy.golang.org + hub.docker.com", (filename) => {
+test.each(["Makefile", "makefile", "GNUmakefile", "tools.mk", "build.sh"])("%s triggers proxy.golang.org + hub.docker.com", (filename) => {
   expect(prewarmOrigins(makeDir({[filename]: ""}), {})).toEqual(expect.arrayContaining(["https://proxy.golang.org/", "https://hub.docker.com/"]));
 });
 

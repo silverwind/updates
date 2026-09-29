@@ -1,6 +1,3 @@
 import {base} from "updates-config-silverwind";
 
-export default {
-  ...base({url: import.meta.url}),
-  excludePaths: ["fixtures/**"],
-};
+export default base({url: import.meta.url, excludePaths: ["fixtures/**"]});
