@@ -15,7 +15,7 @@ const makeAssignRe = /^\s*(?:(?:export|override|private|unexport)\s+)*[A-Za-z_][
 const makeGoInstallRe = /^([^@\s]+)@(v\d\S*)$/;
 const goHostRe = /^[^/\s]+\.[^/\s]+\//;
 
-function* makeAssignmentValues(content: string): Generator<string> {
+function* assignmentWords(content: string, assignRe: RegExp): Generator<string> {
   let logicalLine = "";
   for (const rawLine of [...content.split(/\r?\n/), ""]) {
     const commentIndex = rawLine.indexOf("#");
@@ -26,7 +26,7 @@ function* makeAssignmentValues(content: string): Generator<string> {
       logicalLine += `${line.slice(0, -1)} `;
       continue;
     }
-    const assignment = makeAssignRe.exec(logicalLine + line);
+    const assignment = assignRe.exec(logicalLine + line);
     logicalLine = "";
     if (!assignment) continue;
     let quote = "";
@@ -48,13 +48,20 @@ function* makeAssignmentValues(content: string): Generator<string> {
   }
 }
 
-export function parseMakeGoInstalls(content: string) {
-  const installs: Array<{installPath: string, version: string}> = [];
-  for (const value of makeAssignmentValues(content)) {
+export function assignmentValues(content: string, assignRe: RegExp, unwrapRe?: RegExp): Array<string> {
+  return Array.from(assignmentWords(content, assignRe), word => unwrapRe?.exec(word)?.[1] ?? word)
+    .filter(value => !value.includes("$"));
+}
+
+export function makeAssignmentValues(content: string): Array<string> {
+  return assignmentValues(content, makeAssignRe);
+}
+
+export function parseGoInstalls(values: Array<string>): Array<{installPath: string, version: string}> {
+  return values.flatMap(value => {
     const match = makeGoInstallRe.exec(value);
-    if (match && goHostRe.test(match[1])) installs.push({installPath: match[1], version: match[2]});
-  }
-  return installs;
+    return match && goHostRe.test(match[1]) ? [{installPath: match[1], version: match[2]}] : [];
+  });
 }
 
 export type MakeDockerImage = {writtenImage: string, ref: DockerImageRef, digest: string | null};
@@ -73,8 +80,8 @@ export function parseMakeImageValue(value: string): MakeDockerImage | null {
   return {writtenImage: imageWithTag.slice(0, imageWithTag.lastIndexOf(":")), ref, digest: digestMatch?.[1] ?? null};
 }
 
-export function parseMakeDockerImages(content: string): Array<MakeDockerImage> {
-  return Array.from(makeAssignmentValues(content), parseMakeImageValue).filter(image => image !== null);
+export function parseImages(values: Array<string>): Array<MakeDockerImage> {
+  return values.map(parseMakeImageValue).filter(image => image !== null);
 }
 
 const midMajorRe = /\/v(?:[2-9]|[1-9]\d+)(?=\/|$)/;
@@ -129,7 +136,7 @@ export function updateMakefile(content: string, rewrites: Array<{oldSpec: string
   if (!bySpec.size) return content;
   const specs = Array.from(bySpec.keys()).sort((left, right) => right.length - left.length)
     .map(spec => Array.from(spec, esc).join(`["']*`)).join("|");
-  const specRe = new RegExp(`(?<![\\w./@:-])(${specs})(?=[\\s#"']|$)`, "g");
+  const specRe = new RegExp(`(?:(?<=\\$\\{\\w+:?-)|(?<![\\w./@:-]))(${specs})(?![\\w./@:+-])`, "g");
   return content.replace(/^[^#\n]*/gm, code => code.replace(specRe, authoredSpec => {
     const newSpec = bySpec.get(authoredSpec.replace(/["']/g, ""))!;
     let newIndex = 0;

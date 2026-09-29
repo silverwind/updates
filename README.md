@@ -13,7 +13,7 @@
 - `Cargo.toml` - rust dependencies, including workspaces
 - `.{github,gitea,forgejo}/{workflows,actions}`, `workflow-templates`, `action.{yml,yaml}` - actions and docker images
 - `{Docker,Container}file*`, `*.{Docker,Container}file`, `compose*.{yml,yaml}`, `docker-*.{yml,yaml}` - docker images
-- `Makefile`, `*.mk` - go tool versions in `go install` paths and docker image tags
+- `Makefile`, `*.mk`, `*.sh` - go tool versions in `go install` paths and docker image tags
 
 ## Usage
 
@@ -33,7 +33,7 @@ pnpm dlx updates -u && pnpm i
 |`-f, --file <path,...>`|File or directory to use, defaults to current directory|
 |`-N, --include-paths <glob,...>`|Only use paths matching the globs|
 |`-X, --exclude-paths <glob,...>`|Skip paths matching the globs|
-|`-M, --modes <mode,...>`|Which modes to enable. Either `npm`, `pypi`, `go`, `cargo`, `actions`, `docker`, `make`. Default: all|
+|`-M, --modes <mode,...>`|Which modes to enable. Either `npm`, `pypi`, `go`, `cargo`, `actions`, `docker`, `make`, `shell`. Default: all|
 |`-i, --include <dep,...>`|Include only given dependencies|
 |`-e, --exclude <dep,...>`|Exclude given dependencies|
 |`-l, --pin <dep=range>`|Pin dependency to given semver range|
