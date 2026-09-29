@@ -341,11 +341,13 @@ export function updateGoMod(pkgStr: string, deps: Deps): [string, Record<string,
   if (!entries.length) return [pkgStr, majorVersionRewrites];
   const lineEndings = pkgStr.match(/\r?\n/g) ?? [];
   const lines = pkgStr.split(/\r?\n/);
-  const rewriteLines = (lineNumbers: Array<number> = [], pattern: RegExp, replacement: string): boolean => {
+  const rewriteLines = (
+    lineNumbers: Array<number> = [], pattern: RegExp, replacement: (prefix: string, quote: string, rest: string) => string,
+  ): boolean => {
     let rewritten = false;
     for (const lineNumber of lineNumbers) {
       const line = lines[lineNumber];
-      lines[lineNumber] = line.replace(pattern, replacement);
+      lines[lineNumber] = line.replace(pattern, (_match, prefix: string, quote: string, rest: string) => replacement(prefix, quote, rest));
       rewritten ||= lines[lineNumber] !== line;
     }
     return rewritten;
@@ -372,7 +374,8 @@ export function updateGoMod(pkgStr: string, deps: Deps): [string, Record<string,
     const [depType, name] = key.split(fieldSep);
     const oldValue = oldOrig || old;
     const newPath = goModulePathForVersion(name, newValue);
-    const replacement = `$1$2${newPath}$2$3v${newValue}`;
+    const replacement = (prefix: string, quote: string, space: string) =>
+      `${prefix}${quote}${newPath}${quote}${space}v${newValue}`;
     let requireVersion: string | null = esc(oldValue);
     if (depType === "replace") {
       requireVersion = null;
@@ -380,7 +383,10 @@ export function updateGoMod(pkgStr: string, deps: Deps): [string, Record<string,
         if (stripv(targetVersion) !== oldValue) continue;
         rewriteLines([lineNumber], versionedPathRe("=>\\s+", name, esc(oldValue)), replacement);
         if (newPath === name || origModule !== name || origVersion) continue;
-        rewriteLines([lineNumber], new RegExp(`(^\\s*(?:replace\\s+)?)${quotedPath(name)}(?=\\s+=>)`), `$1$2${newPath}$2`);
+        rewriteLines(
+          [lineNumber], new RegExp(`(^\\s*(?:replace\\s+)?)${quotedPath(name)}(?=\\s+=>)`),
+          (prefix, quote) => `${prefix}${quote}${newPath}${quote}`,
+        );
         requireVersion = "\\S+";
       }
     }
@@ -390,7 +396,7 @@ export function updateGoMod(pkgStr: string, deps: Deps): [string, Record<string,
     if (depType === "tool" && newPath !== name) {
       rewriteLines(
         toolLines.get(name), new RegExp(`(^\\s*(?:tool\\s+)?)("?)${esc(name)}((?:/[^"\\s]+)?)\\2(?=\\s*(?://.*)?$)`),
-        `$1$2${newPath}$3$2`,
+        (prefix, quote, subpath) => `${prefix}${quote}${newPath}${subpath}${quote}`,
       );
     }
   }

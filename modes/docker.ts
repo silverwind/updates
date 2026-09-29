@@ -369,7 +369,7 @@ export function updateDockerfile(content: string, deps: Deps): string {
       const argValue = args.get(variable[1] || variable[2]);
       const prefix = resolveDockerVariables(from[1].slice(0, variable.index), argValueOf);
       let suffix = resolveDockerVariables(from[1].slice(variable.index + variable[0].length), argValueOf);
-      if (replacesDigest) suffix = suffix.replace(oldDigest, newDigest);
+      if (replacesDigest) suffix = suffix.replace(oldDigest, () => newDigest);
       if (!argValue || argValue.start < 0 || !replacement.startsWith(prefix) || !replacement.endsWith(suffix)) continue;
       edits.set(argValue.start, [argValue.value.length, replacement.slice(prefix.length, suffix ? -suffix.length : undefined)]);
     }

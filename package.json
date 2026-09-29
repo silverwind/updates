@@ -48,15 +48,15 @@
     "@typescript/native-preview": "7.0.0-dev.20260707.2",
     "@vitest/coverage-v8": "5.0.2",
     "eslint": "10.11.0",
-    "eslint-config-silverwind": "151.0.1",
-    "timerel": "5.9.1",
+    "eslint-config-silverwind": "152.0.3",
+    "timerel": "5.9.2",
     "tsdown": "0.23.0",
-    "tsdown-config-silverwind": "4.1.2",
+    "tsdown-config-silverwind": "4.1.3",
     "typescript": "6.0.3",
-    "typescript-config-silverwind": "21.0.1",
-    "updates-config-silverwind": "4.0.7",
-    "versions": "15.5.1",
+    "typescript-config-silverwind": "21.0.2",
+    "updates-config-silverwind": "4.0.9",
+    "versions": "15.5.2",
     "vitest": "5.0.2",
-    "vitest-config-silverwind": "12.0.5"
+    "vitest-config-silverwind": "12.0.6"
   }
 }

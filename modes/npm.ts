@@ -299,7 +299,7 @@ export function normalizeRange(range: string): string {
   if (/[xX*]/.test(range)) return range;
   const versionMatches = range.match(npmVersionRe);
   if (versionMatches?.length !== 1) return range;
-  return range.replace(npmVersionRe, coerceToVersion(versionMatches[0]));
+  return range.replace(npmVersionRe, () => coerceToVersion(versionMatches[0]));
 }
 
 export async function getLatestCommit(user: string, repo: string, ctx: ModeContext): Promise<{hash: string, commit: Record<string, any>}> {
