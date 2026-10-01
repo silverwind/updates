@@ -3,10 +3,9 @@ import {tmpdir} from "node:os";
 import {join} from "node:path";
 import {updates} from "../api.ts";
 import {
-  composeImageRe, dockerExactFileNames, dockerfileFromRe, dockerImageNames, dockerTagVersion, extractDockerRefs,
-  fetchDockerHubTags, fetchDockerInfo, fetchDockerTagDigest, filterStableTags, findDockerVersion, getDockerInfoUrl,
-  getExtractionRegex, isComposeFile, isDockerfile, isDockerFileName, parseDockerImageRef, parseDockerTag,
-  updateComposeFile, updateDockerfile, updateWorkflowDockerImages,
+  dockerExactFileNames, dockerImageNames, dockerTagVersion, extractDockerRefs, fetchDockerHubTags, fetchDockerInfo,
+  fetchDockerTagDigest, filterStableTags, findDockerVersion, getDockerInfoUrl, isComposeFile, isDockerfile,
+  isDockerFileName, parseDockerImageRef, parseDockerTag, updateComposeFile, updateDockerfile, updateWorkflowDockerImages,
 } from "./docker.ts";
 import {type ModeContext, fetchTimeout, fieldSep} from "./shared.ts";
 
@@ -87,7 +86,6 @@ test.each([
   expect(isComposeFile(name)).toBe(compose);
   expect(isDockerfile(name)).toBe(dockerfile);
   expect(isDockerFileName(name)).toBe(compose || dockerfile);
-  expect(getExtractionRegex(name)).toBe(dockerfile ? dockerfileFromRe : composeImageRe);
 });
 
 test("dockerExactFileNames stay within isDockerFileName", () => {
@@ -105,19 +103,37 @@ test.each([
 
 test("extractDockerRefs", () => {
   const dockerfile = [
+    "# syntax=docker/dockerfile:1.7",
     "ARG NODE_VERSION=18",
-    `FROM node:\${NODE_VERSION}`,
+    `FROM node:\${NODE_VERSION} AS build`,
     "FROM --platform=$BUILDPLATFORM \\",
+    "  # comment",
     "  nginx:1.25.3@sha256:abc123",
+    "COPY --link --from=docker.io/icinga/icingadb:1.5.1 /schema/pgsql/schema.sql /icingadb-schema.sql",
+    "COPY --from=build /app /app",
+    "RUN --mount=type=cache,target=/cache \\",
+    "  --mount=type=bind,FROM=ghcr.io/owner/repo:1.2,target=/src make",
+    `RUN cat <<-'EOF' <<\\BODY << E"N"D > Dockerfile`,
+    "FROM alpine:3.18",
+    "\tEOF",
+    "FROM alpine:3.17",
+    "BODY",
+    "COPY --from=alpine:3.16 / /",
+    "END",
+    "ONBUILD COPY --from=alpine:3.20 / /",
     "FROM ubuntu:latest",
+    "# syntax=docker/dockerfile:1.6",
     "",
   ].join("\n");
-  expect(extractDockerRefs(dockerfile, dockerfileFromRe).map(({ref}) => ref)).toMatchObject([
-    {repo: "node", tag: "18"}, {repo: "nginx", tag: "1.25.3", digest: "sha256:abc123"},
+  expect(extractDockerRefs(dockerfile, "dockerfile").map(({ref}) => ref)).toMatchObject([
+    {fullImage: "docker/dockerfile", tag: "1.7"}, {repo: "node", tag: "18"}, {repo: "nginx", tag: "1.25.3", digest: "sha256:abc123"},
+    {fullImage: "docker.io/icinga/icingadb", tag: "1.5.1"}, {fullImage: "ghcr.io/owner/repo", tag: "1.2"}, {fullImage: "alpine", tag: "3.20"},
   ]);
+  expect(extractDockerRefs("# escape=`\nFROM `\n  node:18\nWORKDIR C:\\app\\\nFROM node:20\n", "dockerfile")
+    .map(({match}) => match)).toEqual(["node:18", "node:20"]);
   const compose = "services:\n  web:\n    image: node:20.11.1\n  db:\n    image: postgres:16.2\n    build: .\n";
-  expect(extractDockerRefs(compose, composeImageRe).map(({match}) => match)).toEqual(["node:20.11.1"]);
-  expect(extractDockerRefs("\uFEFFFROM node:18\n", dockerfileFromRe).map(({ref}) => ref.tag)).toEqual(["18"]);
+  expect(extractDockerRefs(compose, "compose").map(({match}) => match)).toEqual(["node:20.11.1"]);
+  expect(extractDockerRefs("\uFEFFFROM node:18\n", "dockerfile").map(({ref}) => ref.tag)).toEqual(["18"]);
 });
 
 test("findDockerVersion basic selection", () => {
@@ -206,6 +222,9 @@ test.each([
     "services:\n  db:\n    image: 'postgres:16.2'\n", "postgres", {old: "16.2", new: "17.0"}, "services:\n  db:\n    image: 'postgres:17.0'\n"],
   ["updateDockerfile skips comments and shell text", updateDockerfile,
     "# FROM node:18\nRUN echo FROM node:18\nFROM node:18\n", "node", nodeDep, "# FROM node:18\nRUN echo FROM node:18\nFROM node:20\n"],
+  ["updateDockerfile replaces the syntax directive, COPY --from and RUN --mount from", updateDockerfile,
+    "# syntax=node:18\nCOPY --link --from=node:18 / /\nONBUILD RUN --mount=type=cache,target=/a \\\n  --mount=from=node:18 true\n", "node", nodeDep,
+    "# syntax=node:20\nCOPY --link --from=node:20 / /\nONBUILD RUN --mount=type=cache,target=/a \\\n  --mount=from=node:20 true\n"],
   ["updateComposeFile skips a commented image", updateComposeFile,
     "services:\n  a:\n    # image: node:18\n    image: node:18\n", "node", nodeDep, "services:\n  a:\n    # image: node:18\n    image: node:20\n"],
   ["updateWorkflowDockerImages skips a commented container", updateWorkflowDockerImages,

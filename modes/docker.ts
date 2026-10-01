@@ -11,40 +11,100 @@ type DockerTag = {version: string, prerelease: string, suffix: string};
 
 const dockerTagRe = /^(v?\d+(?:\.\d+)*(?:_\d+)?)([a-zA-Z][a-zA-Z0-9]*)?(-.+)?$/; // no `i`, `stripv` only strips lowercase
 
-export const dockerfileFromRe = /^[ \t]*FROM\b[^\r\n]*(?:(?<=\\)[ \t]*\r?\n[^\r\n]*)*/gim;
-export const composeImageRe = /^[ \t]*image:\s*['"]?([^\s'"#]+)['"]?/gm;
+const dockerfileImageRe = /^\s*(?:#\s*syntax\s*=\s*|FROM(?:\s+--\S+)*\s+(?!--)|(?:ONBUILD\s+)?COPY(?:\s+--\S+)*?\s+--from=)(\S+)/i;
+const runFlagsRe = /^\s*(?:ONBUILD\s+)?RUN(?:\s+--\S+)+/i;
+const mountImageRe = /(?<=\s--mount=(?:[^\s,]*,)*from=)[^\s,]+/gi;
+const composeImageRe = /^[ \t]*image:\s*['"]?([^\s'"#]+)['"]?/gm;
 // zero-width so a rewrite's `offset` stays on the key, which is what locallyBuiltImages records
 const keyStart = String.raw`(?<=^[ \t]*(?:-[ \t]+)?|[{,][ \t]*)`;
 const dockerArgRe = /^\uFEFF?[ \t]*ARG\s+(\w+)(?:[ =](\S*))?/i;
-const dockerFromInstructionRe = /^\uFEFF?[ \t]*FROM\s+(?:--platform=\S+\s+)?(\S+)/i;
+const dockerDirectiveRe = /^\s*#\s*(syntax|escape|check)\s*=\s*(\S+)/i;
+const heredocInstructionRe = /^\s*(?:ONBUILD\s+)?(?:ADD|COPY|RUN)\s/i;
+const shellWordRe = /(?:[^\s"'\\]|\\.|"(?:\\.|[^"\\])*"|'[^']*')+/g;
 
 function resolveDockerVariables(value: string, getValue: (name: string) => string | undefined): string {
+  if (!value.includes("$")) return value;
   return value.replace(/\$\{(\w+)\}|\$(\w+)/g, (variable, braced, bare) => getValue(braced || bare) ?? variable);
 }
 
 type DockerArg = {value: string, resolved: string, start: number};
 
-function *dockerfileFromInstructions(content: string, recursive = false): Generator<{
-  instruction: RegExpExecArray, args: Map<string, DockerArg>, from: RegExpExecArray, resolved: string,
-}> {
-  const args = new Map<string, DockerArg>();
-  let sawFrom = false;
-  for (const instruction of content.matchAll(/^\uFEFF?[ \t]*(?:ARG|FROM)\b[^\r\n]*(?:(?<=\\)[ \t]*\r?\n[^\r\n]*)*/gim)) {
-    const unfolded = instruction[0].replace(/\\[ \t]*\r?\n[ \t]*/g, " ");
-    const arg = dockerArgRe.exec(unfolded);
-    if (arg) {
-      if (!sawFrom) {
-        const value = arg[2]?.replace(/^(['"])(.*)\1$/, "$2") ?? "";
-        const relativeStart = instruction[0].lastIndexOf(value);
-        args.set(arg[1], {value, resolved: resolveDockerVariables(value, name => args.get(name)?.resolved),
-          start: relativeStart < 0 ? -1 : instruction.index + relativeStart});
-      }
+function heredocDelimiters(text: string): Array<{chomp: boolean, name: string}> {
+  const words = Array.from(text.matchAll(shellWordRe), ([word]) => word);
+  const delimiters: Array<{chomp: boolean, name: string}> = [];
+  for (const [index, word] of words.entries()) {
+    const operator = /^\d*<<-?/.exec(word)?.[0];
+    if (!operator || word.includes("<", operator.length)) continue;
+    const name = word.slice(operator.length) || words[index + 1];
+    if (name) delimiters.push({chomp: operator.endsWith("-"), name: name.replace(/\\(.)|["']/g, "$1")});
+  }
+  return delimiters;
+}
+
+function *dockerfileInstructions(content: string): Generator<{text: string, index: number}> { // blanks comments and continuations so offsets match `content`
+  let escape = "\\";
+  let inDirectives = true;
+  let heredocs: Array<{chomp: boolean, name: string}> = [];
+  let text = "";
+  let start = 0;
+  let nextLine = 0;
+  for (const line of content.split("\n")) {
+    const index = nextLine;
+    nextLine += line.length + 1;
+    if (heredocs.length) {
+      const {chomp, name} = heredocs[0];
+      if ((chomp ? line.replace(/^\t+/, "") : line).replace(/\r$/, "") === name) heredocs.shift();
       continue;
     }
-    sawFrom = true;
-    const from = dockerFromInstructionRe.exec(unfolded);
-    if (from) yield {instruction, args, from,
-      resolved: resolveDockerVariables(from[1], name => args.get(name)?.[recursive ? "resolved" : "value"])};
+    if (inDirectives) {
+      const directive = dockerDirectiveRe.exec(line);
+      if (directive) {
+        if (directive[1].toLowerCase() === "escape") escape = directive[2];
+        yield {text: line, index};
+        continue;
+      }
+      inDirectives = false;
+    }
+    const trimmed = line.trimStart();
+    if (!trimmed || trimmed.startsWith("#")) {
+      if (text) text += `${" ".repeat(line.length)}\n`;
+      continue;
+    }
+    if (!text) start = index;
+    const end = line.trimEnd().length;
+    if (line[end - 1] === escape && line[end - 2] !== escape) {
+      text += `${line.slice(0, end - 1)} ${line.slice(end)}\n`;
+      continue;
+    }
+    text += line;
+    yield {text, index: start};
+    heredocs = text.includes("<<") && heredocInstructionRe.test(text) ? heredocDelimiters(text) : [];
+    text = "";
+  }
+  if (text) yield {text, index: start};
+}
+
+function *dockerfileImages(content: string, recursive = false): Generator<{
+  image: string, index: number, args: Map<string, DockerArg>, resolved: string,
+}> {
+  const args = new Map<string, DockerArg>();
+  const imageAt = (image: string, index: number) => ({image, index, args,
+    resolved: resolveDockerVariables(image, name => args.get(name)?.[recursive ? "resolved" : "value"])});
+  let sawFrom = false;
+  for (const {text, index} of dockerfileInstructions(content)) {
+    const arg = sawFrom ? null : dockerArgRe.exec(text);
+    if (arg) {
+      const value = arg[2]?.replace(/^(['"])(.*)\1$/, "$2") ?? "";
+      args.set(arg[1], {value, resolved: resolveDockerVariables(value, name => args.get(name)?.resolved),
+        start: index + text.lastIndexOf(value)});
+      continue;
+    }
+    sawFrom ||= /^\s*FROM\s/i.test(text);
+    const single = dockerfileImageRe.exec(text);
+    if (single) yield imageAt(single[1], index + single[0].length - single[1].length);
+    const runFlags = runFlagsRe.exec(text)?.[0];
+    if (!runFlags || !/from=/i.test(runFlags)) continue;
+    for (const mount of runFlags.matchAll(mountImageRe)) yield imageAt(mount[0], index + mount.index);
   }
 }
 
@@ -92,18 +152,18 @@ export function parseDockerTag(tag: string): DockerTag | null {
   return {version: match[1], prerelease: match[2] || "", suffix: match[3] || ""};
 }
 
-export function extractDockerRefs(content: string, regex: RegExp): Array<{ref: DockerImageRef, match: string}> {
+export function extractDockerRefs(content: string, fileType: "dockerfile" | "compose"): Array<{ref: DockerImageRef, match: string}> {
   const results: Array<{ref: DockerImageRef, match: string}> = [];
-  if (regex === dockerfileFromRe) {
-    for (const {from, resolved} of dockerfileFromInstructions(content, true)) {
+  if (fileType === "dockerfile") {
+    for (const {image, resolved} of dockerfileImages(content, true)) {
       const ref = parseDockerImageRef(resolved);
-      if (ref) results.push({ref, match: from[1]});
+      if (ref) results.push({ref, match: image});
     }
     return results;
   }
-  const locallyBuilt = regex === composeImageRe ? locallyBuiltImages(content) : null;
-  for (const match of content.matchAll(regex)) {
-    if (locallyBuilt?.has(match.index + match[0].indexOf("image:"))) continue;
+  const locallyBuilt = locallyBuiltImages(content);
+  for (const match of content.matchAll(composeImageRe)) {
+    if (locallyBuilt.has(match.index + match[0].indexOf("image:"))) continue;
     const ref = parseDockerImageRef(match[1]);
     if (ref) results.push({ref, match: match[1]});
   }
@@ -335,54 +395,59 @@ function imageReplacements(deps: Deps): Map<string, string> {
   return byRef;
 }
 
-function replaceImageRefs(content: string, byRef: Map<string, string>, prefixes: Array<string>, flags = "gm",
+function replaceImageRefs(content: string, byRef: Map<string, string>, prefixes: Array<string>,
   canReplace = (_offset: number) => true): string {
   if (!byRef.size) return content;
   const refs = longestFirstAlternation(byRef.keys());
   let newContent = content;
   for (const prefix of prefixes) {
-    newContent = newContent.replace(new RegExp(`(${prefix})(${refs})${tagEnd}`, flags),
+    newContent = newContent.replace(new RegExp(`(${prefix})(${refs})${tagEnd}`, "gm"),
       (match, start, ref, offset) => canReplace(offset) ? `${start}${byRef.get(ref) ?? ref}` : match);
   }
   return newContent;
 }
 
 export function updateDockerfile(content: string, deps: Deps): string {
-  const separator = "(?:[ \\t]+|\\\\[ \\t]*\\r?\\n[ \\t]*)";
   const replacements = imageReplacements(deps);
   if (!replacements.size) return content;
-  let updated = replaceImageRefs(content, replacements,
-    [`^\\uFEFF?[ \\t]*FROM${separator}+(?:--platform=\\S+${separator}+)?`], "gim");
   const edits = new Map<number, [number, string]>();
-  for (const {instruction, args, from, resolved} of dockerfileFromInstructions(updated)) {
+  for (const {image, index, args, resolved} of dockerfileImages(content)) {
     const replacement = replacements.get(resolved);
     if (!replacement) continue;
+    if (image === resolved) {
+      edits.set(index, [image.length, replacement]);
+      continue;
+    }
     const oldAt = resolved.lastIndexOf("@");
     const newAt = replacement.lastIndexOf("@");
     const oldDigest = resolved.slice(oldAt + 1);
     const newDigest = replacement.slice(newAt + 1);
     const replacesDigest = oldAt !== -1 && newAt !== -1 && oldDigest !== newDigest;
-    const relativeDigest = replacesDigest ? instruction[0].lastIndexOf(oldDigest) : -1;
-    if (relativeDigest !== -1) edits.set(instruction.index + relativeDigest, [oldDigest.length, newDigest]);
+    const relativeDigest = replacesDigest ? image.lastIndexOf(oldDigest) : -1;
+    if (relativeDigest !== -1) edits.set(index + relativeDigest, [oldDigest.length, newDigest]);
     const argValueOf = (name: string) => args.get(name)?.value;
-    for (const variable of from[1].matchAll(/\$(?:\{(\w+)\}|(\w+))/g)) {
+    for (const variable of image.matchAll(/\$(?:\{(\w+)\}|(\w+))/g)) {
       const argValue = args.get(variable[1] || variable[2]);
-      const prefix = resolveDockerVariables(from[1].slice(0, variable.index), argValueOf);
-      let suffix = resolveDockerVariables(from[1].slice(variable.index + variable[0].length), argValueOf);
+      const prefix = resolveDockerVariables(image.slice(0, variable.index), argValueOf);
+      let suffix = resolveDockerVariables(image.slice(variable.index + variable[0].length), argValueOf);
       if (replacesDigest) suffix = suffix.replace(oldDigest, () => newDigest);
-      if (!argValue || argValue.start < 0 || !replacement.startsWith(prefix) || !replacement.endsWith(suffix)) continue;
+      if (!argValue || !replacement.startsWith(prefix) || !replacement.endsWith(suffix)) continue;
       edits.set(argValue.start, [argValue.value.length, replacement.slice(prefix.length, suffix ? -suffix.length : undefined)]);
     }
   }
-  for (const [start, [length, value]] of [...edits].sort(([left], [right]) => right - left)) {
-    updated = `${updated.slice(0, start)}${value}${updated.slice(start + length)}`;
+  const chunks: Array<string> = [];
+  let end = 0;
+  for (const [start, [length, value]] of [...edits].sort(([left], [right]) => left - right)) {
+    chunks.push(content.slice(end, start), value);
+    end = start + length;
   }
-  return updated;
+  chunks.push(content.slice(end));
+  return chunks.join("");
 }
 
 export function updateComposeFile(content: string, deps: Deps): string {
   const locallyBuilt = locallyBuiltImages(content);
-  return replaceImageRefs(content, imageReplacements(deps), [String.raw`${keyStart}image:\s*['"]?`], "gm",
+  return replaceImageRefs(content, imageReplacements(deps), [String.raw`${keyStart}image:\s*['"]?`],
     offset => !locallyBuilt.has(offset));
 }
 
@@ -406,10 +471,6 @@ export function isDockerfile(filename: string): boolean {
 
 export function isDockerFileName(filename: string): boolean {
   return isDockerfile(filename) || isComposeFile(filename);
-}
-
-export function getExtractionRegex(filename: string): RegExp {
-  return isDockerfile(filename) ? dockerfileFromRe : composeImageRe;
 }
 
 export function getDockerInfoUrl(ref: DockerImageRef): string {

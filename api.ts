@@ -41,7 +41,7 @@ import {
   type DockerImageRef,
   parseDockerImageRef, parseDockerTag, extractDockerRefs, dockerImageNames,
   fetchDockerTagDigest,
-  getExtractionRegex, isDockerfile, isDockerFileName, dockerExactFileNames,
+  isDockerfile, isDockerFileName, dockerExactFileNames,
   dockerTagVersion, fetchDockerInfo, findDockerVersion, getDockerInfoUrl,
   updateDockerfile, updateComposeFile, updateWorkflowDockerImages,
 } from "./modes/docker.ts";
@@ -730,8 +730,9 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
     if (isDockerFileName(filename)) {
       const relPath = toRelPath(file);
       const filters = await resolveDirConfig(dirname(file));
-      fileData[relPath] = {absPath: file, content, fileType: isDockerfile(filename) ? "dockerfile" : "compose"};
-      for (const {ref} of extractDockerRefs(content, getExtractionRegex(filename))) collectDockerRef(ref, relPath, filters);
+      const fileType = isDockerfile(filename) ? "dockerfile" : "compose";
+      fileData[relPath] = {absPath: file, content, fileType};
+      for (const {ref} of extractDockerRefs(content, fileType)) collectDockerRef(ref, relPath, filters);
       continue;
     }
 
