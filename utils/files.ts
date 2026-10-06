@@ -80,7 +80,7 @@ function ownFiles(root: string): Array<string> { // the directory's own files an
   try {
     if (root.split(/[\\/]/).some(segment => forgeDirNames.has(segment))) return readdirSync(root, {recursive: true, encoding: "utf8"});
     return readdirSync(root, {withFileTypes: true}).flatMap(entry => entry.isDirectory() && forgeDirNames.has(entry.name) ?
-      readdirSync(join(root, entry.name), {recursive: true, encoding: "utf8"}).map(path => join(entry.name, path)) : [entry.name]);
+      readdirSync(join(root, entry.name), {recursive: true, encoding: "utf8"}).map(path => join(entry.name, path)) : entry.name);
   } catch {
     return [];
   }

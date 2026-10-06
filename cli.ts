@@ -76,7 +76,7 @@ export function parseCliArgs(argv: Array<string>): {args: Record<string, Arg>, p
   }
   return {
     args: values,
-    positionals: tokens.flatMap((token, index) => token.kind === "positional" && !consumedTokens.has(index) ? [token.value] : []),
+    positionals: tokens.flatMap((token, index) => token.kind === "positional" && !consumedTokens.has(index) ? token.value : []),
   };
 }
 

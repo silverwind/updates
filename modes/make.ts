@@ -60,7 +60,7 @@ export function makeAssignmentValues(content: string): Array<string> {
 export function parseGoInstalls(values: Array<string>): Array<{installPath: string, version: string}> {
   return values.flatMap(value => {
     const match = makeGoInstallRe.exec(value);
-    return match && goHostRe.test(match[1]) ? [{installPath: match[1], version: match[2]}] : [];
+    return match && goHostRe.test(match[1]) ? {installPath: match[1], version: match[2]} : [];
   });
 }
 
