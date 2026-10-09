@@ -67,6 +67,8 @@ test("expandDepTypes", () => {
       "optional-dependencies": {"cli": ["click>=8.0.0"], "extra.one": ["sphinx>=7.0.0"]},
     },
     "dependency-groups": {"docs": ["mkdocs>=1.6.0"], "test.unit": [{"include-group": "docs"}]},
+    "build-system": {requires: ["setuptools", "wheel>=0.40.0"]},
+    tool: {uv: {"dev-dependencies": ["pytest>=8.0.0"]}},
   };
   expect(expandDepTypes(uvTypes, pyproject)).toEqual([
     ["project.dependencies", pyproject.project.dependencies],
@@ -74,6 +76,8 @@ test("expandDepTypes", () => {
     ["project.optional-dependencies.extra.one", pyproject.project["optional-dependencies"]["extra.one"]],
     ["dependency-groups.docs", pyproject["dependency-groups"].docs],
     ["dependency-groups.test.unit", pyproject["dependency-groups"]["test.unit"]],
+    ["build-system.requires", pyproject["build-system"].requires],
+    ["tool.uv.dev-dependencies", pyproject.tool.uv["dev-dependencies"]],
   ]);
   expect(expandDepTypes(uvTypes, {})).toEqual([]);
 

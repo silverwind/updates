@@ -43,9 +43,20 @@ test("updatePyprojectToml preserves unrelated content and dependency groups", ()
     `[dependency-groups]`,
     `"test.unit" = ["pkg>=1.0"]`,
     ``,
+    `[build-system]`,
+    `requires = ["setuptools", "pkg>=1.0"]`,
+    ``,
+    `[tool.uv]`,
+    `dev-dependencies = ["pkg>=1.0"]`,
+    ``,
   ].join("\n");
-  expect(updatePyprojectToml(groupedInput, {[`project.optional-dependencies.extra${fieldSep}pkg`]: {old: "1.0", new: "2.0"} as any}))
-    .toBe(groupedInput.replace(`extra = ["pkg>=1.0"]`, `extra = ["pkg>=2.0"]`));
+  expect(updatePyprojectToml(groupedInput, {
+    [`project.optional-dependencies.extra${fieldSep}pkg`]: {old: "1.0", new: "2.0"} as any,
+    [`build-system.requires${fieldSep}pkg`]: {old: "1.0", new: "3.0"} as any,
+    [`tool.uv.dev-dependencies${fieldSep}pkg`]: {old: "1.0", new: "4.0"} as any,
+  })).toBe(groupedInput.replace(`extra = ["pkg>=1.0"]`, `extra = ["pkg>=2.0"]`)
+    .replace(`requires = ["setuptools", "pkg>=1.0"]`, `requires = ["setuptools", "pkg>=3.0"]`)
+    .replace(`dev-dependencies = ["pkg>=1.0"]`, `dev-dependencies = ["pkg>=4.0"]`));
 });
 
 test("fetchPypiInfo shares a normalized request in flight", async () => {
@@ -110,6 +121,7 @@ test.each([
   ["cap violated by a dev release of its own release", "sphinx>=7.0.0,<8.0.0", "7.0.0", "8.0.0.dev1", "sphinx>=8.0.0.dev1,<8.1.0"],
   ["compatible release trimmed to the authored precision", "django~=4.2", "4.2", "4.3.1", "django~=4.3"],
   ["compatible release padded to the authored precision", "django~=4.2.0", "4.2.0", "5.0", "django~=5.0.0"],
+  ["compatible cap after a lower bound", "django>=4.2.15,~=4.2", "4.2.15", "5.2.9", "django>=5.2.9,~=5.2"],
   ["ordered local version", "pkg>=1.0", "1.0", "2.0+corp", "pkg>=2.0"],
   ["equality local version", "pkg==1.0", "1.0", "2.0+corp", "pkg==2.0+corp"],
   ["public exclusion hit by a local version", "pkg>=1.0,!=2.0", "1.0", "2.0+corp", "pkg>=1.0,!=2.0"],

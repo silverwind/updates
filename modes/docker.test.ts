@@ -34,6 +34,7 @@ test.each([
   ["no tag", "node", null],
   ["a non-semver tag", "node:latest", null],
   ["a non-semver word tag", "node:bullseye", null],
+  ["an unresolved image variable", `\${REGISTRY}/node:18`, null],
 ])("parseDockerImageRef %s", (_name, ref, expected) => {
   expect(parseDockerImageRef(ref)).toEqual(expected);
 });
@@ -88,9 +89,12 @@ test.each([
   expect(isDockerFileName(name)).toBe(compose || dockerfile);
 });
 
-test("dockerExactFileNames stay within isDockerFileName", () => {
+test("dockerExactFileNames include standard names for ancestor discovery", () => {
   expect(dockerExactFileNames.every(isDockerFileName)).toBe(true);
-  expect(dockerExactFileNames).toContain("compose.yaml");
+  expect(dockerExactFileNames).toEqual(expect.arrayContaining([
+    "dockerfile", "containerfile", "compose.yaml", "compose.override.yml", "compose.override.yaml",
+    "docker-compose.override.yml", "docker-compose.override.yaml",
+  ]));
 });
 
 test.each([
@@ -131,8 +135,10 @@ test("extractDockerRefs", () => {
   ]);
   expect(extractDockerRefs("# escape=`\nFROM `\n  node:18\nWORKDIR C:\\app\\\nFROM node:20\n", "dockerfile")
     .map(({match}) => match)).toEqual(["node:18", "node:20"]);
-  const compose = "services:\n  web:\n    image: node:20.11.1\n  db:\n    image: postgres:16.2\n    build: .\n";
+  const compose = "services:\n  web:\n    image: node:20.11.1\n  db:\n    image: postgres:16.2\n# Local build\n    build: .\n";
   expect(extractDockerRefs(compose, "compose").map(({match}) => match)).toEqual(["node:20.11.1"]);
+  expect(extractDockerRefs(`services:\n  web:\n    image: "\${IMAGE:-node:18}"\n`, "compose").map(({ref}) => ref))
+    .toMatchObject([{fullImage: "node", tag: "18"}]);
   expect(extractDockerRefs("\uFEFFFROM node:18\n", "dockerfile").map(({ref}) => ref.tag)).toEqual(["18"]);
 });
 
@@ -220,6 +226,10 @@ test.each([
     "FROM node:18\n", "node", {old: "18.0.0", new: "20", oldOrig: "18"}, "FROM node:20\n"],
   ["updateComposeFile replaces a quoted image tag", updateComposeFile,
     "services:\n  db:\n    image: 'postgres:16.2'\n", "postgres", {old: "16.2", new: "17.0"}, "services:\n  db:\n    image: 'postgres:17.0'\n"],
+  ["updateComposeFile replaces whole image defaults and skips variable compositions", updateComposeFile,
+    `services:\n  web:\n    image: "\${IMAGE:-node:18}"\n  custom:\n    image: \${IMAGE:-node:18}-alpine\n  port:\n    image: \${IMAGE:-node:18/app:3}\n`,
+    "node", nodeDep,
+    `services:\n  web:\n    image: "\${IMAGE:-node:20}"\n  custom:\n    image: \${IMAGE:-node:18}-alpine\n  port:\n    image: \${IMAGE:-node:18/app:3}\n`],
   ["updateDockerfile skips comments and shell text", updateDockerfile,
     "# FROM node:18\nRUN echo FROM node:18\nFROM node:18\n", "node", nodeDep, "# FROM node:18\nRUN echo FROM node:18\nFROM node:20\n"],
   ["updateDockerfile replaces the syntax directive, COPY --from and RUN --mount from", updateDockerfile,
@@ -234,8 +244,8 @@ test.each([
     "services:\n  web:\n    image: node:18\n  api: {image: node:18}\n", "node", nodeDep,
     "services:\n  web:\n    image: node:20\n  api: {image: node:20}\n"],
   ["updateComposeFile leaves locally built service images alone", updateComposeFile,
-    "services:\n  built:\n    image: node:18\n    build: .\n  pulled:\n    image: node:18\n", "node", nodeDep,
-    "services:\n  built:\n    image: node:18\n    build: .\n  pulled:\n    image: node:20\n"],
+    "services:\n  built:\n    image: node:18\n# Local build\n    build: .\n  pulled:\n    image: node:18\n", "node", nodeDep,
+    "services:\n  built:\n    image: node:18\n# Local build\n    build: .\n  pulled:\n    image: node:20\n"],
   ["updateDockerfile replaces an uppercase tag", updateDockerfile, "FROM foo/bar:1.0-RC1\n", "foo/bar", rcDep, "FROM foo/bar:1.1-RC1\n"],
   ["updateComposeFile replaces an uppercase tag", updateComposeFile, "    image: foo/bar:1.0-RC1\n", "foo/bar", rcDep, "    image: foo/bar:1.1-RC1\n"],
   ["updateWorkflowDockerImages replaces an uppercase container tag", updateWorkflowDockerImages,

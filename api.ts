@@ -88,7 +88,8 @@ const semversByPrecision = {
   major: new Set(["patch", "minor", "major"]),
 };
 
-const workspaceManifests: Record<string, string> = {"go.work": "go.mod", "pnpm-workspace.yaml": "package.json"};
+const workspaceFileOf: Record<string, string> = {"go.mod": "go.work", "package.json": "pnpm-workspace.yaml"};
+const workspaceFileNames = new Set(Object.values(workspaceFileOf));
 
 const apiUrl = (value: unknown, fallback: string) => normalizeUrl(typeof value === "string" ? value : fallback);
 
@@ -158,15 +159,15 @@ function canInclude(name: string, mode: string, {include, exclude}: {include: Se
   return !include.size;
 }
 
-async function resolveFiles(filesArg: Array<string> | undefined, dir: string, pathFilters: PathFilters): Promise<Set<string>> {
-  const resolvedFiles = new Set<string>();
+async function resolveFiles(filesArg: Array<string> | undefined, dir: string, pathFilters: PathFilters): Promise<Map<string, string>> {
+  const resolvedFiles = new Map<string, string>();
   const realPaths = new Set<string>();
-  const add = (file: string) => {
+  const add = (file: string, root = dir) => {
     if (resolvedFiles.has(file)) return;
     const canonical = realPath(file);
     if (realPaths.has(canonical)) return;
     realPaths.add(canonical);
-    resolvedFiles.add(file);
+    resolvedFiles.set(file, root);
   };
 
   const roots: Array<string> = [];
@@ -177,12 +178,15 @@ async function resolveFiles(filesArg: Array<string> | undefined, dir: string, pa
     } catch (err) {
       throw new Error(`Unable to open ${arg}: ${(err as Error).message}`);
     }
-    if (stat.isFile()) add(realPath(arg));
-    else if (stat.isDirectory()) roots.push(realPath(arg));
+    if (stat.isFile()) {
+      const file = realPath(arg);
+      add(file, dirname(file));
+    } else if (stat.isDirectory()) roots.push(realPath(arg));
     else throw new Error(`${arg} is neither a file nor directory`);
   }
   if (!filesArg?.length) roots.push(dir);
-  const discoveries = Promise.all(roots.map(root => discoverFiles(root, pathFilters, Boolean(filesArg?.length))));
+  const discoveries = Promise.all(roots.map(async root =>
+    (await discoverFiles(root, pathFilters, Boolean(filesArg?.length))).map(file => [file, root] as const)));
 
   if (!filesArg?.length) {
     const forgeDirSet = new Set<string>(forgeDirs);
@@ -194,11 +198,10 @@ async function resolveFiles(filesArg: Array<string> | undefined, dir: string, pa
       }
     }
   }
-  for (const found of (await discoveries).flat()) add(found);
+  for (const [file, root] of (await discoveries).flat()) add(file, root);
 
-  const workspaceFiles = Array.from(resolvedFiles).filter(file => Object.hasOwn(workspaceManifests, basename(file)));
-  for (const file of workspaceFiles) resolvedFiles.delete(join(dirname(file), workspaceManifests[basename(file)]));
-  return workspaceFiles.length ? new Set([...workspaceFiles, ...resolvedFiles]) : resolvedFiles;
+  const workspaceFiles = Array.from(resolvedFiles).filter(([file]) => workspaceFileNames.has(basename(file)));
+  return workspaceFiles.length ? new Map([...workspaceFiles, ...resolvedFiles]) : resolvedFiles;
 }
 
 function write(file: string, content: string): void {
@@ -524,12 +527,14 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
     }
   };
 
-  const files = await resolveFiles(config.files, cwdStr, {
+  const pathFilters: PathFilters = {
     includePaths: config.includePaths ?? [], excludePaths: config.excludePaths ?? defaultExcludePaths,
-  });
-  const fileContents = new Map(await pMap(Array.from(files).filter(file => {
+  };
+  const files = await resolveFiles(config.files, cwdStr, pathFilters);
+  const fileContents = new Map(await pMap(Array.from(files.keys()).filter(file => {
     if (isWorkflowFile(file)) return enabledModes.has("actions") || enabledModes.has("docker");
     const filename = basename(file);
+    if (Object.hasOwn(workspaceFileOf, filename) && files.has(join(dirname(file), workspaceFileOf[filename]))) return false;
     if (isDockerFileName(filename)) return enabledModes.has("docker");
     if (isMakeFileName(filename)) return enabledModes.has("make");
     if (isShellFileName(filename)) return enabledModes.has("shell");
@@ -648,8 +653,8 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
 
   const workspaceRootCounts: Record<string, number> = {
     cargo: cargoWorkspaceFiles.size,
-    go: Array.from(files).filter(file => basename(file) === "go.work").length,
-    npm: npmWorkspaceFiles.size + Array.from(files).filter(file => basename(file) === "pnpm-workspace.yaml").length,
+    go: Array.from(files.keys()).filter(file => basename(file) === "go.work").length,
+    npm: npmWorkspaceFiles.size + Array.from(files.keys()).filter(file => basename(file) === "pnpm-workspace.yaml").length,
   };
 
   const addPlainFile = (mode: string, file: string, content: string, filters: FileFilters): string => {
@@ -775,6 +780,8 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
 
     const mode = modeByFileName[filename];
     const projectDir = dirname(absFile);
+    const isSelectedManifest = (absPath: string, authoredPath: string) =>
+      passesPathFilters(relative(files.get(file)!, authoredPath).replaceAll("\\", "/"), pathFilters) || files.has(absPath);
     deps[mode] ??= {};
 
     if (filename === "go.work") {
@@ -795,6 +802,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
       const goMembers = useReads.filter(entry => entry !== null);
       const internalNames = new Set(goMembers.map(({modContent}) => parseGoModule(modContent)).filter(Boolean));
       for (const {usePath, modPath, modContent} of goMembers) {
+        if (!isSelectedManifest(modPath, join(projectDir, usePath, "go.mod"))) continue;
         const memberPath = workspaceMemberPath(mode, file, usePath);
         goModFiles.push({absPath: modPath, content: modContent, memberPath});
         collectDeps(mode, parseGoMod(modContent), registerModeContext(mode, memberPath, filters), filters, internalNames);
@@ -845,6 +853,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
         collectCargoDeps(cargoParsed, registerModeContext(mode, workspacePath, filters));
         cargoMemberFiles.push({absPath: absFile, content, memberPath: workspacePath});
         for (const member of members) {
+          if (!isSelectedManifest(member.absPath, join(projectDir, member.memberPath, filename))) continue;
           const memberPath = workspaceMemberPath(mode, file, member.memberPath);
           cargoMemberFiles.push({...member, memberPath});
           collectCargoDeps(parseFile(member.absPath, () => parseToml(member.content)), registerModeContext(mode, memberPath, filters));
@@ -864,7 +873,11 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
       const parsedMembers = members.map(member => ({member, pkg: parseFile(member.absPath, () => JSON.parse(member.content))}));
       const internalNames = new Set<string>(parsedMembers.map(({pkg}) => pkg.name).filter(name => typeof name === "string" && name));
       collectNpmWorkspaceMember(file, {absPath: absFile, content, memberPath: "."}, rootPkg, filters, internalNames);
-      for (const {member, pkg} of parsedMembers) collectNpmWorkspaceMember(file, member, pkg, filters, internalNames);
+      for (const {member, pkg} of parsedMembers) {
+        if (isSelectedManifest(member.absPath, join(projectDir, member.memberPath, filename))) {
+          collectNpmWorkspaceMember(file, member, pkg, filters, internalNames);
+        }
+      }
       continue;
     }
 
@@ -895,11 +908,12 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
         addNpmDep(key, selector, value);
       }
 
-      if (rootContent !== null) {
+      if (rootContent !== null && isSelectedManifest(rootPkgPath, rootPkgPath)) {
         collectNpmWorkspaceMember(file, {absPath: resolve(rootPkgPath), content: rootContent, memberPath: "."},
           parseFile(rootPkgPath, () => JSON.parse(rootContent)), filters);
       }
       for (const member of members) {
+        if (!isSelectedManifest(member.absPath, join(projectDir, member.memberPath, "package.json"))) continue;
         collectNpmWorkspaceMember(file, member, parseFile(member.absPath, () => JSON.parse(member.content)), filters);
       }
       continue;
@@ -1125,6 +1139,11 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
           if (!isHash || !comment) { delete deps.actions[key]; return; }
           const newDigest = await getExactDigest(comment);
           if (!newDigest || newDigest.startsWith(ref) || ref.startsWith(newDigest)) { delete deps.actions[key]; return; }
+          if (versionOpts.cooldownDays) {
+            const date = await getDate(newDigest);
+            if (date === undefined) throw new Error(`Unable to fetch the commit date for ${owner}/${repo}@${comment}`);
+            if (!passesCooldown(date, versionOpts.cooldownDays, versionOpts.now)) { delete deps.actions[key]; return; }
+          }
           dep.old = comment;
           dep.new = comment;
           dep.oldDigest = ref;
@@ -1141,7 +1160,8 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
           dep.old = ref;
           dep.new = newCommitSha.substring(0, ref.length);
           dep.oldPrint = oldRef; // the tag the pinned sha resolved to
-          dep.newPrint = newTag;
+          const formatted = formatActionVersion(newTag, oldRef);
+          dep.newPrint = comment && entryByName.get(formatted)?.commitSha === newCommitSha ? formatted : newTag;
         } else {
           const formatted = formatActionVersion(newTag, ref);
           if (formatted === ref) { delete deps.actions[key]; return; }

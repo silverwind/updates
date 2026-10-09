@@ -195,6 +195,26 @@ test("fetchNpmInfo prefers a scoped npmrc registry over a native default", async
   expect([fetchedUrl, authorization]).toEqual(["https://npm.company.example/@company%2fpkg", "Bearer secret"]);
 });
 
+test("fetchNpmInfo expands an npmrc environment reference in a basic auth username", async () => {
+  const dir = tempDir();
+  let authorization: string | null = null;
+  env.UPDATES_TEST_NPM_USER = "ci-user";
+  writeFileSync(join(dir, ".npmrc"), [
+    "registry=https://registry.company.test/",
+    `//registry.company.test/:username=\${UPDATES_TEST_NPM_USER}`,
+    `//registry.company.test/:_password=${Buffer.from("ci-password").toString("base64")}`,
+  ].join("\n"));
+  try {
+    await fetchNpmInfo("lodash", "dependencies", {}, {}, modeCtx({noCache: true, doFetch: (_url: string, opts: RequestInit) => {
+      authorization = new Headers(opts.headers).get("authorization");
+      return textRes({});
+    }}), dir);
+  } finally {
+    delete env.UPDATES_TEST_NPM_USER;
+  }
+  expect(authorization).toBe(`Basic ${Buffer.from("ci-user:ci-password").toString("base64")}`);
+});
+
 test("fetchNpmInfo never sends unscoped _auth to a repository registry", async () => {
   const dir = tempDir();
   const home = join(dir, "home");

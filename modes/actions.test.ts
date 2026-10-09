@@ -218,8 +218,9 @@ test.each([
 
 test.each([
   ["yaml files", "fixtures/docker-actions/.github", ["workflows/ci.yaml"]],
-  ["composite actions", "fixtures/actions-composite/.github",
-    ["actions/my-action/action.yml", "actions/nested/sub/action.yaml", "workflows/ci.yml"]],
+  ["composite actions, nested workflows and other action YAML files", "fixtures/actions-composite/.github", [
+    "actions/my-action/action.yml", "actions/my-action/ci.yml", "actions/nested/sub/action.yaml", "workflows/ci.yml", "workflows/nested/ci.yaml",
+  ]],
   ["nothing in a dir without yaml", "fixtures/cargo", []],
   ["nothing in a non-existent dir", "/nonexistent/path", []],
 ])("resolveWorkflowFiles finds %s", (_name, path, expected) => {

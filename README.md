@@ -8,7 +8,7 @@
 ## Supported files
 
 - `package.json`, `pnpm-workspace.yaml` - npm dependencies
-- `pyproject.toml` - uv dependencies
+- `pyproject.toml` - uv dependencies, including `build-system.requires` and `tool.uv.dev-dependencies`
 - `go.mod`, `go.work` - go dependencies
 - `Cargo.toml` - rust dependencies, including workspaces
 - `.{github,gitea,forgejo}/{workflows,actions}`, `workflow-templates`, `action.{yml,yaml}` - actions and docker images
@@ -62,6 +62,8 @@ pnpm dlx updates -u && pnpm i
 |`-h, --help`|Print the help|
 
 Options taking multiple arguments accept comma-separated values or repetition. An option with an optional `dep` argument applies to all dependencies when the argument is omitted. `dep` matches globs like `foo*` or regexes wrapped in slashes like `'/^foo/'`, except for `--pin`, which takes an exact name.
+
+Path filters also apply to workspace members, except files passed with `--file`.
 
 A failed lookup is reported on its own, does not hold back the other results and exits with code 1, ahead of `-E` and `-U`. With `-j`, failures are listed in an `errors` array next to `results`.
 

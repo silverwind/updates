@@ -142,14 +142,17 @@ test.each([
   expect(await loadRenovateConfig(dir, {cooldown: true})).toEqual({cooldown});
 });
 
-test("a packageRule minimumReleaseAge with no matcher applies to every dependency", async () => {
+test("a packageRule minimumReleaseAge applies globally and later null clears it", async () => {
   const dir = makeDir();
   writeFileSync(join(dir, "renovate.json"), JSON.stringify({packageRules: [
     {minimumReleaseAge: "7 days"},
     {matchPackageNames: ["esbuild"], minimumReleaseAge: "1 day"},
+    {matchPackageNames: ["esbuild"], minimumReleaseAge: null},
   ]}));
   expect(await loadRenovateConfig(dir, {cooldown: true}))
-    .toEqual({renovateVersionRules: [{cooldownDays: 7}, {matchPackageNames: ["esbuild"], cooldownDays: 1}]});
+    .toEqual({renovateVersionRules: [
+      {cooldownDays: 7}, {matchPackageNames: ["esbuild"], cooldownDays: 1}, {matchPackageNames: ["esbuild"], cooldownDays: 0},
+    ]});
 });
 
 test("a subdirectory inherits the config of a parent directory", async () => {

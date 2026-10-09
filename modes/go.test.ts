@@ -109,7 +109,8 @@ test("Go module path transforms", () => {
 });
 
 test("isGoPseudoVersion", () => {
-  expect(["v0.0.0-20221128193559-754e69321358", "v1.2.3", "v0.0.0-20221128193559"].map(isGoPseudoVersion)).toEqual([true, false, false]);
+  expect(["v0.0.0-20221128193559-754e69321358", "v20.10.0-beta1.0.20201110211921-af34b94a78a1+incompatible", "v1.2.3", "v0.0.0-20221128193559"]
+    .map(isGoPseudoVersion)).toEqual([true, true, false, false]);
 });
 
 test.each([
@@ -351,16 +352,31 @@ test("fetchGoProxyInfo raises once no proxy in the chain has the module", async 
   await expect(infoFor(makeGoCtx({}))).rejects.toThrow(/Unable to find github.com\/foo\/bar/);
 });
 
-test("fetchGoProxyInfo throws on a proxy failure instead of reporting up to date", async () => {
-  await expect(infoFor(makeGoCtx({[`${goProxyBase}/${modPath}/@latest`]: 500}))).rejects.toThrow(/Received 500/);
+test.each([
+  ["failed", 500, `Received 500 status 500 from ${goProxyBase}//team@feed/${modPath}/@latest`],
+  ["invalid", "{}", `Invalid response from ${goProxyBase}//team@feed/${modPath}/@latest`],
+])("fetchGoProxyInfo reports %s proxy responses without URL credentials", async (_name, response, message) => {
+  for (const authority of ["proxy", "test-user:test%40password@proxy"]) {
+    await expect(infoFor(makeGoCtx({[`${goProxyBase}//team@feed/${modPath}/@latest`]: response}, [],
+      parseGoProxy(`https://${authority}//team@feed`)))).rejects.toThrow(message);
+  }
 });
 
-test("fetchGoProxyInfo walks the GOPROXY list", async () => {
+test.each([
+  ["without credentials", "https://a,https://b", null, ""],
+  ["with URL credentials", "https://test-user:test%40password@a,https://test-user:test%40password@b", "Basic dGVzdC11c2VyOnRlc3RAcGFzc3dvcmQ=", ""],
+  ["with an at-sign in the path", "https://a//team@feed,https://b//team@feed", null, "//team@feed"],
+])("fetchGoProxyInfo walks the GOPROXY list %s", async (_name, proxies, authorization, suffix) => {
   const seen: Array<string> = [];
-  const [data] = await infoFor(makeGoCtx({[`https://b/${modPath}/@latest`]: JSON.stringify({Version: "v1.2.0", Time: ""})},
-    seen, parseGoProxy("https://a,https://b")));
+  const ctx = makeGoCtx({[`https://b${suffix}/${modPath}/@latest`]: JSON.stringify({Version: "v1.2.0", Time: ""})}, seen, parseGoProxy(proxies));
+  const doFetch = ctx.doFetch;
+  ctx.doFetch = (url, options) => {
+    expect(new Request(url, options).headers.get("authorization")).toBe(authorization);
+    return doFetch(url, options);
+  };
+  const [data] = await infoFor(ctx);
   expect(data.new).toBe("1.2.0");
-  expect(seen).toContain(`https://a/${modPath}/@latest`);
+  expect(seen).toContain(`https://a${suffix}/${modPath}/@latest`);
 });
 
 test("fetchGoProxyInfo short-circuits a `,` list on a proxy failure", async () => {

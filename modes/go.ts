@@ -1,9 +1,10 @@
 import {env} from "node:process";
+import {Buffer} from "node:buffer";
 import {basename, dirname, join, resolve} from "node:path";
 import {existsSync, globSync, readFileSync, realpathSync} from "node:fs";
 import {
   type Deps, type GoProxyEntry, type ModeContext, type PackageInfo, dedupe, fieldSep, stripv, getSubDir, normalizeUrl,
-  fetchWithRetry, defaultApiUrls, isVersionPrerelease, throwFetchError,
+  fetchWithRetry, defaultApiUrls, getFetchOpts, isVersionPrerelease, throwFetchError,
 } from "./shared.ts";
 import {gt, valid} from "../utils/semver.ts";
 import {esc, getOrSet, pushTo, tryOrNull} from "../utils/utils.ts";
@@ -243,14 +244,23 @@ function fetchGoVcsInfo(
   });
 }
 
-const goProxyHeaders = {"accept-encoding": "gzip, deflate, br"};
+function stripCredentials(url: URL): string {
+  url.username = "";
+  url.password = "";
+  return url.href;
+}
 
 async function fetchGoProxy(ctx: ModeContext, kind: GoFetchKind, url: string, path: string, base: string): Promise<Response | null> {
-  const res = await (kind === "primary" ? fetchWithRetry(ctx, url, {headers: goProxyHeaders}) :
-    ctx.doFetch(url, {signal: AbortSignal.timeout(ctx.goProbeTimeout), headers: goProxyHeaders}));
+  const parsed = new URL(url);
+  const {username, password} = parsed;
+  const {headers} = getFetchOpts("Basic", username || password ?
+    Buffer.from(`${decodeURIComponent(username)}:${decodeURIComponent(password)}`).toString("base64") : "");
+  const publicUrl = stripCredentials(parsed);
+  const res = await (kind === "primary" ? fetchWithRetry(ctx, publicUrl, {headers}) :
+    ctx.doFetch(publicUrl, {signal: AbortSignal.timeout(ctx.goProbeTimeout), headers}));
   if (res.ok) return res;
   if (res.status === 404 || res.status === 410) return null;
-  throwFetchError(res, url, path, base);
+  throwFetchError(res, publicUrl, path, stripCredentials(new URL(base)));
 }
 
 async function readGoProxyInfo(res: Response, url: string, path: string): Promise<ProbeResult> {
@@ -258,7 +268,7 @@ async function readGoProxyInfo(res: Response, url: string, path: string): Promis
     const data = await res.json() as {Version?: string, Time?: string};
     if (data?.Version) return {Version: data.Version, Time: data.Time || "", path};
   } catch {}
-  throw new Error(`Invalid response from ${url}`);
+  throw new Error(`Invalid response from ${stripCredentials(new URL(url))}`);
 }
 
 const goFetchesByCtx = new WeakMap<ModeContext, Map<string, Promise<ProbeResult | null>>>();

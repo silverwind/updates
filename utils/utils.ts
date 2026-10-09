@@ -93,7 +93,9 @@ export const modeByFileName: Record<string, string> = {
   "pnpm-workspace.yaml": "npm", "package.json": "npm", "pyproject.toml": "pypi", "go.work": "go", "go.mod": "go", "Cargo.toml": "cargo",
 };
 
-export const uvTypes = ["project.dependencies", "project.optional-dependencies.*", "dependency-groups.*"];
+export const uvTypes = [
+  "project.dependencies", "project.optional-dependencies.*", "dependency-groups.*", "build-system.requires", "tool.uv.dev-dependencies",
+];
 
 export const goTypes = ["deps", "indirect", "replace", "tool"];
 

@@ -289,7 +289,7 @@ export function findVersion(data: any, versions: Array<string>, {range, semvers,
 }
 
 export function isGoPseudoVersion(version: string): boolean {
-  return /\d{14}-[0-9a-f]{12}$/.test(version);
+  return /\d{14}-[0-9a-f]{12}(?:\+incompatible)?$/.test(version);
 }
 
 export function findNewVersion(data: any, {mode, range: authoredRange, useGreatest, usePre, useRel, semvers, pinnedRange, pinNoDowngrade, cooldownDays, now, allowDowngrade}: FindNewVersionOpts): string | null {
@@ -579,19 +579,20 @@ function parseReleases(data: any, cached = false): Array<Release> {
   });
 }
 
-type ForgePage<T> = {entries: Array<T>, link: string};
+type ForgePage<T> = {entries: Array<T>, link: string, total: number};
 
 async function fetchForgePage<T>(
   url: string, ctx: ModeContext, key: "tags" | "releases", parse: (data: any, cached: boolean) => Array<T>,
 ): Promise<ForgePage<T> | null> {
   const body = await fetchForgeEtag(url, ctx, key, async res => JSON.stringify({
     link: res.headers.get("link") || "",
+    total: Number(res.headers.get("x-total-count")) || 0,
     [key]: parse(await res.json(), false),
   }));
   if (!body) return null;
   const parsed = JSON.parse(body);
   if (typeof parsed?.link !== "string") throw new TypeError(`Invalid cached Forge ${key} response`);
-  return {entries: parse(parsed[key], true), link: parsed.link};
+  return {entries: parse(parsed[key], true), link: parsed.link, total: Number(parsed.total) || 0};
 }
 
 function lastPageFromLink(link: string): number {
@@ -608,7 +609,7 @@ async function fetchForgePages<T>(
 ): Promise<void> {
   const page1 = await fetchForgePage(url(1), ctx, key, parse);
   if (!page1) return;
-  const lastPage = lastPageFromLink(page1.link);
+  const lastPage = page1.total > 0 ? Math.min(Math.ceil(page1.total / (page1.entries.length || 1)), maxTagPages) : lastPageFromLink(page1.link);
   const maxWave = effectiveConcurrency(ctx);
   for (let next = 2, wave = 1, done = take(page1.entries); next <= lastPage && !done; next += wave, wave = Math.min(wave * 2, maxWave)) {
     const pages = await Promise.all(
@@ -626,7 +627,7 @@ export async function fetchForgeTags(
   const unresolved = new Set(oldRefs.filter(Boolean));
   const bounded = unresolved.size > 0;
   await fetchForgePages(
-    page => `${apiUrl}/repos/${owner}/${repo}/tags?per_page=100&page=${page}`,
+    page => `${apiUrl}/repos/${owner}/${repo}/tags?${apiUrl.endsWith("/api/v1") ? "limit" : "per_page"}=100&page=${page}`,
     ctx, "tags", parseTags, entries => {
       for (const entry of entries) {
         for (const ref of unresolved) if (ref === entry.name || entry.commitSha.startsWith(ref)) unresolved.delete(ref);

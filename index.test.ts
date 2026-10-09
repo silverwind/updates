@@ -613,10 +613,15 @@ test("go replace reports and writes the update", async () => {
   expect(updated).toContain("replace");
 });
 
-test("go workspace reports and writes member updates", async () => {
+test("go workspace reports and writes member updates, skipping excluded members", async () => {
   const dir = copyFixture("go-workspace");
   appendFileSync(join(dir, "app", "go.mod"), "require example.com/workspace/lib v1.0.0\n");
-  const {results: {go}, errors} = await updates({files: [join(dir, "go.work")], goproxy: goProxyUrl, update: true, color: false, noCache: true});
+  const filtered = await updates({files: [dir], excludePaths: ["lib/**"], goproxy: goProxyUrl, color: false, noCache: true});
+  expect(filtered.errors).toBeUndefined();
+  expect(filtered.results.go["deps|./lib"]).toBeUndefined();
+  expect(filtered.results.go["deps|./app"]["example.com/workspace/lib"]).toBeUndefined();
+  expect(filtered.results.go["deps|./app"]["github.com/google/uuid"].old).toBe("1.5.0");
+  const {results: {go}, errors} = await updates({files: [dir], goproxy: goProxyUrl, update: true, color: false, noCache: true});
   expect(errors).toBeUndefined();
   expect(go["deps|./app"]["github.com/google/uuid"].old).toBe("1.5.0");
   expect(go["deps|./lib"]["github.com/google/uuid"].old).toBe("1.5.0");
@@ -629,8 +634,9 @@ test("go workspace reports and writes member updates", async () => {
 
 test("cargo workspace reports and writes root and member updates", async () => {
   const dir = copyFixture("cargo-workspace");
-  const both = await updates({files: [join(dir, "crate-a", "Cargo.toml"), join(dir, "Cargo.toml")], cargoapi: cargoUrl, color: false, noCache: true});
-  expect(Object.keys(both.results.cargo).filter(key => key.includes("crate-a"))).toHaveLength(1);
+  expect(Object.keys((await updates({
+    files: [join(dir, "crate-a", "Cargo.toml"), dir], excludePaths: ["crate-a/**", "crate-b/**"], cargoapi: cargoUrl, color: false, noCache: true,
+  })).results.cargo).sort()).toEqual(["dependencies|./crate-a", "workspace.dependencies"]);
 
   const {cargo} = (await updates({files: [join(dir, "Cargo.toml")], cargoapi: cargoUrl, update: true, color: false, noCache: true})).results;
   expect(cargo).toMatchObject({
@@ -669,6 +675,12 @@ test("pnpm workspace", async () => {
   expect(npm["dependencies|./packages/lib-b"].svgstore).toBeUndefined();
   const fromMember = await updates({...options, files: [fixture("pnpm-workspace/packages/app-a/package.json"), pnpmWorkspaceFile]});
   expect(Object.keys(fromMember.results.npm).sort()).toEqual(Object.keys(npm).sort());
+  for (const files of [[fixture("pnpm-workspace/package.json")], [fixture("pnpm-workspace/package.json"), pnpmWorkspaceFile]]) {
+    expect((await updates({...options, files, excludePaths: ["package.json"]})).results.npm.devDependencies).toEqual(npm.devDependencies);
+  }
+  const excluded = await updates({...options, files: [dirname(pnpmWorkspaceFile)], excludePaths: ["packages/app-a/**"]});
+  expect(excluded.results.npm["dependencies|./packages/app-a"]).toBeUndefined();
+  expect(excluded.results.npm["dependencies|./packages/lib-b"].react.new).toBeTruthy();
 });
 
 test("pnpm workspace update, and a second run is a no-op", async () => {
@@ -703,19 +715,27 @@ test("multiple npm workspace roots keep dependency and config identity", async (
   ]});
   const member = JSON.stringify({dependencies: {noty: "^3.1.0"}});
   const dir = writeTree("multiple-npm-workspaces", {
-    "array/package.json": JSON.stringify({workspaces: ["packages/*"], dependencies: {react: "^17.0.0"}}),
+    "array/package.json": JSON.stringify({workspaces: ["packages/*", "examples/*"], dependencies: {react: "^17.0.0"}}),
     "array/packages/app/package.json": member,
+    "array/examples/legacy/package.json": member,
     "array/renovate.json": rules("<=18.2.0", "<=3.1.4"),
     "object/package.json": JSON.stringify({workspaces: {packages: ["packages/*"]}, dependencies: {react: "^17.0.0"}}),
     "object/packages/app/package.json": member,
     "object/renovate.json": rules("<=18.1.0", "<=3.1.3"),
   });
+  await execFileAsync("git", ["init", "-q"], {cwd: dir});
+  expect(Object.keys((await updates(apiOpts({
+    files: [dir], modes: ["npm"], excludePaths: ["object/packages/**"],
+  }))).results.npm).filter(key => key.endsWith(":./packages/app"))).toEqual([
+    `dependencies|${realpathSync.native(join(dir, "array", "package.json"))}:./packages/app`,
+  ]);
   await updates(apiOpts({files: [join(dir, "array", "package.json"), join(dir, "object", "package.json")], modes: ["npm"], update: true}));
   const dependencies = (...path: Array<string>) => JSON.parse(read(dir, ...path, "package.json")).dependencies;
   expect(dependencies("array").react).toBe("^18.2.0");
   expect(dependencies("object").react).toBe("^18.1.0");
   expect(dependencies("array", "packages", "app").noty).toBe("^3.1.4");
   expect(dependencies("object", "packages", "app").noty).toBe("^3.1.3");
+  expect(read(dir, "array", "examples", "legacy", "package.json")).toBe(member);
 });
 
 test("local npm dependencies are neither requested nor rewritten", async () => {
@@ -737,7 +757,9 @@ test("npm workspace members are skipped, published or not, the root and an alias
       name: "app", dependencies: {"internal-lib": "^1.0.0", noty: "^3.1.0", react: "^17.0.0", aliased: "npm:noty@^3.1.0"},
     }),
   });
-  const {errors} = await updates(apiOpts({files: [join(dir, "package.json")], modes: ["npm"], update: true}));
+  const {errors} = await updates(apiOpts({
+    files: [join(dir, "package.json")], modes: ["npm"], excludePaths: ["packages/noty/**"], update: true,
+  }));
   expect(errors).toBeUndefined();
   const {dependencies} = JSON.parse(read(dir, "packages", "app", "package.json"));
   expect(dependencies.noty).toBe("^3.1.0");
@@ -821,10 +843,28 @@ test.each([
   expect(dependencies).toMatchObject(expected);
 });
 
-test("actions cooldown gates on the tag date after selection, not before", async () => {
-  const run = (cooldown: string) => runCliExec([...actionsArgs, "-j", "-f", actionsDir, "-i", "actions/checkout", "-C", cooldown]);
-  expect(Object.values((await run("1")).results.actions)[0]).toMatchObject({"actions/checkout": {new: "10"}});
-  expect((await run("999999d")).message).toContain("up to date");
+test("actions cooldown gates on the commit date of the selected tag and of a followed commented sha pin", async () => {
+  const sha = (version: number) => `c${String(version).padStart(39, "0")}`;
+  const dir = writeTree("actions-cooldown", {
+    ".github/workflows/ci.yml": workflowSteps("o/cooldown@v1.0.0"),
+    ".github/workflows/pin.yml": workflowSteps(`o/cooldown@${sha(1)} # v3.0.0`),
+  });
+  lazyRoute("/github/repos/o/cooldown/tags", () => [3, 2, 1].map(version => ({name: `v${version}.0.0`, commit: {sha: sha(version)}})));
+  for (const [version, days] of [[3, 0], [2, 2]]) {
+    lazyRoute(`/github/repos/o/cooldown/git/commits/${sha(version)}`, () => ({committer: {date: new Date(Date.now() - days * 24 * 3600 * 1000).toISOString()}}));
+  }
+  const run = (cooldown: string, path = ".github/workflows") => updates({
+    files: [join(dir, path)], modes: ["actions"], forgeapi: githubUrl, noCache: true, color: false, cooldown,
+  });
+  const byFile = async (cooldown: string) => Object.fromEntries(Object.entries((await run(cooldown)).results.actions)
+    .map(([file, deps]) => [basename(file), deps]));
+  expect(await byFile("0")).toMatchObject({"ci.yml": {"o/cooldown": {new: "3.0.0"}}, "pin.yml": {"o/cooldown": {newDigest: sha(3)}}});
+  expect(await byFile("1")).toEqual({"ci.yml": {"o/cooldown": expect.objectContaining({new: "2.0.0"})}});
+  expect((await run("3")).message).toContain("up to date");
+  routes.set(`/github/repos/o/cooldown/git/commits/${sha(3)}`, (_, res) => { res.writeHead(400).end(); });
+  expect((await run("1", ".github/workflows/pin.yml")).errors).toMatchObject([
+    {mode: "actions", name: "o/cooldown", error: "Unable to fetch the commit date for o/cooldown@v3.0.0"},
+  ]);
 });
 
 test("text output renders several modes with a MODE column", async () => {
@@ -854,10 +894,18 @@ test("actions update rewrites tags and keeps same-sha pin identities distinct", 
   ));
 });
 
-test("actions hash-pinned on a version comment updates the sha and the comment", async () => {
+test("actions hash pin comments keep their precision only for an alias on the selected tag's commit, uncommented pins report the full version", async () => {
   const oldDigest = "dddd000000000000000000000000000000000000";
-  const dir = writeTree("actions-hash", {".github/workflows/ci.yaml": workflowSteps(`actions/checkout@${oldDigest} # v4.2.0`, `actions/setup-node@${oldDigest} # v10.0.0`)});
-  const {results} = await runCliExec(["-u", "-j", ...actionsArgs, "-f", join(dir, ".github/workflows")]);
+  lazyRoute("/github/repos/o/precision/tags", () => [["v5", 1], ["v5.1", 2], ["v5.1.0", 2], ["v4.2", 0]].map(([name, sha]) => ({
+    name, commit: {sha: `aaaa${String(sha).padStart(36, "0")}`},
+  })));
+  const dir = writeTree("actions-hash", {".github/workflows/ci.yaml": workflowSteps(
+    `actions/checkout@${oldDigest} # v4.2.0`,
+    `actions/setup-node@${oldDigest} # v10.0.0`,
+    `o/precision@${oldDigest} # v4`,
+    `o/precision@${oldDigest} # v4.2`,
+  ), ".github/workflows/plain.yaml": workflowSteps(`o/precision@aaaa${"0".repeat(36)}`)});
+  const {results} = await updates({files: [join(dir, ".github/workflows")], modes: ["actions"], forgeapi: githubUrl, noCache: true, color: false, update: true});
   expect(Object.values(results.actions)[0]).toMatchObject({
     "actions/checkout": {old: "4.2.0", new: "10.0.1"},
     "actions/setup-node": {old: "v10.0.0", new: "v10.0.0", newDigest: "bbbb000000000000000000000000000000000010"},
@@ -865,7 +913,10 @@ test("actions hash-pinned on a version comment updates the sha and the comment",
   expect(read(dir, ".github/workflows/ci.yaml")).toBe(workflowSteps(
     "actions/checkout@cccc000000000000000000000000000000000011 # v10.0.1",
     "actions/setup-node@bbbb000000000000000000000000000000000010 # v10.0.0",
+    "o/precision@aaaa000000000000000000000000000000000002 # v5.1.0",
+    "o/precision@aaaa000000000000000000000000000000000002 # v5.1",
   ));
+  expect(Object.entries<any>(results.actions).find(([file]) => file.endsWith("plain.yaml"))![1]["o/precision"].new).toBe("5.1.0");
 });
 
 test("actions composite action discovery", async () => {
@@ -1073,7 +1124,7 @@ test("api cooldown overrides apply per package and last match wins", async () =>
   expect(lastMatch.noty.new).toBe("3.1.4");
 });
 
-test("pypi dotted group names are collected, a declined rewrite is not reported", async () => {
+test("pypi dotted groups, build requirements and uv dev-dependencies are collected, a declined rewrite is not reported", async () => {
   const pyproject = lines(
     `[project]`,
     `dependencies = ["djlint>=1.30.0,!=1.31.0"]`,
@@ -1083,13 +1134,24 @@ test("pypi dotted group names are collected, a declined rewrite is not reported"
     ``,
     `[dependency-groups]`,
     `"test.unit" = ["types-paramiko>=3.4.0.20240423"]`,
+    ``,
+    `[build-system]`,
+    `requires = ["setuptools", "PyYAML==1.0"]`,
+    ``,
+    `[tool.uv]`,
+    `dev-dependencies = ["setuptools", "types-requests==2.32.0.20240622"]`,
   );
   const file = join(writeTree("pypi-groups", {"pyproject.toml": pyproject}), "pyproject.toml");
-  const {pypi} = (await updates(apiOpts({files: [file], modes: ["pypi"], update: true}))).results;
+  const {results: {pypi}, errors} = await updates(apiOpts({files: [file], modes: ["pypi"], update: true}));
+  expect(errors).toBeUndefined();
   expect(pypi["project.optional-dependencies.extra.one"].PyYAML.new).toBe("6.0");
   expect(pypi["dependency-groups.test.unit"]["types-paramiko"].new).toBe("3.5.0.20250801");
+  expect(pypi["build-system.requires"].PyYAML).toMatchObject({old: "1.0", new: "6.0"});
+  expect(pypi["tool.uv.dev-dependencies"]["types-requests"]).toMatchObject({old: "2.32.0.20240622", new: "2.32.4.20250611"});
   expect(pypi["project.dependencies"]).toBeUndefined();
-  expect(read(file)).toBe(pyproject.replace("PyYAML>=1.0", "PyYAML>=6.0").replace("types-paramiko>=3.4.0.20240423", "types-paramiko>=3.5.0.20250801"));
+  expect(read(file)).toBe(pyproject
+    .replace("PyYAML>=1.0", "PyYAML>=6.0").replace("types-paramiko>=3.4.0.20240423", "types-paramiko>=3.5.0.20250801")
+    .replace("PyYAML==1.0", "PyYAML==6.0").replace("types-requests==2.32.0.20240622", "types-requests==2.32.4.20250611"));
 });
 
 test.each(["PyYAML", "pyyaml"])("a pypi pin holds, keyed by the authored spelling or the normalized one: %s", async key => {

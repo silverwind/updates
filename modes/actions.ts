@@ -114,7 +114,7 @@ export function isWorkflowFile(file: string): boolean {
 
 export function resolveWorkflowFiles(forgeDir: string): Array<string> {
   const found = new Set<string>();
-  try {
+  try { // the direct scan also follows symlinks and survives unreadable sibling dirs
     const workflowDir = join(forgeDir, "workflows");
     for (const file of readdirSync(workflowDir)) {
       if (/\.ya?ml$/.test(file)) found.add(resolve(workflowDir, file));
@@ -122,7 +122,7 @@ export function resolveWorkflowFiles(forgeDir: string): Array<string> {
   } catch {}
   try {
     for (const entry of readdirSync(forgeDir, {recursive: true, withFileTypes: true})) {
-      if (entry.isFile() && /^action\.ya?ml$/.test(entry.name)) found.add(resolve(entry.parentPath, entry.name));
+      if (entry.isFile() && isWorkflowFile(join(entry.parentPath, entry.name))) found.add(resolve(entry.parentPath, entry.name));
     }
   } catch {}
   return Array.from(found);

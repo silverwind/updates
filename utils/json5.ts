@@ -82,5 +82,5 @@ export function parseJsonish(text: string): unknown {
     i++;
   }
 
-  return JSON.parse(out);
+  return JSON.parse(out.trim());
 }

@@ -114,6 +114,7 @@ export function updateRequirement(text: string, oldValue: string, newValue: stri
       const cap = parsePep440(specifier.version);
       if (specifier.op === "<" && cap) specifier.version = raisedUpperBound(cap, oldParsed, newParsed);
       else if (specifier.op === "<=") specifier.version = orderedVersion(newParsed);
+      else if (specifier.op === "~=" && cap?.epoch === newParsed.epoch) specifier.version = orderedVersion(newParsed, cap.release.length);
       else return null;
     }
     if (!specifierAllows(newParsed, specifier)) return null;

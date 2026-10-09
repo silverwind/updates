@@ -8,6 +8,7 @@ import type {Config} from "../config.ts";
 const daysPerUnit: Record<string, number> = {y: 365.25, w: 7, d: 1, h: 1 / 24, m: 1 / 1440, s: 1 / 86400, ms: 1 / 86400000};
 
 function parseRenovateDuration(value: unknown): number | undefined {
+  if (value === null) return 0;
   if (typeof value !== "string") return undefined;
   const parts = value.split(/(.*?[a-z]+)/).map(part => part.trim()).filter(Boolean);
   if (!parts.length) return undefined;

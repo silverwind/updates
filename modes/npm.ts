@@ -51,7 +51,7 @@ function getRegistryAuthToken(registryUrl: string, config: Record<string, any>, 
     const password = get(regUrl, "_password");
     if (username && password) {
       const pass = Buffer.from(replaceEnvVar(password), "base64").toString("utf8");
-      return {token: Buffer.from(`${username}:${pass}`).toString("base64"), type: "Basic"};
+      return {token: Buffer.from(`${replaceEnvVar(username)}:${pass}`).toString("base64"), type: "Basic"};
     }
     const legacyToken = get(regUrl, "_auth");
     if (legacyToken) return {token: replaceEnvVar(legacyToken), type: "Basic"};

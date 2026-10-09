@@ -127,6 +127,7 @@ export function dockerImageNames(image: string): Array<string> {
 }
 
 export function parseDockerImageRef(ref: string): DockerImageRef | null {
+  if (ref.includes("$")) return null;
   ref = ref.replace(/^docker:\/\//, "");
 
   const [taggedRef, digest, ...extra] = ref.split("@");
@@ -164,7 +165,7 @@ export function extractDockerRefs(content: string, fileType: "dockerfile" | "com
   const locallyBuilt = locallyBuiltImages(content);
   for (const match of content.matchAll(composeImageRe)) {
     if (locallyBuilt.has(match.index + match[0].indexOf("image:"))) continue;
-    const ref = parseDockerImageRef(match[1]);
+    const ref = parseDockerImageRef(match[1].replace(/^\$\{\w+:-([^${}]+)\}$/, "$1"));
     if (ref) results.push({ref, match: match[1]});
   }
   return results;
@@ -174,7 +175,7 @@ function locallyBuiltImages(content: string): Set<number> {
   const result = new Set<number>();
   const scopes = new Map<number, {built: boolean, images: Array<number>}>();
   for (const line of content.matchAll(/^.*$/gm)) {
-    if (!line[0].trim()) continue;
+    if (!line[0].trim() || line[0].trimStart().startsWith("#")) continue;
     const indent = /^[ \t]*/.exec(line[0])![0].length;
     for (const level of scopes.keys()) {
       if (level > indent) scopes.delete(level);
@@ -381,7 +382,7 @@ export function findDockerVersion(
   return newTag === oldTag ? null : {newTag, date: best.date};
 }
 
-const tagEnd = "(?![\\w.@+-])";
+const tagEnd = "(?![\\w.@+/-])";
 
 function imageReplacements(deps: Deps): Map<string, string> {
   const byRef = new Map<string, string>();
@@ -447,8 +448,9 @@ export function updateDockerfile(content: string, deps: Deps): string {
 
 export function updateComposeFile(content: string, deps: Deps): string {
   const locallyBuilt = locallyBuiltImages(content);
-  return replaceImageRefs(content, imageReplacements(deps), [String.raw`${keyStart}image:\s*['"]?`],
-    offset => !locallyBuilt.has(offset));
+  return replaceImageRefs(content, imageReplacements(deps), [
+    String.raw`${keyStart}image:\s*['"]?(?:\$\{\w+:-(?=[^{}$]+\}['"]?(?:\s|[,}#]|$)))?`,
+  ], offset => !locallyBuilt.has(offset));
 }
 
 export function updateWorkflowDockerImages(content: string, deps: Deps): string {
@@ -458,8 +460,11 @@ export function updateWorkflowDockerImages(content: string, deps: Deps): string 
   ]);
 }
 
-export const dockerExactFileNames =
-  ["Dockerfile", "Containerfile", "compose.yml", "compose.yaml", "docker-compose.yml", "docker-compose.yaml"];
+export const dockerExactFileNames = [
+  "Dockerfile", "dockerfile", "Containerfile", "containerfile", "compose.yml", "compose.yaml",
+  "compose.override.yml", "compose.override.yaml", "docker-compose.yml", "docker-compose.yaml",
+  "docker-compose.override.yml", "docker-compose.override.yaml",
+];
 
 export function isComposeFile(filename: string): boolean {
   return /^(?:docker-|compose).*\.ya?ml$/.test(filename);

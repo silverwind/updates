@@ -486,7 +486,7 @@ test("fetchActionTags skips release metadata when stability is unused", async ()
   expect(urls[0]).toContain("/tags?");
 });
 
-test("fetchActionTags walks until the authored ref turns up, and no further", async () => {
+test("fetchActionTags walks forge pagination until the authored ref turns up, and no further", async () => {
   const lastPage = 40;
   const walk = async (refs: Array<string>) => {
     let fetched = 0;
@@ -499,6 +499,25 @@ test("fetchActionTags walks until the authored ref turns up, and no further", as
   expect(await walk([])).toEqual([lastPage, lastPage + 1]);
   expect(await walk(["v1.0.0"])).toEqual([1, 2]);
   expect(await walk(["sha11"])).toEqual([16, 17]);
+
+  const urls: Array<string> = [];
+  let revalidate = false;
+  const apiUrl = "https://gitea-pagination.test/api/v1";
+  const ctx = modeCtx({doFetch: (url: string, opts: RequestInit) => {
+    urls.push(url);
+    if (revalidate) {
+      expect(new Headers(opts.headers).get("if-none-match")).toBe('"tags"');
+      return Promise.resolve({ok: false, status: 304, headers: new Headers()});
+    }
+    return Promise.resolve({ok: true,
+      json: () => Promise.resolve((new URL(url).searchParams.get("page") === "1" ? ["v3.0.0", "v2.0.0"] : ["v1.0.0"]).map(name => ({name, commit: {sha: "abc"}}))),
+      headers: new Headers([["x-total-count", "3"], ["etag", '"tags"']])});
+  }});
+  expect(await fetchActionTags(apiUrl, "actions", "checkout", ctx, ["v1.0.0"])).toHaveLength(3);
+  await flushCacheWrites();
+  revalidate = true;
+  expect(await fetchActionTags(apiUrl, "actions", "checkout", {...ctx}, ["v1.0.0"])).toHaveLength(3);
+  expect(urls).toEqual([1, 2, 1, 2].map(page => `${apiUrl}/repos/actions/checkout/tags?limit=100&page=${page}`));
 });
 
 test("every request shares the run's one socket budget", async () => {

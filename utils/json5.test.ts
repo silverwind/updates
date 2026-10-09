@@ -2,6 +2,7 @@ import {parseJsonish} from "./json5.ts";
 
 test.each([
   ["plain JSON", `{"a":1,"b":[2,3]}`, {a: 1, b: [2, 3]}],
+  ["a leading BOM", '\uFEFF{"a":1}', {a: 1}],
   ["comments and trailing commas", `{ // line
     a: [1, 2,], /* block */ b: 3,
   }`, {a: [1, 2], b: 3}],
