@@ -906,7 +906,8 @@ test("actions hash pin comments keep their precision only for an alias on the se
     `o/precision@${oldDigest} # v4.2`,
   ), ".github/workflows/plain.yaml": workflowSteps(`o/precision@aaaa${"0".repeat(36)}`)});
   const {results} = await updates({files: [join(dir, ".github/workflows")], modes: ["actions"], forgeapi: githubUrl, noCache: true, color: false, update: true});
-  expect(Object.values(results.actions)[0]).toMatchObject({
+  const byFile = (name: string) => Object.entries<any>(results.actions).find(([file]) => file.endsWith(name))![1];
+  expect(byFile("ci.yaml")).toMatchObject({
     "actions/checkout": {old: "4.2.0", new: "10.0.1"},
     "actions/setup-node": {old: "v10.0.0", new: "v10.0.0", newDigest: "bbbb000000000000000000000000000000000010"},
   });
@@ -916,7 +917,7 @@ test("actions hash pin comments keep their precision only for an alias on the se
     "o/precision@aaaa000000000000000000000000000000000002 # v5.1.0",
     "o/precision@aaaa000000000000000000000000000000000002 # v5.1",
   ));
-  expect(Object.entries<any>(results.actions).find(([file]) => file.endsWith("plain.yaml"))![1]["o/precision"].new).toBe("5.1.0");
+  expect(byFile("plain.yaml")["o/precision"].new).toBe("5.1.0");
 });
 
 test("actions composite action discovery", async () => {
