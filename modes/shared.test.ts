@@ -8,7 +8,7 @@ import {
   fetchWithRetry,
   findNewVersion, findVersion, ForgeError, formatVersionPrecision, getFetchOpts, getForgeTokens, getInfoUrl,
   getLimiter, getSubDir, hashRe, isVersionPrerelease, normalizeUrl, packageVersion, parseExtraheaders,
-  resolvePackageJsonUrl, selectTag, stripv, throwFetchError,
+  pypiReleaseDate, redactUrlCredentials, resolvePackageJsonUrl, selectTag, stripv, throwFetchError,
   type ModeContext,
 } from "./shared.ts";
 import {esc} from "../utils/utils.ts";
@@ -101,6 +101,15 @@ test.each([
 test("hashRe recognizes plausible GitHub commit hashes", () => {
   expect(["deadbee", "deadbeef", "a".repeat(40)].every(value => hashRe.test(value))).toBe(true);
   expect(["abc123", "2024010", "a".repeat(41), "b".repeat(64)].some(value => hashRe.test(value))).toBe(false);
+});
+
+test("redactUrlCredentials omits URL userinfo only", () => {
+  for (const password of ["secret", "first@second"]) {
+    expect(redactUrlCredentials(`Failed to fetch https://user:${password}@registry.test/pkg`))
+      .toBe("Failed to fetch https://registry.test/pkg");
+  }
+  expect(redactUrlCredentials("https://registry.test/team@feed?user=first@second#third@fourth"))
+    .toBe("https://registry.test/team@feed?user=first@second#third@fourth");
 });
 
 test("throwFetchError names the status, or the package when there is none", () => {
@@ -287,6 +296,8 @@ test("findNewVersion filters PyPI files by yank and earliest upload, dating the 
   }};
   expect(findNewVersion(data, {...pypiOpts, range: "1.0.0", cooldownDays: 5,
     now: Date.parse("2026-04-25T00:00:00Z")})).toBe("1.1.0");
+  expect([data.releases["1.1.0"], data.releases["1.3.0"], data.releases["1.4.0"]].map(pypiReleaseDate))
+    .toEqual(["2026-04-01T00:00:00Z", undefined, "2026-04-24T00:00:00Z"]);
 });
 
 test("findNewVersion does not follow an unstable train across a major", () => {
@@ -328,6 +339,13 @@ test.each([
     {range: "1.0.0", semvers: new Set(["patch", "minor"]), pinnedRange: "<1.5.0"}, null],
   ["the same-major fallback pinnedRange admits", goSameMajor("1.4.0"),
     {range: "1.0.0", semvers: new Set(["patch", "minor"]), pinnedRange: "<1.5.0"}, "1.4.0"],
+  ["nothing for an unapproved downgrade", {...goData, new: "0.9.0"}, {range: "1.0.0"}, null],
+  ["an approved downgrade", {...goData, new: "0.9.0"}, {range: "1.0.0", allowDowngrade: true}, "0.9.0"],
+  ["a downgrade into the pin", {...goData, new: "0.9.0"}, {range: "1.0.0", pinnedRange: "<1"}, "0.9.0"],
+  ["nothing for a pin that forbids downgrades", {...goData, new: "0.9.0"},
+    {range: "1.0.0", pinnedRange: "<1", pinNoDowngrade: true}, null],
+  ["the same-major fallback past its cooldown", goSameMajor("1.5.0"),
+    {range: "1.0.0", cooldownDays: 7, now: Date.parse("2025-03-03")}, "1.5.0"],
 ])("findNewVersion go mode returns %s", (_name, data, opts, expected) => {
   expect(findNewVersion(data, {...goOpts, ...opts})).toBe(expected);
 });
@@ -457,12 +475,12 @@ test("fetchActionTags single page no link header, commit or not", async () => {
   const tagsData = [{name: "v1.0.0", commit: {sha: "abc"}}, {name: "v2.0.0", commit: {sha: "def"}}, {name: "v3.0.0"}];
   const ctx = modeCtx({doFetch: (url: string) => Promise.resolve({ok: true,
     json: () => Promise.resolve(new URL(url).pathname.endsWith("/releases") ? [
-      {tag_name: "v1.0.0", prerelease: false, draft: false},
+      {tag_name: "v1.0.0", prerelease: false, draft: false, published_at: "2026-10-14T00:00:00Z"},
       {tag_name: "v2.0.0", prerelease: true, draft: false},
     ] : tagsData), headers: new Headers()})});
   const result = await fetchActionTags("https://api.github.com", "actions", "checkout", ctx);
   expect(result).toEqual([
-    {name: "v1.0.0", commitSha: "abc", isStable: true},
+    {name: "v1.0.0", commitSha: "abc", isStable: true, releaseTimestamp: "2026-10-14T00:00:00Z"},
     {name: "v2.0.0", commitSha: "def", isStable: false},
     {name: "v3.0.0", commitSha: ""},
   ]);

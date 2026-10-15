@@ -1,5 +1,5 @@
 import {
-  valid, parse, coerce, diff, gt, satisfies, validRange, parsePep440, comparePep440, diffPep440,
+  valid, parse, coerce, gt, satisfies, validRange, parsePep440, comparePep440, diffPep440,
   pep440Versioning, semverVersioning,
 } from "./semver.ts";
 
@@ -32,12 +32,14 @@ test("coerce, diff, and ordering", () => {
 
   for (const [left, right, expected] of [
     ["1.0.0", "2.0.0", "major"], ["1.0.0", "1.1.0", "minor"], ["1.0.0", "1.0.1", "patch"],
-    ["1.0.0", "1.0.0", null], ["abc", "1.0.0", null], ["1.0.0", "abc", null],
+    ["1.0.0", "1.0.0", null],
     ["1.0.0-alpha.1", "1.0.0-alpha.2", "prerelease"], ["1.0.0", "2.0.0-alpha", "premajor"],
     ["1.0.0", "1.1.0-alpha", "preminor"], ["1.0.0", "1.0.1-alpha", "prepatch"],
     ["1.0.0-alpha", "1.0.0", "major"], ["0.0.0-alpha", "1.0.0", "major"],
     ["1.1.0-alpha", "1.1.0", "minor"], ["2.0.0", "1.0.0", "major"], ["1.1.0", "1.0.0", "minor"],
-  ] as Array<[string, string, string | null]>) expect(diff(left, right), `${left}, ${right}`).toBe(expected);
+  ] as Array<[string, string, string | null]>) {
+    expect(semverVersioning.diff(semverVersioning.parse(left)!, semverVersioning.parse(right)!), `${left}, ${right}`).toBe(expected);
+  }
 
   for (const [left, right, expected] of [
     ["2.0.0", "1.0.0", true], ["1.0.0", "2.0.0", false], ["1.0.0", "1.0.0", false],

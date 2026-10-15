@@ -425,15 +425,24 @@ export function updateDockerfile(content: string, deps: Deps): string {
     const newDigest = replacement.slice(newAt + 1);
     const replacesDigest = oldAt !== -1 && newAt !== -1 && oldDigest !== newDigest;
     const relativeDigest = replacesDigest ? image.lastIndexOf(oldDigest) : -1;
-    if (relativeDigest !== -1) edits.set(index + relativeDigest, [oldDigest.length, newDigest]);
     const argValueOf = (name: string) => args.get(name)?.value;
+    let tailStart = 0;
+    let rewritesArg = false;
     for (const variable of image.matchAll(/\$(?:\{(\w+)\}|(\w+))/g)) {
+      tailStart = variable.index + variable[0].length;
       const argValue = args.get(variable[1] || variable[2]);
       const prefix = resolveDockerVariables(image.slice(0, variable.index), argValueOf);
-      let suffix = resolveDockerVariables(image.slice(variable.index + variable[0].length), argValueOf);
+      let suffix = resolveDockerVariables(image.slice(tailStart), argValueOf);
       if (replacesDigest) suffix = suffix.replace(oldDigest, () => newDigest);
       if (!argValue || !replacement.startsWith(prefix) || !replacement.endsWith(suffix)) continue;
       edits.set(argValue.start, [argValue.value.length, replacement.slice(prefix.length, suffix ? -suffix.length : undefined)]);
+      rewritesArg = true;
+    }
+    const tailPrefix = resolveDockerVariables(image.slice(0, tailStart), argValueOf);
+    if (!rewritesArg && tailStart < image.length && replacement.startsWith(tailPrefix)) {
+      edits.set(index + tailStart, [image.length - tailStart, replacement.slice(tailPrefix.length)]);
+    } else if (relativeDigest !== -1) {
+      edits.set(index + relativeDigest, [oldDigest.length, newDigest]);
     }
   }
   const chunks: Array<string> = [];

@@ -7,7 +7,7 @@ import type {Readable} from "node:stream";
 import type {ReadStream} from "node:tty";
 import {cliBaseConfig, options, optionalValueOptions, parseMixedArg, getOptionKey, parseArgList, parsePinArg,
   loadConfig, findConfigUp} from "./config.ts";
-import {forgeHostOf, normalizeUrl, verifyToken} from "./modes/shared.ts";
+import {forgeHostOf, normalizeUrl, redactUrlCredentials, verifyToken} from "./modes/shared.ts";
 import {removeToken, storeToken} from "./utils/tokens.ts";
 import {highlightDiff, parsePositiveInt, splitGlobAlternatives, textTable} from "./utils/utils.ts";
 import {shortenGoModule} from "./modes/go.ts";
@@ -291,7 +291,7 @@ export async function runCli(rawArgs: Array<string>, io: CliIo, prewarm = true):
     if (config.errorOnUnchanged) return hasResults ? 0 : 2;
     return 0;
   } catch (err) {
-    const error = (err as Error).message ?? String(err);
+    const error = redactUrlCredentials((err as Error).message ?? String(err));
     writeLine(jsonOutput ? JSON.stringify({error}) : red(error));
     return 1;
   }

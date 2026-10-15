@@ -1,4 +1,4 @@
-import {updatePyprojectToml, fetchPypiInfo, pypiSatisfies} from "./pypi.ts";
+import {updatePyprojectToml, fetchPypiInfo, isPypiRange, pypiSatisfies} from "./pypi.ts";
 import {type ModeContext, fetchTimeout, fieldSep} from "./shared.ts";
 import {parseUvDependencies} from "../utils/utils.ts";
 
@@ -24,15 +24,19 @@ test("updatePyprojectToml preserves unrelated content and dependency groups", ()
     `  "requests-oauthlib >=2.28.0",`,
     `  "flask >=2.3.0",`,
     `  "click >=8.1.0",`,
+    `  """pkg>=1.0; os_name == "nt" """,`,
+    `  # "requests >=2.28.0", 'requests ${"\\".repeat(10000)}`,
     `]`,
     ``,
   ].join("\n");
   expect(updatePyprojectToml(input, {
-    [`project.dependencies${fieldSep}flask`]: {old: "2.3.0", new: "2.4.0"} as any,
-    [`project.dependencies${fieldSep}click`]: {old: "8.1.0", new: "8.2.0"} as any,
-    [`project.dependencies${fieldSep}requests`]: {old: "2.28.0", new: "2.31.0"} as any,
+    [`project.dependencies${fieldSep}flask${fieldSep}flask >=2.3.0`]: {old: "2.3.0", new: "2.4.0"},
+    [`project.dependencies${fieldSep}click${fieldSep}click >=8.1.0`]: {old: "8.1.0", new: "8.2.0"},
+    [`project.dependencies${fieldSep}requests${fieldSep}requests >=2.28.0`]: {old: "2.28.0", new: "2.31.0"},
+    [`project.dependencies${fieldSep}pkg${fieldSep}pkg>=1.0; os_name == "nt" `]: {old: "1.0", new: "2.0"},
   })).toBe(input
-    .replace(`"requests >=2.28.0"`, `"requests >=2.31.0"`).replace(`"flask >=2.3.0"`, `"flask >=2.4.0"`).replace(`"click >=8.1.0"`, `"click >=8.2.0"`));
+    .replace(`"requests >=2.28.0"`, `"requests >=2.31.0"`).replace(`"flask >=2.3.0"`, `"flask >=2.4.0"`).replace(`"click >=8.1.0"`, `"click >=8.2.0"`)
+    .replace(`pkg>=1.0`, `pkg>=2.0`));
   const groupedInput = [
     `[project]`,
     `dependencies = ["pkg>=1.0"]`,
@@ -51,12 +55,18 @@ test("updatePyprojectToml preserves unrelated content and dependency groups", ()
     ``,
   ].join("\n");
   expect(updatePyprojectToml(groupedInput, {
-    [`project.optional-dependencies.extra${fieldSep}pkg`]: {old: "1.0", new: "2.0"} as any,
-    [`build-system.requires${fieldSep}pkg`]: {old: "1.0", new: "3.0"} as any,
-    [`tool.uv.dev-dependencies${fieldSep}pkg`]: {old: "1.0", new: "4.0"} as any,
+    [`project.optional-dependencies.extra${fieldSep}pkg${fieldSep}pkg>=1.0`]: {old: "1.0", new: "2.0"},
+    [`build-system.requires${fieldSep}pkg${fieldSep}pkg>=1.0`]: {old: "1.0", new: "3.0"},
+    [`tool.uv.dev-dependencies${fieldSep}pkg${fieldSep}pkg>=1.0`]: {old: "1.0", new: "4.0"},
   })).toBe(groupedInput.replace(`extra = ["pkg>=1.0"]`, `extra = ["pkg>=2.0"]`)
     .replace(`requires = ["setuptools", "pkg>=1.0"]`, `requires = ["setuptools", "pkg>=3.0"]`)
     .replace(`dev-dependencies = ["pkg>=1.0"]`, `dev-dependencies = ["pkg>=4.0"]`));
+  const requirements = [`requests>=2.28.0; sys_platform == "win32"`, `requests>=2.28.0; sys_platform != "win32"`];
+  const repeatedInput = `[project]\ndependencies = ${JSON.stringify(requirements)}\n`;
+  expect(updatePyprojectToml(repeatedInput, {
+    [`project.dependencies${fieldSep}requests${fieldSep}${requirements[0]}`]: {old: "2.28.0", new: "2.31.0"},
+    [`project.dependencies${fieldSep}requests${fieldSep}${requirements[1]}`]: {old: "2.28.0", new: "2.32.5"},
+  })).toBe(repeatedInput.replace("requests>=2.28.0", "requests>=2.31.0").replace("requests>=2.28.0", "requests>=2.32.5"));
 });
 
 test("fetchPypiInfo shares a normalized request in flight", async () => {
@@ -100,12 +110,17 @@ test("pypiSatisfies handles allowedVersions forms", () => {
     ["2.1+corp", ">=2,<3"], ["2.1", ""], ["2.1+corp", "2.1"], ["2.2", "2.1"], ["2.1", "[extra]>=2"], ["2.1", `>=2; python_version >= "3.12"`],
     ["not-a-version", ">=2"], ["2.1", "not-a-range"], ["1.0", "==1.0.dev1.*"], ["1.0", "==1.0+corp.*"],
   ].map(([version, range]) => pypiSatisfies(version, range))).toEqual([true, true, false, false, false, false, false, false, false, false]);
+  expect([
+    "~=1", ">=1.*", "==1.0.dev1.*", ">=1+local", "~=1.0", "==1.*", "!=1.*", "==1+local", "===1+local",
+  ].map(isPypiRange)).toEqual([false, false, false, false, true, true, true, true, true]);
 });
 
 const quoted = (spec: string) => spec.includes(`"`) ? `'${spec}'` : `"${spec}"`;
 
 test.each([
   ["environment marker", `tomli>=1.1.0; python_version < "3.11"`, "1.1.0", "2.2.1", `tomli>=2.2.1; python_version < "3.11"`],
+  ["escaped TOML string", `requests>=2.28.0; os_name == "nt"`, "2.28.0", "2.31.0", `requests>=2.31.0; os_name == "nt"`,
+    String.raw`"req\u0075ests>=2.28.0; os_name == \"nt\""`],
   ["extras and marker", `pytest[testing] >= 7.0.0 ; python_version >= "3.9"`, "7.0.0", "8.3.4", `pytest[testing] >= 8.3.4 ; python_version >= "3.9"`],
   ["parenthesised specifier", "packaging (==20.0.0)", "20.0.0", "24.2", "packaging (==24.2)"],
   ["cap the new version satisfies", "sphinx>=7.0.0,<8", "7.0.0", "7.4.7", "sphinx>=7.4.7,<8"],
@@ -129,10 +144,10 @@ test.each([
   ["epoch-compatible release precision", "pkg~=1!1.4", "1!1.4", "1!1.5.1", "pkg~=1!1.5"],
   ["compatible release suffixes", "pkg~=1!1.4", "1!1.4", "1!1.5.1rc2.post3.dev4+corp", "pkg~=1!1.5rc2.post3.dev4"],
   ["compatible release from another epoch", "pkg>=1!1.4,~=1!1.4", "1!1.4", "2!1.5", "pkg>=1!1.4,~=1!1.4"],
-])("updatePyprojectToml handles a %s", (_name, spec, old, newVersion, expected) => {
-  const input = `dependencies = [\n  ${quoted(spec)},\n]\n`;
-  const deps = {[`dependencies${fieldSep}${/^[\w.-]+/.exec(spec)![0]}`]: {old, new: newVersion} as any};
-  expect(updatePyprojectToml(input, deps)).toBe(`dependencies = [\n  ${quoted(expected)},\n]\n`);
+])("updatePyprojectToml handles a %s", (_name, spec, old, newVersion, expected, raw = "") => {
+  const input = `dependencies = [\n  ${raw || quoted(spec)},\n]\n`;
+  const deps = {[`dependencies${fieldSep}${/^[\w.-]+/.exec(spec)![0]}${fieldSep}${spec}`]: {old, new: newVersion}};
+  expect(updatePyprojectToml(input, deps)).toBe(`dependencies = [\n  ${raw ? JSON.stringify(expected) : quoted(expected)},\n]\n`);
 });
 
 test.each([
@@ -151,7 +166,7 @@ test.each([
 ])("reader and writer anchor on the same specifier of %s", (spec) => {
   const [before] = parseUvDependencies([spec]);
   const quote = quoted(spec)[0];
-  const deps = {[`dependencies${fieldSep}${before.name}`]: {old: before.version, new: "9.9.9"} as any};
+  const deps = {[`dependencies${fieldSep}${before.name}${fieldSep}${spec}`]: {old: before.version, new: "9.9.9"}};
   const [after] = parseUvDependencies([updatePyprojectToml(`dependencies = [${quoted(spec)}]`, deps).split(quote)[1]]);
   expect(after.name).toBe(before.name);
   expect(after.version).not.toBe(before.version);
@@ -159,6 +174,6 @@ test.each([
 
 test("anchors on the whole version, not a prefix of a longer one", () => {
   const input = `dependencies = [\n  "tomli>=1.1",\n]\ndev = [\n  "tomli>=1.1.5",\n]\n`;
-  expect(updatePyprojectToml(input, {[`dependencies${fieldSep}tomli`]: {old: "1.1", new: "2.2.1"} as any}))
+  expect(updatePyprojectToml(input, {[`dependencies${fieldSep}tomli${fieldSep}tomli>=1.1`]: {old: "1.1", new: "2.2.1"}}))
     .toBe(input.replace(`"tomli>=1.1"`, `"tomli>=2.2.1"`));
 });

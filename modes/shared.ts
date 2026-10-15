@@ -2,9 +2,7 @@ import {AsyncLocalStorage} from "node:async_hooks";
 import {Buffer} from "node:buffer";
 import {env} from "node:process";
 import {setTimeout as delay} from "node:timers/promises";
-import {
-  type Versioning, coerce, diff, satisfies, semverVersioning, pep440Versioning,
-} from "../utils/semver.ts";
+import {coerce, satisfies, semverVersioning, pep440Versioning, type Versioning} from "../utils/semver.ts";
 import {getCache, setCache} from "../utils/fetchCache.ts";
 import {readTokens} from "../utils/tokens.ts";
 import {commaSeparatedToArray, getOrSet} from "../utils/utils.ts";
@@ -14,7 +12,7 @@ export type {Config} from "../config.ts";
 
 export type Dep = {
   old: string, new: string, oldPrint?: string, newPrint?: string, oldOrig?: string, info?: string, age?: string,
-  date?: string, oldDigest?: string, newDigest?: string, digestOnly?: boolean,
+  date?: string, cooldownDays?: number, oldDigest?: string, newDigest?: string, digestOnly?: boolean,
 };
 export type Deps = {[name: string]: Dep};
 export type DepsByMode = {[mode: string]: Deps};
@@ -27,7 +25,7 @@ type FindVersionOpts = {
   cooldownDays?: number, now?: number, getVersionDate?: (version: string) => string | undefined,
 };
 
-type FindNewVersionOpts = Omit<FindVersionOpts, "latest"> & {mode: string};
+type FindNewVersionOpts = Omit<FindVersionOpts, "latest"> & {mode: string, acceptsGoVersion?: (version: string) => boolean};
 
 export function passesCooldown(date: string | undefined, cooldownDays: number | undefined, now: number | undefined): boolean {
   return !cooldownDays || !now || (now - Date.parse(date || "")) / (24 * 3600 * 1000) >= cooldownDays;
@@ -91,6 +89,8 @@ function isTransientFetchError(err: any): boolean {
   const code = err?.code ?? err?.cause?.code;
   return typeof code === "string" && transientErrorCodes.has(code);
 }
+
+export const redactUrlCredentials = (text: string): string => text.replace(/([a-z][a-z\d+.-]*:\/\/)[^/?#\s]*@/gi, "$1");
 
 export async function doFetch(url: string, opts?: RequestInit): Promise<Response> {
   try {
@@ -169,9 +169,9 @@ export function fetchWithEtag(
 }
 
 export function fetchImmutable(
-  url: string, ctx: ModeContext, opts: RequestInit = {}, reduce?: BodyReducer,
+  url: string, ctx: ModeContext, opts: RequestInit = {}, reduce?: BodyReducer, cacheKey: string = url,
 ): Promise<FetchResult> {
-  return fetchCached(url, ctx, opts, reduce, url, true);
+  return fetchCached(url, ctx, opts, reduce, cacheKey, true);
 }
 
 export async function dedupe<T>(
@@ -292,7 +292,53 @@ export function isGoPseudoVersion(version: string): boolean {
   return /\d{14}-[0-9a-f]{12}(?:\+incompatible)?$/.test(version);
 }
 
-export function findNewVersion(data: any, {mode, range: authoredRange, useGreatest, usePre, useRel, semvers, pinnedRange, pinNoDowngrade, cooldownDays, now, allowDowngrade}: FindNewVersionOpts): string | null {
+export function goPinAllowsDowngrade(
+  {pinnedRange, pinNoDowngrade}: Pick<FindVersionOpts, "pinnedRange" | "pinNoDowngrade">,
+  currentVersion: string,
+): boolean {
+  const currentCoerced = coerceToVersion(currentVersion);
+  return Boolean(pinnedRange && !pinNoDowngrade && currentCoerced && !satisfies(currentCoerced, pinnedRange));
+}
+
+const goVersionPredicates = new Map<string, (version: string) => boolean>();
+
+export function goVersionPredicate(
+  {range, usePre, useRel, semvers, pinnedRange, pinNoDowngrade, allowDowngrade}: FindVersionOpts, currentVersion = range,
+): (version: string) => boolean {
+  const key = JSON.stringify([
+    range, currentVersion, [...semvers].sort(), usePre, useRel, pinnedRange || "", pinNoDowngrade, allowDowngrade,
+  ]);
+  return getOrSet(goVersionPredicates, key, () => {
+    const oldCoerced = semverVersioning.parse(coerceToVersion(range));
+    if (!oldCoerced) return () => false;
+    const {effectiveSemvers, skipsPrerelease} = prereleaseOpts(range, usePre, useRel, semvers);
+    const oldExact = semverVersioning.parse(currentVersion);
+    const oldParsed = oldExact || semverVersioning.parseRange(currentVersion);
+    const mayStepDown = Boolean(allowDowngrade) || goPinAllowsDowngrade({pinnedRange, pinNoDowngrade}, currentVersion);
+    return (candidate: string) => {
+      const coerced = semverVersioning.parse(coerceToVersion(candidate));
+      const parsed = semverVersioning.parse(candidate);
+      const pseudo = isGoPseudoVersion(candidate);
+      if (!coerced || !pseudo && skipsPrerelease(parsed)) return false;
+      const difference = (oldExact && parsed ? semverVersioning.diff(oldExact, parsed) : null) ??
+        semverVersioning.diff(oldCoerced, coerced);
+      const level = pseudo ? (difference === "prerelease" ? "patch" : difference?.replace(/^pre/, "")) : difference;
+      if (!level || !effectiveSemvers.has(level)) return false;
+      if (!mayStepDown && parsed && oldParsed && semverVersioning.compare(parsed, oldParsed) < 0) return false;
+      return !pinnedRange || satisfies(coerced.version, pinnedRange);
+    };
+  });
+}
+
+export function pypiReleaseDate(files: Array<{upload_time_iso_8601?: string, yanked?: boolean}>): string | undefined {
+  return files.reduce((earliest: {date?: string, time: number}, file) => {
+    const date = file?.upload_time_iso_8601;
+    const time = file && !file.yanked && typeof date === "string" ? Date.parse(date) : NaN;
+    return time < earliest.time ? {date, time} : earliest;
+  }, {time: Infinity}).date;
+}
+
+export function findNewVersion(data: any, {mode, range: authoredRange, useGreatest, usePre, useRel, semvers, pinnedRange, pinNoDowngrade, cooldownDays, now, allowDowngrade, acceptsGoVersion}: FindNewVersionOpts): string | null {
   if (authoredRange === "*") return null;
 
   const versioning: Versioning = mode === "pypi" ? pep440Versioning : semverVersioning;
@@ -303,14 +349,9 @@ export function findNewVersion(data: any, {mode, range: authoredRange, useGreate
   if (mode === "pypi") {
     const releases = data?.releases;
     if (!releases) return null;
-    const isViableFile = (file: any) => Boolean(file && !file.yanked);
     versions = Object.keys(releases).filter(version =>
-      Array.isArray(releases[version]) && releases[version].some(isViableFile));
-    getVersionDate = (version: string) => releases[version].reduce((earliest: {date?: string, time: number}, file: any) => {
-      const date = file?.upload_time_iso_8601;
-      const time = isViableFile(file) && typeof date === "string" ? Date.parse(date) : NaN;
-      return time < earliest.time ? {date, time} : earliest;
-    }, {time: Infinity}).date;
+      Array.isArray(releases[version]) && releases[version].some((file: any) => file && !file.yanked));
+    getVersionDate = (version: string) => pypiReleaseDate(releases[version]);
     latestTag = data.info?.version ?? "";
   } else if (mode === "npm" || mode === "cargo") {
     if (!data?.versions) return null;
@@ -321,29 +362,11 @@ export function findNewVersion(data: any, {mode, range: authoredRange, useGreate
       versions = live.length ? live : versions;
     }
   } else if (mode === "go") {
-    const oldVersion = coerceToVersion(range);
-    if (!oldVersion) return null;
-    const {effectiveSemvers, skipsPrerelease} = prereleaseOpts(range, usePre, useRel, semvers, versioning);
-    const originalOldVersion = data.old || range;
-    const oldParsed = versioning.parseRange(originalOldVersion);
-    const mayStepDown = Boolean(allowDowngrade) ||
-      (Boolean(pinnedRange) && !pinNoDowngrade && Boolean(oldParsed) && !versioning.satisfiesRange(oldParsed, pinnedRange!));
-
-    const accepts = (candidate: string, time: string | undefined): boolean => {
-      const coerced = coerceToVersion(candidate);
-      const parsed = versioning.parse(candidate);
-      const pseudo = isGoPseudoVersion(candidate);
-      if (!coerced || !pseudo && skipsPrerelease(parsed)) return false;
-      const d = diff(originalOldVersion, candidate) ?? diff(oldVersion, coerced);
-      // a same-base pseudo-version diffs as `prerelease`, which would otherwise map to `release`
-      const level = pseudo ? (d === "prerelease" ? "patch" : d?.replace(/^pre/, "")) : d;
-      if (!level || !effectiveSemvers.has(level)) return false;
-      if (!mayStepDown && parsed && oldParsed && versioning.compare(parsed, oldParsed) < 0) return false;
-      return passesCooldown(time, cooldownDays, now) && (!pinnedRange || satisfies(coerced, pinnedRange));
-    };
-
-    if (accepts(data.new, data.Time)) return data.new;
-    if (accepts(data.sameMajorNew, data.sameMajorTime)) {
+    const accepts = acceptsGoVersion || goVersionPredicate(
+      {range, useGreatest, usePre, useRel, semvers, pinnedRange, pinNoDowngrade, allowDowngrade}, data.old || range,
+    );
+    if (accepts(data.new) && passesCooldown(data.Time, cooldownDays, now)) return data.new;
+    if (accepts(data.sameMajorNew) && passesCooldown(data.sameMajorTime, cooldownDays, now)) {
       data.Time = data.sameMajorTime;
       delete data.newPath;
       return data.sameMajorNew;
@@ -528,7 +551,7 @@ export function isVersionLikeRef(ref: string): boolean {
   return /^v?\d+(?:\.\d+)*(?:[-+][\w.-]+)?$/.test(ref);
 }
 
-export type TagEntry = {name: string, commitSha: string, isStable?: boolean};
+export type TagEntry = {name: string, commitSha: string, isStable?: boolean, releaseTimestamp?: string};
 
 export function parseCommitDate(data: any): string {
   const commit = data?.commit ?? data;
@@ -564,18 +587,19 @@ export function fetchForgeEtag(
   });
 }
 
-type Release = {name: string, isStable: boolean};
+type Release = {name: string, isStable: boolean, releaseTimestamp?: string};
 
 function parseReleases(data: any, cached = false): Array<Release> {
   if (!Array.isArray(data)) throw new TypeError(`Invalid ${cached ? "cached " : ""}Forge releases response`);
   return data.map(release => {
     const name = cached ? release?.name : release?.tag_name;
     const isStable = cached ? release?.isStable : !release?.prerelease && release?.draft !== true;
+    const releaseTimestamp = cached ? release?.releaseTimestamp : release?.published_at;
     if (typeof name !== "string" || (cached ? typeof isStable !== "boolean" :
       typeof release?.prerelease !== "boolean" || release.draft !== undefined && typeof release.draft !== "boolean")) {
       throw new TypeError(`Invalid ${cached ? "cached " : ""}Forge release entry`);
     }
-    return {name, isStable};
+    return {name, isStable, ...(releaseTimestamp && {releaseTimestamp})};
   });
 }
 
@@ -643,19 +667,25 @@ export async function fetchActionTags(
   apiUrl: string, owner: string, repo: string, ctx: ModeContext, oldRefs: Array<string> = [], includeStability = true,
 ): Promise<Array<TagEntry>> {
   if (apiUrl !== githubApiUrl || !includeStability) return fetchForgeTags(apiUrl, owner, repo, ctx, oldRefs);
-  const stability = new Map<string, boolean>();
+  const releases = new Map<string, Release>();
   const [tagsResult, releasesResult] = await Promise.allSettled([
     fetchForgeTags(apiUrl, owner, repo, ctx, oldRefs),
     fetchForgePages(page => `${githubApiUrl}/repos/${owner}/${repo}/releases?per_page=100&page=${page}`, ctx, "releases",
       parseReleases, entries => {
-        for (const release of entries) stability.set(release.name, release.isStable);
+        for (const release of entries) releases.set(release.name, release);
         return false;
       }),
   ]);
   if (tagsResult.status === "rejected") throw tagsResult.reason;
   if (releasesResult.status === "rejected" && !(releasesResult.reason instanceof ForgeError)) throw releasesResult.reason;
   if (releasesResult.status === "fulfilled") {
-    for (const tag of tagsResult.value) if (stability.has(tag.name)) tag.isStable = stability.get(tag.name);
+    for (const tag of tagsResult.value) {
+      const release = releases.get(tag.name);
+      if (release) {
+        tag.isStable = release.isStable;
+        if (release.releaseTimestamp) tag.releaseTimestamp = release.releaseTimestamp;
+      }
+    }
   }
   return tagsResult.value;
 }

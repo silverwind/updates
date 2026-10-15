@@ -35,6 +35,8 @@ test.each([
     {packageRules: [{matchPackageNames: ["react"], allowedVersions: "^18.0.0"}]},
     {pin: {react: "^18.0.0"}, pinNoDowngrade: true,
       renovateVersionRules: [{matchPackageNames: ["react"], allowedVersions: "^18.0.0"}]}],
+  ["PEP 440 allowedVersions without a pin", "renovate.json", {packageRules: [{matchPackageNames: ["requests"], allowedVersions: "~=2.31"}]},
+    {renovateVersionRules: [{matchPackageNames: ["requests"], allowedVersions: "~=2.31"}]}],
   ["later glob and regex allowedVersions rules replace literal pins", "renovate.json", {packageRules: [
     {matchPackageNames: ["react"], allowedVersions: "^18"},
     {matchPackageNames: ["*"], allowedVersions: "^19"},

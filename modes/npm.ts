@@ -25,7 +25,8 @@ const defaultRegistry = defaultApiUrls.registry;
 const npmrcCache = new Map<string, Record<string, any>>();
 const pnpmAuthCache = new Map<string, PnpmAuth>();
 
-const replaceEnvVar = (token: string): string => token.replace(/^\$\{?([^}]*)\}?$/, (_, envVar) => env[envVar] || "");
+const replaceEnvVar = (value: string): string =>
+  value.replace(/^\$\{?([^}]*)\}?$|\$\{([^}]*)\}/g, (_match, envVar, bracedEnvVar) => env[envVar || bracedEnvVar] || "");
 
 function registryAuthKeys(registryUrl: string): string[] {
   const parsed = new URL(registryUrl.startsWith("//") ? `http:${registryUrl}` : registryUrl);
@@ -67,11 +68,11 @@ function resolveNpmRegistry(name: string, config: Config, dir: string | undefine
   const global = pnpmGlobalConfig();
   const workspace = dir ? nativeNpmRegistryConfig(dir) : {registries: {}};
   const scope = name.startsWith("@") ? name.split("/")[0] : "";
-  const registry = normalizeUrl( // pnpm's order: CLI > pnpm_config__auth > workspace yaml > global yaml > global _auth > .npmrc
+  const registry = normalizeUrl(replaceEnvVar( // pnpm's order: CLI > pnpm_config__auth > workspace yaml > global yaml > global _auth > .npmrc
     (scope && (envAuth.registries[scope] || workspace.registries[scope] || global.registries[scope] ||
       global.auth.registries[scope] || npmrcConfig[`${scope}:registry`])) ||
     config.registry || envAuth.registries.default || workspace.registries.default || workspace.registry ||
-    global.registries.default || global.registry || global.auth.registries.default || npmrcConfig.registry || defaultRegistry);
+    global.registries.default || global.registry || global.auth.registries.default || npmrcConfig.registry || defaultRegistry));
   return {auth: getRegistryAuthToken(registry, {...npmrcConfig, ...global.auth.tokens, ...envAuth.tokens}, scope), registry};
 }
 
@@ -92,7 +93,7 @@ function reduceNpmDoc(data: Record<string, any>): Record<string, any> {
 
 export async function fetchNpmInfo(name: string, type: string, config: Config, args: Record<string, any>, ctx: ModeContext, dir?: string, version = ""): Promise<PackageInfo> {
   const packageName = selectorTypes.has(type) ? resolutionsBasePackage(name) :
-    type === "packageManager" && name === "yarn" && (parse(version)?.major ?? 0) > 1 ? "@yarnpkg/cli" : name;
+    ["packageManager", "engines", "volta"].includes(type) && name === "yarn" && (parse(coerceToVersion(version))?.major ?? 0) > 1 ? "@yarnpkg/cli" : name;
   const {auth, registry} = resolveNpmRegistry(packageName, config, dir);
   const url = npmPackageUrl(registry, packageName);
 
@@ -107,7 +108,7 @@ export async function fetchNpmInfo(name: string, type: string, config: Config, a
   return [data, registry];
 }
 
-type NpmVersionInfo = {repository?: PackageRepository, homepage?: string, date?: string};
+type NpmVersionInfo = {repository?: PackageRepository, homepage?: string, date?: string, integrity?: string};
 
 export async function fetchNpmVersionInfo(name: string, version: string, config: Config, args: Record<string, any>, ctx: ModeContext, dir?: string): Promise<NpmVersionInfo> {
   const {auth, registry} = resolveNpmRegistry(name, config, dir);
@@ -120,8 +121,9 @@ export async function fetchNpmVersionInfo(name: string, version: string, config:
       const result = await fetchImmutable(url, ctx, fetchOpts, reduceJson(data => ({
         repository: data.repository,
         homepage: data.homepage,
+        dist: {integrity: data.dist?.integrity},
         _npmOperationalInternal: data._npmOperationalInternal?.tmp ? {tmp: data._npmOperationalInternal.tmp} : undefined,
-      })));
+      })), `${url}#integrity`);
       if (!("body" in result)) return {};
       const data = JSON.parse(result.body);
       const match = /(\d{13})/.exec(data?._npmOperationalInternal?.tmp ?? "");
@@ -134,7 +136,7 @@ export async function fetchNpmVersionInfo(name: string, version: string, config:
         }));
         date = fullData?.time?.[version] || "";
       }
-      return {repository: data.repository, homepage: data.homepage, date};
+      return {repository: data.repository, homepage: data.homepage, date, integrity: data.dist?.integrity};
     } catch {
       return {};
     }
@@ -163,6 +165,12 @@ export function parseJsrDependency(value: string, packageName?: string): {scope:
     if (match) return {scope: match[1], name: match[2], version: value.substring(4)};
   }
   return {scope: null, name: null, version: ""};
+}
+
+export function npmTargetName(name: string, value: string): string {
+  if (!isJsr(value)) return parseNpmAlias(value)?.name ?? name;
+  const {scope, name: jsrName} = parseJsrDependency(value, name);
+  return scope ? `@${scope}/${jsrName}` : name;
 }
 
 export async function fetchJsrInfo(packageName: string, ctx: ModeContext): Promise<PackageInfo> {

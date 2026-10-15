@@ -9,7 +9,15 @@ import {
 import {type ModeContext, fetchTimeout, fieldSep} from "./shared.ts";
 
 const tempRoot = mkdtempSync(join(tmpdir(), "updates-npm-"));
-afterAll(() => rmSync(tempRoot, {recursive: true}));
+beforeAll(() => {
+  env.UPDATES_TEST_NPM_REGISTRY = "https://env.test";
+  env.UPDATES_TEST_NPM_USER = "ci-user";
+});
+afterAll(() => {
+  delete env.UPDATES_TEST_NPM_REGISTRY;
+  delete env.UPDATES_TEST_NPM_USER;
+  rmSync(tempRoot, {recursive: true});
+});
 
 test("dependency reference classifiers", () => {
   expect(["npm:@jsr/std__semver@1.0.5", "jsr:@std/semver@1.0.5", "jsr:1.0.5", "^1.0.0", "npm:something", ""].map(isJsr))
@@ -144,17 +152,18 @@ test("fetchJsrInfo", async () => {
   await expect(fetchJsrInfo("@std/semver", failureCtx)).rejects.toThrow("404");
 });
 
-test("fetchNpmInfo resolutions key keeps scope", async () => {
+test("fetchNpmInfo normalizes selectors and modern Yarn versions and ranges", async () => {
   let fetchedUrl = "";
-  const ctx = modeCtx({noCache: true, doFetch: (url: string) => {
-    fetchedUrl = url;
-    return textRes({});
-  }});
   for (const [name, type, version, path] of [
     ["@babel/core", "resolutions", undefined, "/@babel%2fcore"], ["yarn", "packageManager", "4.9.2", "/@yarnpkg%2fcli"],
     ["yarn", "packageManager", "1.22.22", "/yarn"], ["noty@3", "overrides", undefined, "/noty"],
+    ["yarn", "volta", "4.0.0", "/@yarnpkg%2fcli"], ["yarn", "engines", ">=4", "/@yarnpkg%2fcli"],
+    ["yarn", "engines", "^1.22.0", "/yarn"], ["yarn", "dependencies", "4.0.0", "/yarn"],
   ] as const) {
-    await fetchNpmInfo(name, type, {}, {}, ctx, undefined, version);
+    await fetchNpmInfo(name, type, {}, {}, modeCtx({noCache: true, doFetch: (url: string) => {
+      fetchedUrl = url;
+      return textRes({});
+    }}), undefined, version);
     expect(fetchedUrl.endsWith(path)).toBe(true);
   }
 });
@@ -163,6 +172,9 @@ test.each([
   ["npmrc scoped registry", {
     ".npmrc": "registry=https://default.test\n@myorg:registry=https://private.test\n",
   }, ["https://private.test/@myorg%2fpkg", "https://default.test/lodash"]],
+  ["npmrc registry environment references", {
+    ".npmrc": `registry=\${UPDATES_TEST_NPM_REGISTRY}\n@myorg:registry=\${UPDATES_TEST_NPM_REGISTRY}/scope/\${UPDATES_TEST_NPM_UNSET}\n`,
+  }, ["https://env.test/scope/@myorg%2fpkg", "https://env.test/lodash"]],
   ["pnpm workspace registries", {
     "pnpm-workspace.yaml": "registry: https://pnpm.test\nregistries:\n  '@myorg': https://scope.pnpm.test\n",
   }, ["https://scope.pnpm.test/@myorg%2fpkg", "https://pnpm.test/lodash"]],
@@ -195,24 +207,22 @@ test("fetchNpmInfo prefers a scoped npmrc registry over a native default", async
   expect([fetchedUrl, authorization]).toEqual(["https://npm.company.example/@company%2fpkg", "Bearer secret"]);
 });
 
-test("fetchNpmInfo expands an npmrc environment reference in a basic auth username", async () => {
+test.each([
+  [`\${UPDATES_TEST_NPM_USER}`, "ci-user"], ["$UPDATES_TEST_NPM_USER", "ci-user"],
+  [`svc-\${UPDATES_TEST_NPM_USER}-\${UPDATES_TEST_NPM_USER}\${UPDATES_TEST_NPM_UNSET}`, "svc-ci-user-ci-user"],
+])("fetchNpmInfo expands npmrc basic auth username %s", async (username, expected) => {
   const dir = tempDir();
   let authorization: string | null = null;
-  env.UPDATES_TEST_NPM_USER = "ci-user";
   writeFileSync(join(dir, ".npmrc"), [
     "registry=https://registry.company.test/",
-    `//registry.company.test/:username=\${UPDATES_TEST_NPM_USER}`,
+    `//registry.company.test/:username=${username}`,
     `//registry.company.test/:_password=${Buffer.from("ci-password").toString("base64")}`,
   ].join("\n"));
-  try {
-    await fetchNpmInfo("lodash", "dependencies", {}, {}, modeCtx({noCache: true, doFetch: (_url: string, opts: RequestInit) => {
-      authorization = new Headers(opts.headers).get("authorization");
-      return textRes({});
-    }}), dir);
-  } finally {
-    delete env.UPDATES_TEST_NPM_USER;
-  }
-  expect(authorization).toBe(`Basic ${Buffer.from("ci-user:ci-password").toString("base64")}`);
+  await fetchNpmInfo("lodash", "dependencies", {}, {}, modeCtx({noCache: true, doFetch: (_url: string, opts: RequestInit) => {
+    authorization = new Headers(opts.headers).get("authorization");
+    return textRes({});
+  }}), dir);
+  expect(authorization).toBe(`Basic ${Buffer.from(`${expected}:ci-password`).toString("base64")}`);
 });
 
 test("fetchNpmInfo never sends unscoped _auth to a repository registry", async () => {

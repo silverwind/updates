@@ -2,6 +2,7 @@ import {join} from "node:path";
 import {readFile} from "node:fs/promises";
 import {parseJsonish} from "./json5.ts";
 import {validRange} from "./semver.ts";
+import {isPypiRange} from "../modes/pypi.ts";
 import {walkUp, patternToRegex, esc, getOrSet, tryOrNull} from "./utils.ts";
 import type {Config} from "../config.ts";
 
@@ -146,7 +147,9 @@ function applyRules(rules: Array<Record<string, unknown>>, inheritCooldown: bool
 
     if (typeof rule.allowedVersions === "string") {
       const allowedRange = validRange(rule.allowedVersions);
-      if (!allowedRange && !renovateRegex(rule.allowedVersions)) throw new Error(`Invalid renovate allowedVersions: ${rule.allowedVersions}`);
+      if (!allowedRange && !renovateRegex(rule.allowedVersions) && !isPypiRange(rule.allowedVersions)) {
+        throw new Error(`Invalid renovate allowedVersions: ${rule.allowedVersions}`);
+      }
       versionRule.allowedVersions = rule.allowedVersions;
       if (allowedRange) for (const name of literals) pinCandidates.add(name);
     }

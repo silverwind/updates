@@ -2,8 +2,8 @@ import {
   type Deps, type ModeContext, type PackageInfo, dedupe, fieldSep, fetchWithEtag, reduceJson, throwFetchError,
 } from "./shared.ts";
 import {type Pep440, comparePep440, parsePep440} from "../utils/semver.ts";
-import {unquotedIndex} from "../utils/toml.ts";
-import {type Pep508Specifier, anchorSpecifier, getOrSet, longestFirstAlternation, parsePep508, serializePep508} from "../utils/utils.ts";
+import {parseValue, unquotedIndex} from "../utils/toml.ts";
+import {anchorSpecifier, getOrSet, parsePep508, serializePep508, type Pep508Specifier} from "../utils/utils.ts";
 
 const pypiNameSeparatorRe = /[-_.]+/g;
 
@@ -82,6 +82,17 @@ function raisedUpperBound(cap: Pep440, lower: Pep440, version: Pep440): string {
   else if (precision === -1) precision = cap.release.length - 1;
   const release = cap.release.map((_, idx) => idx > precision ? 0 : (version.release[idx] ?? 0) + Number(idx === precision));
   return `${version.epoch ? `${version.epoch}!` : ""}${release.join(".")}`;
+}
+
+export function isPypiRange(range: string): boolean {
+  const requirement = parsePep508(`x${range.trim()}`);
+  return Boolean(parsePep440(range.trim()) || requirement?.specifiers?.length && !requirement.extras && !requirement.marker &&
+    requirement.specifiers.every(({op, version}) => {
+      const parsed = parsePep440(version.replace(/\.\*$/, ""));
+      if (!parsed) return false;
+      if (version.endsWith(".*")) return (op === "==" || op === "!=") && parsed.dev === null && !parsed.local;
+      return (op !== "~=" || parsed.release.length > 1) && (!parsed.local || ["==", "!=", "==="].includes(op));
+    }));
 }
 
 export function pypiSatisfies(version: string, range: string): boolean {
@@ -182,19 +193,22 @@ function dependencyArrays(text: string, depTypes: Map<string, unknown>): Map<str
 export function updatePyprojectToml(pkgStr: string, deps: Deps): string {
   const depsByType = new Map<string, Map<string, Deps[string]>>();
   for (const [key, dep] of Object.entries(deps)) {
-    const [depType, name] = key.split(fieldSep);
-    getOrSet(depsByType, depType, () => new Map()).set(name, dep);
+    const fields = key.split(fieldSep);
+    getOrSet(depsByType, fields[0], () => new Map()).set(fields[2], dep);
   }
   const spans = dependencyArrays(pkgStr, depsByType);
   let newPkgStr = pkgStr;
   for (const [depType, span] of Array.from(spans).reverse()) {
-    const byName = depsByType.get(depType)!;
-    const names = longestFirstAlternation(byName.keys());
+    const byRequirement = depsByType.get(depType)!;
     const value = newPkgStr.slice(...span).replace(
-      new RegExp(`(['"])( *(${names})(?![\\w.-]).*?)(?=\\1)`, "g"),
-      (_, quote, requirement, name) => {
-        const {old, oldOrig, new: newValue} = byName.get(name)!;
-        return `${quote}${updateRequirement(requirement, oldOrig || old, newValue) ?? requirement}`;
+      /#.*|"""[\s\S]*?"""|'''[\s\S]*?'''|"(?:\\.|[^"\\])*"|'[^']*'/g,
+      text => {
+        if (text.startsWith("#")) return text;
+        const requirement = parseValue(text) as string;
+        const dep = byRequirement.get(requirement);
+        if (!dep) return text;
+        const updated = updateRequirement(requirement, dep.oldOrig || dep.old, dep.new);
+        return updated ? text[0] === `"` && text.includes("\\") ? JSON.stringify(updated) : text.replace(requirement, () => updated) : text;
       },
     );
     newPkgStr = `${newPkgStr.slice(0, span[0])}${value}${newPkgStr.slice(span[1])}`;

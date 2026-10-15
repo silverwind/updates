@@ -8,6 +8,7 @@ import {type Config, type ModeContext, fetchTimeout} from "./shared.ts";
 const dir = mkdtempSync(join(tmpdir(), "updates-pnpm-auth-"));
 const originalEnv = {XDG_CONFIG_HOME: env.XDG_CONFIG_HOME, pnpm_config__auth: env.pnpm_config__auth, PNPM_CONFIG__AUTH: env.PNPM_CONFIG__AUTH};
 afterAll(() => {
+  delete env.UPDATES_TEST_PNPM_TOKEN;
   for (const [key, value] of Object.entries(originalEnv)) {
     if (value === undefined) delete env[key];
     else env[key] = value;
@@ -16,6 +17,7 @@ afterAll(() => {
 });
 
 test("fetchNpmInfo resolves registries and tokens in pnpm's order: cli, pnpm_config__auth, workspace yaml, global yaml, global _auth, npmrc", async () => {
+  env.UPDATES_TEST_PNPM_TOKEN = "ga";
   const requests: Array<[string, string | null]> = [];
   const ctx = {fetchTimeout, noCache: true, doFetch: (url: string, opts: RequestInit) => {
     requests.push([url, new Headers(opts.headers).get("authorization")]);
@@ -26,7 +28,7 @@ test("fetchNpmInfo resolves registries and tokens in pnpm's order: cli, pnpm_con
   writeFileSync(join(dir, "xdg", "pnpm", "config.yaml"), [
     "registries:", "  '@gy': https://gy.test", "  '@ws': https://gy.test",
     "_auth:", "  https://ws.test/:", '    "@ws":', "      authToken: ws-scoped",
-    "  https://ga.test:", '    "@":', "      authToken: ga-default", '    "@ga":', "      authToken: ga-scoped",
+    "  https://ga.test:", '    "@":', `      authToken: \${UPDATES_TEST_PNPM_TOKEN}-default`, '    "@ga":', `      authToken: \${UPDATES_TEST_PNPM_TOKEN}-scoped`,
     '    "@gy":', "      authToken: ga-gy", '    "@ws":', "      authToken: ga-ws", "",
   ].join("\n"));
   writeFileSync(join(dir, "pnpm-workspace.yaml"), "registries:\n  '@ws': https://ws.test\n  '@org': https://ws.test\n");
@@ -38,14 +40,14 @@ test("fetchNpmInfo resolves registries and tokens in pnpm's order: cli, pnpm_con
   ].join("\n"));
   env.XDG_CONFIG_HOME = join(dir, "xdg");
   env.pnpm_config__auth = "";
-  env.PNPM_CONFIG__AUTH = JSON.stringify({"https://upper.test": {"@upper": {authToken: "upper"}}});
+  env.PNPM_CONFIG__AUTH = JSON.stringify({"https://upper.test": {"@upper": {authToken: `upper-\${UPDATES_TEST_PNPM_TOKEN}`}}});
   await fetch("@upper/pkg");
-  env.pnpm_config__auth = JSON.stringify({"https://env.test/": {"@org": {authToken: "env-org"}}});
+  env.pnpm_config__auth = JSON.stringify({"https://env.test/": {"@org": {authToken: `env-\${UPDATES_TEST_PNPM_TOKEN}\${UPDATES_TEST_PNPM_UNSET}`}}});
   for (const name of ["@org/pkg", "@ws/pkg", "@gy/pkg", "@ga/pkg", "@npmrc/pkg", "lodash"]) await fetch(name);
   await fetch("lodash", {registry: "https://cli.test"});
   expect(requests).toEqual([
-    ["https://upper.test/@upper%2fpkg", "Bearer upper"],
-    ["https://env.test/@org%2fpkg", "Bearer env-org"],
+    ["https://upper.test/@upper%2fpkg", "Bearer upper-ga"],
+    ["https://env.test/@org%2fpkg", "Bearer env-ga"],
     ["https://ws.test/@ws%2fpkg", "Bearer ws-scoped"],
     ["https://gy.test/@gy%2fpkg", null],
     ["https://ga.test/@ga%2fpkg", "Bearer ga-scoped"],

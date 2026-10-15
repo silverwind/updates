@@ -22,7 +22,10 @@ import {
   rewriteGoImportPaths,
   rewriteGoImports,
 } from "./go.ts";
-import {type GoProxyEntry, type ModeContext, fieldSep, isGoPseudoVersion} from "./shared.ts";
+import {
+  fieldSep, isGoPseudoVersion, findNewVersion, goPinAllowsDowngrade, goVersionPredicate,
+  type GoProxyEntry, type ModeContext,
+} from "./shared.ts";
 
 async function withEnv(values: Record<string, string | undefined>, fn: () => void | Promise<void>): Promise<void> {
   const assign = (entries: Record<string, string | undefined>) => {
@@ -264,17 +267,44 @@ function makeGoCtx(routes: Record<string, string | number>, seen: Array<string> 
 }
 
 const modPath = "github.com/foo/bar";
-const infoFor = (ctx: ModeContext, cwd = ".") => fetchGoProxyInfo(modPath, "deps", "1.0.0", cwd, ctx, []);
+const infoFor = (ctx: ModeContext, cwd = ".", constraints?: Parameters<typeof fetchGoProxyInfo>[6]) =>
+  fetchGoProxyInfo(modPath, "deps", "1.0.0", cwd, ctx, [], constraints);
+
+function makeGoVersionCtx(source: string, modules: Record<string, {Version: string, Versions: Array<string>}>, seen: Array<string> = []): ModeContext {
+  if (source === "proxy") return makeGoCtx(Object.fromEntries(Object.entries(modules).flatMap(([path, data]) => [
+    [`${goProxyBase}/${path}/@latest`, JSON.stringify(data)],
+    [`${goProxyBase}/${path}/@v/list`, data.Versions.join("\n")],
+    ...data.Versions.map(Version => [`${goProxyBase}/${path}/@v/${Version}.info`, JSON.stringify({Version})]),
+  ])), seen);
+  return {
+    fetchTimeout: 100, goProbeTimeout: 100, goProxyChain: parseGoProxy("direct"),
+    execFile: (_file: string, args: Array<string>) => {
+      seen.push(args.at(-1)!);
+      const [path, version] = args.at(-1)!.split("@");
+      return modules[path] ? Promise.resolve({
+        stdout: JSON.stringify({...modules[path], Version: version === "latest" ? modules[path].Version : version}), stderr: "",
+      }) : Promise.reject(new Error("missing module"));
+    },
+  } as unknown as ModeContext;
+}
 
 test("fetchGoProxyInfo falls back to @v/list when the proxy omits @latest", async () => {
   const seen: Array<string> = [];
+  let inspectedVersions = 0;
+  const accepts = (version: string) => { inspectedVersions++; return version === "1.2.0"; };
   const ctx = makeGoCtx({
     [`${goProxyBase}/${modPath}/@v/list`]: "v1.0.0\nv1.2.0\nv1.3.0-rc.1\n",
     [`${goProxyBase}/${modPath}/@v/v1.2.0.info`]: JSON.stringify({Version: "v1.2.0", Time: "2024-01-01T00:00:00Z"}),
   }, seen);
-  const [[data], [sameData]] = await Promise.all([infoFor(ctx), infoFor(ctx)]);
+  const [[data], [sameData], [cachedData]] = await Promise.all([
+    infoFor(ctx),
+    fetchGoProxyInfo(modPath, "deps", "1.0.0", ".", ctx, [], {accepts}),
+    fetchGoProxyInfo(modPath, "deps", "1.0.0", ".", ctx, [], {accepts}),
+  ]);
   expect(data).toMatchObject({name: modPath, old: "1.0.0", new: "1.2.0", Time: "2024-01-01T00:00:00Z"});
   expect(sameData).toEqual(data);
+  expect(cachedData).toEqual(data);
+  expect(inspectedVersions).toBe(2);
   expect(seen).toContain(`${goProxyBase}/${modPath}/v2/@v/list`);
   expect(new Set(seen).size).toBe(seen.length);
 });
@@ -286,6 +316,38 @@ test("fetchGoProxyInfo keeps the @v/list pick when its .info and the major probe
     [`${goProxyBase}/${modPath}/v2/@v/list`]: 500,
   }));
   expect(data).toMatchObject({new: "1.2.0", Time: ""});
+});
+
+test("fetchGoProxyInfo probes past a rejected major whose @v/list fails", async () => {
+  const [data] = await infoFor(makeGoCtx({
+    [`${goProxyBase}/${modPath}/@latest`]: JSON.stringify({Version: "v1.1.0"}),
+    [`${goProxyBase}/${modPath}/v2/@latest`]: JSON.stringify({Version: "v2.0.0-beta.1"}),
+    [`${goProxyBase}/${modPath}/v2/@v/list`]: 500,
+    [`${goProxyBase}/${modPath}/v3/@latest`]: JSON.stringify({Version: "v3.0.0"}),
+  }), ".", {accepts: version => !version.includes("-")});
+  expect(data.new).toBe("3.0.0");
+});
+
+test.each(["proxy", "direct"])("fetchGoProxyInfo applies version constraints and skips forbidden major probes through %s", async source => {
+  for (const [currentVersion, latest, versions, pinnedRange, usePre, expected, allowDowngrade = false] of [
+    ["1.5.0", "1.5.0", ["1.3.0", "1.4.0", "1.5.0"], "1.3.0", false, "1.3.0"],
+    ["1.5.0", "1.3.0", ["1.3.0", "1.4.0", "1.5.0"], "1.3.0", false, "1.3.0"],
+    ["1.0.0", "1.3.0", ["1.1.0", "1.2.0", "1.3.0"], "<1.3.0", false, "1.2.0"],
+    ["1.0.0", "1.3.0", ["1.1.0", "1.2.0-beta.1", "1.3.0"], "<1.3.0", true, "1.2.0-beta.1"],
+    ["1.2.0", "1.2.0", ["1.1.0", "1.2.0"], "", false, null, true],
+    ["1.0.0-beta.1", "1.0.0-beta.1", ["1.0.0-beta.0", "1.0.0-beta.1"], "^1.0.0", false, null],
+  ] as const) {
+    const seen: Array<string> = [];
+    const ctx = makeGoVersionCtx(source, {[modPath]: {Version: `v${latest}`, Versions: versions.map(version => `v${version}`)}}, seen);
+    const opts = {range: currentVersion, semvers: new Set(["major", "minor", "patch"]),
+      useGreatest: false, usePre, useRel: false, pinnedRange, allowDowngrade};
+    const [data] = await fetchGoProxyInfo(modPath, "deps", currentVersion, ".", ctx, [], {
+      accepts: goVersionPredicate(opts), allowMajor: false, pinAllowsDowngrade: goPinAllowsDowngrade(opts, currentVersion),
+    });
+    expect(data.new).toBe(expected || latest);
+    expect(findNewVersion(data, {...opts, mode: "go"})).toBe(expected);
+    expect(seen.every(request => request.startsWith(source === "direct" ? `${modPath}@` : `${goProxyBase}/${modPath}/@`))).toBe(true);
+  }
 });
 
 test("primary and probe Go lookups keep their retry semantics separate", async () => {
@@ -330,22 +392,42 @@ test.each([
   expect(data).toMatchObject({new: "2.0.0", newPath: `${modPath}/v2`});
 });
 
-test("fetchGoProxyInfo rejects an excluded latest version from root and workspace member manifests", async () => {
+test.each(["proxy", "direct"])("fetchGoProxyInfo rejects excluded and constrained latest versions from root and workspace member manifests, keeping the non-excluded latest when nothing is accepted, through %s", async source => {
   const projectDir = mkdtempSync(resolve(tmpdir(), "updates-go-"));
   try {
     mkdirSync(resolve(projectDir, "app"));
-    for (const [type, memberPath] of [["deps", ""], ["deps|./app", "app"]]) {
-      writeFileSync(resolve(projectDir, memberPath, "go.mod"), goMod(`exclude ${modPath} v1.3.0`));
-      const [data] = await fetchGoProxyInfo(modPath, type, "1.0.0", projectDir, makeGoCtx({
-        [`${goProxyBase}/${modPath}/@latest`]: JSON.stringify({Version: "v1.3.0", Time: ""}),
-        [`${goProxyBase}/${modPath}/@v/list`]: "v1.1.0\nv1.2.0\nv1.3.0\n",
-        [`${goProxyBase}/${modPath}/@v/v1.2.0.info`]: JSON.stringify({Version: "v1.2.0", Time: ""}),
-      }), []);
-      expect(data.new).toBe("1.2.0");
+    const seen: Array<string> = [];
+    const ctx = makeGoVersionCtx(source, {[modPath]: {Version: "v1.3.0", Versions: ["v1.1.0", "v1.2.0", "v1.3.0"]}}, seen);
+    for (const [type, memberPath, expected] of [["deps", "", "1.2.0"], ["deps|./app", "app", "1.1.0"]]) {
+      writeFileSync(resolve(projectDir, memberPath, "go.mod"), goMod(`exclude ${modPath} v1.3.0`,
+        ...(memberPath ? [`exclude ${modPath} v1.2.0`] : [])));
+      const [data] = await fetchGoProxyInfo(modPath, type, "1.0.0", projectDir, ctx, []);
+      expect(data.new).toBe(expected);
+      const [constrained] = await fetchGoProxyInfo(modPath, type, "1.0.0", projectDir, ctx, [], {
+        accepts: version => version === "1.1.0",
+      });
+      expect(constrained.new).toBe("1.1.0");
+      const [rejected] = await fetchGoProxyInfo(modPath, type, "1.0.0", projectDir, ctx, [], {accepts: () => false});
+      expect(rejected.new).toBe(expected);
     }
+    if (source === "proxy") expect(new Set(seen).size).toBe(seen.length);
   } finally {
     rmSync(projectDir, {recursive: true});
   }
+});
+
+test.each(["proxy", "direct"])("fetchGoProxyInfo keeps accepted majors and continues through rejected intermediate majors through %s", async source => {
+  const ctx = makeGoVersionCtx(source, Object.fromEntries([1, 2, 3].map(major => [
+    major === 1 ? modPath : `${modPath}/v${major}`, {Version: `v${major}.1.0`, Versions: [`v${major}.1.0`]},
+  ])));
+  const constraints = {accepts: (version: string) => !version.startsWith("3.")};
+  const [data] = await fetchGoProxyInfo(modPath, "deps", "1.0.0", ".", ctx, [], constraints);
+  const [primary] = await fetchGoProxyInfo(`${modPath}/v3`, "deps", "3.0.0", ".", ctx, [], constraints);
+  expect([data.new, primary.new]).toEqual(["2.1.0", "3.1.0"]);
+  const [laterMajor] = await fetchGoProxyInfo(modPath, "deps", "1.0.0", ".", ctx, [], {
+    accepts: version => version.startsWith("3."),
+  });
+  expect(laterMajor).toMatchObject({new: "3.1.0", newPath: `${modPath}/v3`});
 });
 
 test("fetchGoProxyInfo raises once no proxy in the chain has the module", async () => {
@@ -356,7 +438,7 @@ test.each([
   ["failed", 500, `Received 500 status 500 from ${goProxyBase}//team@feed/${modPath}/@latest`],
   ["invalid", "{}", `Invalid response from ${goProxyBase}//team@feed/${modPath}/@latest`],
 ])("fetchGoProxyInfo reports %s proxy responses without URL credentials", async (_name, response, message) => {
-  for (const authority of ["proxy", "test-user:test%40password@proxy"]) {
+  for (const authority of ["proxy", "test-user:test%40password@proxy", "test-user:first@second@proxy"]) {
     await expect(infoFor(makeGoCtx({[`${goProxyBase}//team@feed/${modPath}/@latest`]: response}, [],
       parseGoProxy(`https://${authority}//team@feed`)))).rejects.toThrow(message);
   }
@@ -400,7 +482,8 @@ test.each([
 ])("fetchGoProxyInfo fails without contacting a proxy for GOPROXY=%s", async (value, cwd, message) => {
   const seen: Array<string> = [];
   let subprocessGoProxy = "";
-  const execFile = (_file: string, _args: Array<string>, options: Record<string, any>) => {
+  const execFile = (_file: string, args: Array<string>, options: Record<string, any>) => {
+    expect(args.slice(0, -1)).toEqual(["list", "-m", "-mod=readonly", "-versions", "-json"]);
     subprocessGoProxy = options.env?.GOPROXY ?? "";
     return Promise.reject(Object.assign(new Error("Command failed"), {stderr: "no such host"}));
   };

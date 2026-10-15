@@ -4,7 +4,7 @@ import {join, dirname, basename, relative, resolve} from "node:path";
 import {statSync, realpathSync, truncateSync, writeFileSync, accessSync, type Stats} from "node:fs";
 import {readFile} from "node:fs/promises";
 import {parseToml} from "./utils/toml.ts";
-import {githubActionsVersioning, satisfies, validRange} from "./utils/semver.ts";
+import {githubActionsVersioning, satisfies, valid, validRange} from "./utils/semver.ts";
 import {timerel} from "timerel";
 import {
   npmTypes, uvTypes, goTypes, cargoTypes, cargoTargetTypes, expandDepTypes, parseUvDependencies, nonPackageEngines,
@@ -12,10 +12,11 @@ import {
   walkUpSync, getOrSet,
 } from "./utils/utils.ts";
 import {
-  type Dep, type Deps, type DepsByMode, type Limiter, type Output as ModeOutput, type ModeContext, type TagEntry,
   fieldSep, normalizeUrl, fetchTimeout, goProbeTimeout, maxSockets,
   doFetch, fetchActionTags, fetchForge, findVersion, findNewVersion, getInfoUrl, getLimiter,
   passesCooldown, stripv, hashRe, isVersionLikeRef, defaultApiUrls, formatVersionPrecision, getExecFile,
+  coerceToVersion, goPinAllowsDowngrade, goVersionPredicate, pypiReleaseDate, redactUrlCredentials,
+  type Dep, type Deps, type DepsByMode, type Limiter, type Output as ModeOutput, type ModeContext, type TagEntry,
 } from "./modes/shared.ts";
 import {flushCacheWrites} from "./utils/fetchCache.ts";
 import {cliBaseConfig, loadConfig, configMixedToRegexes, patternsToRegexSet, validatePin} from "./config.ts";
@@ -23,35 +24,37 @@ import type {Config, Override} from "./config.ts";
 import {matchesRenovateRule, testRenovateMatcher, type RenovateVersionRule} from "./utils/renovate.ts";
 import {
   fetchNpmInfo, fetchNpmVersionInfo, fetchJsrInfo, isJsr, isLocalDep, isCatalogRef, parseJsrDependency, parseNpmAlias,
-  updatePackageJson, updateVersionRange, normalizeRange, checkUrlDep, resolutionsBasePackage, selectorTypes,
+  updatePackageJson, updateVersionRange, normalizeRange, checkUrlDep, resolutionsBasePackage, selectorTypes, npmTargetName,
 } from "./modes/npm.ts";
-import {fetchPypiInfo, pypiSatisfies, updatePyprojectToml, updateRequirement} from "./modes/pypi.ts";
+import {fetchPypiInfo, isPypiRange, pypiSatisfies, updatePyprojectToml, updateRequirement} from "./modes/pypi.ts";
 import {
   resolveGoProxyChain, parseGoNoProxy,
   parseGoMod, parseGoModule, parseGoWork, resolveGoWorkModule, fetchGoProxyInfo, updateGoMod, rewriteGoImports,
   getGoInfoUrl, goModulePathForVersion, shortenGoVersion, shortenGoModule,
 } from "./modes/go.ts";
 import {
-  type ActionRef, type YamlPathEntry,
   parseActionRef, parseUsesLine, getForgeApiBaseUrl, walkYamlPair,
   fetchActionTagDate, formatActionVersion,
   updateWorkflowFile, isWorkflowFile, resolveWorkflowFiles,
+  type ActionRef, type YamlPathEntry,
 } from "./modes/actions.ts";
 import {
-  type DockerImageRef,
   parseDockerImageRef, parseDockerTag, extractDockerRefs, dockerImageNames,
   fetchDockerTagDigest,
   isDockerfile, isDockerFileName, dockerExactFileNames,
   dockerTagVersion, fetchDockerInfo, findDockerVersion, getDockerInfoUrl,
   updateDockerfile, updateComposeFile, updateWorkflowDockerImages,
+  type DockerImageRef,
 } from "./modes/docker.ts";
 import {
-  type MakeDockerImage,
   isMakeFileName, makeExactFileNames, makeAssignmentValues, parseGoInstalls, parseImages,
   resolveGoModuleRoot, formatMakeImageSpec, updateMakefile,
+  type MakeDockerImage,
 } from "./modes/make.ts";
 import {isShellFileName, shellAssignmentValues} from "./modes/shell.ts";
-import {fetchCratesIoInfo, updateCargoToml, updateCargoRange, cargoToNpmRange, parseCargoLock, findLockedVersion} from "./modes/cargo.ts";
+import {
+  fetchCratesIoInfo, updateCargoToml, updateCargoRange, cargoToNpmRange, parseCargoLock, findLockedVersion,
+} from "./modes/cargo.ts";
 import {
   baseType, filterDepsForMember, resolveWorkspaceMembers, parsePnpmWorkspace, pnpmCatalogEntries,
   updatePnpmWorkspace, type WorkspaceMember,
@@ -92,8 +95,6 @@ const workspaceFileOf: Record<string, string> = {"go.mod": "go.work", "package.j
 const workspaceFileNames = new Set(Object.values(workspaceFileOf));
 
 const apiUrl = (value: unknown, fallback: string) => normalizeUrl(typeof value === "string" ? value : fallback);
-
-const jsrSpecifierRe = /^(npm:@jsr\/[^@]+@|jsr:@[^@]+@)(.+)$/;
 
 function realPath(path: string): string {
   try { return realpathSync.native(path); } catch { return resolve(path); }
@@ -144,17 +145,19 @@ function depNames(name: string, kind: string): Array<string> {
   return [name];
 }
 
-function canInclude(name: string, mode: string, {include, exclude}: {include: Set<RegExp>, exclude: Set<RegExp>}, depType: string, kind: string = mode, packageName: string = name): boolean {
-  if (depType === "engines" && nonPackageEngines.includes(name)) return false;
-  if (mode === "pypi" && name === "python") return false;
+type DependencyIdentity = {packageName: string, depName: string, names: Array<string>};
+
+const writeVerbose = (text: string) => console.error(redactUrlCredentials(text));
+
+function canInclude({packageName, depName, names}: DependencyIdentity, mode: string, {include, exclude}: {include: Set<RegExp>, exclude: Set<RegExp>}, depType: string): boolean {
+  if (depType === "engines" && nonPackageEngines.includes(depName)) return false;
+  if (mode === "pypi" && depName === "python") return false;
   if (!include.size && !exclude.size) return true;
-  const names = Array.from(new Set([...depNames(name, kind), ...depNames(packageName, kind)]));
-  const test = (matcher: RegExp, value: string) => testRenovateMatcher(matcher, value, packageName, name);
   for (const matcher of exclude) {
-    if (names.some(value => test(matcher, value))) return false;
+    if (names.some(value => testRenovateMatcher(matcher, value, packageName, depName))) return false;
   }
   for (const matcher of include) {
-    if (names.some(value => test(matcher, value))) return true;
+    if (names.some(value => testRenovateMatcher(matcher, value, packageName, depName))) return true;
   }
   return !include.size;
 }
@@ -227,19 +230,19 @@ function buildOutput(deps: DepsByMode): Output {
     }
   }
   for (const [mode, modeDeps] of modes) {
-    for (const [key, {oldPrint, newPrint, oldOrig, date: _date, ...props}] of Object.entries(modeDeps)) {
+    for (const [key, {oldPrint, newPrint, oldOrig, date: _date, cooldownDays: _cooldownDays, ...props}] of Object.entries(modeDeps)) {
+      const [type, name, ref] = key.split(fieldSep);
       if (typeof oldPrint === "string") props.old = oldPrint;
+      else if (typeof oldOrig === "string" && !isJsr(oldOrig)) props.old = mode === "go" ? shortenGoVersion(oldOrig) : oldOrig;
       if (typeof newPrint === "string") props.new = newPrint;
-      if (typeof oldOrig === "string" && !isJsr(oldOrig)) props.old = mode === "go" ? shortenGoVersion(oldOrig) : oldOrig;
       if (mode === "go") props.new = shortenGoVersion(props.new);
       else if (mode === "actions" && !props.digestOnly) {
         props.old = stripv(props.old);
         props.new = stripv(props.new);
       }
 
-      const [type, name, ref] = key.split(fieldSep);
       const label = ref && rowsPerName.get(rowId(mode, key))! > 1 ?
-        `${name}${mode === "actions" ? "@" : ":"}${displayKey(ref)}` : name;
+        mode === "pypi" ? ref : `${name}${mode === "actions" ? "@" : ":"}${displayKey(ref)}` : name;
       const modeResults = output.results[mode] ??= {};
       (modeResults[displayKey(type)] ??= {})[label] = props;
     }
@@ -253,22 +256,34 @@ function buildOutput(deps: DepsByMode): Output {
   return output;
 }
 
-function versionAllowedPredicate(mode: string, allowedVersions: string): (version: string) => boolean {
+function versionAllowedPredicate(mode: string, allowedVersions: string): (version: string, tag?: string) => boolean {
   const regex = allowedVersionsRe.exec(allowedVersions);
   if (regex) {
     const versionRe = new RegExp(regex[2], regex[3]);
-    return regex[1] ? version => !versionRe.test(version) : version => versionRe.test(version);
+    return (version, tag) => versionRe.test(tag ?? (mode === "go" ? `v${version}` : version)) !== Boolean(regex[1]);
   }
+  if (mode === "pypi") return isPypiRange(allowedVersions) ? version => pypiSatisfies(version, allowedVersions) :
+    version => satisfies(valid(version) || coerceToVersion(version), allowedVersions);
+  if (!validRange(allowedVersions)) throw new Error(`Invalid ${mode} allowedVersions: ${allowedVersions}`);
   if (mode === "docker") return version => satisfies(dockerTagVersion(version), allowedVersions);
-  if (mode === "pypi") return version => pypiSatisfies(version, allowedVersions);
   return version => satisfies(version, allowedVersions);
+}
+
+function goVersionConstraints(
+  opts: Omit<Parameters<typeof findNewVersion>[1], "mode" | "range"> & {allowedVersions?: string}, currentVersion: string,
+) {
+  const accepts = goVersionPredicate({...opts, range: currentVersion});
+  const isVersionAllowed = opts.allowedVersions ? versionAllowedPredicate("go", opts.allowedVersions) : null;
+  return {
+    accepts: isVersionAllowed ? (version: string) => accepts(version) && isVersionAllowed(version) : accepts,
+    allowMajor: opts.semvers.has("major"),
+    pinAllowsDowngrade: goPinAllowsDowngrade(opts, currentVersion),
+  };
 }
 
 function filterVersionData(data: Record<string, any>, mode: string, allowedVersions: string | undefined) {
   if (!allowedVersions) return data;
   const isVersionAllowed = versionAllowedPredicate(mode, allowedVersions);
-  const allowedOrEmpty = (version: unknown) => typeof version === "string" && isVersionAllowed(version) ? version : "";
-  if (mode === "go") return {...data, new: allowedOrEmpty(data.new), sameMajorNew: allowedOrEmpty(data.sameMajorNew)};
   const key = mode === "pypi" ? "releases" : mode === "docker" ? "tags" : "versions";
   return {...data, [key]: Object.fromEntries(Object.entries(data[key] ?? {})
     .filter(([version]) => isVersionAllowed(version)))};
@@ -288,6 +303,8 @@ export async function updates(opts: UpdatesOptions = {}): Promise<Output> {
   const disposeDnsCache = enableDnsCache();
   try {
     return await runUpdates(opts);
+  } catch (err) {
+    throw new Error(redactUrlCredentials((err as Error)?.message || String(err)));
   } finally {
     disposeDnsCache();
   }
@@ -307,6 +324,12 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
   const vGreen = colorFn("green");
   const vRed = colorFn("red");
 
+  const dependencyIdentities = new Map<string, DependencyIdentity>();
+  const resolveDependencyIdentity = (kind: string, packageName: string, depName = packageName): DependencyIdentity =>
+    getOrSet(dependencyIdentities, `${kind}${fieldSep}${packageName}${fieldSep}${depName}`, () => ({
+      packageName, depName, names: Array.from(new Set([...depNames(depName, kind), ...depNames(packageName, kind)])),
+    }));
+
   let limit: Limiter | undefined;
   const ctx: ModeContext = {
     execFile: async (file, args, execOpts) => (await getExecFile())(file, args, execOpts),
@@ -320,9 +343,9 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
     cratesIoUrl: apiUrl(opts.cargoapi, defaultApiUrls.cargoapi),
     dockerApiUrl: apiUrl(opts.dockerapi, defaultApiUrls.dockerapi),
     doFetch: (url: string, fetchOpts?: RequestInit) => (limit ??= getLimiter(ctx))(async () => {
-      if (config.verbose) console.error(`${timestamp()} ${magenta(fetchOpts?.method || "GET")} ${url}`);
+      if (config.verbose) writeVerbose(`${timestamp()} ${magenta(fetchOpts?.method || "GET")} ${url}`);
       const res = await doFetch(url, fetchOpts);
-      if (config.verbose) console.error(`${timestamp()} ${res.ok ? vGreen(res.status) : vRed(res.status)} ${url}`);
+      if (config.verbose) writeVerbose(`${timestamp()} ${res.ok ? vGreen(res.status) : vRed(res.status)} ${url}`);
       return res;
     }),
     noCache: Boolean(config.noCache),
@@ -368,18 +391,17 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
   type VersionConfig = ReturnType<typeof compileVersionConfig>;
 
   type ResolvedVersionOpts = {
-    names: Array<string>, useGreatest: boolean, usePre: boolean, useRel: boolean, semvers: Set<string>,
+    useGreatest: boolean, usePre: boolean, useRel: boolean, semvers: Set<string>,
     allowDowngrade: boolean, cooldownOverride: number | undefined, allowedVersions?: string,
   };
-  const versionOptsCache = new WeakMap<VersionConfig, Map<string, ResolvedVersionOpts>>();
+  const versionOptsCache = new WeakMap<VersionConfig, Map<DependencyIdentity, ResolvedVersionOpts>>();
 
-  function getVersionOpts(versionConfig: VersionConfig, kind: string, packageName: string, depName: string) {
+  function getVersionOpts(versionConfig: VersionConfig, identity: DependencyIdentity) {
     const cache = getOrSet(versionOptsCache, versionConfig, () => new Map());
-    const cacheKey = `${kind}${fieldSep}${packageName}${fieldSep}${depName}`;
-    let entry = cache.get(cacheKey);
+    let entry = cache.get(identity);
     if (!entry) {
-      const allNames = Array.from(new Set([...depNames(packageName, kind), ...depNames(depName, kind)]));
-      const anyMatches = (set: Set<RegExp> | boolean) => allNames.some(name => matchesAny(name, set));
+      const {packageName, depName, names} = identity;
+      const anyMatches = (set: Set<RegExp> | boolean) => names.some(name => matchesAny(name, set));
       let useGreatest = anyMatches(versionConfig.greatest);
       let usePre = anyMatches(versionConfig.prerelease);
       let useRel = anyMatches(versionConfig.release);
@@ -397,8 +419,8 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
       }
 
       for (const override of versionConfig.overrides) {
-        if (override.include && allNames.every(name => !matchesAny(name, override.include!)) ||
-          override.exclude && allNames.some(name => matchesAny(name, override.exclude!))) continue;
+        if (override.include && names.every(name => !matchesAny(name, override.include!)) ||
+          override.exclude && names.some(name => matchesAny(name, override.exclude!))) continue;
         if (override.greatest !== undefined) useGreatest = override.greatest;
         if (override.prerelease !== undefined) usePre = override.prerelease;
         if (override.release !== undefined) useRel = override.release;
@@ -409,8 +431,8 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
       }
 
       const semvers = usePatch ? semversByPrecision.patch : useMinor ? semversByPrecision.minor : semversByPrecision.major;
-      entry = {names: allNames, useGreatest, usePre, useRel, semvers, allowDowngrade: allowDown, cooldownOverride, allowedVersions};
-      cache.set(cacheKey, entry);
+      entry = {useGreatest, usePre, useRel, semvers, allowDowngrade: allowDown, cooldownOverride, allowedVersions};
+      cache.set(identity, entry);
     }
     return entry;
   }
@@ -426,12 +448,12 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
   };
   const now = Date.now();
   const resolveVersionOpts = (
-    {versionConfig, pin, cooldownDays, pinNoDowngrade: filePinNoDowngrade}: FileFilters, kind: string, packageName: string,
-    depName: string, noDowngrade = filePinNoDowngrade,
+    {versionConfig, pin, cooldownDays, pinNoDowngrade: filePinNoDowngrade}: FileFilters, identity: DependencyIdentity,
+    noDowngrade = filePinNoDowngrade,
   ) => {
-    const {names, useGreatest, usePre, useRel, semvers, allowDowngrade, cooldownOverride, allowedVersions} =
-      getVersionOpts(versionConfig, kind, packageName, depName);
-    const {pinnedRange, pinNoDowngrade} = resolvePin(names, pin, noDowngrade);
+    const {useGreatest, usePre, useRel, semvers, allowDowngrade, cooldownOverride, allowedVersions} =
+      getVersionOpts(versionConfig, identity);
+    const {pinnedRange, pinNoDowngrade} = resolvePin(identity.names, pin, noDowngrade);
     const effectiveCooldownDays = cooldownOverride ?? cooldownDays;
     return {
       useGreatest, usePre, useRel, semvers, allowDowngrade, allowedVersions, pinnedRange, pinNoDowngrade,
@@ -441,15 +463,13 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
 
   const deps: DepsByMode = {};
   const maybeUrlDeps: Deps = {};
-  const cargoCrates = new Map<string, string>();
+  const depIdentities: Record<string, Map<string, DependencyIdentity>> = {};
   const npmAliases = new Map<string, {name: string, range: string}>();
-  const npmPublishedNames = new Map<string, string>();
   const pnpmWorkspaceOverrideKeys = new Map<string, string>();
-  const pypiSpecs = new Map<string, string>();
   const errors: Array<DepError> = [];
   const addKeyError = (mode: string, key: string, err: unknown) => {
     const [type, name] = key.split(fieldSep);
-    errors.push({mode, type, name, error: (err as Error)?.message || String(err)});
+    errors.push({mode, type, name, error: redactUrlCredentials((err as Error)?.message || String(err))});
   };
   const rejectDep = (mode: string, key: string, err: unknown) => {
     delete deps[mode][key];
@@ -459,8 +479,14 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
   const cwdStr = realPath(cwd()); // cwd() keeps Windows 8.3 short names
   const toRelPath = (absPath: string) => absPath.replace(`${cwdStr}/`, "").replace(`${cwdStr}\\`, "");
 
-  const addDep = (mode: string, depType: string, typePrefix: string, name: string, old: string, oldOrig: string) => {
-    deps[mode][manifestDependencyKey(depType, typePrefix, name)] = {old, oldOrig} as Dep;
+  const canIncludeDep = (mode: string, key: string, identity: DependencyIdentity, filters: FileFilters, depType: string) => {
+    if (!canInclude(identity, mode, filters, depType)) return false;
+    (depIdentities[mode] ??= new Map()).set(key, identity);
+    return true;
+  };
+
+  const addDep = (mode: string, key: string, old: string, oldOrig: string) => {
+    deps[mode][key] = {old, oldOrig} as Dep;
   };
 
   const addNpmDep = (key: string, name: string, value: string) => {
@@ -483,10 +509,9 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
     const addUvDeps = (specs: Array<unknown>, depType: string) => {
       for (const {name, version, spec} of parseUvDependencies(specs)) {
         if (uvSources.has(normalizePep503(name))) continue;
-        if (canInclude(name, mode, filters, depType)) {
-          addDep(mode, depType, typePrefix, name, normalizeRange(version), version);
-          pypiSpecs.set(manifestDependencyKey(depType, typePrefix, name), spec);
-        }
+        const key = manifestDependencyKey(depType, typePrefix, name, spec);
+        if (!canIncludeDep(mode, key, resolveDependencyIdentity(mode, normalizePep503(name), name), filters, depType)) continue;
+        addDep(mode, key, normalizeRange(version), version);
       }
     };
     for (const [depType, table] of expandDepTypes(resolveDepTypes(mode, filters.modeConfig), pkg)) {
@@ -495,7 +520,8 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
         if (mode === "pypi") addUvDeps(obj, depType);
       } else if (typeof obj === "string") {
         const [name, value] = obj.split("@");
-        if (canInclude(name, mode, filters, depType)) addDep(mode, depType, typePrefix, name, normalizeRange(value), value);
+        const key = manifestDependencyKey(depType, typePrefix, name);
+        if (canIncludeDep(mode, key, resolveDependencyIdentity(mode, name), filters, depType)) addDep(mode, key, normalizeRange(value), value);
       } else if (mode === "npm" && (depType === "overrides" || depType === "pnpm.overrides")) {
         const root = depType === "overrides" ? ["overrides"] : ["pnpm", "overrides"];
         const collectOverrides = (child: Record<string, any>, parents: Array<string>) => {
@@ -503,8 +529,8 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
             if (typeof value === "string") {
               const name = resolutionsBasePackage(selector === "." ? parents.at(-1) ?? selector : selector);
               if (internalNames?.has(name)) continue;
-              if (!canInclude(name, mode, filters, depType, mode, parseNpmAlias(value)?.name ?? name)) continue;
               const key = manifestDependencyKey(depType, typePrefix, name, JSON.stringify([...root, ...parents, selector]));
+              if (!canIncludeDep(mode, key, resolveDependencyIdentity(mode, npmTargetName(name, value), name), filters, depType)) continue;
               addNpmDep(key, name, value);
             } else if (value && typeof value === "object" && !Array.isArray(value)) {
               collectOverrides(value, [...parents, selector]);
@@ -517,11 +543,13 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
           if (mode === "pypi" && Array.isArray(value)) { addUvDeps(value, `${depType}.${name}`); continue; }
           if (typeof value !== "string") continue;
           if (internalNames?.has(selectorName(depType, name))) continue;
-          const alias = mode === "npm" ? parseNpmAlias(value) : null;
-          if (!canInclude(name, mode, filters, depType, mode, alias?.name ?? name)) continue;
-          if (mode === "npm") addNpmDep(manifestDependencyKey(depType, typePrefix, name), name, value);
-          else if (mode === "go") addDep(mode, depType, typePrefix, name, shortenGoVersion(value), stripv(value));
-          else if (validRange(value)) addDep(mode, depType, typePrefix, name, normalizeRange(value), value);
+          const key = manifestDependencyKey(depType, typePrefix, name);
+          if (!canIncludeDep(mode, key, resolveDependencyIdentity(mode,
+            mode === "npm" ? npmTargetName(selectorName(depType, name), value) : mode === "pypi" ? normalizePep503(name) : name,
+            name), filters, depType)) continue;
+          if (mode === "npm") addNpmDep(key, name, value);
+          else if (mode === "go") addDep(mode, key, shortenGoVersion(value), stripv(value));
+          else if (validRange(value)) addDep(mode, key, normalizeRange(value), value);
         }
       }
     }
@@ -558,9 +586,10 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
   const pnpmMemberFiles: WorkspaceMember[] = [];
   const pnpmCatalogFiles: WorkspaceMember[] = [];
 
-  const actionDepInfos: Array<ActionRef & {key: string, apiUrl: string, filters: FileFilters, comment: string}> = [];
+  const actionDepInfos: Array<ActionRef & {key: string, apiUrl: string, filters: FileFilters, comment: string,
+    identity: DependencyIdentity}> = [];
   const dockerDepInfos: Array<{key: string, ref: DockerImageRef, filters: FileFilters}> = [];
-  type MakeDepInfo = {mode: "make" | "shell", key: string, name: string, oldSpec: string, filters: FileFilters, newSpec?: string} & (
+  type MakeDepInfo = {mode: "make" | "shell", key: string, oldSpec: string, filters: FileFilters, newSpec?: string} & (
     {kind: "go", installPath: string, version: string} |
     {kind: "docker", image: MakeDockerImage}
   );
@@ -621,8 +650,8 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
 
   function collectDockerRef(ref: DockerImageRef, relPath: string, filters: FileFilters): void {
     deps.docker ??= {};
-    if (!canInclude(ref.fullImage, "docker", filters, "docker")) return;
     const key = dependencyKey(relPath, ref.fullImage, `${ref.tag}${ref.digest ? `@${ref.digest}` : ""}`);
+    if (!canIncludeDep("docker", key, resolveDependencyIdentity("docker", ref.fullImage), filters, "docker")) return;
     if (deps.docker[key]) return;
     const parsed = parseDockerTag(ref.tag);
     if (!parsed && !ref.digest) return;
@@ -698,13 +727,17 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
         if (actionsEnabled) {
           const parsed = parseUsesLine(line);
           const action = parsed && parseActionRef(parsed.value);
-          if (action && canInclude(action.name, "actions", filters, "actions")) {
-            deps.actions ??= {};
-            const comment = parsed.pinnedVersion || /^#\s*(\S+)\s*$/.exec(parsed.comment)?.[1] || "";
-            const key = dependencyKey(relPath, action.name, action.isHash && comment ? `${comment}@${action.ref}` : action.ref);
-            if (!deps.actions[key]) {
-              deps.actions[key] = {old: action.ref} as Dep;
-              actionDepInfos.push({...action, key, comment, apiUrl: getForgeApiBaseUrl(action.host, ctx.forgeApiUrl), filters});
+          if (action) {
+            const identity = resolveDependencyIdentity("actions", `${action.owner}/${action.repo}`, action.name);
+            if (canInclude(identity, "actions", filters, "actions")) {
+              deps.actions ??= {};
+              const comment = parsed.pinnedVersion || /^#\s*(\S+)\s*$/.exec(parsed.comment)?.[1] || "";
+              const key = dependencyKey(relPath, action.name, action.isHash && comment ? `${comment}@${action.ref}` : action.ref);
+              if (!deps.actions[key]) {
+                deps.actions[key] = {old: action.ref} as Dep;
+                actionDepInfos.push({...action, key, comment, identity,
+                  apiUrl: getForgeApiBaseUrl(action.host, ctx.forgeApiUrl), filters});
+              }
             }
           }
         }
@@ -752,23 +785,23 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
       fileData[relPath] = {absPath: file, content};
       const modeDeps = deps[specMode] ??= {};
       for (const {installPath, version} of goInstalls) {
-        if (!canInclude(installPath, specMode, filters, specMode, "go")) continue;
         const key = dependencyKey(relPath, installPath, version);
+        if (!canIncludeDep(specMode, key, resolveDependencyIdentity("go", installPath), filters, specMode)) continue;
         if (modeDeps[key]) continue;
         modeDeps[key] = {old: stripv(version), oldOrig: version} as Dep;
         makeDepInfos.push({
-          mode: specMode, kind: "go", key, name: installPath, oldSpec: `${installPath}@${version}`, installPath, version, filters,
+          mode: specMode, kind: "go", key, oldSpec: `${installPath}@${version}`, installPath, version, filters,
         });
       }
       for (const image of images) {
-        if (!canInclude(image.writtenImage, specMode, filters, specMode, "docker")) continue;
         const key = dependencyKey(relPath, image.writtenImage, image.ref.tag);
+        if (!canIncludeDep(specMode, key, resolveDependencyIdentity("docker", image.writtenImage), filters, specMode)) continue;
         if (modeDeps[key]) continue;
         const parsed = parseDockerTag(image.ref.tag);
         if (!parsed) continue;
         const oldSpec = formatMakeImageSpec(image.writtenImage, image.ref.tag, image.digest);
         modeDeps[key] = {old: parsed.version, oldOrig: image.ref.tag} as Dep;
-        makeDepInfos.push({mode: specMode, kind: "docker", key, name: image.writtenImage, oldSpec, image, filters});
+        makeDepInfos.push({mode: specMode, kind: "docker", key, oldSpec, image, filters});
       }
       continue;
     }
@@ -809,8 +842,9 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
       }
 
       for (const [name, value] of Object.entries(goWork.replace)) {
-        if (!internalNames.has(name) && canInclude(name, mode, filters, "replace")) {
-          addDep(mode, "replace", workspaceSuffix, name, shortenGoVersion(value), stripv(value));
+        const key = manifestDependencyKey("replace", workspaceSuffix, name);
+        if (!internalNames.has(name) && canIncludeDep(mode, key, resolveDependencyIdentity(mode, name), filters, "replace")) {
+          addDep(mode, key, shortenGoVersion(value), stripv(value));
         }
       }
       continue;
@@ -819,13 +853,15 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
     if (filename === "Cargo.toml") {
       const cargoParsed = cargoWorkspaceFiles.get(file) ?? parseToml(content);
       const lockPath = findUpSync(["Cargo.lock"], projectDir).get("Cargo.lock");
-      const wsMembers = (cargoParsed.workspace as Record<string, any>)?.members;
+      const workspace = cargoParsed.workspace as Record<string, any> | undefined;
+      const wsMembers = workspace?.members;
       const isWorkspace = Array.isArray(wsMembers) && wsMembers.length > 0;
 
       const [filters, lockContent, members] = await Promise.all([
         resolveDirConfig(projectDir),
         lockPath ? readFile(lockPath, "utf8") : null,
-        isWorkspace ? resolveWorkspaceMembers(wsMembers, projectDir, "Cargo.toml", concurrency) : [] as WorkspaceMember[],
+        isWorkspace ? resolveWorkspaceMembers([...wsMembers, ...(workspace!.exclude ?? []).map((pattern: string) => `!${pattern}`)],
+          projectDir, "Cargo.toml", concurrency) : [] as WorkspaceMember[],
       ]);
       const dependencyTypes = resolveDepTypes(mode, filters.modeConfig);
       const lockedVersions = lockContent ? parseCargoLock(lockContent) : new Map<string, string[]>();
@@ -835,15 +871,15 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
           const obj = table || {};
           if (typeof obj !== "object" || Array.isArray(obj)) continue;
           for (const [name, value] of Object.entries(obj as Record<string, any>)) {
-            if (!canInclude(name, mode, filters, depType)) continue;
             const isTable = typeof value === "object" && value !== null && "version" in value && !("git" in value) && !("path" in value) && !("registry" in value);
             if (!isTable && typeof value !== "string") continue;
             const versionStr = isTable ? value.version : value;
             const crate = isTable && value.package || name;
+            const key = manifestDependencyKey(depType, typePrefix, name);
+            if (!canIncludeDep(mode, key, resolveDependencyIdentity(mode, crate, name), filters, depType)) continue;
             const range = cargoToNpmRange(versionStr);
             if (!validRange(range)) continue;
-            if (crate !== name) cargoCrates.set(manifestDependencyKey(depType, typePrefix, name), crate);
-            addDep(mode, depType, typePrefix, name, findLockedVersion(lockedVersions, crate, versionStr) ?? normalizeRange(range), versionStr);
+            addDep(mode, key, findLockedVersion(lockedVersions, crate, versionStr) ?? normalizeRange(range), versionStr);
           }
         }
       };
@@ -894,16 +930,16 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
 
       pnpmCatalogFiles.push({absPath: absFile, content, memberPath: workspaceManifestPath});
       for (const {type, name, value} of pnpmCatalogEntries(content)) {
-        if (canInclude(name, mode, filters, type, mode, parseNpmAlias(value)?.name ?? name)) {
-          addNpmDep(manifestDependencyKey(type, typeSuffix, name), name, value);
+        const key = manifestDependencyKey(type, typeSuffix, name);
+        if (canIncludeDep(mode, key, resolveDependencyIdentity(mode, npmTargetName(name, value), name), filters, type)) {
+          addNpmDep(key, name, value);
         }
       }
       for (const {selector, value} of pnpmWorkspaceOverrides(content)) {
-        const packageName = resolutionsBasePackage(selector);
         const type = "pnpm-workspace.overrides";
-        if (!canInclude(selector, mode, filters, type, mode, packageName)) continue;
         const key = manifestDependencyKey(type, typeSuffix, selector, JSON.stringify(selector));
-        npmPublishedNames.set(key, packageName);
+        if (!canIncludeDep(mode, key, resolveDependencyIdentity(mode, npmTargetName(resolutionsBasePackage(selector), value),
+          selector), filters, type)) continue;
         pnpmWorkspaceOverrideKeys.set(key, selector);
         addNpmDep(key, selector, value);
       }
@@ -930,9 +966,6 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
     return {results: {}, message: "No dependencies found, nothing to do."};
   }
 
-  const npmIdentity = (key: string, name: string) => npmPublishedNames.get(key) ?? npmAliases.get(key)?.name ??
-    selectorName(key.split(fieldSep)[0].split("|")[0], name);
-
   const argsForNpm = {needsDates: modeContextsBySuffix.npm?.values().some(entry =>
     entry.cooldownDays || entry.versionConfig.hasCooldownOverride) ?? false};
 
@@ -946,24 +979,29 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
     const npmFollowUps = new Map<string, {name: string, promise: ReturnType<typeof fetchNpmVersionInfo>}>();
     const modeDeps = deps[mode];
     const lookupDep = async (key: string) => {
-      const [type, name] = key.split(fieldSep);
+      const [type, name, requirement] = key.split(fieldSep);
       const baseT = baseType(type);
       const filters = ctxForType(type);
       const {modeConfig, projectDir} = filters;
       const dep = modeDeps[key];
+      const {old: oldRange, oldOrig} = dep;
+      const jsrDep = oldOrig && isJsr(oldOrig);
       const npmAlias = npmAliases.get(key);
-      const info = mode === "npm" ? dep.oldOrig && isJsr(dep.oldOrig) ? fetchJsrInfo(name, ctx) :
-        fetchNpmInfo(npmIdentity(key, name), baseT, modeConfig, argsForNpm, ctx, projectDir, dep.old) :
-        mode === "go" ? fetchGoProxyInfo(name, type, dep.oldOrig || dep.old, projectDir, ctx, goNoProxy) :
-          mode === "cargo" ? fetchCratesIoInfo(cargoCrates.get(key) ?? name, ctx) : fetchPypiInfo(name, ctx);
+      const identity = depIdentities[mode].get(key)!;
+      const versionOpts = resolveVersionOpts(filters, identity);
+      const goConstraints = mode === "go" ? goVersionConstraints(versionOpts, dep.oldOrig || dep.old) : null;
+      const info = mode === "npm" ? jsrDep ? fetchJsrInfo(identity.packageName, ctx) :
+        fetchNpmInfo(identity.packageName, baseT, modeConfig, argsForNpm, ctx, projectDir, dep.old) :
+        mode === "go" ? fetchGoProxyInfo(identity.packageName, type, dep.oldOrig || dep.old, projectDir, ctx, goNoProxy,
+          goConstraints!) :
+          mode === "cargo" ? fetchCratesIoInfo(identity.packageName, ctx) : fetchPypiInfo(identity.packageName, ctx);
 
       const [rawData, registry] = await info;
       if (rawData.error) throw new Error(rawData.error);
 
-      const versionOpts = resolveVersionOpts(filters, mode, baseT === "packageManager" ? name : rawData.name, name);
-      const data = filterVersionData(rawData, mode, versionOpts.allowedVersions);
-      const {old: oldRange, oldOrig} = dep;
-      const newVersion = findNewVersion(data, {...versionOpts, range: oldRange, mode});
+      dep.cooldownDays = versionOpts.cooldownDays;
+      const data = mode === "go" ? rawData : filterVersionData(rawData, mode, versionOpts.allowedVersions);
+      const newVersion = findNewVersion(data, {...versionOpts, range: oldRange, mode, acceptsGoVersion: goConstraints ? goConstraints.accepts : undefined});
 
       let newRange = "";
       if ((mode === "go" || mode === "pypi") && newVersion) {
@@ -971,10 +1009,9 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
       } else if (mode === "cargo" && newVersion && oldOrig) {
         newRange = updateCargoRange(oldOrig, newVersion);
       } else if (newVersion) {
-        if (oldOrig && isJsr(oldOrig)) {
-          const match = jsrSpecifierRe.exec(oldOrig);
-          if (match) newRange = `${match[1]}${newVersion}`;
-          else if (oldOrig.startsWith("jsr:")) newRange = `jsr:${newVersion}`;
+        if (jsrDep) {
+          dep.newPrint = updateVersionRange(oldRange, newVersion, oldRange, baseT);
+          newRange = `${oldOrig.slice(0, -oldRange.length)}${dep.newPrint}`;
         } else if (npmAlias) {
           newRange = `npm:${npmAlias.name}@${updateVersionRange(oldRange, newVersion, npmAlias.range, baseT)}`;
         } else {
@@ -982,25 +1019,24 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
         }
       }
 
-      const spec = pypiSpecs.get(key);
+      const spec = mode === "pypi" ? requirement : undefined;
+      const rewrittenSpec = spec && updateRequirement(spec, oldOrig || oldRange, newRange);
       if (!newVersion || newVersion === oldRange || oldOrig && (oldOrig === newRange) ||
-        spec && !updateRequirement(spec, oldOrig || oldRange, newRange)) {
+        spec && (!rewrittenSpec || rewrittenSpec === spec)) {
         if (config.verbose && newVersion && newVersion !== oldRange) {
-          console.error(`${timestamp()} ${magenta("SKIP")} ${name}: ${oldOrig || oldRange} can not be rewritten to ${newVersion}`);
+          writeVerbose(`${timestamp()} ${magenta("SKIP")} ${name}: ${oldOrig || oldRange} can not be rewritten to ${newVersion}`);
         }
         delete modeDeps[key];
         return;
       }
 
       dep.new = newRange;
-      if (oldOrig && isJsr(oldOrig)) dep.newPrint = newVersion;
-
       if (mode === "npm") {
-        npmFollowUps.set(key, {name: npmIdentity(key, name), promise: fetchNpmVersionInfo(data.name, newVersion, modeConfig, argsForNpm, ctx, projectDir)});
+        npmFollowUps.set(key, {name: identity.packageName, promise: fetchNpmVersionInfo(data.name, newVersion, modeConfig, argsForNpm, ctx, projectDir)});
       } else dep.info = mode === "pypi" ? getInfoUrl(data, registry, data.info.name) :
         mode === "go" ? getGoInfoUrl(data.newPath || name) : `https://crates.io/crates/${data.name}`;
 
-      setDepAge(dep, mode === "pypi" ? data.releases?.[newVersion]?.[0]?.upload_time_iso_8601 :
+      setDepAge(dep, mode === "pypi" ? pypiReleaseDate(data.releases[newVersion]) :
         mode === "go" ? data.Time : mode === "cargo" ? data.time?.[newVersion] : "");
     };
 
@@ -1014,8 +1050,19 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
 
     await Promise.all(Array.from(npmFollowUps, async ([key, {name, promise}]) => {
       const followUp = await promise;
-      modeDeps[key].info = getInfoUrl(followUp, null, name);
-      setDepAge(modeDeps[key], followUp.date);
+      const dep = modeDeps[key];
+      const [type] = key.split(fieldSep);
+      if (baseType(type) === "packageManager" && /\+sha\d+\./.test(dep.oldOrig || dep.old)) {
+        dep.oldPrint = (dep.oldOrig || dep.old).replace(/\+sha\d+\..*$/, "");
+        if (!(name === "yarn" && Number.parseInt(stripv(dep.new)) >= 2)) {
+          const integrity = /(?:^|\s)sha512-(\S+)/.exec(followUp.integrity || "");
+          if (!integrity) { rejectDep(mode, key, `Unable to fetch sha512 integrity for ${name}@${dep.new}`); return; }
+          dep.newPrint = dep.new;
+          dep.new = `${dep.new}+sha512.${Buffer.from(integrity[1], "base64").toString("hex")}`;
+        }
+      }
+      dep.info = getInfoUrl(followUp, null, name);
+      setDepAge(dep, followUp.date);
     }));
 
     if (mode === "npm" && hasMaybeUrlDeps) {
@@ -1029,25 +1076,22 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
       }, {concurrency})).filter(result => result !== null);
 
       for (const {key, newRange, user, repo, oldRef, newRef, newDate} of results) {
+        const [type] = key.split(fieldSep);
         const dep: Dep = modeDeps[key] = {
           old: maybeUrlDeps[key].old,
           new: newRange,
           oldPrint: hashRe.test(oldRef) ? oldRef.substring(0, 7) : oldRef,
           newPrint: hashRe.test(newRef) ? newRef.substring(0, 7) : newRef,
           info: `https://github.com/${user}/${repo}`,
+          cooldownDays: resolveVersionOpts(ctxForType(type), depIdentities[mode].get(key)!).cooldownDays,
         };
         setDepAge(dep, newDate);
       }
     }
 
-    for (const [key, {date}] of Object.entries(modeDeps)) {
+    for (const [key, {date, cooldownDays}] of Object.entries(modeDeps)) {
       if (!date) continue;
-      const [type, name] = key.split(fieldSep);
-      const {cooldownDays, versionConfig} = ctxForType(type);
-      if (!cooldownDays && !versionConfig.hasCooldownOverride) continue;
-      const identity = mode === "npm" ? npmIdentity(key, name) : name;
-      const effectiveCooldownDays = getVersionOpts(versionConfig, mode, identity, name).cooldownOverride ?? cooldownDays;
-      if (effectiveCooldownDays && !passesCooldown(date, effectiveCooldownDays, now)) delete modeDeps[key];
+      if (cooldownDays && !passesCooldown(date, cooldownDays, now)) delete modeDeps[key];
     }
   });
 
@@ -1055,7 +1099,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
     const {apiUrl, owner, repo} = infos[0];
     const versionConsumers = infos.filter(info => info.isHash ? !isDigestOnlyPin(info) : isVersionLikeRef(info.ref));
     const needsOlderTags = versionConsumers.some(info => {
-      const {allowDowngrade, pinnedRange, pinNoDowngrade} = resolveVersionOpts(info.filters, "actions", info.name, info.name);
+      const {allowDowngrade, pinnedRange, pinNoDowngrade} = resolveVersionOpts(info.filters, info.identity);
       return allowDowngrade || Boolean(pinnedRange && !pinNoDowngrade);
     });
     const tagRefs = [
@@ -1071,22 +1115,35 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
       for (const info of infos) rejectDep("actions", info.key, err);
       return;
     }
-    const versions: string[] = [];
-    const tagByVersion = new Map<string, string>();
     const entryByName = new Map<string, TagEntry>();
     const commitShaToTag = new Map<string, string>();
     for (const tag of tags) {
       entryByName.set(tag.name, tag);
-      const version = githubActionsVersioning.parse(tag.name)?.version;
-      if (version && tag.isStable !== false) {
-        const existing = tagByVersion.get(version);
-        if (!existing) versions.push(version);
-        if (!existing || tag.name.length > existing.length) tagByVersion.set(version, tag.name);
-      }
       if (tag.commitSha) commitShaToTag.set(tag.commitSha, tag.name);
     }
+    const tagsByAllowedVersions = new Map<string | undefined, {
+      tagByVersion: Map<string, string>, versions: Array<string>, allowedTags: Set<string>,
+    }>();
+    const versionTags = (allowedVersions?: string) => getOrSet(tagsByAllowedVersions, allowedVersions, () => {
+      const isAllowed = allowedVersions ? versionAllowedPredicate("actions", allowedVersions) : null;
+      const tagByVersion = new Map<string, string>();
+      const allowedTags = new Set<string>();
+      for (const tag of tags) {
+        const version = githubActionsVersioning.parse(tag.name)?.version;
+        if (!version || tag.isStable === false || isAllowed && !isAllowed(version, tag.name)) continue;
+        allowedTags.add(tag.name);
+        if (tag.name.length > (tagByVersion.get(version)?.length ?? 0)) tagByVersion.set(version, tag.name);
+      }
+      return {tagByVersion, versions: Array.from(tagByVersion.keys()), allowedTags};
+    });
 
-    const getDate = memoizeAsync((commitSha: string) => fetchActionTagDate(apiUrl, owner, repo, commitSha, ctx));
+    const getCommitDate = memoizeAsync((commitSha: string) => fetchActionTagDate(apiUrl, owner, repo, commitSha, ctx));
+    const getDate = async (commitSha: string, tag: string) => {
+      const date = await getCommitDate(commitSha);
+      const releaseTimestamp = entryByName.get(tag)?.releaseTimestamp;
+      return date !== undefined && releaseTimestamp && (!date || Date.parse(releaseTimestamp) > Date.parse(date)) ?
+        releaseTimestamp : date;
+    };
     const getExactDigest = memoizeAsync(async (exactRef: string): Promise<string> => {
       const tagged = entryByName.get(exactRef)?.commitSha;
       if (tagged) return tagged;
@@ -1099,17 +1156,21 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
       return [body?.sha, body?.id, body?.commit?.sha, body?.commit?.id].find(value => typeof value === "string") ?? "";
     });
 
-    async function pickVersion(opts: Parameters<typeof findVersion>[2], sourceVersions: Array<string>): Promise<{version: string, tag: string, commitSha: string, date: string} | null> {
+    async function pickVersion(opts: Parameters<typeof findVersion>[2], {tagByVersion, versions}: ReturnType<typeof versionTags>): Promise<{version: string, tag: string, commitSha: string, date: string} | null> {
       const selectOpts = {...opts, cooldownDays: undefined, now: undefined};
       const denylist = new Set<string>();
       for (let attempt = 0; attempt < 100; attempt++) { // bounded, each attempt is a serial commit-date fetch
-        const candidates = denylist.size ? sourceVersions.filter(version => !denylist.has(version)) : sourceVersions;
+        const candidates = denylist.size ? versions.filter(version => !denylist.has(version)) : versions;
         const picked = findVersion({}, candidates, selectOpts);
         if (!picked) return null;
         const tag = tagByVersion.get(picked)!;
-        const commitSha = entryByName.get(tag)!.commitSha;
+        const {commitSha, releaseTimestamp} = entryByName.get(tag)!;
         if (!opts.cooldownDays) return {version: picked, tag, commitSha, date: ""};
-        const date = commitSha ? await getDate(commitSha) : "";
+        if (releaseTimestamp && !passesCooldown(releaseTimestamp, opts.cooldownDays, opts.now)) {
+          denylist.add(picked);
+          continue;
+        }
+        const date = commitSha ? await getDate(commitSha, tag) : "";
         if (date === undefined) throw new Error(`Unable to fetch the commit date for ${owner}/${repo}@${tag}`);
         if (passesCooldown(date, opts.cooldownDays, opts.now)) return {version: picked, tag, commitSha, date};
         denylist.add(picked);
@@ -1131,16 +1192,16 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
         }
         if (!oldRef) { delete deps.actions[key]; return; }
 
-        const versionOpts = resolveVersionOpts(info.filters, "actions", info.name, info.name);
-        const {allowedVersions} = versionOpts;
+        const versionOpts = resolveVersionOpts(info.filters, info.identity);
+        const filteredTags = versionTags(versionOpts.allowedVersions);
         const result = isVersionLikeRef(oldRef) ? await pickVersion({...versionOpts, range: oldRef, versioning: githubActionsVersioning},
-          allowedVersions ? versions.filter(versionAllowedPredicate("actions", allowedVersions)) : versions) : null;
+          filteredTags) : null;
         if (!result) { // a commented sha pin still follows its ref when no newer version exists
           if (!isHash || !comment) { delete deps.actions[key]; return; }
           const newDigest = await getExactDigest(comment);
           if (!newDigest || newDigest.startsWith(ref) || ref.startsWith(newDigest)) { delete deps.actions[key]; return; }
           if (versionOpts.cooldownDays) {
-            const date = await getDate(newDigest);
+            const date = await getDate(newDigest, comment);
             if (date === undefined) throw new Error(`Unable to fetch the commit date for ${owner}/${repo}@${comment}`);
             if (!passesCooldown(date, versionOpts.cooldownDays, versionOpts.now)) { delete deps.actions[key]; return; }
           }
@@ -1150,25 +1211,25 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
           dep.newDigest = newDigest;
           dep.digestOnly = true;
           dep.info = infoUrl;
-          setDepAge(dep, await tryOrNull(getDate(newDigest)));
+          setDepAge(dep, await tryOrNull(getDate(newDigest, comment)));
           return;
         }
         const {tag: newTag, commitSha: newCommitSha, date} = result;
+        const formatted = formatActionVersion(newTag, oldRef);
+        const newRef = filteredTags.allowedTags.has(formatted) ? formatted : newTag;
 
         if (isHash) {
           if (!newCommitSha || newCommitSha.startsWith(ref) || ref.startsWith(newCommitSha)) { delete deps.actions[key]; return; }
           dep.old = ref;
           dep.new = newCommitSha.substring(0, ref.length);
           dep.oldPrint = oldRef; // the tag the pinned sha resolved to
-          const formatted = formatActionVersion(newTag, oldRef);
-          dep.newPrint = comment && entryByName.get(formatted)?.commitSha === newCommitSha ? formatted : newTag;
+          dep.newPrint = comment && entryByName.get(newRef)!.commitSha === newCommitSha ? newRef : newTag;
         } else {
-          const formatted = formatActionVersion(newTag, ref);
-          if (formatted === ref) { delete deps.actions[key]; return; }
-          dep.new = entryByName.has(formatted) ? formatted : newTag;
+          if (newRef === ref) { delete deps.actions[key]; return; }
+          dep.new = newRef;
         }
         dep.info = infoUrl;
-        setDepAge(dep, date || (newCommitSha ? await tryOrNull(getDate(newCommitSha)) : ""));
+        setDepAge(dep, date || (newCommitSha ? await tryOrNull(getDate(newCommitSha, newTag)) : ""));
       } catch (err) {
         rejectDep("actions", info.key, err);
       }
@@ -1192,13 +1253,14 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
       try {
         const dep = deps.docker[info.key];
         const oldTag = dep.oldOrig || dep.old;
-        const opts = resolveVersionOpts(info.filters, "docker", fullImage, fullImage, false);
+        const opts = resolveVersionOpts(info.filters, depIdentities.docker.get(info.key)!, false);
         const result = !info.ref.digestOnly && parseDockerTag(oldTag) ? findDockerVersion(
           filterVersionData(data, "docker", opts.allowedVersions).tags, oldTag, opts.semvers, opts.cooldownDays, opts.now,
           opts.pinnedRange, opts.usePre, opts.useRel,
         ) : null;
         const newTag = result?.newTag ?? oldTag;
         if (info.ref.digest) {
+          if (!result && !passesCooldown(data.tags[oldTag], opts.cooldownDays, opts.now)) { delete deps.docker[info.key]; return; }
           const newDigest = await resolveDockerTagDigest(info.ref.namespace, info.ref.repo, newTag);
           if (!newDigest || newDigest === info.ref.digest && !result) { delete deps.docker[info.key]; return; }
           dep.oldDigest = info.ref.digest;
@@ -1211,7 +1273,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
 
         dep.new = newTag;
         dep.info = getDockerInfoUrl(info.ref);
-        setDepAge(dep, result?.date);
+        setDepAge(dep, result?.date || data.tags[newTag]);
       } catch (err) {
         rejectDep("docker", info.key, err);
       }
@@ -1219,7 +1281,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
   }, {concurrency});
 
   const makeTask = pMap(makeDepInfos, async (info) => {
-    const opts = resolveVersionOpts(info.filters, info.kind, info.name, info.name);
+    const opts = resolveVersionOpts(info.filters, depIdentities[info.mode].get(info.key)!);
     const modeDeps = deps[info.mode];
     const dep = modeDeps[info.key];
     try {
@@ -1227,9 +1289,9 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
         const {projectDir} = info.filters;
         const modulePath = await resolveGoModuleRoot(info.installPath, projectDir, ctx, goNoProxy);
         if (!modulePath) { delete modeDeps[info.key]; return; }
-        const [rawData] = await fetchGoProxyInfo(modulePath, "tool", stripv(info.version), projectDir, ctx, goNoProxy);
-        const data = filterVersionData(rawData, "go", opts.allowedVersions);
-        const newVersion = findNewVersion(data, {...opts, mode: "go", range: stripv(info.version)});
+        const constraints = goVersionConstraints(opts, stripv(info.version));
+        const [data] = await fetchGoProxyInfo(modulePath, "tool", stripv(info.version), projectDir, ctx, goNoProxy, constraints);
+        const newVersion = findNewVersion(data, {...opts, mode: "go", range: stripv(info.version), acceptsGoVersion: constraints.accepts});
         if (!newVersion) { delete modeDeps[info.key]; return; }
         const newModulePath = data.newPath ?? goModulePathForVersion(modulePath, newVersion);
         const newInstallPath = `${newModulePath}${info.installPath.slice(modulePath.length)}`;

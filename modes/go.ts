@@ -3,8 +3,9 @@ import {Buffer} from "node:buffer";
 import {basename, dirname, join, resolve} from "node:path";
 import {existsSync, globSync, readFileSync, realpathSync} from "node:fs";
 import {
-  type Deps, type GoProxyEntry, type ModeContext, type PackageInfo, dedupe, fieldSep, stripv, getSubDir, normalizeUrl,
+  dedupe, fieldSep, stripv, getSubDir, normalizeUrl, redactUrlCredentials,
   fetchWithRetry, defaultApiUrls, getFetchOpts, isVersionPrerelease, throwFetchError,
+  type Deps, type GoProxyEntry, type ModeContext, type PackageInfo,
 } from "./shared.ts";
 import {gt, valid} from "../utils/semver.ts";
 import {esc, getOrSet, pushTo, tryOrNull} from "../utils/utils.ts";
@@ -163,6 +164,7 @@ export function parseGoMod(content: string) {
 }
 
 type GoExcludes = Map<string, Set<string>>;
+type GoVersionConstraints = {accepts: (version: string) => boolean, allowMajor?: boolean, pinAllowsDowngrade?: boolean};
 
 const goExcludesByCtx = new WeakMap<ModeContext, Map<string, GoExcludes | null>>();
 
@@ -187,24 +189,37 @@ function getGoExcludes(goCwd: string, type: string, ctx: ModeContext): GoExclude
 }
 
 type ProbeResult = {Version: string, Time: string, path: string};
+type GoLookupResult = ProbeResult & {accepted?: boolean};
 type GoFetchKind = "primary" | "probe";
+type GoModuleLookup = {
+  latest: ProbeResult | null, fallback: (constraints?: GoVersionConstraints) => Promise<ProbeResult | null>,
+};
 
 async function fetchGoModuleInfo(
-  name: string, currentVersion: string, lookup: (path: string, kind: GoFetchKind) => Promise<ProbeResult | null>,
+  name: string, currentVersion: string, excludes: GoExcludes,
+  load: (path: string, kind: GoFetchKind) => Promise<GoModuleLookup>,
+  constraints?: GoVersionConstraints,
 ): Promise<PackageInfo | null> {
+  const lookup = async (path: string, kind: GoFetchKind): Promise<GoLookupResult | null> => {
+    const {latest, fallback} = await load(path, kind);
+    const base = latest && !excludes.get(path)?.has(latest.Version) ? latest : await fallback();
+    if (!base || !constraints || constraints.accepts(stripv(base.Version)) ||
+      !constraints.pinAllowsDowngrade && !gt(base.Version, currentVersion)) return base;
+    return await tryOrNull(fallback(constraints)) ?? (kind === "probe" ? {...base, accepted: false} : base);
+  };
   const currentMajor = extractGoMajor(name);
   const probe = async (major: number) => {
     const result = await tryOrNull(lookup(buildGoModulePath(name, major), "probe"));
     return result && Number.parseInt(stripv(result.Version)) === major ? result : null;
   };
   const [latest, firstProbe] = await Promise.all([
-    lookup(name, "primary"), name.startsWith("golang.org/x/") ? null : probe(currentMajor + 1),
+    lookup(name, "primary"), name.startsWith("golang.org/x/") || constraints?.allowMajor === false ? null : probe(currentMajor + 1),
   ]);
   if (!latest) return null;
   const majors: Array<ProbeResult> = [];
   let result = firstProbe;
   for (let major = currentMajor + 2; result; major++) {
-    majors.push(result);
+    if (result.accepted !== false) majors.push(result);
     result = await probe(major);
   }
   const newest = majors.findLast(result => !isVersionPrerelease(result.Version)) ?? majors.at(-1) ?? latest;
@@ -221,11 +236,12 @@ export function goListError(spec: string, err: any): Error {
 
 function fetchGoVcsInfo(
   name: string, currentVersion: string, goCwd: string, ctx: ModeContext, excludes: GoExcludes,
+  constraints?: GoVersionConstraints,
 ): Promise<PackageInfo | null> {
   const goListQuery = async (modulePath: string, timeout: number, version?: string) => {
     const spec = `${modulePath}@${version ?? "latest"}`;
     try {
-      const args = ["list", "-m", ...(!version ? ["-versions"] : []), "-json", spec];
+      const args = ["list", "-m", "-mod=readonly", ...(!version ? ["-versions"] : []), "-json", spec];
       const {stdout} = await ctx.execFile("go", args, {timeout, cwd: goCwd, env: {...env, GOPROXY: "direct"}});
       const data = JSON.parse(stdout) as {Version: string, Time?: string, Versions?: Array<string>};
       return {Version: data.Version, Time: data.Time || "", path: modulePath, Versions: data.Versions};
@@ -233,21 +249,17 @@ function fetchGoVcsInfo(
       throw goListError(spec, err);
     }
   };
-  return fetchGoModuleInfo(name, currentVersion, async (modulePath, kind) => {
+  return fetchGoModuleInfo(name, currentVersion, excludes, async (modulePath, kind) => {
     const timeout = kind === "probe" ? ctx.goProbeTimeout : ctx.fetchTimeout;
     const latest = await goListQuery(modulePath, timeout);
-    const excluded = excludes.get(modulePath);
-    if (!excluded?.has(latest.Version)) return latest;
-    const available = pickGoListVersion((latest.Versions ?? []).join("\n"), extractGoMajor(modulePath, 0), excluded);
-    if (!available) throw new Error(`No non-excluded versions found for ${modulePath}`);
-    return goListQuery(modulePath, timeout, available.Version);
-  });
-}
-
-function stripCredentials(url: URL): string {
-  url.username = "";
-  url.password = "";
-  return url.href;
+    return {latest, fallback: async (versionConstraints) => {
+      const available = pickGoListVersion(
+        (latest.Versions ?? []).join("\n"), extractGoMajor(modulePath, 0), excludes.get(modulePath), versionConstraints,
+      );
+      if (!available && !versionConstraints) throw new Error(`No non-excluded versions found for ${modulePath}`);
+      return available && goListQuery(modulePath, timeout, available.Version);
+    }};
+  }, constraints);
 }
 
 async function fetchGoProxy(ctx: ModeContext, kind: GoFetchKind, url: string, path: string, base: string): Promise<Response | null> {
@@ -255,12 +267,12 @@ async function fetchGoProxy(ctx: ModeContext, kind: GoFetchKind, url: string, pa
   const {username, password} = parsed;
   const {headers} = getFetchOpts("Basic", username || password ?
     Buffer.from(`${decodeURIComponent(username)}:${decodeURIComponent(password)}`).toString("base64") : "");
-  const publicUrl = stripCredentials(parsed);
+  const publicUrl = redactUrlCredentials(parsed.href);
   const res = await (kind === "primary" ? fetchWithRetry(ctx, publicUrl, {headers}) :
     ctx.doFetch(publicUrl, {signal: AbortSignal.timeout(ctx.goProbeTimeout), headers}));
   if (res.ok) return res;
   if (res.status === 404 || res.status === 410) return null;
-  throwFetchError(res, publicUrl, path, stripCredentials(new URL(base)));
+  throwFetchError(res, publicUrl, path, redactUrlCredentials(new URL(base).href));
 }
 
 async function readGoProxyInfo(res: Response, url: string, path: string): Promise<ProbeResult> {
@@ -268,10 +280,16 @@ async function readGoProxyInfo(res: Response, url: string, path: string): Promis
     const data = await res.json() as {Version?: string, Time?: string};
     if (data?.Version) return {Version: data.Version, Time: data.Time || "", path};
   } catch {}
-  throw new Error(`Invalid response from ${stripCredentials(new URL(url))}`);
+  throw new Error(`Invalid response from ${redactUrlCredentials(new URL(url).href)}`);
 }
 
 const goFetchesByCtx = new WeakMap<ModeContext, Map<string, Promise<ProbeResult | null>>>();
+type GoListVersion = {Version: string, Time: string};
+type GoVersionList = {
+  versions: Array<GoListVersion>,
+  picks: Map<GoVersionConstraints["accepts"] | undefined, Map<string, GoListVersion | null>>,
+};
+const goListsByCtx = new WeakMap<ModeContext, Map<string, Promise<GoVersionList | null>>>();
 
 export function fetchGoLatest(ctx: ModeContext, kind: GoFetchKind, base: string, path: string): Promise<ProbeResult | null> {
   return dedupe(goFetchesByCtx, ctx, `latest${fieldSep}${kind}${fieldSep}${base}/${path}`, async () => {
@@ -281,58 +299,83 @@ export function fetchGoLatest(ctx: ModeContext, kind: GoFetchKind, base: string,
   });
 }
 
-export function pickGoListVersion(body: string, major = 0, excluded = new Set<string>()): {Version: string, Time: string} | null {
-  let best: {Version: string, Time: string} | null = null;
+function parseGoList(body: string): Array<GoListVersion> {
+  const versions: Array<GoListVersion> = [];
   for (const line of body.split("\n")) {
     const [version, time] = line.trim().split(/\s+/);
-    if (!version || !valid(version) || excluded.has(version)) continue;
-    if (major && Number.parseInt(stripv(version)) !== major) continue;
+    if (version && valid(version)) versions.push({Version: version, Time: time ?? ""});
+  }
+  return versions;
+}
+
+function pickGoVersion(
+  versions: Array<GoListVersion>, major: number, excluded: Set<string>, constraints?: GoVersionConstraints,
+): GoListVersion | null {
+  let best: GoListVersion | null = null;
+  for (const version of versions) {
+    if (excluded.has(version.Version) || constraints && !constraints.accepts(stripv(version.Version))) continue;
+    if (major && Number.parseInt(stripv(version.Version)) !== major) continue;
     if (best) {
-      const prerelease = isVersionPrerelease(version);
-      if (prerelease === isVersionPrerelease(best.Version) ? !gt(version, best.Version) : prerelease) continue;
+      const prerelease = isVersionPrerelease(version.Version);
+      if (constraints || prerelease === isVersionPrerelease(best.Version) ? !gt(version.Version, best.Version) : prerelease) continue;
     }
-    best = {Version: version, Time: time ?? ""};
+    best = version;
   }
   return best;
 }
 
-function fetchGoList(ctx: ModeContext, kind: GoFetchKind, base: string, path: string, excluded = new Set<string>()): Promise<ProbeResult | null> {
-  const key = `list${fieldSep}${kind}${fieldSep}${base}/${path}${fieldSep}${Array.from(excluded).sort().join(fieldSep)}`;
-  return dedupe(goFetchesByCtx, ctx, key, async () => {
-    const encoded = encodeGoModulePath(path);
+export function pickGoListVersion(
+  body: string, major = 0, excluded = new Set<string>(), constraints?: GoVersionConstraints,
+): GoListVersion | null {
+  return pickGoVersion(parseGoList(body), major, excluded, constraints);
+}
+
+async function fetchGoList(
+  ctx: ModeContext, kind: GoFetchKind, base: string, path: string, excluded = new Set<string>(),
+  constraints?: GoVersionConstraints,
+): Promise<ProbeResult | null> {
+  const encoded = encodeGoModulePath(path);
+  const list = await dedupe(goListsByCtx, ctx, `${kind}${fieldSep}${base}/${path}`, async () => {
     const res = await fetchGoProxy(ctx, kind, `${base}/${encoded}/@v/list`, path, base);
-    const best = res && pickGoListVersion(await res.text(), extractGoMajor(path, 0), excluded);
-    if (!best) return null;
-    if (best.Time) return {...best, path};
-    const infoUrl = `${base}/${encoded}/@v/${encodeGoModulePath(best.Version)}.info`;
-    try {
-      const infoRes = await fetchGoProxy(ctx, kind, infoUrl, path, base);
-      if (infoRes) return await readGoProxyInfo(infoRes, infoUrl, path);
-    } catch {}
-    return {...best, path};
+    return res && {versions: parseGoList(await res.text()), picks: new Map()};
   });
+  const best = list && getOrSet(getOrSet(list.picks, constraints?.accepts, () => new Map()),
+    Array.from(excluded).sort().join(fieldSep), () => pickGoVersion(list.versions, extractGoMajor(path, 0), excluded, constraints));
+  if (!best) return null;
+  if (best.Time) return {...best, path};
+  const infoUrl = `${base}/${encoded}/@v/${encodeGoModulePath(best.Version)}.info`;
+  try {
+    const info = await dedupe(goFetchesByCtx, ctx, `info${fieldSep}${kind}${fieldSep}${infoUrl}`, async () => {
+      const infoRes = await fetchGoProxy(ctx, kind, infoUrl, path, base);
+      return infoRes && readGoProxyInfo(infoRes, infoUrl, path);
+    });
+    if (info) return info;
+  } catch {}
+  return {...best, path};
 }
 
 function fetchGoProxyModule(
   base: string, name: string, currentVersion: string, ctx: ModeContext, excludes: GoExcludes,
+  constraints?: GoVersionConstraints,
 ): Promise<PackageInfo | null> {
   const primaryLatestPromise = fetchGoLatest(ctx, "primary", base, name);
-  return fetchGoModuleInfo(name, currentVersion, async (path, kind) => {
+  return fetchGoModuleInfo(name, currentVersion, excludes, async (path, kind) => {
     const [latest, primaryLatest] = await Promise.all([fetchGoLatest(ctx, kind, base, path), primaryLatestPromise]);
-    const excluded = excludes.get(path);
-    if (latest && !excluded?.has(latest.Version)) return latest;
-    if (!latest && primaryLatest) return null;
-    return fetchGoList(ctx, kind, base, path, excluded);
-  });
+    return {latest, fallback: versionConstraints => !latest && primaryLatest ? Promise.resolve(null) :
+      fetchGoList(ctx, kind, base, path, excludes.get(path), versionConstraints)};
+  }, constraints);
 }
 
-export async function fetchGoProxyInfo(name: string, type: string, currentVersion: string, goCwd: string, ctx: ModeContext, goNoProxy: Array<string>): Promise<PackageInfo> {
+export async function fetchGoProxyInfo(
+  name: string, type: string, currentVersion: string, goCwd: string, ctx: ModeContext, goNoProxy: Array<string>,
+  constraints?: GoVersionConstraints,
+): Promise<PackageInfo> {
   const excludes = getGoExcludes(goCwd, type, ctx);
   for (const {url, fallback} of goProxyChainFor(name, ctx, goNoProxy)) {
     try {
       if (url === "off") throw new Error("Module lookup disabled by GOPROXY=off");
-      const info = url === "direct" ? await fetchGoVcsInfo(name, currentVersion, goCwd, ctx, excludes) :
-        await fetchGoProxyModule(url, name, currentVersion, ctx, excludes);
+      const info = url === "direct" ? await fetchGoVcsInfo(name, currentVersion, goCwd, ctx, excludes, constraints) :
+        await fetchGoProxyModule(url, name, currentVersion, ctx, excludes, constraints);
       if (info) return info;
     } catch (error) {
       if (fallback === ",") throw error;

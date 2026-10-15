@@ -71,12 +71,6 @@ export function coerce(v: string): {version: string} | null {
   });
 }
 
-export function diff(v1: string, v2: string): string | null {
-  const a = parse(v1);
-  const b = parse(v2);
-  return a && b ? diffParsed(a, b) : null;
-}
-
 function diffParsed(a: SemVer, b: SemVer): string | null {
   const cmp = compareParsed(a, b);
   if (cmp === 0) return null;

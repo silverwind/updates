@@ -71,7 +71,7 @@ export function parseToml(input: string): TomlObject {
   return root;
 }
 
-function parseValue(raw: string): TomlValue {
+export function parseValue(raw: string): TomlValue {
   if (raw.startsWith("[")) {
     const items: Array<TomlValue> = [];
     const closeIdx = raw.lastIndexOf("]");

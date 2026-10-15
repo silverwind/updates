@@ -30,11 +30,6 @@ console.error = (...args) => {
 };
 
 const realFetch = globalThis.fetch;
-globalThis.fetch = ((input: any, init?: any) => {
-  const url = String(input?.url ?? input);
-  if (!/^http:\/\/(?:127\.0\.0\.1|localhost)[:/]/.test(url)) throw new Error(`test attempted a non-mocked network request to ${url}`);
-  return realFetch(input, init);
-}) as typeof fetch;
 
 const gzipOptions = {level: constants.Z_BEST_SPEED};
 const fixture = (path: string) => join(import.meta.dirname, "fixtures", path);
@@ -78,6 +73,12 @@ const mockUrl = `http://127.0.0.1:${(mockServer.address() as AddressInfo).port}`
 const [npmUrl, githubUrl, pypiUrl, jsrUrl, goProxyUrl, cargoUrl, dockerUrl] =
   ["npm", "github", "pypi", "jsr", "go", "cargo", "docker"].map(prefix => `${mockUrl}/${prefix}/`);
 const apiUrls = {registry: npmUrl, forgeapi: githubUrl, pypiapi: pypiUrl, jsrapi: jsrUrl, goproxy: goProxyUrl, cargoapi: cargoUrl, dockerapi: dockerUrl};
+globalThis.fetch = ((input: any, init?: any) => {
+  const url = String(input?.url ?? input);
+  const mockedUrl = url.replace("https://api.github.com/repos/o/cooldown/", () => `${githubUrl}repos/o/cooldown/`);
+  if (!/^http:\/\/(?:127\.0\.0\.1|localhost)[:/]/.test(mockedUrl)) throw new Error(`test attempted a non-mocked network request to ${url}`);
+  return realFetch(mockedUrl === url ? input : mockedUrl, init);
+}) as typeof fetch;
 const apiArgs = ["--no-cache", ...Object.entries(apiUrls).flatMap(([name, url]) => [`--${name}`, url])];
 const apiOpts = (options: UpdatesOptions = {}): UpdatesOptions => ({files: [testFile], noCache: true, ...apiUrls, ...options});
 const npmUpdates = async (options: UpdatesOptions = {}) => (await updates(apiOpts(options))).results.npm.dependencies;
@@ -274,7 +275,8 @@ test("npm alias resolves the aliased package, and a second run is a no-op", asyn
       {matchDepNames: ["dep-matched"], allowedVersions: "<=2.4.1"},
     ]}),
   });
-  const run = () => updates({files: [join(dir, "package.json")], registry: npmUrl, update: true, color: false, noCache: true});
+  const run = () => updates({files: [join(dir, "package.json")], registry: npmUrl, update: true, color: false, noCache: true,
+    cooldown: "999999d", overrides: [{include: ["gulp-sourcemaps"], cooldown: 0}]});
   const {dependencies} = (await run()).results.npm;
   expect(dependencies["package-matched"]).toMatchObject({old: "npm:gulp-sourcemaps@^2.0.0", new: "npm:gulp-sourcemaps@^2.5.2"});
   expect(dependencies["dep-matched"]).toMatchObject({old: "npm:gulp-sourcemaps@^2.0.0", new: "npm:gulp-sourcemaps@^2.4.1"});
@@ -286,6 +288,19 @@ test("npm alias resolves the aliased package, and a second run is a no-op", asyn
   });
   await run();
   expect(read(dir, "package.json")).toBe(written);
+});
+
+test.each([
+  ["@std/semver", "npm:@jsr/std__semver@^0.224.0"],
+  ["@std/semver", "jsr:^0.224.0"],
+  ["semver", "npm:@jsr/std__semver@^0.224.0"],
+])("JSR %s at %s keeps its range operator", async (name, value) => {
+  const file = join(writeTree("jsr-range", {"package.json": JSON.stringify({dependencies: {[name]: value}})}), "package.json");
+  expect((await updates(apiOpts({files: [file], exclude: ["@std/semver"]}))).results).toEqual({});
+  const output = await updates(apiOpts({files: [file], update: true}));
+  expect(output.errors).toBeUndefined();
+  expect(output.results.npm.dependencies[name]).toMatchObject({old: "^0.224.0", new: "^1.0.8"});
+  expect(JSON.parse(read(file)).dependencies[name]).toBe(value.replace("^0.224.0", "^1.0.8"));
 });
 
 test("piped output stays colored with -c, on stdout and on -V stderr, and parseable with -u -j", async () => {
@@ -664,6 +679,31 @@ test("multiple Cargo workspace roots keep member config identity", async () => {
   expect(read(dir, "two", "crates", "app", "Cargo.toml")).toContain('serde = "1.0.200"');
 });
 
+test.each([
+  ["CLI exclude", {exclude: ["serde"]}, {}],
+  ["packageName rule", {}, {enabled: false}],
+])("renamed Cargo crates respect a %s", async (_name, options, rule) => {
+  const dir = writeTree("cargo-alias", {
+    "Cargo.toml": '[dependencies]\nserde1 = { package = "serde", version = "1.0.0" }\n',
+    "renovate.json": JSON.stringify({packageRules: [{matchPackageNames: ["serde"], ...rule}]}),
+  });
+  const output = await updates(apiOpts({files: [join(dir, "Cargo.toml")], ...options}));
+  expect(output.errors).toBeUndefined();
+  expect(output.results).toEqual({});
+});
+
+test("Cargo workspace excludes use their own lockfile", async () => {
+  const dir = writeTree("cargo-exclude", {
+    "Cargo.toml": '[workspace]\nmembers = ["crates/*"]\nexclude = ["crates/standalone"]\n',
+    "Cargo.lock": '[[package]]\nname = "serde"\nversion = "1.0.100"\n',
+    "crates/standalone/Cargo.toml": '[dependencies]\nserde = "1.0.0"\n',
+    "crates/standalone/Cargo.lock": '[[package]]\nname = "serde"\nversion = "1.0.200"\n',
+  });
+  const output = await updates(apiOpts({files: [join(dir, "Cargo.toml"), join(dir, "crates/standalone/Cargo.toml")]}));
+  expect(output.errors).toBeUndefined();
+  expect(output.results).toEqual({});
+});
+
 test("pnpm workspace", async () => {
   const options = {registry: npmUrl, forgeapi: githubUrl, color: false, noCache: true};
   const {npm} = (await updates({...options, files: [pnpmWorkspaceFile]})).results;
@@ -767,10 +807,49 @@ test("npm workspace members are skipped, published or not, the root and an alias
   expect(dependencies.aliased).toBe("npm:noty@^3.1.4");
 });
 
-test("pin holds the range and keeps the authored precision", async () => {
+test("pins hold ranges and authored precision, packageManager updates preserve integrity", async () => {
   const dependencies = await npmUpdates({pin: {prismjs: "^1.0.0", react: "^18.0.0"}});
   expect(satisfies(dependencies.prismjs.new, "^1.0.0")).toBe(true);
   expect(dependencies.react.new).toBe("18.2");
+  const packageManager = "pnpm@8.15.5+sha512.0123";
+  const file = join(writeTree("corepack-integrity", {"package.json": JSON.stringify({packageManager})}), "package.json");
+  lazyRoute("/npm/pnpm", () => ({name: "pnpm", "dist-tags": {latest: "8.15.6"}, versions: {"8.15.6": {}}}));
+  lazyRoute("/npm/pnpm/8.15.6", () => ({dist: {integrity: "sha512-AQID"}, _npmOperationalInternal: {tmp: "1700000000000"}}));
+  const output = await updates(apiOpts({files: [file], update: true}));
+  expect(JSON.parse(read(file)).packageManager).toBe("pnpm@8.15.6+sha512.010203");
+  expect(output.results.npm.packageManager.pnpm).toMatchObject({old: "8.15.5", new: "8.15.6"});
+  writeFileSync(file, JSON.stringify({packageManager}));
+  lazyRoute("/npm/pnpm/8.15.6", () => ({_npmOperationalInternal: {tmp: "1700000000000"}}));
+  const errors = [{mode: "npm", type: "packageManager", name: "pnpm", error: "Unable to fetch sha512 integrity for pnpm@8.15.6"}];
+  expect(await updates(apiOpts({files: [file], update: true}))).toMatchObject({results: {}, errors});
+  routes.set("/npm/pnpm/8.15.6", (_, res) => { res.writeHead(400).end(); });
+  const failed = await captureCli(["-j", "-u", ...apiArgs, "-f", file]);
+  expect(failed.exitCode).toBe(1);
+  expect(JSON.parse(failed.stdout)).toEqual({errors});
+  expect(JSON.parse(read(file)).packageManager).toBe(packageManager);
+});
+
+test.each([[false, ""], [true, "v"]])("modern Yarn matches authored rules and pins, preserves cooldown overrides and omits tarball integrity, pin %s, prefix %j", async (pin, prefix) => {
+  const file = join(writeTree("corepack-yarn", {
+    "package.json": JSON.stringify({packageManager: `yarn@${prefix}4.0.0+sha512.0123`, engines: {yarn: ">=4.0.0"}, volta: {yarn: "4.0.0"}}),
+    "renovate.json": JSON.stringify({packageRules: pin ? [] : [{matchPackageNames: ["yarn"], allowedVersions: "<5"}]}),
+  }), "package.json");
+  lazyRoute("/npm/@yarnpkg%2fcli", () => ({name: "@yarnpkg/cli", "dist-tags": {latest: "5.0.0"},
+    versions: {"4.1.0": {}, "5.0.0": {}}}));
+  lazyRoute("/npm/@yarnpkg%2fcli/4.1.0", () => ({dist: {integrity: "sha512-AQID"}, _npmOperationalInternal: {tmp: "1700000000000"}}));
+  const output = await updates(apiOpts({files: [file], types: ["packageManager", "engines", "volta"], update: true, cooldown: "999999d",
+    overrides: [{include: ["yarn"], cooldown: 0}], pin: pin ? {yarn: "<5"} : undefined}));
+  expect(output.errors).toBeUndefined();
+  expect(JSON.parse(read(file))).toMatchObject({packageManager: `yarn@${prefix}4.1.0`, engines: {yarn: ">=4.1.0"}, volta: {yarn: "4.1.0"}});
+  expect(output.results.npm.packageManager.yarn).toMatchObject({old: `${prefix}4.0.0`, new: `${prefix}4.1.0`});
+  expect(output.results.npm.engines.yarn.new).toBe(">=4.1.0");
+  expect(output.results.npm.volta.yarn.new).toBe("4.1.0");
+});
+
+test("a registry-claimed package name does not select version policy", async () => {
+  const file = join(writeTree("claimed-name", {"package.json": JSON.stringify({dependencies: {protected: "1.0.0"}})}), "package.json");
+  lazyRoute("/npm/protected", () => ({name: "relaxed", "dist-tags": {latest: "2.0.0"}, versions: {"1.0.0": {}, "2.0.0": {}}}));
+  expect((await updates(apiOpts({files: [file], pin: {protected: "<2", relaxed: "*"}}))).results).toEqual({});
 });
 
 test("a config-file pin and overrides merge with the renovate ones and a sub-day renovate cooldown rather than replacing them", async () => {
@@ -805,6 +884,66 @@ test.each([
 const actionsArgs = ["-c", "--forgeapi", githubUrl, "--dockerapi", dockerUrl, "-M", "actions"];
 const workflowSteps = (...steps: Array<string>) =>
   lines("name: ci", "on: push", "jobs:", "  ci:", "    runs-on: ubuntu-latest", "    steps:", ...steps.map(step => `      - uses: ${step}`));
+test.each([
+  ["/^v[0-9]+$/", "c", "v2", true],
+  ["!/^v[0-9]+\\./", "c", "v2"],
+  ["/^v[0-9]+\\./", "b", "v2.0.0"],
+])("actions allowedVersions %s filters aliases for tags and sha pins", async (allowedVersions, fullDigest, newRef, fullConsumer = false) => {
+  const name = fullDigest === "b" ? "o/alias-full" : "o/alias";
+  const dir = writeTree("actions-alias", {
+    ".github/workflows/ci.yml": workflowSteps(`${name}@${"a".repeat(40)} # v1`, `${name}/subpath@v1`),
+    "renovate.json": JSON.stringify({packageRules: [{matchPackageNames: [name], allowedVersions}]}),
+    ...(fullConsumer && {
+      "full/.github/workflows/ci.yml": workflowSteps(`${name}/full@${"a".repeat(40)} # v1`),
+      "full/renovate.json": JSON.stringify({packageRules: [{matchPackageNames: [name], allowedVersions: "/^v[0-9]+\\./"}]}),
+    }),
+  });
+  lazyRoute(`/github/repos/${name}/tags`, () => Object.entries({"v2": "b", "v2.0.0": fullDigest, "v1": "a", "v1.0.0": "a"})
+    .map(([name, sha]) => ({name, commit: {sha: sha.repeat(40)}})));
+  expect((await updates(apiOpts({files: [join(dir, ".github/workflows/ci.yml"),
+    ...(fullConsumer ? [join(dir, "full/.github/workflows/ci.yml")] : [])], modes: ["actions"], update: true}))).errors).toBeUndefined();
+  expect(read(dir, ".github/workflows/ci.yml")).toBe(workflowSteps(`${name}@${"b".repeat(40)} # ${newRef}`,
+    `${name}/subpath@${newRef}`));
+  if (fullConsumer) expect(read(dir, "full/.github/workflows/ci.yml")).toBe(workflowSteps(`${name}/full@${fullDigest.repeat(40)} # v2.0.0`));
+});
+
+test.each([
+  ["datasource regex", "1.4.0", "1.6.0", ["1.4.0", "1.5.0", "1.6.0"], {minor: true}, "1.5.0", "!/^v1\\.6\\.0$/"],
+  ["datasource range", "1.4.0", "1.6.0", ["1.4.0", "1.5.0", "1.6.0"], {minor: true}, "1.5.0", "<1.6.0"],
+  ["datasource pin", "1.4.0", "1.6.0", ["1.4.0", "1.5.0", "1.6.0"],
+    {minor: true, pin: {"github.com/example/limited": "<1.6.0"}}, "1.5.0"],
+  ["prerelease pin", "1.0.0-beta.1", "", ["1.0.0-beta.1", "1.0.0-beta.2"], {pin: {"github.com/example/limited": "^1.0.0"}}, "1.0.0-beta.2"],
+  ["patch pin", "1.0.0", "1.9.0", ["1.0.1", "1.1.0", "1.9.0"], {patch: true, pin: {"github.com/example/limited": "<1.2.0"}}, "1.0.1"],
+  ["minor pin", "1.0.0", "2.0.0", ["1.0.1", "1.1.0", "2.0.0"], {minor: true, pin: {"github.com/example/limited": "<3.0.0"}}, "1.1.0"],
+  ["patch", "1.0.0", "1.9.0", ["1.0.1", "1.1.0", "1.9.0"], {patch: true}, "1.0.1"],
+  ["minor", "1.0.0", "2.0.0", ["1.0.1", "1.1.0", "2.0.0"], {minor: true}, "1.1.0"],
+  ["pseudo patch", "1.0.0-20240101000000-aaaaaaaaaaaa", "1.9.0", ["1.0.0-20240201000000-bbbbbbbbbbbb", "1.9.0"], {patch: true}, "1.0.0-2024020"],
+  ["prerelease patch", "1.0.0-beta.1", "1.9.0", ["1.0.0-beta.2", "1.9.0"], {patch: true}, "1.0.0-beta.2"],
+  ["patch current", "1.0.0", "1.0.0", ["1.0.0"], {patch: true}, ""],
+  ["downgrade current", "1.2.0", "1.2.0", ["1.1.0", "1.2.0"], {minor: true, allowDowngrade: true}, ""],
+  ["prerelease pin current", "1.0.0-beta.1", "1.0.0-beta.1", ["1.0.0-beta.0", "1.0.0-beta.1"],
+    {minor: true, pin: {"github.com/example/limited": "^1.0.0"}}, ""],
+  ["minor older latest", "1.0.0", "0.9.0", ["0.9.0"], {minor: true}, ""],
+])("go list fallback respects %s constraints", async (label, current, latest, versions, options: UpdatesOptions, expected, allowedVersions = "") => {
+  const name = `github.com/example/limited-${label.replaceAll(" ", "-")}`;
+  const file = join(writeTree("go-limited", {
+    "go.mod": `module example.com/test\nrequire ${name} v${current}\n`,
+    ...(allowedVersions && {"renovate.json": JSON.stringify({packageRules: [{matchPackageNames: [name], allowedVersions}]})}),
+  }), "go.mod");
+  if (latest) lazyRoute(`/go/${name}/@latest`, () => ({Version: `v${latest}`}));
+  routes.set(`/go/${name}/@v/list`, (_, res) => {
+    res.end(versions.map(version => `v${version} 2024-01-01T00:00:00Z`).join("\n"));
+  });
+  const output = await updates(apiOpts({files: [file], modes: ["go"], ...options,
+    pin: options.pin ? {[name]: options.pin["github.com/example/limited"]} : undefined}));
+  expect(output.errors).toBeUndefined();
+  if (expected) expect(output).toMatchObject({results: {go: {deps: {[name]: {new: expected}}}}});
+  else {
+    expect(output.results).toEqual({});
+    expect(requestedUrls.filter(url => url.startsWith(`/go/${name}/`))).toEqual([`/go/${name}/@latest`]);
+  }
+  if (options.patch || options.minor) expect(requestedUrls.some(url => url.startsWith(`/go/${name}/v2/`))).toBe(false);
+});
 
 test("branch-only actions do not fetch forge metadata", async () => {
   const dir = writeTree("actions-branches", {".github/workflows/ci.yml": "jobs:\n  test:\n    steps:\n      - uses: one/repo@main\n      - uses: two/repo@develop\n"});
@@ -812,8 +951,8 @@ test("branch-only actions do not fetch forge metadata", async () => {
   expect(requestedUrls.filter(url => /^\/github\/repos\/(?:one|two)\/repo\//.test(url))).toEqual([]);
 });
 
-test("actions scan older tags for configured downgrades and pins", async () => {
-  const dir = writeTree("actions-older", {".github/workflows/ci.yml": lines("jobs:", "  test:", "    steps:", "      - uses: o/down@v10.0.0-alpha", "      - uses: o/pinned@v10.0.0")});
+test("actions scan older tags for configured downgrades and pins, a sub-action pin wins over its repo pin", async () => {
+  const dir = writeTree("actions-older", {".github/workflows/ci.yml": lines("jobs:", "  test:", "    steps:", "      - uses: o/down@v10.0.0-alpha", "      - uses: o/pinned/sub@v10.0.0")});
   for (const repo of ["down", "pinned"]) {
     routes.set(`/github/repos/o/${repo}/tags`, (req, res) => {
       const page = Number(new URL(req.url, githubUrl).searchParams.get("page"));
@@ -824,9 +963,9 @@ test("actions scan older tags for configured downgrades and pins", async () => {
   }
   const output = await updates({
     files: [join(dir, ".github/workflows/ci.yml")], modes: ["actions"], forgeapi: githubUrl, noCache: true, noColor: true,
-    allowDowngrade: ["o/down"], pin: {"o/pinned": "^9"},
+    allowDowngrade: ["o/down"], pin: {"o/pinned": "^10", "o/pinned/sub": "^9"},
   });
-  expect(Object.values(output.results.actions)[0]).toMatchObject({"o/down": {new: "9.0.0"}, "o/pinned": {new: "9.0.0"}});
+  expect(Object.values(output.results.actions)[0]).toMatchObject({"o/down": {new: "9.0.0"}, "o/pinned/sub": {new: "9.0.0"}});
 });
 
 const checkoutUpdate = {"actions/checkout": {old: "2", new: "10", info: "https://github.com/actions/checkout"}};
@@ -843,23 +982,26 @@ test.each([
   expect(dependencies).toMatchObject(expected);
 });
 
-test("actions cooldown gates on the commit date of the selected tag and of a followed commented sha pin", async () => {
+test("actions cooldown uses the later commit or publication date of the selected tag and of a followed commented sha pin", async () => {
   const sha = (version: number) => `c${String(version).padStart(39, "0")}`;
   const dir = writeTree("actions-cooldown", {
     ".github/workflows/ci.yml": workflowSteps("o/cooldown@v1.0.0"),
     ".github/workflows/pin.yml": workflowSteps(`o/cooldown@${sha(1)} # v3.0.0`),
   });
   lazyRoute("/github/repos/o/cooldown/tags", () => [3, 2, 1].map(version => ({name: `v${version}.0.0`, commit: {sha: sha(version)}})));
-  for (const [version, days] of [[3, 0], [2, 2]]) {
+  lazyRoute("/github/repos/o/cooldown/releases", () => [{tag_name: "v3.0.0", prerelease: false,
+    published_at: new Date(Date.now() - 2 * 3600 * 1000).toISOString()}]);
+  for (const [version, days] of [[3, 8], [2, 2]]) {
     lazyRoute(`/github/repos/o/cooldown/git/commits/${sha(version)}`, () => ({committer: {date: new Date(Date.now() - days * 24 * 3600 * 1000).toISOString()}}));
   }
   const run = (cooldown: string, path = ".github/workflows") => updates({
-    files: [join(dir, path)], modes: ["actions"], forgeapi: githubUrl, noCache: true, color: false, cooldown,
+    files: [join(dir, path)], modes: ["actions"], forgeapi: "https://api.github.com", noCache: true, color: false, cooldown,
   });
   const byFile = async (cooldown: string) => Object.fromEntries(Object.entries((await run(cooldown)).results.actions)
     .map(([file, deps]) => [basename(file), deps]));
-  expect(await byFile("0")).toMatchObject({"ci.yml": {"o/cooldown": {new: "3.0.0"}}, "pin.yml": {"o/cooldown": {newDigest: sha(3)}}});
-  expect(await byFile("1")).toEqual({"ci.yml": {"o/cooldown": expect.objectContaining({new: "2.0.0"})}});
+  expect(await byFile("0")).toMatchObject({"ci.yml": {"o/cooldown": {new: "3.0.0", age: "2h"}},
+    "pin.yml": {"o/cooldown": {newDigest: sha(3), age: "2h"}}});
+  expect(await byFile("1")).toEqual({"ci.yml": {"o/cooldown": expect.objectContaining({new: "2.0.0", age: "2d"})}});
   expect((await run("3")).message).toContain("up to date");
   routes.set(`/github/repos/o/cooldown/git/commits/${sha(3)}`, (_, res) => { res.writeHead(400).end(); });
   expect((await run("1", ".github/workflows/pin.yml")).errors).toMatchObject([
@@ -972,6 +1114,20 @@ test("docker allowedVersions compares floating tags with Docker semantics", asyn
   expect(read(dir, "Dockerfile")).toBe("FROM node:20\n");
 });
 
+test.each([1, 5])("docker digest refresh respects cooldown for a tag aged %sd", async days => {
+  const oldDigest = `sha256:${"a".repeat(64)}`;
+  const newDigest = `sha256:${"b".repeat(64)}`;
+  const input = `FROM example/digest-${days}:20@${oldDigest}\n`;
+  const file = join(writeTree("docker-digest-age", {Dockerfile: input}), "Dockerfile");
+  lazyRoute(`/docker/v2/repositories/example/digest-${days}/tags`, () => ({count: 1, results: [{
+    name: "20", tag_last_pushed: new Date(Date.now() - days * 24 * 3600 * 1000).toISOString(), digest: newDigest,
+  }]}));
+  const output = await updates(apiOpts({files: [file], modes: ["docker"], cooldown: "3d", update: true}));
+  expect(output.errors).toBeUndefined();
+  expect(Boolean(output.results.docker)).toBe(days >= 3);
+  expect(read(file)).toBe(days >= 3 ? input.replace(oldDigest, () => newDigest) : input);
+});
+
 test("actions mode does not include docker from workflows", async () => {
   expect((await runCliExec([...actionsArgs, "-j", "-f", actionsDir, "-f", dockerActionsDir])).results.docker).toBeUndefined();
 });
@@ -1043,6 +1199,21 @@ test("fetch error includes URL and no stack trace", async () => {
     expect(error).toContain(url);
     expect(error).not.toContain("    at ");
   }
+});
+
+test.each([
+  "https://user:secret@registry.test", "https://user:first@second@registry.test",
+])("api errors, cli errors and verbose fetch logs redact the credentials of %s", async registry => {
+  const dir = writeTree("redacted-registry", {"package.json": '{"dependencies":{"noty":"3.1.0"}}', ".npmrc": `registry=${registry}`});
+  let verbose = "";
+  const {errors} = await cliStderr.run(text => { verbose += text; }, () =>
+    updates(apiOpts({files: [join(dir, "package.json")], registry: undefined, verbose: true, noColor: true})));
+  expect(errors).toMatchObject([{error: expect.stringContaining("Failed to fetch https://registry.test/noty")}]);
+  expect(verbose).toContain("GET");
+  expect(JSON.stringify([errors, verbose])).not.toMatch(/user:|secret|first|second/);
+  await expect(updates({modes: [registry]})).rejects.toThrow("Invalid mode: https://registry.test, expected one of:");
+  const cli = await captureCli(["-j", "-M", registry]);
+  expect([cli.exitCode, JSON.parse(cli.stdout).error]).toEqual([1, expect.stringContaining("Invalid mode: https://registry.test,")]);
 });
 
 function runWithConfig(config: string, args: string) {
@@ -1125,13 +1296,17 @@ test("api cooldown overrides apply per package and last match wins", async () =>
   expect(lastMatch.noty.new).toBe("3.1.4");
 });
 
-test("pypi dotted groups, build requirements and uv dev-dependencies are collected, a declined rewrite is not reported", async () => {
+test("pypi dotted groups, build requirements and uv dev-dependencies are collected, declined and unchanged rewrites are not reported, ages use the earliest upload", async () => {
+  lazyRoute("/pypi/pypi/requests/json", () => ({info: {name: "requests", version: "2.32.5"}, releases: {"2.32.5": [
+    {upload_time_iso_8601: new Date(Date.now() - 24 * 3600 * 1000).toISOString()},
+    {upload_time_iso_8601: new Date(Date.now() - 10 * 24 * 3600 * 1000).toISOString()},
+  ]}}));
   const pyproject = lines(
     `[project]`,
-    `dependencies = ["djlint>=1.30.0,!=1.31.0"]`,
+    `dependencies = ["djlint>=1.30.0,!=1.31.0", "requests~=2.32", "requests>=2.28.0; sys_platform == 'win32'", "requests>=2.32.5; sys_platform != 'win32'"]`,
     ``,
     `[project.optional-dependencies]`,
-    `"extra.one" = ["PyYAML>=1.0"]`,
+    `"extra.one" = ["PyYAML>=1.0", "requests>=2.28.0; sys_platform == 'win32'", "requests>=2.31.0; sys_platform != 'win32'"]`,
     ``,
     `[dependency-groups]`,
     `"test.unit" = ["types-paramiko>=3.4.0.20240423"]`,
@@ -1143,16 +1318,47 @@ test("pypi dotted groups, build requirements and uv dev-dependencies are collect
     `dev-dependencies = ["setuptools", "types-requests==2.32.0.20240622"]`,
   );
   const file = join(writeTree("pypi-groups", {"pyproject.toml": pyproject}), "pyproject.toml");
-  const {results: {pypi}, errors} = await updates(apiOpts({files: [file], modes: ["pypi"], update: true}));
+  const {results: {pypi}, errors} = await updates(apiOpts({files: [file], modes: ["pypi"], update: true, cooldown: "3d"}));
   expect(errors).toBeUndefined();
   expect(pypi["project.optional-dependencies.extra.one"].PyYAML.new).toBe("6.0");
+  expect(Object.keys(pypi["project.optional-dependencies.extra.one"])).toEqual(["PyYAML",
+    "requests>=2.28.0; sys_platform == 'win32'", "requests>=2.31.0; sys_platform != 'win32'"]);
   expect(pypi["dependency-groups.test.unit"]["types-paramiko"].new).toBe("3.5.0.20250801");
   expect(pypi["build-system.requires"].PyYAML).toMatchObject({old: "1.0", new: "6.0"});
   expect(pypi["tool.uv.dev-dependencies"]["types-requests"]).toMatchObject({old: "2.32.0.20240622", new: "2.32.4.20250611"});
-  expect(pypi["project.dependencies"]).toBeUndefined();
+  expect(pypi["project.dependencies"]).toMatchObject({requests: {old: "2.28.0", new: "2.32.5", age: "1w"}});
   expect(read(file)).toBe(pyproject
     .replace("PyYAML>=1.0", "PyYAML>=6.0").replace("types-paramiko>=3.4.0.20240423", "types-paramiko>=3.5.0.20250801")
-    .replace("PyYAML==1.0", "PyYAML==6.0").replace("types-requests==2.32.0.20240622", "types-requests==2.32.4.20250611"));
+    .replace("PyYAML==1.0", "PyYAML==6.0").replace("types-requests==2.32.0.20240622", "types-requests==2.32.4.20250611")
+    .replaceAll("requests>=2.28.0", "requests>=2.32.5").replace("requests>=2.31.0", "requests>=2.32.5"));
+  expect((await captureCli(["-E", ...apiArgs, "-f", file])).exitCode).toBe(0);
+});
+
+test.each([
+  [{allowedVersions: "~=2.31"}, "2.32.5"], [{allowedVersions: "!=3.0.0"}, "2.32.5"], [{allowedVersions: "^2.31.0"}, "2.32.5"],
+  [{matchDepNames: ["allowed_pkg"], allowedVersions: "<=2.31.0"}, "2.31.0"], [{matchDepNames: ["allowed_pkg"], enabled: false}, ""],
+])("pypi rules match normalized names and accept allowedVersions %j", async (rule, expected) => {
+  const dir = writeTree("pypi-allowed", {
+    "pyproject.toml": '[project]\ndependencies = ["allowed_pkg==2.30.0"]\n',
+    "renovate.json": JSON.stringify({packageRules: [{matchPackageNames: ["allowed-pkg"], ...rule}]}),
+  });
+  lazyRoute("/pypi/pypi/allowed-pkg/json", () => ({info: {name: "allowed-pkg", version: "3.0.0"},
+    releases: Object.fromEntries(["2.31.0", "2.32.0", "2.32.5", "3.0.0"].map(version => [version, [{}]]))}));
+  const output = await updates(apiOpts({files: [join(dir, "pyproject.toml")]}));
+  expect(output.errors).toBeUndefined();
+  expect(output.results).toEqual(expected ?
+    {pypi: {"project.dependencies": {allowed_pkg: expect.objectContaining({new: expected})}}} : {});
+});
+
+test("pypi-only allowedVersions errors for npm dependencies", async () => {
+  const dir = writeTree("npm-pypi-allowed", {
+    "package.json": JSON.stringify({dependencies: {"pypi-range-pkg": "1.0.0"}}),
+    "renovate.json": JSON.stringify({packageRules: [{matchPackageNames: ["pypi-range-pkg"], allowedVersions: "~=1.0"}]}),
+  });
+  lazyRoute("/npm/pypi-range-pkg", () => ({name: "pypi-range-pkg", "dist-tags": {latest: "1.1.0"}, versions: {"1.1.0": {}}}));
+  expect((await updates(apiOpts({files: [join(dir, "package.json")]}))).errors).toMatchObject([
+    {mode: "npm", name: "pypi-range-pkg", error: "Invalid npm allowedVersions: ~=1.0"},
+  ]);
 });
 
 test.each(["PyYAML", "pyyaml"])("a pypi pin holds, keyed by the authored spelling or the normalized one: %s", async key => {
