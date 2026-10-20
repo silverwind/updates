@@ -188,6 +188,14 @@ function normalize(raw: Record<string, unknown>, opts: RenovateImportOptions): P
   }
   if (versionRules.length) out.renovateVersionRules = versionRules;
 
+  const actions = raw["github-actions"] as {managerFilePatterns?: unknown, fileMatch?: unknown} | null | undefined;
+  const actionsPatterns = [
+    ...Array.isArray(actions?.managerFilePatterns) ? actions.managerFilePatterns : [],
+    ...Array.isArray(actions?.fileMatch) ? actions.fileMatch.filter(source => typeof source === "string").map(source => `/${source}/`) : [],
+  ].filter(pattern => typeof pattern === "string" && Boolean(pattern) && !pattern.startsWith("!"))
+    .map(pattern => renovateRegex(pattern) ?? pattern);
+  if (actionsPatterns.length) out.filePatterns = {actions: actionsPatterns};
+
   return out;
 }
 

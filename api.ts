@@ -59,7 +59,9 @@ import {
   baseType, filterDepsForMember, resolveWorkspaceMembers, parsePnpmWorkspace, pnpmCatalogEntries,
   updatePnpmWorkspace, type WorkspaceMember,
 } from "./utils/workspace.ts";
-import {defaultExcludePaths, discoverFiles, passesPathFilters, type PathFilters} from "./utils/files.ts";
+import {
+  compilePathPatterns, defaultExcludePaths, discoverFiles, isDependencyFile, passesPathFilters, type PathFilters,
+} from "./utils/files.ts";
 
 const allowedVersionsRe = /^(!?)\/(.*)\/(i?)$/;
 
@@ -162,7 +164,9 @@ function canInclude({packageName, depName, names}: DependencyIdentity, mode: str
   return !include.size;
 }
 
-async function resolveFiles(filesArg: Array<string> | undefined, dir: string, pathFilters: PathFilters): Promise<Map<string, string>> {
+async function resolveFiles(
+  filesArg: Array<string> | undefined, dir: string, pathFilters: PathFilters, isPatternFile: (file: string) => boolean,
+): Promise<Map<string, string>> {
   const resolvedFiles = new Map<string, string>();
   const realPaths = new Set<string>();
   const add = (file: string, root = dir) => {
@@ -189,7 +193,7 @@ async function resolveFiles(filesArg: Array<string> | undefined, dir: string, pa
   }
   if (!filesArg?.length) roots.push(dir);
   const discoveries = Promise.all(roots.map(async root =>
-    (await discoverFiles(root, pathFilters, Boolean(filesArg?.length))).map(file => [file, root] as const)));
+    (await discoverFiles(root, pathFilters, Boolean(filesArg?.length), isPatternFile)).map(file => [file, root] as const)));
 
   if (!filesArg?.length) {
     const forgeDirSet = new Set<string>(forgeDirs);
@@ -558,9 +562,17 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
   const pathFilters: PathFilters = {
     includePaths: config.includePaths ?? [], excludePaths: config.excludePaths ?? defaultExcludePaths,
   };
-  const files = await resolveFiles(config.files, cwdStr, pathFilters);
+  const workflowPatterns = compilePathPatterns(config.filePatterns?.actions ?? []);
+  const isPatternWorkflow = (file: string) => {
+    if (!workflowPatterns.length || isDependencyFile(file)) return false;
+    const path = relative(cwdStr, file).replaceAll("\\", "/");
+    return workflowPatterns.some(pattern => pattern.test(path));
+  };
+  const files = await resolveFiles(config.files, cwdStr, pathFilters, isPatternWorkflow);
+  const patternWorkflows = new Set(Array.from(files.keys()).filter(isPatternWorkflow));
+  const isWorkflow = (file: string) => isWorkflowFile(file) || patternWorkflows.has(file);
   const fileContents = new Map(await pMap(Array.from(files.keys()).filter(file => {
-    if (isWorkflowFile(file)) return enabledModes.has("actions") || enabledModes.has("docker");
+    if (isWorkflow(file)) return enabledModes.has("actions") || enabledModes.has("docker");
     const filename = basename(file);
     if (Object.hasOwn(workspaceFileOf, filename) && files.has(join(dirname(file), workspaceFileOf[filename]))) return false;
     if (isDockerFileName(filename)) return enabledModes.has("docker");
@@ -714,7 +726,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
   for (const file of new Set([...cargoWorkspaceFiles.keys(), ...npmWorkspaceFiles.keys(), ...fileContents.keys()])) {
     const filename = basename(file);
     const content = fileContents.get(file)!;
-    if (isWorkflowFile(file)) {
+    if (isWorkflow(file)) {
       const actionsEnabled = enabledModes.has("actions");
       const dockerEnabled = enabledModes.has("docker");
       const relPath = toRelPath(file);

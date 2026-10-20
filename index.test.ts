@@ -982,6 +982,15 @@ test.each([
   expect(dependencies).toMatchObject(expected);
 });
 
+test.each(["", ".gitea/workflows/ci.yaml.tmpl"])("actions read Go template workflows matched by renovate managerFilePatterns via -f '%s'", async (file) => {
+  const dir = writeTree("actions-templates", {
+    "renovate.json": JSON.stringify({"github-actions": {managerFilePatterns: ["**/.gitea/workflows/*.tmpl"]}}),
+    ".gitea/workflows/ci.yaml.tmpl": lines("jobs:", "{{- range .Jobs}}", "  {{.Name}}:", "    steps:", "      - uses: actions/checkout@v2", "{{- end}}"),
+  });
+  const [dependencies] = Object.values<any>((await runCliExec([...actionsArgs, "-j", "-f", join(dir, file)])).results.actions);
+  expect(dependencies).toMatchObject(checkoutUpdate);
+});
+
 test("actions cooldown uses the later commit or publication date of the selected tag and of a followed commented sha pin", async () => {
   const sha = (version: number) => `c${String(version).padStart(39, "0")}`;
   const dir = writeTree("actions-cooldown", {

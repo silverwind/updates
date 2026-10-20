@@ -87,6 +87,7 @@ Mirrors the [CLI options](#options) in camelCase, with `--file` as `files`, plus
 
 - `overrides` *Array\<Override>*: Per-package option overrides (see [Overrides](#overrides))
 - `inherit` *object*: Fields to inherit from other tools' configs (see [Renovate config](#renovate-config))
+- `filePatterns` *object*: Extra files per mode, currently only `actions`, as path globs or RegExps relative to the current directory, e.g. `{actions: [/\.ya?ml\.tmpl$/]}` for templated workflows. Files another mode reads are left to it
 
 `include`, `exclude` and the `dep` options take `Array<string | RegExp>`, `pin` takes a `Record<string, string>` keyed by exact dependency name, `files`, `modes`, `includePaths` and `excludePaths` take `Array<string>`.
 
@@ -109,7 +110,7 @@ export default {
 
 ### Renovate config
 
-A [Renovate](https://docs.renovatebot.com/) `renovate.json`, `renovate.jsonc` or `renovate.json5` is picked up automatically, inheriting `ignoreDeps`, `enabled` and `allowedVersions` from matching local `packageRules` as `include`/`exclude`/`pin`. Exact-name semver `allowedVersions` ranges become pin ceilings that never downgrade. PyPI `allowedVersions` also accepts PEP 440 specifier sets. Local fields are imported when `extends` is present, but preset contents are not resolved. `minimumReleaseAge` is not inherited unless opted in:
+A [Renovate](https://docs.renovatebot.com/) `renovate.json`, `renovate.jsonc` or `renovate.json5` is picked up automatically, inheriting `ignoreDeps`, `enabled` and `allowedVersions` from matching local `packageRules` as `include`/`exclude`/`pin`, and the `github-actions` manager's `managerFilePatterns` and legacy `fileMatch` as `filePatterns.actions`. Exact-name semver `allowedVersions` ranges become pin ceilings that never downgrade. PyPI `allowedVersions` also accepts PEP 440 specifier sets. Local fields are imported when `extends` is present, but preset contents are not resolved. `minimumReleaseAge` is not inherited unless opted in:
 
 ```ts
 export default {

@@ -33,6 +33,8 @@ export type Config = {
   includePaths?: Array<string>;
   /** Skip paths matching these globs, replacing `defaultExcludePaths` */
   excludePaths?: Array<string>;
+  /** Extra files per mode, matched by path glob or RegExp */
+  filePatterns?: {actions?: Array<string | RegExp>};
   /** Which modes to enable */
   modes?: Array<string>;
   /** Update versions and write dependency files */
@@ -213,6 +215,7 @@ export const loadConfig = memoizeAsync(async (startDir: string): Promise<Config>
     config.pinNoDowngrade = Object.keys(renovateConfig.pin).filter(name => !raw.pin?.[name]);
   }
   if (renovateConfig.overrides?.length) config.overrides = [...renovateConfig.overrides, ...(raw.overrides ?? [])];
+  if (renovateConfig.filePatterns) config.filePatterns = {...renovateConfig.filePatterns, ...raw.filePatterns};
   validatePin(config.pin);
   return config;
 });

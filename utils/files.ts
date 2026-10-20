@@ -2,7 +2,7 @@ import {execFile} from "node:child_process";
 import {lstatSync, readdirSync} from "node:fs";
 import {basename, join, resolve} from "node:path";
 import {promisify} from "node:util";
-import {braceAlternatives, closingIndex, esc, forgeDirs, getOrSet, modeByFileName} from "./utils.ts";
+import {braceAlternatives, closingIndex, esc, forgeDirs, getOrSet, modeByFileName, patternToRegex} from "./utils.ts";
 import {isWorkflowFile} from "../modes/actions.ts";
 import {isDockerFileName} from "../modes/docker.ts";
 import {isMakeFileName} from "../modes/make.ts";
@@ -60,7 +60,11 @@ export function passesPathFilters(path: string, {includePaths, excludePaths}: Pa
   return excludePaths.every(glob => !path.includes(glob) && !pathGlobRegex(glob).test(path));
 }
 
-function isDependencyFile(path: string): boolean {
+export function compilePathPatterns(patterns: Array<string | RegExp>): Array<RegExp> {
+  return patterns.map(pattern => typeof pattern === "string" ? pathGlobRegex(pattern) : patternToRegex(pattern));
+}
+
+export function isDependencyFile(path: string): boolean {
   const filename = basename(path);
   return Object.hasOwn(modeByFileName, filename) || isDockerFileName(filename) || isMakeFileName(filename) ||
     isShellFileName(filename) || isWorkflowFile(path);
@@ -87,12 +91,14 @@ function ownFiles(root: string): Array<string> { // the directory's own files an
 }
 
 /** Dependency files below `root`, shallowest first. An explicit root's own files count even when gitignored */
-export async function discoverFiles(root: string, filters: PathFilters, explicit: boolean): Promise<Array<string>> {
+export async function discoverFiles(
+  root: string, filters: PathFilters, explicit: boolean, isPatternFile: (file: string) => boolean,
+): Promise<Array<string>> {
   const listed = await gitFiles(root);
   const files: Array<string> = [];
   for (const path of [...listed ?? [], ...explicit || !listed ? ownFiles(root) : []]) {
     const file = resolve(root, path);
-    if (isDependencyFile(file) && passesPathFilters(path.replaceAll("\\", "/"), filters) &&
+    if ((isDependencyFile(file) || isPatternFile(file)) && passesPathFilters(path.replaceAll("\\", "/"), filters) &&
       lstatSync(file, {throwIfNoEntry: false})?.isFile()) files.push(file); // skips symlinks, submodules and deleted files
   }
   return files.sort((a, b) => a.split(/[\\/]/).length - b.split(/[\\/]/).length);

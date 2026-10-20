@@ -103,6 +103,9 @@ test.each([
   ["top-level enabled false, which disables everything", "renovate.json",
     {enabled: false, ignoreDeps: ["foo"]}, {$disabled: ["foo", "bar"]}],
   ["renovate.jsonc", "renovate.jsonc", {ignoreDeps: ["foo"]}, {$disabled: ["foo"]}],
+  ["github-actions managerFilePatterns and legacy fileMatch, without negations", "renovate.json",
+    {"github-actions": {managerFilePatterns: ["/\\.ya?ml\\.tmpl$/", "**/*.yml.in", "!/draft/"], fileMatch: ["\\.j2$"]}},
+    {filePatterns: {actions: [/\.ya?ml\.tmpl$/, "**/*.yml.in", /\.j2$/]}}],
 ])("loadRenovateConfig reads %s", async (_name, file, config, expected) => {
   const dir = makeDir();
   if (file) writeFileSync(join(dir, file), typeof config === "string" ? config : JSON.stringify(config));
