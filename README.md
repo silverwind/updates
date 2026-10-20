@@ -13,7 +13,9 @@
 - `Cargo.toml` - rust dependencies, including workspaces
 - `.{github,gitea,forgejo}/{workflows,actions}`, `workflow-templates`, `action.{yml,yaml}` - actions and docker images
 - `{Docker,Container}file*`, `*.{Docker,Container}file`, `compose*.{yml,yaml}`, `docker-*.{yml,yaml}` - docker images
-- `Makefile`, `*.mk`, `*.sh` - go tool versions in `go install` paths and docker image tags
+- `Makefile`, `*.mk`, `*.sh` - go tool versions in `go install` paths and docker image tags, of any registry in variables named `*_IMAGE`
+
+Docker images outside Docker Hub are looked up through their registry's API with an anonymous pull token. Those registries list tags without dates, so a cooldown skips them.
 
 ## Usage
 

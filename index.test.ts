@@ -1,6 +1,6 @@
 import {execFile} from "node:child_process";
 import {AsyncLocalStorage} from "node:async_hooks";
-import {createServer} from "node:http";
+import {createServer, type IncomingMessage} from "node:http";
 import {basename, dirname, join, parse, relative} from "node:path";
 import {
   appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, statSync, symlinkSync,
@@ -556,6 +556,25 @@ test("make mode bumps docker image tags and re-resolves digests in Makefiles", a
     "PLAIN := koalaman/shellcheck:v0.12.0",
     "TEST_MYSQL_HOST ?= mysql:3306",
   ));
+});
+
+test("shell mode bumps an *_IMAGE image and its digest on another registry after its token challenge, but not a plain variable", async () => {
+  const registry = mockUrl.replace("http://", "");
+  const [oldDigest, newDigest] = [`sha256:${"a".repeat(64)}`, `sha256:${"b".repeat(64)}`];
+  const challenge = {"www-authenticate": `Bearer realm="${mockUrl}/registry-token",service="test"`};
+  const authorized = (req: IncomingMessage) => req.headers.authorization === "Bearer pull-token";
+  routes.set("/registry-token", (_req, res) => { res.end(JSON.stringify({token: "pull-token"})); });
+  routes.set("/v2/o/tool/tags/list", (req, res) => {
+    if (authorized(req)) res.end(JSON.stringify({tags: ["1.0.0", "1.1.0", "latest"]}));
+    else res.writeHead(401, challenge).end();
+  });
+  routes.set("/v2/o/tool/manifests/1.1.0", (req, res) => {
+    if (authorized(req)) res.writeHead(200, {"docker-content-digest": newDigest}).end();
+    else res.writeHead(401, challenge).end();
+  });
+  const dir = writeTree("registry-image", {"build.sh": lines(`TOOL_IMAGE="${registry}/o/tool:1.0.0@${oldDigest}"`, `MIRROR=${registry}/o/tool:1.0.0`)});
+  await updates({files: [join(dir, "build.sh")], modes: ["shell"], update: true, color: false, noCache: true});
+  expect(read(dir, "build.sh")).toBe(lines(`TOOL_IMAGE="${registry}/o/tool:1.1.0@${newDigest}"`, `MIRROR=${registry}/o/tool:1.0.0`));
 });
 
 test("make and shell modes bump discovered files alike, leaving current, unresolvable, excluded and failed values untouched", async () => {

@@ -355,12 +355,12 @@ test("fetchDockerHubTags reports registry failures instead of no update", async 
 });
 
 test("fetchDockerTagDigest returns the registry digest and reports failures", async () => {
-  await expect(fetchDockerTagDigest("library", "node", "20", hubCtx(hubBody({digest: newDigest}))))
+  await expect(fetchDockerTagDigest("node", "20", hubCtx(hubBody({digest: newDigest}))))
     .resolves.toBe(newDigest);
-  await expect(fetchDockerTagDigest("library", "node", "20", hubCtx(() => Promise.resolve({
+  await expect(fetchDockerTagDigest("node", "20", hubCtx(() => Promise.resolve({
     ok: false, status: 429, statusText: "Too Many Requests",
   })))).rejects.toThrow("Received 429 Too Many Requests");
-  await expect(fetchDockerTagDigest("library", "node", "20", hubCtx(hubBody({})))).resolves.toBe(null);
+  await expect(fetchDockerTagDigest("node", "20", hubCtx(hubBody({})))).resolves.toBe(null);
 
   const urls: Array<string> = [];
   const listing = hubCtx((url: string) => {
@@ -368,9 +368,9 @@ test("fetchDockerTagDigest returns the registry digest and reports failures", as
     return hubBody(url.includes("/tags/") ? {digest: oldDigest} :
       {count: 1, results: [{name: "20", tag_last_pushed: "2024-01-01", digest: newDigest}]})();
   });
-  await expect(fetchDockerTagDigest("library", "node", "20", listing)).resolves.toBe(newDigest);
+  await expect(fetchDockerTagDigest("node", "20", listing)).resolves.toBe(newDigest);
   expect(urls.length).toBe(1);
-  await expect(fetchDockerTagDigest("library", "node", "22", listing)).resolves.toBe(oldDigest);
+  await expect(fetchDockerTagDigest("node", "22", listing)).resolves.toBe(oldDigest);
   expect(urls.at(-1)).toBe("https://hub.docker.com/v2/repositories/library/node/tags/22");
 });
 
@@ -424,6 +424,27 @@ test("filterStableTags drops the ubuntu development series", () => {
   expect(filterStableTags("node", tags, now)).toBe(tags);
 });
 
-test("fetchDockerInfo non-Docker-Hub registry throws", async () => {
-  await expect(fetchDockerInfo("ghcr.io/owner/repo", {} as ModeContext)).rejects.toThrow("not yet supported");
+test("fetchDockerInfo lists another registry's tags across pages after its token challenge", async () => {
+  const requests: Array<string> = [];
+  const respond = (url: string, authorization?: string) => {
+    if (url.startsWith("https://ghcr.io/token")) return Response.json({token: "t"});
+    if (!authorization) {
+      return new Response(null, {status: 401, headers: {"www-authenticate": 'Bearer realm="https://ghcr.io/token",service="ghcr.io",scope="repository:owner/repo:pull"'}});
+    }
+    if (url.includes("last=")) return Response.json({tags: ["1.1.0"]});
+    return Response.json({tags: ["1.0.0"]}, {headers: {link: '</v2/owner/repo/tags/list?last=1.0.0&n=1000>; rel="next"'}});
+  };
+  const doFetch = (url: string, opts?: RequestInit) => {
+    const authorization = (opts?.headers as Record<string, string> | undefined)?.authorization;
+    requests.push(authorization ? `${url} ${authorization}` : url);
+    return Promise.resolve(respond(url, authorization));
+  };
+  const [info] = await fetchDockerInfo("ghcr.io/owner/repo", hubCtx(doFetch));
+  expect(info.tags).toEqual({"1.0.0": "", "1.1.0": ""});
+  expect(requests).toEqual([
+    "https://ghcr.io/v2/owner/repo/tags/list?n=1000",
+    "https://ghcr.io/token?service=ghcr.io&scope=repository%3Aowner%2Frepo%3Apull",
+    "https://ghcr.io/v2/owner/repo/tags/list?n=1000 Bearer t",
+    "https://ghcr.io/v2/owner/repo/tags/list?last=1.0.0&n=1000 Bearer t",
+  ]);
 });

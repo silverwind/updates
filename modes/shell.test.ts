@@ -8,9 +8,11 @@ const script = [
   "SPACED = example.com/org/spaced@v1.0.0",
   `readonly APP_IMAGE="\${APP_IMAGE:=org/app:1.0}"`,
   `REMOTE_IMAGE=\${REGISTRY}/org/app:1.0`,
+  `ZIZMOR_IMAGE="\${ZIZMOR_IMAGE-"ghcr.io/zizmorcore/zizmor:1.30.1"}"`,
+  "MIRROR=ghcr.io/org/app:1.0",
 ].join("\n");
 
-test("shellAssignmentValues feeds make's parsers, unwrapping arrays and default expansions", () => {
+test("shellAssignmentValues feeds make's parsers, unwrapping arrays and default expansions, with any registry under *_IMAGE", () => {
   const values = shellAssignmentValues(script);
   expect(parseGoInstalls(values)).toEqual([
     {installPath: "example.com/org/tool/cmd/tool", version: "v1"},
@@ -18,5 +20,5 @@ test("shellAssignmentValues feeds make's parsers, unwrapping arrays and default 
     {installPath: "example.com/org/a", version: "v1.0.0"},
     {installPath: "example.com/org/b", version: "v2.0.0"},
   ]);
-  expect(parseImages(values).map(image => `${image.writtenImage}:${image.ref.tag}`)).toEqual(["org/app:1.0"]);
+  expect(parseImages(values).map(image => `${image.writtenImage}:${image.ref.tag}`)).toEqual(["org/app:1.0", "ghcr.io/zizmorcore/zizmor:1.30.1"]);
 });

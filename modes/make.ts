@@ -11,11 +11,13 @@ export function isMakeFileName(filename: string): boolean {
   return makeExactFileNames.includes(filename) || filename.endsWith(".mk");
 }
 
-const makeAssignRe = /^\s*(?:(?:export|override|private|unexport)\s+)*[A-Za-z_][\w.]*\s*(?:::=|:=|\?=|\+=|=)\s*(.*)$/;
+const makeAssignRe = /^\s*(?:(?:export|override|private|unexport)\s+)*([A-Za-z_][\w.]*)\s*(?:::=|:=|\?=|\+=|=)\s*(.*)$/;
 const makeGoInstallRe = /^([^@\s]+)@(v\d\S*)$/;
 const goHostRe = /^[^/\s]+\.[^/\s]+\//;
 
-function* assignmentWords(content: string, assignRe: RegExp): Generator<string> {
+export type AssignmentValue = {name: string, value: string};
+
+function* assignmentWords(content: string, assignRe: RegExp): Generator<AssignmentValue> {
   let logicalLine = "";
   for (const rawLine of [...content.split(/\r?\n/), ""]) {
     const commentIndex = rawLine.indexOf("#");
@@ -31,34 +33,39 @@ function* assignmentWords(content: string, assignRe: RegExp): Generator<string> 
     if (!assignment) continue;
     let quote = "";
     let value = "";
-    for (const char of assignment[1]) {
+    const name = assignment[1];
+    for (const char of assignment[2]) {
       if (quote) {
         if (char === quote) quote = "";
         else value += char;
       } else if (char === "\"" || char === "'") {
         quote = char;
       } else if (/\s/.test(char)) {
-        if (value) yield value;
+        if (value) yield {name, value};
         value = "";
       } else {
         value += char;
       }
     }
-    if (value && !quote) yield value;
+    if (value && !quote) yield {name, value};
   }
 }
 
-export function assignmentValues(content: string, assignRe: RegExp, unwrapRe?: RegExp): Array<string> {
-  return Array.from(assignmentWords(content, assignRe), word => unwrapRe?.exec(word)?.[1] ?? word)
-    .filter(value => !value.includes("$"));
+export function assignmentValues(content: string, assignRe: RegExp, unwrapRe?: RegExp): Array<AssignmentValue> {
+  const values: Array<AssignmentValue> = [];
+  for (const entry of assignmentWords(content, assignRe)) {
+    if (unwrapRe) entry.value = unwrapRe.exec(entry.value)?.[1] ?? entry.value;
+    if (!entry.value.includes("$")) values.push(entry);
+  }
+  return values;
 }
 
-export function makeAssignmentValues(content: string): Array<string> {
+export function makeAssignmentValues(content: string): Array<AssignmentValue> {
   return assignmentValues(content, makeAssignRe);
 }
 
-export function parseGoInstalls(values: Array<string>): Array<{installPath: string, version: string}> {
-  return values.flatMap(value => {
+export function parseGoInstalls(values: Array<AssignmentValue>): Array<{installPath: string, version: string}> {
+  return values.flatMap(({value}) => {
     const match = makeGoInstallRe.exec(value);
     return match && goHostRe.test(match[1]) ? {installPath: match[1], version: match[2]} : [];
   });
@@ -67,6 +74,7 @@ export function parseGoInstalls(values: Array<string>): Array<{installPath: stri
 export type MakeDockerImage = {writtenImage: string, ref: DockerImageRef, digest: string | null};
 
 const makeImageDigestRe = /@(sha256:[0-9a-f]{64})$/;
+const imageVariableRe = /(?:^|_)IMAGE$/i;
 
 export function formatMakeImageSpec(writtenImage: string, tag: string, digest: string | null): string {
   return `${writtenImage}:${tag}${digest ? `@${digest}` : ""}`;
@@ -76,12 +84,15 @@ export function parseMakeImageValue(value: string): MakeDockerImage | null {
   const digestMatch = makeImageDigestRe.exec(value);
   const imageWithTag = digestMatch ? value.slice(0, digestMatch.index) : value;
   const ref = parseDockerImageRef(imageWithTag.replace(/^docker\.io\//, ""));
-  if (!ref || ref.registry || ref.namespace === "library") return null;
+  if (!ref) return null;
   return {writtenImage: imageWithTag.slice(0, imageWithTag.lastIndexOf(":")), ref, digest: digestMatch?.[1] ?? null};
 }
 
-export function parseImages(values: Array<string>): Array<MakeDockerImage> {
-  return values.map(parseMakeImageValue).filter(image => image !== null);
+export function parseImages(values: Array<AssignmentValue>): Array<MakeDockerImage> {
+  return values.flatMap(({name, value}) => {
+    const image = parseMakeImageValue(value);
+    return image && (imageVariableRe.test(name) || !image.ref.registry && image.ref.namespace !== "library") ? image : [];
+  });
 }
 
 const midMajorRe = /\/v(?:[2-9]|[1-9]\d+)(?=\/|$)/;

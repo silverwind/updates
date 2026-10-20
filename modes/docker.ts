@@ -1,7 +1,7 @@
 import {parse, satisfies, semverVersioning} from "../utils/semver.ts";
 import {getOrSet, longestFirstAlternation, pMap} from "../utils/utils.ts";
 import {
-  type Deps, type ModeContext, type PackageInfo, dedupe, effectiveConcurrency, fieldSep, fetchWithEtag, hashRe,
+  type Deps, type ModeContext, type PackageInfo, dedupe, effectiveConcurrency, fieldSep, fetchWithEtag, fetchWithRetry, hashRe,
   passesCooldown, prereleaseOpts, reduceJson, stripv, throwFetchError, formatVersionPrecision,
 } from "./shared.ts";
 
@@ -257,7 +257,75 @@ export async function fetchDockerHubTags(namespace: string, repo: string, ctx: M
   return (await fetchDockerHubTagPages(namespace, repo, ctx)).dates;
 }
 
-export async function fetchDockerTagDigest(namespace: string, repo: string, tag: string, ctx: ModeContext): Promise<string | null> {
+const localRegistryRe = /^(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/;
+const bearerChallengeRe = /(?:^|,\s*)Bearer\s+(.+)$/i;
+const challengeParamRe = /(\w+)=(?:"([^"]*)"|([^\s,]*))/g;
+const nextLinkRe = /<([^>]+)>[^,]*?;\s*rel="?next"?/;
+const manifestAccept = [
+  "application/vnd.oci.image.index.v1+json", "application/vnd.docker.distribution.manifest.list.v2+json",
+  "application/vnd.oci.image.manifest.v1+json", "application/vnd.docker.distribution.manifest.v2+json",
+].join(", ");
+const registryTokensByCtx = new WeakMap<ModeContext, Map<string, Promise<string | null>>>();
+const registryTagsByCtx = new WeakMap<ModeContext, Map<string, Promise<Record<string, string>>>>();
+
+const registryUrl = (registry: string, path: string, suffix: string) =>
+  `${localRegistryRe.test(registry) ? "http" : "https"}://${registry}/v2/${path}/${suffix}`;
+
+async function fetchRegistryToken(challenge: string, path: string, ctx: ModeContext): Promise<string | null> {
+  const params: Record<string, string> = {};
+  for (const match of challenge.matchAll(challengeParamRe)) params[match[1].toLowerCase()] ??= match[2] ?? match[3];
+  if (!params.realm) return null;
+  const tokenUrl = new URL(params.realm);
+  if (params.service) tokenUrl.searchParams.set("service", params.service);
+  tokenUrl.searchParams.set("scope", params.scope || `repository:${path}:pull`);
+  const res = await fetchWithRetry(ctx, tokenUrl.href);
+  if (noTagsStatus.has(res.status)) return null;
+  if (!res.ok) throwFetchError(res, tokenUrl.href, path, tokenUrl.host);
+  const data = await res.json();
+  const token = data.token ?? data.access_token;
+  return typeof token === "string" ? token : null;
+}
+
+async function fetchRegistry(url: string, path: string, ctx: ModeContext, method = "GET", headers: Record<string, string> = {}): Promise<Response> {
+  const tokens = getOrSet(registryTokensByCtx, ctx, () => new Map<string, Promise<string | null>>());
+  const key = `${new URL(url).host}/${path}`;
+  const send = (token: string | null | undefined) =>
+    fetchWithRetry(ctx, url, {method, headers: {...headers, ...(token && {authorization: `Bearer ${token}`})}});
+  const used = await tokens.get(key);
+  const res = await send(used);
+  if (res.status !== 401) return res;
+  const challenge = bearerChallengeRe.exec(res.headers.get("www-authenticate") ?? "")?.[1];
+  if (!challenge) return res;
+  const token = await getOrSet(tokens, key, () => fetchRegistryToken(challenge, path, ctx));
+  return token && token !== used ? send(token) : res;
+}
+
+function fetchRegistryTags(registry: string, path: string, ctx: ModeContext): Promise<Record<string, string>> {
+  return dedupe(registryTagsByCtx, ctx, `${registry}/${path}`, async () => {
+    const tags: Record<string, string> = {}; // registries list tags without dates
+    let url: string | undefined = registryUrl(registry, path, "tags/list?n=1000");
+    for (let page = 0; url && page < maxDockerTagPages; page++) {
+      const res = await fetchRegistry(url, path, ctx);
+      if (noTagsStatus.has(res.status)) break;
+      if (!res.ok) throwFetchError(res, url, `${registry}/${path}`, registry);
+      for (const tag of (await res.json()).tags ?? []) tags[tag] = "";
+      const next = nextLinkRe.exec(res.headers.get("link") ?? "")?.[1];
+      url = next ? new URL(next, url).href : undefined;
+    }
+    return tags;
+  });
+}
+
+export async function fetchDockerTagDigest(image: string, tag: string, ctx: ModeContext): Promise<string | null> {
+  const {registry, namespace, repo} = parseImageParts(image);
+  if (registry) {
+    const path = image.slice(registry.length + 1);
+    const url = registryUrl(registry, path, `manifests/${tag}`);
+    const res = await fetchRegistry(url, path, ctx, "HEAD", {accept: manifestAccept});
+    if (noTagsStatus.has(res.status)) return null;
+    if (!res.ok) throwFetchError(res, url, `${image}:${tag}`, registry);
+    return res.headers.get("docker-content-digest");
+  }
   // The listing carries the same manifest digest, so a tag only costs a request when it is missing there.
   const listed = (await fetchDockerHubTagPages(namespace, repo, ctx)).digests.get(tag);
   if (listed) return listed;
@@ -278,8 +346,9 @@ export function filterStableTags(repo: string, tags: Record<string, string>, now
 
 export async function fetchDockerInfo(name: string, ctx: ModeContext): Promise<PackageInfo> {
   const {registry, namespace, repo} = parseImageParts(name);
-  if (registry) throw new Error(`Non-Docker-Hub registries are not yet supported: ${registry}`);
-  return [{tags: filterStableTags(repo, await fetchDockerHubTags(namespace, repo, ctx)), name}, null];
+  const tags = registry ? await fetchRegistryTags(registry, name.slice(registry.length + 1), ctx) :
+    filterStableTags(repo, await fetchDockerHubTags(namespace, repo, ctx));
+  return [{tags, name}, null];
 }
 
 const dockerSemver = ({version, prerelease}: DockerTag) => `${coerceDockerVersion(version)}${prerelease ? `-${prerelease}` : ""}`;

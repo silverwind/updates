@@ -240,16 +240,20 @@ test("parseMakeImageValue parses a Hub image with registry prefix and digest", (
     ref: {registry: null, namespace: "koalaman", repo: "shellcheck", tag: "v0.11.0", fullImage: "koalaman/shellcheck"},
     digest: digestA,
   });
-  expect(["mysql:3306", "golang:1.21", "ghcr.io/foo/bar:1.2.3", "plain-no-tag"].map(parseMakeImageValue)).toEqual([null, null, null, null]);
+  expect(parseMakeImageValue("plain-no-tag")).toBe(null);
 });
 
-test("parseImages extracts only namespaced Hub images from make assignments, skipping comments", () => {
+test("parseImages extracts namespaced Hub images from make assignments and any image from *_IMAGE ones, skipping comments", () => {
   const content = [
     `SHELLCHECK_IMAGE ?= docker.io/koalaman/shellcheck:v0.11.0@${digestA}  # renovate: datasource=docker`,
     "PLAIN := koalaman/shellcheck:0.9.0",
     "IMAGES += \\",
     "  koalaman/\"shellcheck:0.10.0\" koalaman/shellcheck:0.11.0",
     "MYSQL_HOST ?= mysql:3306",
+    "GO := golang:1.21",
+    "MIRROR := ghcr.io/foo/bar:1.2.3",
+    "TOOL_IMAGE := ghcr.io/foo/bar:1.2.3",
+    "base_image := golang:1.21",
     `# DISABLED := koalaman/shellcheck:0.1.0@${digestB}`,
   ].join("\n");
   expect(parseImages(makeAssignmentValues(content)).map(i => ({image: i.writtenImage, tag: i.ref.tag, digest: i.digest}))).toEqual([
@@ -257,5 +261,7 @@ test("parseImages extracts only namespaced Hub images from make assignments, ski
     {image: "koalaman/shellcheck", tag: "0.9.0", digest: null},
     {image: "koalaman/shellcheck", tag: "0.10.0", digest: null},
     {image: "koalaman/shellcheck", tag: "0.11.0", digest: null},
+    {image: "ghcr.io/foo/bar", tag: "1.2.3", digest: null},
+    {image: "golang", tag: "1.21", digest: null},
   ]);
 });
