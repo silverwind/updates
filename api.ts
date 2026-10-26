@@ -40,7 +40,7 @@ import {
 } from "./modes/actions.ts";
 import {
   parseDockerImageRef, parseDockerTag, extractDockerRefs, dockerImageNames,
-  fetchDockerTagDigest,
+  fetchDockerTagDigest, fetchRegistryTagDate,
   isDockerfile, isDockerFileName, dockerExactFileNames,
   dockerTagVersion, fetchDockerInfo, findDockerVersion, getDockerInfoUrl,
   updateDockerfile, updateComposeFile, updateWorkflowDockerImages,
@@ -282,6 +282,7 @@ function goVersionConstraints(
     accepts: isVersionAllowed ? (version: string) => accepts(version) && isVersionAllowed(version) : accepts,
     allowMajor: opts.semvers.has("major"),
     pinAllowsDowngrade: goPinAllowsDowngrade(opts, currentVersion),
+    cooldownDays: opts.cooldownDays, now: opts.now,
   };
 }
 
@@ -1049,7 +1050,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
         mode === "go" ? getGoInfoUrl(data.newPath || name) : `https://crates.io/crates/${data.name}`;
 
       setDepAge(dep, mode === "pypi" ? pypiReleaseDate(data.releases[newVersion]) :
-        mode === "go" ? data.Time : mode === "cargo" ? data.time?.[newVersion] : "");
+        mode === "go" ? data.Time : data.time?.[newVersion]);
     };
 
     await pMap(Object.keys(modeDeps), async (key) => {
@@ -1080,29 +1081,29 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
     if (mode === "npm" && hasMaybeUrlDeps) {
       const results = (await pMap(Object.entries(maybeUrlDeps), async ([key, dep]) => {
         try {
-          return await checkUrlDep(key, dep, ctx);
+          const versionOpts = resolveVersionOpts(ctxForType(key.split(fieldSep)[0]), depIdentities[mode].get(key)!);
+          const result = await checkUrlDep(key, dep, ctx, versionOpts);
+          return result && {...result, cooldownDays: versionOpts.cooldownDays};
         } catch (err) {
           addKeyError("npm", key, err);
           return null;
         }
       }, {concurrency})).filter(result => result !== null);
 
-      for (const {key, newRange, user, repo, oldRef, newRef, newDate} of results) {
-        const [type] = key.split(fieldSep);
+      for (const {key, newRange, user, repo, oldRef, newRef, newDate, cooldownDays} of results) {
         const dep: Dep = modeDeps[key] = {
           old: maybeUrlDeps[key].old,
           new: newRange,
           oldPrint: hashRe.test(oldRef) ? oldRef.substring(0, 7) : oldRef,
           newPrint: hashRe.test(newRef) ? newRef.substring(0, 7) : newRef,
           info: `https://github.com/${user}/${repo}`,
-          cooldownDays: resolveVersionOpts(ctxForType(type), depIdentities[mode].get(key)!).cooldownDays,
+          cooldownDays,
         };
         setDepAge(dep, newDate);
       }
     }
 
     for (const [key, {date, cooldownDays}] of Object.entries(modeDeps)) {
-      if (!date) continue;
       if (cooldownDays && !passesCooldown(date, cooldownDays, now)) delete modeDeps[key];
     }
   });
@@ -1249,10 +1250,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
   }, {concurrency});
 
   const dockerTask = pMap(Map.groupBy(dockerDepInfos, info => info.ref.fullImage).entries(), async ([fullImage, infos]) => {
-    if (infos[0].ref.registry && infos.every(info => resolveVersionOpts(info.filters, depIdentities.docker.get(info.key)!, false).cooldownDays)) {
-      for (const info of infos) delete deps.docker[info.key]; // registry tags carry no dates, so no cooldown ever passes
-      return;
-    }
+    const resolveDate = infos[0].ref.registry ? (tag: string) => fetchRegistryTagDate(fullImage, tag, ctx) : undefined;
     let data: Record<string, any>;
     try {
       [data] = await fetchDockerInfo(fullImage, ctx);
@@ -1266,13 +1264,16 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
         const dep = deps.docker[info.key];
         const oldTag = dep.oldOrig || dep.old;
         const opts = resolveVersionOpts(info.filters, depIdentities.docker.get(info.key)!, false);
-        const result = !info.ref.digestOnly && parseDockerTag(oldTag) ? findDockerVersion(
+        const result = !info.ref.digestOnly && parseDockerTag(oldTag) ? await findDockerVersion(
           filterVersionData(data, "docker", opts.allowedVersions).tags, oldTag, opts.semvers, opts.cooldownDays, opts.now,
-          opts.pinnedRange, opts.usePre, opts.useRel,
+          opts.pinnedRange, opts.usePre, opts.useRel, resolveDate,
         ) : null;
         const newTag = result?.newTag ?? oldTag;
         if (info.ref.digest) {
-          if (!result && !passesCooldown(data.tags[oldTag], opts.cooldownDays, opts.now)) { delete deps.docker[info.key]; return; }
+          if (!result && !passesCooldown(data.tags[oldTag] || (opts.cooldownDays ? await resolveDate?.(oldTag) : ""), opts.cooldownDays, opts.now)) {
+            delete deps.docker[info.key];
+            return;
+          }
           const newDigest = await resolveDockerTagDigest(info.ref.fullImage, newTag);
           if (!newDigest || newDigest === info.ref.digest && !result) { delete deps.docker[info.key]; return; }
           dep.oldDigest = info.ref.digest;
@@ -1314,15 +1315,15 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
         dep.info = getGoInfoUrl(newModulePath);
         setDepAge(dep, data.Time);
       } else {
-        if (info.image.ref.registry && opts.cooldownDays) { delete modeDeps[info.key]; return; }
-        const [data] = await fetchDockerInfo(info.image.ref.fullImage, ctx);
-        const dockerUpdate = findDockerVersion(
+        const {registry, fullImage} = info.image.ref;
+        const [data] = await fetchDockerInfo(fullImage, ctx);
+        const dockerUpdate = await findDockerVersion(
           filterVersionData(data, "docker", opts.allowedVersions).tags, info.image.ref.tag, opts.semvers, opts.cooldownDays,
-          opts.now, opts.pinnedRange, opts.usePre, opts.useRel,
+          opts.now, opts.pinnedRange, opts.usePre, opts.useRel, registry ? tag => fetchRegistryTagDate(fullImage, tag, ctx) : undefined,
         );
         if (!dockerUpdate) { delete modeDeps[info.key]; return; }
         const newDigest = info.image.digest ?
-          await resolveDockerTagDigest(info.image.ref.fullImage, dockerUpdate.newTag) : null;
+          await resolveDockerTagDigest(fullImage, dockerUpdate.newTag) : null;
         if (info.image.digest && !newDigest) { delete modeDeps[info.key]; return; }
         info.newSpec = formatMakeImageSpec(info.image.writtenImage, dockerUpdate.newTag, newDigest);
         dep.new = dockerUpdate.newTag;

@@ -3,7 +3,7 @@ import {join} from "node:path";
 import {tmpdir} from "node:os";
 import {env, platform} from "node:process";
 import {
-  checkUrlDep, fetchJsrInfo, fetchNpmInfo, getLatestCommit, getTags, isCatalogRef, isJsr, isLocalDep, normalizeRange,
+  checkUrlDep, fetchJsrInfo, fetchNpmInfo, getLatestCommit, isCatalogRef, isJsr, isLocalDep, normalizeRange,
   parseJsrDependency, parseNpmAlias, resolutionsBasePackage, updatePackageJson, updateVersionRange,
 } from "./npm.ts";
 import {type ModeContext, fetchTimeout, fieldSep} from "./shared.ts";
@@ -276,20 +276,20 @@ test("getLatestCommit", async () => {
     .rejects.toThrow(/network error/);
 });
 
-test("getTags returns tag names, or none when the fetch fails", async () => {
-  const tagsData = [{name: "v1.0.0", commit: {sha: "abc"}}, {name: "v2.0.0", commit: {sha: "def"}}];
-  const fetched: Array<string> = [];
-  const ctx = forgeCtx({noCache: true, doFetch: (url: string) => {
-    fetched.push(url);
-    if (url.includes("/releases?")) return Promise.resolve({ok: false, status: 500, statusText: "Internal Server Error"});
-    return jsonRes(tagsData);
+test("checkUrlDep parses refs, refreshes hashes and steps tags back past undated and too new ones under cooldown", async () => {
+  const tags = [{name: "v1.2.3", commit: {sha: "abc"}}, {name: "v1.3.0", commit: {sha: "old"}},
+    {name: "v2.0.0", commit: {sha: "new"}}, {name: "v2.1.0", commit: {}}];
+  const commitDates: Record<string, string> = {old: "2025-01-01", new: new Date().toISOString()};
+  const tagCtx = (commitRes: (sha: string) => unknown) => forgeCtx({noCache: true, doFetch: (url: string) => {
+    const sha = /\/git\/commits\/(\w+)$/.exec(url)?.[1];
+    return sha ? commitRes(sha) : jsonRes(url.includes("/releases?") ? [] : tags);
   }});
-  expect(await getTags("user", "repo", "v1.0.0", ctx)).toEqual(["v1.0.0", "v2.0.0"]);
-  expect(fetched.every(url => url.includes("/tags?"))).toBe(true);
-  expect(await getTags("user", "repo", "v1.0.0", forgeCtx({doFetch: () => Promise.resolve({ok: false})}))).toEqual([]);
-});
-
-test("checkUrlDep parses refs and refreshes hashes", async () => {
+  const cooldown = {cooldownDays: 3, now: Date.now()};
+  const tagDep = {old: "github:user/repo#v1.2.3", new: ""};
+  expect(await checkUrlDep("key", tagDep, tagCtx(sha => jsonRes({committer: {date: commitDates[sha]}})), cooldown))
+    .toMatchObject({newRef: "v1.3.0", newDate: "2025-01-01"});
+  await expect(checkUrlDep("key", tagDep, tagCtx(() => Promise.resolve({ok: false, status: 401})), cooldown))
+    .rejects.toThrow("Unable to fetch the commit date for user/repo@v2.0.0");
   const ctx = forgeCtx({doFetch: () => Promise.resolve({ok: false})});
   expect(await checkUrlDep("key", {old: "not-a-url", new: ""} as any, ctx)).toBeNull();
   let fetches = 0;
@@ -317,12 +317,13 @@ const urlDepCases = [
 const urlDepResults = Promise.all(urlDepCases.map(([old]) => {
   const tags = [{name: "v1.2.3", commit: {sha: "abc"}}, {name: "v2.0.0", commit: {sha: "def"}}];
   const ctx = forgeCtx({noCache: true, doFetch: (url: string) => url.endsWith("/commits") ?
-    textRes([{sha: "def5678901234", commit: {}}]) : jsonRes(url.includes("/releases?") ? [] : tags)});
+    textRes([{sha: "def5678901234", commit: {committer: {date: "2025-03-01"}}}]) :
+    jsonRes(url.endsWith("/git/commits/def") ? {committer: {date: "2025-03-01"}} : url.includes("/releases?") ? [] : tags)});
   return checkUrlDep("key", {old, new: ""}, ctx);
 }));
 
 test.each(urlDepCases.map(([old, expected], index) => [old, expected, index] as const))(
-  "checkUrlDep updates %s", async (_old, expected, index) => {
-    expect((await urlDepResults)[index]!.newRange).toBe(expected);
+  "checkUrlDep updates %s with the new ref's date", async (_old, expected, index) => {
+    expect((await urlDepResults)[index]).toMatchObject({newRange: expected, newDate: "2025-03-01"});
   },
 );

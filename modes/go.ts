@@ -4,7 +4,7 @@ import {basename, dirname, join, resolve} from "node:path";
 import {existsSync, globSync, readFileSync, realpathSync} from "node:fs";
 import {
   dedupe, fieldSep, stripv, getSubDir, normalizeUrl, redactUrlCredentials,
-  fetchWithRetry, defaultApiUrls, getFetchOpts, isVersionPrerelease, throwFetchError,
+  fetchWithRetry, defaultApiUrls, getFetchOpts, isVersionPrerelease, passesCooldown, throwFetchError,
   type Deps, type GoProxyEntry, type ModeContext, type PackageInfo,
 } from "./shared.ts";
 import {gt, valid} from "../utils/semver.ts";
@@ -164,7 +164,9 @@ export function parseGoMod(content: string) {
 }
 
 type GoExcludes = Map<string, Set<string>>;
-type GoVersionConstraints = {accepts: (version: string) => boolean, allowMajor?: boolean, pinAllowsDowngrade?: boolean};
+type GoVersionConstraints = {
+  accepts: (version: string) => boolean, allowMajor?: boolean, pinAllowsDowngrade?: boolean, cooldownDays?: number, now?: number,
+};
 
 const goExcludesByCtx = new WeakMap<ModeContext, Map<string, GoExcludes | null>>();
 
@@ -192,20 +194,33 @@ type ProbeResult = {Version: string, Time: string, path: string};
 type GoLookupResult = ProbeResult & {accepted?: boolean};
 type GoFetchKind = "primary" | "probe";
 type GoModuleLookup = {
-  latest: ProbeResult | null, fallback: (constraints?: GoVersionConstraints) => Promise<ProbeResult | null>,
+  latest: ProbeResult | null,
+  fallback: (excluded: Set<string> | undefined, constraints?: GoVersionConstraints) => Promise<ProbeResult | null>,
 };
+const maxDateLookups = 3;
 
 async function fetchGoModuleInfo(
   name: string, currentVersion: string, excludes: GoExcludes,
   load: (path: string, kind: GoFetchKind) => Promise<GoModuleLookup>,
   constraints?: GoVersionConstraints,
 ): Promise<PackageInfo | null> {
+  const passes = ({Version, Time}: ProbeResult) =>
+    passesCooldown(Time, constraints?.cooldownDays, constraints?.now) || !constraints!.accepts(stripv(Version));
   const lookup = async (path: string, kind: GoFetchKind): Promise<GoLookupResult | null> => {
     const {latest, fallback} = await load(path, kind);
-    const base = latest && !excludes.get(path)?.has(latest.Version) ? latest : await fallback();
-    if (!base || !constraints || constraints.accepts(stripv(base.Version)) ||
-      !constraints.pinAllowsDowngrade && !gt(base.Version, currentVersion)) return base;
-    return await tryOrNull(fallback(constraints)) ?? (kind === "probe" ? {...base, accepted: false} : base);
+    const excluded = excludes.get(path);
+    const base = latest && !excluded?.has(latest.Version) ? latest : await fallback(excluded);
+    const result = !base || !constraints || constraints.accepts(stripv(base.Version)) ||
+      !constraints.pinAllowsDowngrade && !gt(base.Version, currentVersion) ? base :
+      await tryOrNull(fallback(excluded, constraints)) ?? (kind === "probe" ? {...base, accepted: false} : base);
+    if (!result || passes(result)) return result;
+    const skipped = new Set(excluded);
+    for (let older: ProbeResult | null = result, lookups = 0; older && lookups < maxDateLookups; lookups++) {
+      skipped.add(older.Version);
+      older = await fallback(skipped, constraints);
+      if (older && passes(older)) return older;
+    }
+    return result;
   };
   const currentMajor = extractGoMajor(name);
   const probe = async (major: number) => {
@@ -252,10 +267,8 @@ function fetchGoVcsInfo(
   return fetchGoModuleInfo(name, currentVersion, excludes, async (modulePath, kind) => {
     const timeout = kind === "probe" ? ctx.goProbeTimeout : ctx.fetchTimeout;
     const latest = await goListQuery(modulePath, timeout);
-    return {latest, fallback: async (versionConstraints) => {
-      const available = pickGoListVersion(
-        (latest.Versions ?? []).join("\n"), extractGoMajor(modulePath, 0), excludes.get(modulePath), versionConstraints,
-      );
+    return {latest, fallback: async (excluded, versionConstraints) => {
+      const available = pickGoListVersion((latest.Versions ?? []).join("\n"), extractGoMajor(modulePath, 0), excluded, versionConstraints);
       if (!available && !versionConstraints) throw new Error(`No non-excluded versions found for ${modulePath}`);
       return available && goListQuery(modulePath, timeout, available.Version);
     }};
@@ -344,14 +357,11 @@ async function fetchGoList(
   if (!best) return null;
   if (best.Time) return {...best, path};
   const infoUrl = `${base}/${encoded}/@v/${encodeGoModulePath(best.Version)}.info`;
-  try {
-    const info = await dedupe(goFetchesByCtx, ctx, `info${fieldSep}${kind}${fieldSep}${infoUrl}`, async () => {
-      const infoRes = await fetchGoProxy(ctx, kind, infoUrl, path, base);
-      return infoRes && readGoProxyInfo(infoRes, infoUrl, path);
-    });
-    if (info) return info;
-  } catch {}
-  return {...best, path};
+  const info = await dedupe(goFetchesByCtx, ctx, `info${fieldSep}${kind}${fieldSep}${infoUrl}`, async () => {
+    const infoRes = await fetchGoProxy(ctx, kind, infoUrl, path, base);
+    return infoRes && readGoProxyInfo(infoRes, infoUrl, path);
+  });
+  return info ?? {...best, path};
 }
 
 function fetchGoProxyModule(
@@ -361,8 +371,8 @@ function fetchGoProxyModule(
   const primaryLatestPromise = fetchGoLatest(ctx, "primary", base, name);
   return fetchGoModuleInfo(name, currentVersion, excludes, async (path, kind) => {
     const [latest, primaryLatest] = await Promise.all([fetchGoLatest(ctx, kind, base, path), primaryLatestPromise]);
-    return {latest, fallback: versionConstraints => !latest && primaryLatest ? Promise.resolve(null) :
-      fetchGoList(ctx, kind, base, path, excludes.get(path), versionConstraints)};
+    return {latest, fallback: (excluded, versionConstraints) => !latest && primaryLatest ? Promise.resolve(null) :
+      fetchGoList(ctx, kind, base, path, excluded, versionConstraints)};
   }, constraints);
 }
 

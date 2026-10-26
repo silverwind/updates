@@ -471,7 +471,7 @@ const tagPage = (url: string, lastPage: number) => {
   };
 };
 
-test("fetchActionTags single page no link header, commit or not", async () => {
+test("fetchActionTags single page no link header, commit or not, keeping release metadata before a failed page", async () => {
   const tagsData = [{name: "v1.0.0", commit: {sha: "abc"}}, {name: "v2.0.0", commit: {sha: "def"}}, {name: "v3.0.0"}];
   const ctx = modeCtx({doFetch: (url: string) => Promise.resolve({ok: true,
     json: () => Promise.resolve(new URL(url).pathname.endsWith("/releases") ? [
@@ -484,6 +484,16 @@ test("fetchActionTags single page no link header, commit or not", async () => {
     {name: "v2.0.0", commitSha: "def", isStable: false},
     {name: "v3.0.0", commitSha: ""},
   ]);
+
+  const partial = modeCtx({noCache: true, doFetch: (url: string) => {
+    const {pathname, searchParams} = new URL(url);
+    if (!pathname.endsWith("/releases")) return Promise.resolve({ok: true, json: () => Promise.resolve(tagsData), headers: new Headers()});
+    if (searchParams.get("page") === "2") return Promise.resolve({ok: false, status: 422, headers: new Headers()});
+    return Promise.resolve({ok: true, json: () => Promise.resolve([{tag_name: "v2.0.0", prerelease: true, draft: false}]),
+      headers: new Headers({link: `<${url.replace("page=1", "page=2")}>; rel="last"`})});
+  }});
+  expect((await fetchActionTags("https://api.github.com", "actions", "checkout", partial))[1])
+    .toEqual({name: "v2.0.0", commitSha: "def", isStable: false});
 
   const malformed = modeCtx({noCache: true, doFetch: (url: string) => Promise.resolve({ok: true,
     json: () => Promise.resolve(new URL(url).pathname.endsWith("/releases") ? [
@@ -504,7 +514,7 @@ test("fetchActionTags skips release metadata when stability is unused", async ()
   expect(urls[0]).toContain("/tags?");
 });
 
-test("fetchActionTags walks forge pagination until the authored ref turns up, and no further", async () => {
+test("fetchActionTags walks forge pagination until the authored ref turns up, and no further, failing on a missing later page", async () => {
   const lastPage = 40;
   const walk = async (refs: Array<string>) => {
     let fetched = 0;
@@ -517,6 +527,9 @@ test("fetchActionTags walks forge pagination until the authored ref turns up, an
   expect(await walk([])).toEqual([lastPage, lastPage + 1]);
   expect(await walk(["v1.0.0"])).toEqual([1, 2]);
   expect(await walk(["sha11"])).toEqual([16, 17]);
+  const gone = modeCtx({noCache: true, doFetch: (url: string) =>
+    Promise.resolve(url.includes("page=2") ? {ok: false, status: 404, headers: new Headers()} : tagPage(url, lastPage))});
+  await expect(fetchActionTags("https://api.github.com", "actions", "checkout", gone)).rejects.toThrow(ForgeError);
 
   const urls: Array<string> = [];
   let revalidate = false;

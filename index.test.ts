@@ -558,22 +558,27 @@ test("make mode bumps docker image tags and re-resolves digests in Makefiles", a
   ));
 });
 
-test("shell mode bumps an *_IMAGE image and its digest on another registry after its token challenge, but not a plain variable", async () => {
+test("shell mode bumps an *_IMAGE image and its digest on another registry after its token challenge, under cooldown dated by image metadata, but not a plain variable", async () => {
   const registry = mockUrl.replace("http://", "");
   const [oldDigest, newDigest] = [`sha256:${"a".repeat(64)}`, `sha256:${"b".repeat(64)}`];
   const challenge = {"www-authenticate": `Bearer realm="${mockUrl}/registry-token",service="test"`};
   const authorized = (req: IncomingMessage) => req.headers.authorization === "Bearer pull-token";
+  const registryRoute = (path: string, respond: (req: IncomingMessage, res: any) => void) => routes.set(`/v2/o/tool/${path}`, (req, res) => {
+    if (authorized(req)) respond(req, res);
+    else res.writeHead(401, challenge).end();
+  });
+  const json = (body: unknown) => (_req: IncomingMessage, res: any) => { res.end(JSON.stringify(body)); };
   routes.set("/registry-token", (_req, res) => { res.end(JSON.stringify({token: "pull-token"})); });
-  routes.set("/v2/o/tool/tags/list", (req, res) => {
-    if (authorized(req)) res.end(JSON.stringify({tags: ["1.0.0", "1.1.0", "latest"]}));
-    else res.writeHead(401, challenge).end();
+  registryRoute("tags/list", json({tags: ["1.0.0", "1.1.0", "1.2.0", "latest"]}));
+  registryRoute("manifests/1.2.0", json({annotations: {"org.opencontainers.image.created": new Date().toISOString()}}));
+  registryRoute("manifests/1.1.0", (req, res) => {
+    if (req.method === "HEAD") res.writeHead(200, {"docker-content-digest": newDigest}).end();
+    else res.end(JSON.stringify({manifests: [{platform: {os: "unknown"}, digest: "sha256:attestation"}, {platform: {os: "linux"}, digest: "sha256:image"}]}));
   });
-  routes.set("/v2/o/tool/manifests/1.1.0", (req, res) => {
-    if (authorized(req)) res.writeHead(200, {"docker-content-digest": newDigest}).end();
-    else res.writeHead(401, challenge).end();
-  });
+  registryRoute("manifests/sha256:image", json({config: {digest: "sha256:config"}}));
+  registryRoute("blobs/sha256:config", json({created: "2024-01-01T00:00:00Z"}));
   const dir = writeTree("registry-image", {"build.sh": lines(`TOOL_IMAGE="${registry}/o/tool:1.0.0@${oldDigest}"`, `MIRROR=${registry}/o/tool:1.0.0`)});
-  await updates({files: [join(dir, "build.sh")], modes: ["shell"], update: true, color: false, noCache: true});
+  await updates({files: [join(dir, "build.sh")], modes: ["shell"], update: true, color: false, noCache: true, cooldown: "3d"});
   expect(read(dir, "build.sh")).toBe(lines(`TOOL_IMAGE="${registry}/o/tool:1.1.0@${newDigest}"`, `MIRROR=${registry}/o/tool:1.0.0`));
 });
 
@@ -943,6 +948,7 @@ test.each([
   ["prerelease pin current", "1.0.0-beta.1", "1.0.0-beta.1", ["1.0.0-beta.0", "1.0.0-beta.1"],
     {minor: true, pin: {"github.com/example/limited": "^1.0.0"}}, ""],
   ["minor older latest", "1.0.0", "0.9.0", ["0.9.0"], {minor: true}, ""],
+  ["cooldown on an undated latest", "1.0.0", "1.2.0", ["1.1.0", "1.2.0"], {cooldown: "1d"}, "1.1.0"],
 ])("go list fallback respects %s constraints", async (label, current, latest, versions, options: UpdatesOptions, expected, allowedVersions = "") => {
   const name = `github.com/example/limited-${label.replaceAll(" ", "-")}`;
   const file = join(writeTree("go-limited", {
@@ -1142,18 +1148,22 @@ test("docker allowedVersions compares floating tags with Docker semantics", asyn
   expect(read(dir, "Dockerfile")).toBe("FROM node:20\n");
 });
 
-test.each([1, 5])("docker digest refresh respects cooldown for a tag aged %sd", async days => {
+test.each([1, 5])("docker digest refresh respects cooldown for a Docker Hub and a registry tag aged %sd", async days => {
   const oldDigest = `sha256:${"a".repeat(64)}`;
   const newDigest = `sha256:${"b".repeat(64)}`;
-  const input = `FROM example/digest-${days}:20@${oldDigest}\n`;
+  const pushed = new Date(Date.now() - days * 24 * 3600 * 1000).toISOString();
+  const input = `FROM example/digest-${days}:20@${oldDigest}\nFROM ${mockUrl.replace("http://", "")}/example/digest-${days}:20@${oldDigest}\n`;
   const file = join(writeTree("docker-digest-age", {Dockerfile: input}), "Dockerfile");
-  lazyRoute(`/docker/v2/repositories/example/digest-${days}/tags`, () => ({count: 1, results: [{
-    name: "20", tag_last_pushed: new Date(Date.now() - days * 24 * 3600 * 1000).toISOString(), digest: newDigest,
-  }]}));
+  lazyRoute(`/docker/v2/repositories/example/digest-${days}/tags`, () => ({count: 1, results: [{name: "20", tag_last_pushed: pushed, digest: newDigest}]}));
+  lazyRoute(`/v2/example/digest-${days}/tags/list`, () => ({tags: ["20"]}));
+  routes.set(`/v2/example/digest-${days}/manifests/20`, (req, res) => {
+    if (req.method === "HEAD") res.writeHead(200, {"docker-content-digest": newDigest}).end();
+    else res.end(JSON.stringify({annotations: {"org.opencontainers.image.created": pushed}}));
+  });
   const output = await updates(apiOpts({files: [file], modes: ["docker"], cooldown: "3d", update: true}));
   expect(output.errors).toBeUndefined();
   expect(Boolean(output.results.docker)).toBe(days >= 3);
-  expect(read(file)).toBe(days >= 3 ? input.replace(oldDigest, () => newDigest) : input);
+  expect(read(file)).toBe(days >= 3 ? input.replaceAll(oldDigest, () => newDigest) : input);
 });
 
 test("actions mode does not include docker from workflows", async () => {
@@ -1290,11 +1300,15 @@ test("a second api run re-requests rather than answering from the finished run's
   expect(await run()).toBe("3.2.1");
 });
 
-test("api messages, filters and mode validation", async () => {
+test("api messages, filters, undated deps held under cooldown and mode validation", async () => {
   const emptyOutput = await updates(apiOpts({files: [emptyFile]}));
   expect(emptyOutput.message).toBe("No dependencies found, nothing to do.");
   expect(emptyOutput.results).toEqual({});
   expect((await updates(apiOpts({include: ["updates"], cooldown: "999999d"}))).message).toBe("All dependencies are up to date.");
+  lazyRoute("/github/repos/o/undated/commits", () => [{sha: "def5678901234", commit: {}}]);
+  const undatedFile = join(writeTree("undated", {"package.json": JSON.stringify({dependencies: {undated: "github:o/undated#abc1234"}})}), "package.json");
+  expect((await npmUpdates({files: [undatedFile]})).undated).toMatchObject({new: "def5678"});
+  expect((await updates(apiOpts({files: [undatedFile], cooldown: "1d"}))).message).toBe("All dependencies are up to date.");
   expect(Object.keys(await npmUpdates({include: [/^noty$/]}))).toEqual(["noty"]);
   expect(Object.keys(await npmUpdates({include: ["noty", "gulp-sourcemaps"], exclude: [/sourcemaps/]}))).toEqual(["noty"]);
   expect((await updates(apiOpts({include: ["noty"], modes: ["pypi"]}))).message).toBe("No dependencies found, nothing to do.");

@@ -637,10 +637,14 @@ async function fetchForgePages<T>(
   const maxWave = effectiveConcurrency(ctx);
   for (let next = 2, wave = 1, done = take(page1.entries); next <= lastPage && !done; next += wave, wave = Math.min(wave * 2, maxWave)) {
     const pages = await Promise.all(
-      Array.from({length: Math.min(wave, lastPage - next + 1)}, (_, idx) =>
-        fetchForgePage(url(next + idx), ctx, key, parse)),
+      Array.from({length: Math.min(wave, lastPage - next + 1)}, async (_, idx) => {
+        const pageUrl = url(next + idx);
+        const page = await fetchForgePage(pageUrl, ctx, key, parse);
+        if (!page) throw new ForgeError("server", urlHost(pageUrl), `Unable to fetch ${pageUrl}`);
+        return page;
+      }),
     );
-    for (const page of pages) done = take(page?.entries ?? []);
+    for (const page of pages) done = take(page.entries);
   }
 }
 
@@ -678,13 +682,11 @@ export async function fetchActionTags(
   ]);
   if (tagsResult.status === "rejected") throw tagsResult.reason;
   if (releasesResult.status === "rejected" && !(releasesResult.reason instanceof ForgeError)) throw releasesResult.reason;
-  if (releasesResult.status === "fulfilled") {
-    for (const tag of tagsResult.value) {
-      const release = releases.get(tag.name);
-      if (release) {
-        tag.isStable = release.isStable;
-        if (release.releaseTimestamp) tag.releaseTimestamp = release.releaseTimestamp;
-      }
+  for (const tag of tagsResult.value) {
+    const release = releases.get(tag.name);
+    if (release) {
+      tag.isStable = release.isStable;
+      if (release.releaseTimestamp) tag.releaseTimestamp = release.releaseTimestamp;
     }
   }
   return tagsResult.value;

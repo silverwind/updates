@@ -1,5 +1,5 @@
 import {parse, satisfies, semverVersioning} from "../utils/semver.ts";
-import {getOrSet, longestFirstAlternation, pMap} from "../utils/utils.ts";
+import {getOrSet, longestFirstAlternation, pMap, tryOrNull} from "../utils/utils.ts";
 import {
   type Deps, type ModeContext, type PackageInfo, dedupe, effectiveConcurrency, fieldSep, fetchWithEtag, fetchWithRetry, hashRe,
   passesCooldown, prereleaseOpts, reduceJson, stripv, throwFetchError, formatVersionPrecision,
@@ -197,7 +197,8 @@ type HubTags = {dates: Record<string, string>, digests: Map<string, string>};
 
 const hubTagsByCtx = new WeakMap<ModeContext, Map<string, Promise<HubTags>>>();
 const noTagsStatus = new Set([401, 403, 404]);
-const maxDockerTagPages = 20;
+const dockerTagPageSize = 100; // Hub caps page_size at 100
+const maxDockerTagPages = 10; // anonymous requests are refused past 1000 tags
 
 async function fetchHubJson(url: string, ctx: ModeContext, name: string, reduce: (data: any) => any, cacheKey = url): Promise<any> {
   const result = await fetchWithEtag(url, ctx, {headers: {"accept-encoding": "gzip, deflate, br"}}, reduceJson(reduce), cacheKey);
@@ -210,10 +211,9 @@ function fetchDockerHubTagPages(namespace: string, repo: string, ctx: ModeContex
   return dedupe(hubTagsByCtx, ctx, `${namespace}/${repo}`, async () => {
     const tags: HubTags = {dates: {}, digests: new Map()};
     const baseUrl = `${ctx.dockerApiUrl}/v2/repositories/${namespace}/${repo}/tags`;
-    const pageUrl = (page: number) => `${baseUrl}?page_size=1000&ordering=last_updated&page=${page}`;
+    const pageUrl = (page: number) => `${baseUrl}?page_size=${dockerTagPageSize}&ordering=last_updated&page=${page}`;
     const fetchPage = (url: string) => fetchHubJson(url, ctx, `${namespace}/${repo}`, data => ({
       count: data.count,
-      next: data.next,
       results: (data.results || []).map((tag: Record<string, any>) => ({
         name: tag.name, tag_last_pushed: tag.tag_last_pushed, last_updated: tag.last_updated, digest: tag.digest,
       })),
@@ -225,29 +225,15 @@ function fetchDockerHubTagPages(namespace: string, repo: string, ctx: ModeContex
       }
     };
 
-    let page = await fetchPage(pageUrl(1));
+    const page = await fetchPage(pageUrl(1));
     if (!page) return tags;
     take(page);
-    const pageUrls = Array.from({length: Math.min(maxDockerTagPages, Math.ceil(page.count / 1000)) - 1},
+    const pageUrls = Array.from({length: Math.min(maxDockerTagPages, Math.ceil(page.count / dockerTagPageSize)) - 1},
       (_, index) => pageUrl(index + 2));
-    const seen = new Set(pageUrls);
-    const pages = await pMap(pageUrls, async url => {
-      try { return {value: await fetchPage(url)}; } catch (reason) { return {reason}; }
-    }, {concurrency: effectiveConcurrency(ctx)});
-    for (const result of pages) {
-      if ("reason" in result) throw result.reason;
-      if (!result.value) return tags;
-      take(result.value);
-      page = result.value;
-    }
-    const baseOrigin = new URL(baseUrl).origin;
-    for (let pageNumber = pageUrls.length + 2; pageNumber <= maxDockerTagPages && page.next; pageNumber++) {
-      const next = new URL(page.next, baseUrl);
-      if (next.origin !== baseOrigin || seen.has(next.href)) break;
-      seen.add(next.href);
-      page = await fetchPage(next.href);
-      if (!page) break;
-      take(page);
+    const pages = await pMap(pageUrls, url => tryOrNull(fetchPage(url)), {concurrency: effectiveConcurrency(ctx)});
+    for (const laterPage of pages) { // pages run newest first, so a failed one only drops older tags
+      if (!laterPage) break;
+      take(laterPage);
     }
     return tags;
   });
@@ -302,13 +288,29 @@ async function fetchRegistry(url: string, path: string, ctx: ModeContext, method
 
 function fetchRegistryTags(registry: string, path: string, ctx: ModeContext): Promise<Record<string, string>> {
   return dedupe(registryTagsByCtx, ctx, `${registry}/${path}`, async () => {
-    const tags: Record<string, string> = {}; // registries list tags without dates
+    const tags: Record<string, string> = {};
+    if (registry === "quay.io") { // lists newest first, its registry API lexically
+      for (let page = 1; page <= maxDockerTagPages; page++) {
+        const url = `https://quay.io/api/v1/repository/${path}/tag/?limit=100&onlyActiveTags=true&page=${page}`;
+        const res = await fetchWithRetry(ctx, url, {headers: {"x-requested-with": "XMLHttpRequest"}});
+        if (noTagsStatus.has(res.status)) break;
+        if (!res.ok) throwFetchError(res, url, `${registry}/${path}`, registry);
+        const data = await res.json();
+        for (const {name, start_ts} of data.tags ?? []) tags[name] = start_ts ? new Date(start_ts * 1000).toISOString() : "";
+        if (!data.has_additional) break;
+      }
+      return tags;
+    }
     let url: string | undefined = registryUrl(registry, path, "tags/list?n=1000");
     for (let page = 0; url && page < maxDockerTagPages; page++) {
       const res = await fetchRegistry(url, path, ctx);
       if (noTagsStatus.has(res.status)) break;
       if (!res.ok) throwFetchError(res, url, `${registry}/${path}`, registry);
-      for (const tag of (await res.json()).tags ?? []) tags[tag] = "";
+      const data = await res.json();
+      for (const tag of data.tags ?? []) tags[tag] = "";
+      for (const {tag = [], timeUploadedMs} of Object.values<any>(data.manifest ?? {})) { // Google registries list upload times
+        for (const name of tag) if (Number(timeUploadedMs)) tags[name] = new Date(Number(timeUploadedMs)).toISOString();
+      }
       const next = nextLinkRe.exec(res.headers.get("link") ?? "")?.[1];
       url = next ? new URL(next, url).href : undefined;
     }
@@ -332,6 +334,34 @@ export async function fetchDockerTagDigest(image: string, tag: string, ctx: Mode
   const url = `${ctx.dockerApiUrl}/v2/repositories/${namespace}/${repo}/tags/${tag}`;
   const digest = (await fetchHubJson(url, ctx, `${namespace}/${repo}:${tag}`, data => ({digest: data.digest})))?.digest;
   return typeof digest === "string" ? digest : null; // absent on tags pushed before Docker Hub recorded manifest digests
+}
+
+const registryTagDatesByCtx = new WeakMap<ModeContext, Map<string, Promise<string>>>();
+const imageCreatedLabel = "org.opencontainers.image.created";
+const imageDate = (date: unknown) => typeof date === "string" && Date.parse(date) >= Date.UTC(2000, 0) ? date : ""; // reproducible builds stamp 1970 or 0001
+const annotatedDate = (manifest: any) => imageDate(manifest?.annotations?.[imageCreatedLabel]);
+
+export function fetchRegistryTagDate(image: string, tag: string, ctx: ModeContext): Promise<string> {
+  const registry = parseImageParts(image).registry!;
+  const path = image.slice(registry.length + 1);
+  return dedupe(registryTagDatesByCtx, ctx, `${image}:${tag}`, async () => {
+    const fetchJson = async (suffix: string) => {
+      const url = registryUrl(registry, path, suffix);
+      const res = await fetchRegistry(url, path, ctx, "GET", {accept: manifestAccept});
+      if (noTagsStatus.has(res.status)) return null;
+      if (!res.ok) throwFetchError(res, url, `${image}:${tag}`, registry);
+      return res.json();
+    };
+    let manifest = await fetchJson(`manifests/${tag}`);
+    for (let depth = 0; depth < 3 && !annotatedDate(manifest); depth++) {
+      const platform = manifest?.manifests?.find((entry: any) => entry.platform?.os !== "unknown");
+      if (!platform) break;
+      manifest = await fetchJson(`manifests/${platform.digest}`);
+    }
+    if (annotatedDate(manifest) || !manifest?.config?.digest) return annotatedDate(manifest);
+    const config = await fetchJson(`blobs/${manifest.config.digest}`);
+    return imageDate(config?.created) || imageDate(config?.config?.Labels?.[imageCreatedLabel]);
+  });
 }
 
 const ubuntuLtsRe = /^\d?[02468]\.04$/;
@@ -390,7 +420,9 @@ function extendedDockerLevel(left: DockerTag, right: DockerTag): string {
   return "patch";
 }
 
-export function findDockerVersion(
+const maxDateLookups = 3;
+
+export async function findDockerVersion(
   tagMap: Record<string, string>,
   oldTag: string,
   semvers: Set<string>,
@@ -399,7 +431,8 @@ export function findDockerVersion(
   pinnedRange?: string,
   usePre = false,
   useRel = false,
-): {newTag: string, date: string} | null {
+  resolveDate?: (tag: string) => Promise<string>,
+): Promise<{newTag: string, date: string} | null> {
   const oldParsed = parseDockerTag(oldTag);
   if (!oldParsed) return null;
 
@@ -408,46 +441,60 @@ export function findDockerVersion(
   const oldSemver = dockerSemver(oldParsed);
   const {effectiveSemvers, skipsPrerelease} = prereleaseOpts(oldSemver, usePre, useRel, semvers);
   const extended = oldShape.length > 2 || oldShape.includes("_");
-  let bestVersion = parse(oldSemver)!;
-  let bestParsed = oldParsed;
-  let best = {newTag: "", date: ""};
+  const unresolved = new Set(resolveDate && cooldownDays && now ? Object.keys(tagMap).filter(tag => !tagMap[tag]) : []);
+  const dates = unresolved.size ? {...tagMap} : tagMap;
+  const pick = () => {
+    let bestVersion = parse(oldSemver)!;
+    let bestParsed = oldParsed;
+    let best = {newTag: "", date: ""};
 
-  for (const [tagName, lastUpdated] of Object.entries(tagMap)) {
-    const parsed = parseDockerTag(tagName);
-    if (!parsed || parsed.suffix !== oldParsed.suffix || dockerVersionShape(parsed.version) !== oldShape) continue;
-    if (!oldIsDate && firstVersionField(parsed.version) >= dateVersionMin) continue;
-    if (!passesCooldown(lastUpdated, cooldownDays, now)) continue;
+    for (const [tagName, lastUpdated] of Object.entries(dates)) {
+      const parsed = parseDockerTag(tagName);
+      if (!parsed || parsed.suffix !== oldParsed.suffix || dockerVersionShape(parsed.version) !== oldShape) continue;
+      if (!oldIsDate && firstVersionField(parsed.version) >= dateVersionMin) continue;
+      if (!unresolved.has(tagName) && !passesCooldown(lastUpdated, cooldownDays, now)) continue;
 
-    const semver = dockerSemver(parsed);
-    if (pinnedRange && !satisfies(semver, pinnedRange)) continue;
+      const semver = dockerSemver(parsed);
+      if (pinnedRange && !satisfies(semver, pinnedRange)) continue;
 
-    if (extended) {
-      if (parsed.prerelease && (!usePre && !oldParsed.prerelease || useRel)) continue;
-      if (compareExtendedDockerTags(parsed, bestParsed) <= 0 || !semvers.has(extendedDockerLevel(oldParsed, parsed))) continue;
-      bestParsed = parsed;
+      if (extended) {
+        if (parsed.prerelease && (!usePre && !oldParsed.prerelease || useRel)) continue;
+        if (compareExtendedDockerTags(parsed, bestParsed) <= 0 || !semvers.has(extendedDockerLevel(oldParsed, parsed))) continue;
+        bestParsed = parsed;
+        best = {newTag: tagName, date: lastUpdated};
+        continue;
+      }
+
+      const candidate = parse(semver);
+      if (!candidate || parsed.prerelease && skipsPrerelease(candidate)) continue;
+
+      if (candidate.version === bestVersion.version) {
+        if (best.newTag && Date.parse(lastUpdated) > Date.parse(best.date)) best = {newTag: tagName, date: lastUpdated};
+        continue;
+      }
+
+      const diff = semverVersioning.diff(bestVersion, candidate);
+      if (!diff || !effectiveSemvers.has(diff) || semverVersioning.compare(candidate, bestVersion) <= 0) continue;
+      bestVersion = candidate;
       best = {newTag: tagName, date: lastUpdated};
-      continue;
     }
+    return {best, bestVersion};
+  };
 
-    const candidate = parse(semver);
-    if (!candidate || parsed.prerelease && skipsPrerelease(candidate)) continue;
-
-    if (candidate.version === bestVersion.version) {
-      if (best.newTag && Date.parse(lastUpdated) > Date.parse(best.date)) best = {newTag: tagName, date: lastUpdated};
-      continue;
-    }
-
-    const diff = semverVersioning.diff(bestVersion, candidate);
-    if (!diff || !effectiveSemvers.has(diff) || semverVersioning.compare(candidate, bestVersion) <= 0) continue;
-    bestVersion = candidate;
-    best = {newTag: tagName, date: lastUpdated};
+  let {best, bestVersion} = pick();
+  for (let lookups = 1; unresolved.has(best.newTag); lookups++) {
+    unresolved.delete(best.newTag);
+    dates[best.newTag] = await resolveDate!(best.newTag) || dates[best.newTag];
+    if (lookups === maxDateLookups) unresolved.clear();
+    ({best, bestVersion} = pick());
   }
 
   if (!best.newTag) return null;
   if (extended) return best;
   const [bestRelease, bestPre = ""] = bestVersion.version.split("-");
   const formatted = formatVersionPrecision(bestRelease, oldParsed.version, `${bestPre}${oldParsed.suffix}`);
-  const newTag = formatted in tagMap ? formatted : best.newTag;
+  const newTag = formatted in tagMap && (formatted === best.newTag || passesCooldown(dates[formatted], cooldownDays, now)) ?
+    formatted : best.newTag;
   return newTag === oldTag ? null : {newTag, date: best.date};
 }
 

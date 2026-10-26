@@ -270,19 +270,22 @@ const modPath = "github.com/foo/bar";
 const infoFor = (ctx: ModeContext, cwd = ".", constraints?: Parameters<typeof fetchGoProxyInfo>[6]) =>
   fetchGoProxyInfo(modPath, "deps", "1.0.0", cwd, ctx, [], constraints);
 
-function makeGoVersionCtx(source: string, modules: Record<string, {Version: string, Versions: Array<string>}>, seen: Array<string> = []): ModeContext {
+type GoModuleFixture = {Version: string, Versions: Array<string>, Times?: Record<string, string>};
+
+function makeGoVersionCtx(source: string, modules: Record<string, GoModuleFixture>, seen: Array<string> = []): ModeContext {
   if (source === "proxy") return makeGoCtx(Object.fromEntries(Object.entries(modules).flatMap(([path, data]) => [
-    [`${goProxyBase}/${path}/@latest`, JSON.stringify(data)],
+    [`${goProxyBase}/${path}/@latest`, JSON.stringify({...data, Time: data.Times?.[data.Version]})],
     [`${goProxyBase}/${path}/@v/list`, data.Versions.join("\n")],
-    ...data.Versions.map(Version => [`${goProxyBase}/${path}/@v/${Version}.info`, JSON.stringify({Version})]),
+    ...data.Versions.map(Version => [`${goProxyBase}/${path}/@v/${Version}.info`, JSON.stringify({Version, Time: data.Times?.[Version]})]),
   ])), seen);
   return {
     fetchTimeout: 100, goProbeTimeout: 100, goProxyChain: parseGoProxy("direct"),
     execFile: (_file: string, args: Array<string>) => {
       seen.push(args.at(-1)!);
       const [path, version] = args.at(-1)!.split("@");
+      const resolved = version === "latest" ? modules[path]?.Version : version;
       return modules[path] ? Promise.resolve({
-        stdout: JSON.stringify({...modules[path], Version: version === "latest" ? modules[path].Version : version}), stderr: "",
+        stdout: JSON.stringify({...modules[path], Version: resolved, Time: modules[path].Times?.[resolved]}), stderr: "",
       }) : Promise.reject(new Error("missing module"));
     },
   } as unknown as ModeContext;
@@ -309,13 +312,28 @@ test("fetchGoProxyInfo falls back to @v/list when the proxy omits @latest", asyn
   expect(new Set(seen).size).toBe(seen.length);
 });
 
-test("fetchGoProxyInfo keeps the @v/list pick when its .info and the major probe fail", async () => {
-  const [data] = await infoFor(makeGoCtx({
-    [`${goProxyBase}/${modPath}/@v/list`]: "v1.2.0\n",
-    [`${goProxyBase}/${modPath}/@v/v1.2.0.info`]: "{}",
-    [`${goProxyBase}/${modPath}/v2/@v/list`]: 500,
-  }));
+test("fetchGoProxyInfo keeps the @v/list pick undated when its .info is missing but fails on a .info server error", async () => {
+  const routes = {[`${goProxyBase}/${modPath}/@v/list`]: "v1.2.0\n", [`${goProxyBase}/${modPath}/v2/@v/list`]: 500};
+  const [data] = await infoFor(makeGoCtx(routes));
   expect(data).toMatchObject({new: "1.2.0", Time: ""});
+  await expect(infoFor(makeGoCtx({...routes, [`${goProxyBase}/${modPath}/@v/v1.2.0.info`]: 500}))).rejects.toThrow(/Received 500/);
+});
+
+test.each(["proxy", "direct"])("fetchGoProxyInfo steps back to the newest version past its cooldown within a bounded number of lookups through %s", async source => {
+  const Times = {"v1.1.0": "2026-01-01T00:00:00Z", "v1.2.0": "2026-04-24T00:00:00Z", "v1.3.0": "2026-04-24T00:00:00Z",
+    "v1.4.0": "2026-04-24T00:00:00Z", "v1.5.0": "2026-04-24T00:00:00Z", "v2.0.0": "2026-04-24T00:00:00Z"};
+  const opts = {range: "1.0.0", semvers: new Set(["major", "minor", "patch"]), useGreatest: false, usePre: false, useRel: false,
+    cooldownDays: 5, now: Date.parse("2026-04-25T00:00:00Z")};
+  for (const [versions, expected] of [[["v1.1.0", "v1.4.0", "v1.5.0"], "1.1.0"], [["v1.1.0", "v1.2.0", "v1.3.0", "v1.4.0", "v1.5.0"], null]] as const) {
+    const seen: Array<string> = [];
+    const ctx = makeGoVersionCtx(source, {
+      [modPath]: {Version: "v1.5.0", Versions: [...versions], Times},
+      [`${modPath}/v2`]: {Version: "v2.0.0", Versions: ["v2.0.0"], Times},
+    }, seen);
+    const [data] = await fetchGoProxyInfo(modPath, "deps", "1.0.0", ".", ctx, [], {accepts: goVersionPredicate(opts), ...opts});
+    expect(findNewVersion(data, {...opts, mode: "go"})).toBe(expected);
+    expect(seen.filter(request => /v1\.\d\.0(\.info)?$/.test(request))).toHaveLength(expected ? 2 : 3);
+  }
 });
 
 test("fetchGoProxyInfo probes past a rejected major whose @v/list fails", async () => {

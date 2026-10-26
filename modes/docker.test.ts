@@ -142,61 +142,74 @@ test("extractDockerRefs", () => {
   expect(extractDockerRefs("\uFEFFFROM node:18\n", "dockerfile").map(({ref}) => ref.tag)).toEqual(["18"]);
 });
 
-test("findDockerVersion basic selection", () => {
+test("findDockerVersion basic selection", async () => {
   const tagMap = {"18": "2024-01-01", "20": "2024-06-01", "20-alpine": "2024-06-01", "18-alpine": "2024-01-01"};
-  expect(findDockerVersion(tagMap, "18", allSemvers)).toEqual({newTag: "20", date: "2024-06-01"});
-  expect(findDockerVersion({"18": "2024-01-01"}, "18", allSemvers)).toBeNull();
-  expect(findDockerVersion({"20": "2024-01-01"}, "latest", allSemvers)).toBeNull();
+  expect(await findDockerVersion(tagMap, "18", allSemvers)).toEqual({newTag: "20", date: "2024-06-01"});
+  expect(await findDockerVersion({"18": "2024-01-01"}, "18", allSemvers)).toBeNull();
+  expect(await findDockerVersion({"20": "2024-01-01"}, "latest", allSemvers)).toBeNull();
 });
 
-test("findDockerVersion filters by suffix", () => {
+test("findDockerVersion filters by suffix", async () => {
   const tagMap = {"18-alpine": "2024-01-01", "20": "2024-06-01", "20-alpine": "2024-06-01"};
-  expect(findDockerVersion(tagMap, "18-alpine", allSemvers)).toEqual({newTag: "20-alpine", date: "2024-06-01"});
-  expect(findDockerVersion({"18": "2024-01-01", "20-alpine": "2024-06-01"}, "18", allSemvers)).toBeNull();
+  expect(await findDockerVersion(tagMap, "18-alpine", allSemvers)).toEqual({newTag: "20-alpine", date: "2024-06-01"});
+  expect(await findDockerVersion({"18": "2024-01-01", "20-alpine": "2024-06-01"}, "18", allSemvers)).toBeNull();
   const suffixed = {
     "1.2.3-alpine3.19": "2024-01-01", "1.3.0-alpine": "2024-06-01", "1.3.0-alpine3.20": "2024-06-01",
     "1.3.0-alpine3.19": "2024-06-02", "1.3.0-nanoserver-1809": "2024-06-03",
   };
-  expect(findDockerVersion(suffixed, "1.2.3-alpine3.19", allSemvers)).toEqual({newTag: "1.3.0-alpine3.19", date: "2024-06-02"});
-  expect(findDockerVersion(suffixed, "1.2.3-nanoserver-1809", allSemvers)).toEqual({newTag: "1.3.0-nanoserver-1809", date: "2024-06-03"});
+  expect(await findDockerVersion(suffixed, "1.2.3-alpine3.19", allSemvers)).toEqual({newTag: "1.3.0-alpine3.19", date: "2024-06-02"});
+  expect(await findDockerVersion(suffixed, "1.2.3-nanoserver-1809", allSemvers)).toEqual({newTag: "1.3.0-nanoserver-1809", date: "2024-06-03"});
 });
 
-test("findDockerVersion keeps the authored precision", () => {
+test("findDockerVersion keeps the authored precision", async () => {
   const tagMap = {"18": "2024-01-01", "20": "2024-06-01", "20.11": "2024-06-10", "20.11.1": "2024-06-15"};
-  expect(findDockerVersion(tagMap, "18", allSemvers)).toEqual({newTag: "20", date: "2024-06-01"});
-  expect(findDockerVersion(tagMap, "18.19", allSemvers)).toEqual({newTag: "20.11", date: "2024-06-10"});
-  expect(findDockerVersion({"18": "2024-01-01", "20.11.1": "2024-06-15"}, "18", allSemvers)).toBeNull();
-  expect(findDockerVersion({"24.04": "2024-04-01", "26.04": "2026-04-01"}, "24.04", allSemvers))
+  expect(await findDockerVersion(tagMap, "18", allSemvers)).toEqual({newTag: "20", date: "2024-06-01"});
+  expect(await findDockerVersion(tagMap, "18.19", allSemvers)).toEqual({newTag: "20.11", date: "2024-06-10"});
+  expect(await findDockerVersion({"18": "2024-01-01", "20.11.1": "2024-06-15"}, "18", allSemvers)).toBeNull();
+  expect(await findDockerVersion({"24.04": "2024-04-01", "26.04": "2026-04-01"}, "24.04", allSemvers))
     .toEqual({newTag: "26.04", date: "2026-04-01"});
-  expect(findDockerVersion({"1.2.3.4-alpine": "2024-01-01", "1.2.3.5-alpine": "2024-06-01"}, "1.2.3.4-alpine", allSemvers))
+  expect(await findDockerVersion({"1.2.3.4-alpine": "2024-01-01", "1.2.3.5-alpine": "2024-06-01"}, "1.2.3.4-alpine", allSemvers))
     .toEqual({newTag: "1.2.3.5-alpine", date: "2024-06-01"});
 });
 
-test("findDockerVersion ignores tags from another versioning scheme", () => {
+test("findDockerVersion ignores tags from another versioning scheme", async () => {
   const tagMap = {"3": "2026-06-16", "3.24": "2026-06-16", "3.24.1": "2026-06-16", "20260127": "2026-01-28"};
-  expect(findDockerVersion(tagMap, "3.24", allSemvers)).toBeNull();
-  expect(findDockerVersion(tagMap, "3", allSemvers)).toBeNull();
-  expect(findDockerVersion(tagMap, "20251224", allSemvers)).toEqual({newTag: "20260127", date: "2026-01-28"});
-  expect(findDockerVersion({"9": "2020-01-01", "10": "2020-06-01"}, "9", allSemvers)).toEqual({newTag: "10", date: "2020-06-01"});
-  expect(findDockerVersion({"20260127": "2026-01-27", "9999999999999999999": "2026-02-01"}, "20260127", allSemvers)).toBeNull();
+  expect(await findDockerVersion(tagMap, "3.24", allSemvers)).toBeNull();
+  expect(await findDockerVersion(tagMap, "3", allSemvers)).toBeNull();
+  expect(await findDockerVersion(tagMap, "20251224", allSemvers)).toEqual({newTag: "20260127", date: "2026-01-28"});
+  expect(await findDockerVersion({"9": "2020-01-01", "10": "2020-06-01"}, "9", allSemvers)).toEqual({newTag: "10", date: "2020-06-01"});
+  expect(await findDockerVersion({"20260127": "2026-01-27", "9999999999999999999": "2026-02-01"}, "20260127", allSemvers)).toBeNull();
 });
 
-test("findDockerVersion cooldown needs a timestamp", () => {
+test("findDockerVersion cooldown needs a timestamp on the returned alias too, resolving at most 3 unlisted dates and never overriding a listed one", async () => {
   const now = Date.parse("2024-07-01");
   const tagMap = {"18": "2024-01-01", "20": "2024-06-25", "19": ""};
-  expect(findDockerVersion(tagMap, "18", allSemvers, 30, now)).toBeNull();
-  expect(findDockerVersion(tagMap, "18", allSemvers)).toEqual({newTag: "20", date: "2024-06-25"});
+  expect(await findDockerVersion(tagMap, "18", allSemvers, 30, now)).toBeNull();
+  expect(await findDockerVersion(tagMap, "18", allSemvers)).toEqual({newTag: "20", date: "2024-06-25"});
+  expect(await findDockerVersion({"1.0.0": "2024-01-01", "1.1.0": "2024-06-29", "v1.1.0": "2024-01-02"}, "1.0.0", allSemvers, 30, now))
+    .toEqual({newTag: "v1.1.0", date: "2024-01-02"});
+  const resolved: Array<string> = [];
+  const resolveDate = (tag: string) => {
+    resolved.push(tag);
+    return Promise.resolve(({"21": "2024-06-30", "19": "2024-05-01"} as Record<string, string>)[tag] ?? "");
+  };
+  const listed = {"18": "2024-01-01", "19": "2024-05-01", "20": "", "21": "", "22": ""};
+  expect(await findDockerVersion(listed, "18", allSemvers, 30, now, undefined, false, false, resolveDate))
+    .toEqual({newTag: "19", date: "2024-05-01"});
+  expect(resolved).toEqual(["22", "21", "20"]);
+  expect(await findDockerVersion({"18": "2024-01-01", "19": "2024-06-30"}, "18", allSemvers, 30, now, undefined, false, false, resolveDate))
+    .toBeNull();
 });
 
-test("findDockerVersion respects pinnedRange", () => {
-  expect(findDockerVersion({"8.0": "2024-01-01", "8.0.41": "2024-06-01", "9.7": "2024-12-01"}, "8.0", allSemvers,
+test("findDockerVersion respects pinnedRange", async () => {
+  expect(await findDockerVersion({"8.0": "2024-01-01", "8.0.41": "2024-06-01", "9.7": "2024-12-01"}, "8.0", allSemvers,
     undefined, undefined, "8.0")).toBeNull();
-  expect(findDockerVersion({"8.0.0": "2024-01-01", "8.0.41": "2024-06-01", "9.7": "2024-12-01"}, "8.0.0", allSemvers,
+  expect(await findDockerVersion({"8.0.0": "2024-01-01", "8.0.41": "2024-06-01", "9.7": "2024-12-01"}, "8.0.0", allSemvers,
     undefined, undefined, "8.0")).toEqual({newTag: "8.0.41", date: "2024-06-01"});
   const extended = {"10.4.1.88267": "2024-01-01", "10.5.0.89998": "2024-06-01", "25.1.0.102122": "2024-12-01"};
-  expect(findDockerVersion(extended, "10.4.1.88267", allSemvers, undefined, undefined, "<25"))
+  expect(await findDockerVersion(extended, "10.4.1.88267", allSemvers, undefined, undefined, "<25"))
     .toEqual({newTag: "10.5.0.89998", date: "2024-06-01"});
-  expect(findDockerVersion(extended, "10.4.1.88267", allSemvers))
+  expect(await findDockerVersion(extended, "10.4.1.88267", allSemvers))
     .toEqual({newTag: "25.1.0.102122", date: "2024-12-01"});
 });
 
@@ -204,17 +217,17 @@ test("dockerTagVersion matches ranges on the release, with docker's own coercion
   expect(["1.27rc3", "21_35", "latest"].map(dockerTagVersion)).toEqual(["1.27.0", "21.35.0", ""]);
 });
 
-test("findDockerVersion keeps underscore builds verbatim and apart from dotted tags", () => {
+test("findDockerVersion keeps underscore builds verbatim and apart from dotted tags", async () => {
   const tagMap = {
     "21.0.5_11-jdk": "2024-01-01", "21.0.6_9-jdk": "2024-06-01", "21.0.6.9-jdk": "2024-06-02",
     "21_35-jdk": "2024-01-01", "22_36-jdk": "2024-06-01",
   };
-  expect(findDockerVersion(tagMap, "21.0.5_11-jdk", allSemvers)).toEqual({newTag: "21.0.6_9-jdk", date: "2024-06-01"});
-  expect(findDockerVersion(tagMap, "21_35-jdk", allSemvers)).toEqual({newTag: "22_36-jdk", date: "2024-06-01"});
+  expect(await findDockerVersion(tagMap, "21.0.5_11-jdk", allSemvers)).toEqual({newTag: "21.0.6_9-jdk", date: "2024-06-01"});
+  expect(await findDockerVersion(tagMap, "21_35-jdk", allSemvers)).toEqual({newTag: "22_36-jdk", date: "2024-06-01"});
 });
 
-test("findDockerVersion applies pinnedRange to prereleases", () => {
-  expect(findDockerVersion({"1.2.0": "2024-01-01", "1.3.0rc1": "2024-06-01"}, "1.2.0", allSemvers, undefined, undefined, "^1.2.0", true))
+test("findDockerVersion applies pinnedRange to prereleases", async () => {
+  expect(await findDockerVersion({"1.2.0": "2024-01-01", "1.3.0rc1": "2024-06-01"}, "1.2.0", allSemvers, undefined, undefined, "^1.2.0", true))
     .toBeNull();
 });
 
@@ -308,38 +321,31 @@ test.each([
   expect(await fetchDockerHubTags("library", "node", ctx)).toEqual(expected);
 });
 
-test("fetchDockerHubTags walks every page", async () => {
-  const ctx = hubCtx(hubPages({
-    "page=1": {count: 1, next: "?page=2", results: [{name: "18", tag_last_pushed: "2024-01-01"}]},
-    "page=2": {count: 1, next: "?page=3", results: [{name: "20", tag_last_pushed: "2024-06-01"}]},
-    "page=3": {count: 2500, results: [{name: "22", tag_last_pushed: "2025-01-01"}]},
-  }));
-  expect(await fetchDockerHubTags("library", "node", ctx)).toEqual({"18": "2024-01-01", "20": "2024-06-01", "22": "2025-01-01"});
-});
-
 test("fetchDockerHubTags walks past pages older than the authored tag", async () => {
   const fetched: Array<string> = [];
   const ctx = hubCtx(hubPages({
-    "page=1": {count: 4000, results: [{name: "18", tag_last_pushed: "2026-01-01"}]},
-    "page=2": {count: 4000, results: [{name: "17", tag_last_pushed: "2025-06-01"}]},
-    "page=3": {count: 4000, results: [{name: "16", tag_last_pushed: "2025-01-01"}]},
-    "page=4": {count: 4000, results: [{name: "20", tag_last_pushed: "2024-06-01"}]},
+    "page=1": {count: 400, results: [{name: "18", tag_last_pushed: "2026-01-01"}]},
+    "page=2": {count: 400, results: [{name: "17", tag_last_pushed: "2025-06-01"}]},
+    "page=3": {count: 400, results: [{name: "16", tag_last_pushed: "2025-01-01"}]},
+    "page=4": {count: 400, results: [{name: "20", tag_last_pushed: "2024-06-01"}]},
   }, fetched), {concurrency: 1});
 
   const tags = await fetchDockerHubTags("library", "node", ctx);
   expect(fetched).toEqual(["page=1", "page=2", "page=3", "page=4"]);
-  expect(findDockerVersion(tags, "18", allSemvers)).toEqual({newTag: "20", date: "2024-06-01"});
+  expect(await findDockerVersion(tags, "18", allSemvers)).toEqual({newTag: "20", date: "2024-06-01"});
 });
 
-test("fetchDockerHubTags caps count and next pagination at 20 pages", async () => {
-  const fetched: Array<number> = [];
+test("fetchDockerHubTags fetches at most 10 pages of 100 and keeps pages before a failed one", async () => {
+  const fetched = new Set<string>();
   const ctx = hubCtx((url: string) => {
-    const page = Number(new URL(url).searchParams.get("page"));
-    fetched.push(page);
-    return hubBody({count: 1000000, next: `?page=${page + 1}`, results: [{name: String(page)}]})();
+    const params = new URL(url).searchParams;
+    fetched.add(`${params.get("page_size")}:${params.get("page")}`);
+    const page = Number(params.get("page"));
+    if (page === 7) return Promise.resolve({ok: false, status: 500, statusText: "Internal Server Error"});
+    return hubBody({count: 1000000, results: [{name: String(page)}]})();
   }, {noCache: true});
-  await fetchDockerHubTags("library", "bounded", ctx);
-  expect(fetched).toEqual(Array.from({length: 20}, (_, index) => index + 1));
+  expect(Object.keys(await fetchDockerHubTags("library", "bounded", ctx))).toEqual(["1", "2", "3", "4", "5", "6"]);
+  expect([...fetched].toSorted()).toEqual(Array.from({length: 10}, (_, index) => `100:${index + 1}`).toSorted());
 });
 
 test("fetchDockerHubTags reports registry failures instead of no update", async () => {
@@ -431,7 +437,12 @@ test("fetchDockerInfo lists another registry's tags across pages after its token
     if (!authorization) {
       return new Response(null, {status: 401, headers: {"www-authenticate": 'Bearer realm="https://ghcr.io/token",service="ghcr.io",scope="repository:owner/repo:pull"'}});
     }
-    if (url.includes("last=")) return Response.json({tags: ["1.1.0"]});
+    if (url.includes("last=")) {
+      return Response.json({tags: ["1.1.0", "1.2.0"], manifest: {
+        "sha256:a": {tag: ["1.1.0"], timeUploadedMs: "1767225600000", timeCreatedMs: "-62135596800000"},
+        "sha256:b": {tag: ["1.2.0"], timeCreatedMs: "0"},
+      }});
+    }
     return Response.json({tags: ["1.0.0"]}, {headers: {link: '</v2/owner/repo/tags/list?last=1.0.0&n=1000>; rel="next"'}});
   };
   const doFetch = (url: string, opts?: RequestInit) => {
@@ -440,11 +451,25 @@ test("fetchDockerInfo lists another registry's tags across pages after its token
     return Promise.resolve(respond(url, authorization));
   };
   const [info] = await fetchDockerInfo("ghcr.io/owner/repo", hubCtx(doFetch));
-  expect(info.tags).toEqual({"1.0.0": "", "1.1.0": ""});
+  expect(info.tags).toEqual({"1.0.0": "", "1.1.0": "2026-01-01T00:00:00.000Z", "1.2.0": ""});
   expect(requests).toEqual([
     "https://ghcr.io/v2/owner/repo/tags/list?n=1000",
     "https://ghcr.io/token?service=ghcr.io&scope=repository%3Aowner%2Frepo%3Apull",
     "https://ghcr.io/v2/owner/repo/tags/list?n=1000 Bearer t",
     "https://ghcr.io/v2/owner/repo/tags/list?last=1.0.0&n=1000 Bearer t",
+  ]);
+});
+
+test("fetchDockerInfo dates quay.io tags from its tag API", async () => {
+  const requests: Array<string> = [];
+  const ctx = hubCtx((url: string, opts?: RequestInit) => {
+    requests.push(`${url} ${(opts?.headers as Record<string, string>)["x-requested-with"]}`);
+    if (url.endsWith("page=1")) return hubBody({tags: [{name: "v2", start_ts: 1767225600}], has_additional: true})();
+    return hubBody({tags: [{name: "v1"}], has_additional: false})();
+  });
+  expect((await fetchDockerInfo("quay.io/org/repo", ctx))[0].tags).toEqual({v2: "2026-01-01T00:00:00.000Z", v1: ""});
+  expect(requests).toEqual([
+    "https://quay.io/api/v1/repository/org/repo/tag/?limit=100&onlyActiveTags=true&page=1 XMLHttpRequest",
+    "https://quay.io/api/v1/repository/org/repo/tag/?limit=100&onlyActiveTags=true&page=2 XMLHttpRequest",
   ]);
 });

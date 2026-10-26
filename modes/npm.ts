@@ -7,8 +7,9 @@ import {
   type Config, type CheckResult, type Dep, type Deps, type ModeContext, type PackageInfo, type PackageRepository,
   normalizeUrl, getFetchOpts, fieldSep, fetchForgeEtag, selectTag, fetchWithEtag, fetchImmutable, dedupe,
   coerceToVersion, hashRe, fetchForgeTags, throwFetchError, fetchWithRetry, defaultApiUrls, parseCommitDate,
-  reduceJson, stripv,
+  passesCooldown, reduceJson, stripv,
 } from "./shared.ts";
+import {fetchActionTagDate} from "./actions.ts";
 
 type AuthAndRegistry = {auth: {token: string, type: string} | undefined, registry: string};
 
@@ -320,10 +321,6 @@ export async function getLatestCommit(user: string, repo: string, ctx: ModeConte
   return latest ? {hash: latest.sha, commit: latest.commit} : {hash: "", commit: {}};
 }
 
-export async function getTags(user: string, repo: string, oldRef: string, ctx: ModeContext): Promise<Array<string>> {
-  return (await fetchForgeTags(ctx.forgeApiUrl, user, repo, ctx, [oldRef])).map(entry => entry.name);
-}
-
 function parseGitHubSpec(value: string): {user: string, repo: string, ref: string, selector: string | null} | null {
   const hash = value.lastIndexOf("#");
   if (hash === value.length - 1) return null;
@@ -346,7 +343,9 @@ function parseGitHubSpec(value: string): {user: string, repo: string, ref: strin
   return {user: parts[0], repo: parts[1], ref: selector ?? fragment, selector};
 }
 
-export async function checkUrlDep(key: string, dep: Dep, ctx: ModeContext): Promise<CheckResult | null> {
+export async function checkUrlDep(
+  key: string, dep: Dep, ctx: ModeContext, {cooldownDays, now}: {cooldownDays?: number, now?: number} = {},
+): Promise<CheckResult | null> {
   const parsed = parseGitHubSpec(dep.old);
   if (!parsed) return null;
   const {user, repo, ref: oldRef, selector} = parsed;
@@ -360,8 +359,19 @@ export async function checkUrlDep(key: string, dep: Dep, ctx: ModeContext): Prom
     if (!hash || oldRef.toLowerCase() === newRef.toLowerCase()) return null;
     return {key, newRange: replaceRef(newRef), user, repo, oldRef, newRef, newDate: parseCommitDate(commit)};
   }
-  const newTag = selectTag(await getTags(user, repo, oldRef, ctx), selector ? coerceToVersion(selector) : oldRef);
-  if (!newTag) return null;
-  const newRef = selector ? updateVersionRange(selector, stripv(newTag), selector) : newTag;
-  return newRef === oldRef ? null : {key, newRange: replaceRef(newRef), user, repo, oldRef, newRef};
+  const entries = await fetchForgeTags(ctx.forgeApiUrl, user, repo, ctx, [oldRef]);
+  const tags = new Map(entries.map(entry => [entry.name, entry.commitSha]));
+  for (let attempt = 0; attempt < 10; attempt++) { // bounded, each held tag costs a commit-date fetch
+    const newTag = selectTag(tags.keys().toArray(), selector ? coerceToVersion(selector) : oldRef);
+    if (!newTag) return null;
+    const newRef = selector ? updateVersionRange(selector, stripv(newTag), selector) : newTag;
+    if (newRef === oldRef) return null;
+    const commitSha = tags.get(newTag);
+    const date = commitSha ? fetchActionTagDate(ctx.forgeApiUrl, user, repo, commitSha, ctx) : Promise.resolve("");
+    const newDate = cooldownDays ? await date : await tryOrNull(date) ?? undefined;
+    if (newDate === undefined && cooldownDays) throw new Error(`Unable to fetch the commit date for ${user}/${repo}@${newTag}`);
+    if (passesCooldown(newDate, cooldownDays, now)) return {key, newRange: replaceRef(newRef), user, repo, oldRef, newRef, newDate};
+    tags.delete(newTag);
+  }
+  return null;
 }
