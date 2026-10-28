@@ -3,6 +3,7 @@ import {tmpdir} from "node:os";
 import {join} from "node:path";
 import {cliConfigBaseDir} from "./api.ts";
 import {cliBaseConfig, loadConfig} from "./config.ts";
+import {rejection} from "./utils/testing.ts";
 
 test("the package API preserves cliConfigBaseDir", () => {
   expect(cliConfigBaseDir).toBe(cliBaseConfig);
@@ -35,7 +36,7 @@ test("config discovery starts at the target and loads only the highest-priority 
     await writeFile(join(brokenDir, "updates.config.js"), "throw new Error('broken primary');\n");
     await writeFile(join(brokenDir, "updates.config.mjs"),
       `import {appendFileSync} from "node:fs"; appendFileSync(${JSON.stringify(marker)}, "broken-mjs\\n"); export default {};\n`);
-    await expect(loadConfig(brokenDir)).rejects.toThrow(/broken primary/);
+    expect((await rejection(loadConfig(brokenDir)))?.message).toMatch(/broken primary/);
     expect(await readFile(marker, "utf8")).toBe("js\n");
   } finally {
     await rm(dir, {recursive: true, force: true});

@@ -8,6 +8,7 @@ import {
   isDockerFileName, parseDockerImageRef, parseDockerTag, updateComposeFile, updateDockerfile, updateWorkflowDockerImages,
 } from "./docker.ts";
 import {type ModeContext, fetchTimeout, fieldSep} from "./shared.ts";
+import {rejection} from "../utils/testing.ts";
 
 const allSemvers = new Set(["patch", "minor", "major"]);
 const oldDigest = `sha256:${"a".repeat(64)}`;
@@ -352,21 +353,21 @@ test("fetchDockerHubTags reports registry failures instead of no update", async 
   const ctxFor = (res: any) => hubCtx(() => typeof res === "function" ? res() : Promise.resolve(res));
   expect(await fetchDockerHubTags("library", "node", ctxFor({ok: false, status: 404, statusText: "Not Found"}))).toEqual({});
   expect(await fetchDockerHubTags("library", "node", ctxFor({ok: false, status: 401, statusText: "Unauthorized"}))).toEqual({});
-  await expect(fetchDockerHubTags("library", "node", ctxFor({ok: false, status: 429, statusText: "Too Many Requests"})))
-    .rejects.toThrow("Received 429 Too Many Requests");
-  await expect(fetchDockerHubTags("library", "node", ctxFor({ok: false, status: 500, statusText: "Internal Server Error"})))
-    .rejects.toThrow("Received 500 Internal Server Error");
-  await expect(fetchDockerHubTags("library", "node", ctxFor(() => Promise.reject(new Error("connect ECONNREFUSED")))))
-    .rejects.toThrow("ECONNREFUSED");
+  expect((await rejection(fetchDockerHubTags("library", "node", ctxFor({ok: false, status: 429, statusText: "Too Many Requests"}))))?.message)
+    .toMatch("Received 429 Too Many Requests");
+  expect((await rejection(fetchDockerHubTags("library", "node", ctxFor({ok: false, status: 500, statusText: "Internal Server Error"}))))?.message)
+    .toMatch("Received 500 Internal Server Error");
+  expect((await rejection(fetchDockerHubTags("library", "node", ctxFor(() => Promise.reject(new Error("connect ECONNREFUSED"))))))?.message)
+    .toMatch("ECONNREFUSED");
 });
 
 test("fetchDockerTagDigest returns the registry digest and reports failures", async () => {
   await expect(fetchDockerTagDigest("node", "20", hubCtx(hubBody({digest: newDigest}))))
     .resolves.toBe(newDigest);
-  await expect(fetchDockerTagDigest("node", "20", hubCtx(() => Promise.resolve({
+  expect((await rejection(fetchDockerTagDigest("node", "20", hubCtx(() => Promise.resolve({
     ok: false, status: 429, statusText: "Too Many Requests",
-  })))).rejects.toThrow("Received 429 Too Many Requests");
-  await expect(fetchDockerTagDigest("node", "20", hubCtx(hubBody({})))).resolves.toBe(null);
+  })))))?.message).toMatch("Received 429 Too Many Requests");
+  expect(await fetchDockerTagDigest("node", "20", hubCtx(hubBody({})))).toBe(null);
 
   const urls: Array<string> = [];
   const listing = hubCtx((url: string) => {
@@ -374,9 +375,9 @@ test("fetchDockerTagDigest returns the registry digest and reports failures", as
     return hubBody(url.includes("/tags/") ? {digest: oldDigest} :
       {count: 1, results: [{name: "20", tag_last_pushed: "2024-01-01", digest: newDigest}]})();
   });
-  await expect(fetchDockerTagDigest("node", "20", listing)).resolves.toBe(newDigest);
+  expect(await fetchDockerTagDigest("node", "20", listing)).toBe(newDigest);
   expect(urls.length).toBe(1);
-  await expect(fetchDockerTagDigest("node", "22", listing)).resolves.toBe(oldDigest);
+  expect(await fetchDockerTagDigest("node", "22", listing)).toBe(oldDigest);
   expect(urls.at(-1)).toBe("https://hub.docker.com/v2/repositories/library/node/tags/22");
 });
 

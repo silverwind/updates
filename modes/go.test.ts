@@ -26,6 +26,7 @@ import {
   fieldSep, isGoPseudoVersion, findNewVersion, goPinAllowsDowngrade, goVersionPredicate,
   type GoProxyEntry, type ModeContext,
 } from "./shared.ts";
+import {rejection} from "../utils/testing.ts";
 
 async function withEnv(values: Record<string, string | undefined>, fn: () => void | Promise<void>): Promise<void> {
   const assign = (entries: Record<string, string | undefined>) => {
@@ -316,7 +317,7 @@ test("fetchGoProxyInfo keeps the @v/list pick undated when its .info is missing 
   const routes = {[`${goProxyBase}/${modPath}/@v/list`]: "v1.2.0\n", [`${goProxyBase}/${modPath}/v2/@v/list`]: 500};
   const [data] = await infoFor(makeGoCtx(routes));
   expect(data).toMatchObject({new: "1.2.0", Time: ""});
-  await expect(infoFor(makeGoCtx({...routes, [`${goProxyBase}/${modPath}/@v/v1.2.0.info`]: 500}))).rejects.toThrow(/Received 500/);
+  expect((await rejection(infoFor(makeGoCtx({...routes, [`${goProxyBase}/${modPath}/@v/v1.2.0.info`]: 500}))))?.message).toMatch(/Received 500/);
 });
 
 test.each(["proxy", "direct"])("fetchGoProxyInfo steps back to the newest version past its cooldown within a bounded number of lookups through %s", async source => {

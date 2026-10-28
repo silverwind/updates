@@ -19,6 +19,7 @@ import {forgeDirs, getOrSet} from "./utils/utils.ts";
 import {updates} from "./api.ts";
 import {parseCliArgs, resolveConfig, runCli} from "./cli.ts";
 import type {UpdatesOptions} from "./api.ts";
+import {rejection} from "./utils/testing.ts";
 
 const execFileAsync = promisify(execFile);
 const cliStderr = new AsyncLocalStorage<(text: string) => void>();
@@ -451,8 +452,8 @@ test("go @v/list fallback takes a date off the list line when .info is absent", 
 test("a fractional timeout does not throw a non-integer AbortSignal delay, a negative one is rejected on the cli and through the api", async () => {
   const {results} = await updates({files: [goFile], goproxy: goProxyUrl, timeout: 9999.4, color: false, noCache: true});
   expect(results?.go?.deps).toBeTruthy();
-  await expect(runCliExec(["-T", "-5", ...apiArgs, "-f", testFile])).rejects.toThrow(/timeout/i);
-  await expect(updates({files: [goFile], goproxy: goProxyUrl, timeout: -1, color: false, noCache: true})).rejects.toThrow(/invalid timeout/i);
+  expect((await rejection(runCliExec(["-T", "-5", ...apiArgs, "-f", testFile])))?.message).toMatch(/timeout/i);
+  expect((await rejection(updates({files: [goFile], goproxy: goProxyUrl, timeout: -1, color: false, noCache: true})))?.message).toMatch(/invalid timeout/i);
 });
 
 test.each([
@@ -1257,7 +1258,7 @@ test.each([
   expect(errors).toMatchObject([{error: expect.stringContaining("Failed to fetch https://registry.test/noty")}]);
   expect(verbose).toContain("GET");
   expect(JSON.stringify([errors, verbose])).not.toMatch(/user:|secret|first|second/);
-  await expect(updates({modes: [registry]})).rejects.toThrow("Invalid mode: https://registry.test, expected one of:");
+  expect((await rejection(updates({modes: [registry]})))?.message).toMatch("Invalid mode: https://registry.test, expected one of:");
   const cli = await captureCli(["-j", "-M", registry]);
   expect([cli.exitCode, JSON.parse(cli.stdout).error]).toEqual([1, expect.stringContaining("Invalid mode: https://registry.test,")]);
 });
@@ -1320,7 +1321,7 @@ test("api messages, filters, undated deps held under cooldown and mode validatio
   expect(Object.keys(await npmUpdates({include: [/^noty$/]}))).toEqual(["noty"]);
   expect(Object.keys(await npmUpdates({include: ["noty", "gulp-sourcemaps"], exclude: [/sourcemaps/]}))).toEqual(["noty"]);
   expect((await updates(apiOpts({include: ["noty"], modes: ["pypi"]}))).message).toBe("No dependencies found, nothing to do.");
-  await expect(updates(apiOpts({modes: ["nope"]}))).rejects.toThrow("Invalid mode: nope");
+  expect((await rejection(updates(apiOpts({modes: ["nope"]}))))?.message).toMatch("Invalid mode: nope");
 });
 
 test.each([

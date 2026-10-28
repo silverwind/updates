@@ -7,6 +7,7 @@ import {
   parseJsrDependency, parseNpmAlias, resolutionsBasePackage, updatePackageJson, updateVersionRange,
 } from "./npm.ts";
 import {type ModeContext, fetchTimeout, fieldSep} from "./shared.ts";
+import {rejection} from "../utils/testing.ts";
 
 const tempRoot = mkdtempSync(join(tmpdir(), "updates-npm-"));
 beforeAll(() => {
@@ -146,10 +147,10 @@ test("fetchJsrInfo", async () => {
   expect(registry).toBe("https://jsr.io");
   expect(data).toMatchObject({name: "@std/semver", "dist-tags": {latest: "1.0.0"}, time: {"1.0.0": "2025-01-01T00:00:00Z"}});
   expect(Object.keys(data.versions)).toEqual(["1.0.0", "0.9.0"]);
-  await expect(fetchJsrInfo("noscopepkg", {} as ModeContext)).rejects.toThrow("Invalid JSR package name");
+  expect((await rejection(fetchJsrInfo("noscopepkg", {} as ModeContext)))?.message).toMatch("Invalid JSR package name");
   const failureCtx = modeCtx({jsrApiUrl: "https://jsr.io",
     doFetch: () => Promise.resolve({ok: false, status: 404, statusText: "Not Found"})});
-  await expect(fetchJsrInfo("@std/semver", failureCtx)).rejects.toThrow("404");
+  expect((await rejection(fetchJsrInfo("@std/semver", failureCtx)))?.message).toMatch("404");
 });
 
 test("fetchNpmInfo normalizes selectors and modern Yarn versions and ranges", async () => {
@@ -272,8 +273,8 @@ test("getLatestCommit", async () => {
   for (const doFetch of [() => textRes([]), () => Promise.resolve({ok: false})]) {
     expect(await getLatestCommit("user", "repo", forgeCtx({doFetch}))).toEqual({hash: "", commit: {}});
   }
-  await expect(getLatestCommit("user", "repo", forgeCtx({doFetch: () => Promise.reject(new Error("network error"))})))
-    .rejects.toThrow(/network error/);
+  expect((await rejection(getLatestCommit("user", "repo", forgeCtx({doFetch: () => Promise.reject(new Error("network error"))}))))?.message)
+    .toMatch(/network error/);
 });
 
 test("checkUrlDep parses refs, refreshes hashes and steps tags back past undated and too new ones under cooldown", async () => {
@@ -288,8 +289,8 @@ test("checkUrlDep parses refs, refreshes hashes and steps tags back past undated
   const tagDep = {old: "github:user/repo#v1.2.3", new: ""};
   expect(await checkUrlDep("key", tagDep, tagCtx(sha => jsonRes({committer: {date: commitDates[sha]}})), cooldown))
     .toMatchObject({newRef: "v1.3.0", newDate: "2025-01-01"});
-  await expect(checkUrlDep("key", tagDep, tagCtx(() => Promise.resolve({ok: false, status: 401})), cooldown))
-    .rejects.toThrow("Unable to fetch the commit date for user/repo@v2.0.0");
+  expect((await rejection(checkUrlDep("key", tagDep, tagCtx(() => Promise.resolve({ok: false, status: 401})), cooldown)))?.message)
+    .toMatch("Unable to fetch the commit date for user/repo@v2.0.0");
   const ctx = forgeCtx({doFetch: () => Promise.resolve({ok: false})});
   expect(await checkUrlDep("key", {old: "not-a-url", new: ""} as any, ctx)).toBeNull();
   let fetches = 0;

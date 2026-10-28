@@ -15,6 +15,7 @@ import {esc} from "../utils/utils.ts";
 import {pep440Versioning} from "../utils/semver.ts";
 import {flushCacheWrites} from "../utils/fetchCache.ts";
 import {storeToken} from "../utils/tokens.ts";
+import {rejection} from "../utils/testing.ts";
 
 const setEnv = (values: Record<string, string | undefined>) => {
   for (const [name, value] of Object.entries(values)) {
@@ -504,8 +505,8 @@ test("fetchActionTags single page no link header, commit or not, keeping release
     json: () => Promise.resolve(new URL(url).pathname.endsWith("/releases") ? [
       {tag_name: null, prerelease: false},
     ] : tagsData), headers: new Headers()})});
-  await expect(fetchActionTags("https://api.github.com", "actions", "checkout", malformed))
-    .rejects.toThrow("Invalid Forge release entry");
+  expect((await rejection(fetchActionTags("https://api.github.com", "actions", "checkout", malformed)))?.message)
+    .toMatch("Invalid Forge release entry");
 });
 
 test("fetchActionTags skips release metadata when stability is unused", async () => {
@@ -534,7 +535,7 @@ test("fetchActionTags walks forge pagination until the authored ref turns up, an
   expect(await walk(["sha11"])).toEqual([16, 17]);
   const gone = modeCtx({noCache: true, doFetch: (url: string) =>
     Promise.resolve(url.includes("page=2") ? {ok: false, status: 404, headers: new Headers()} : tagPage(url, lastPage))});
-  await expect(fetchActionTags("https://api.github.com", "actions", "checkout", gone)).rejects.toThrow(ForgeError);
+  expect(await rejection(fetchActionTags("https://api.github.com", "actions", "checkout", gone))).toBeInstanceOf(ForgeError);
 
   const urls: Array<string> = [];
   let revalidate = false;

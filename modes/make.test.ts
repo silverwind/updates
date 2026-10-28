@@ -8,6 +8,7 @@ import {
   updateMakefile,
 } from "./make.ts";
 import {type ExecFile, type GoProxyEntry, type ModeContext, fetchTimeout, goProbeTimeout} from "./shared.ts";
+import {rejection} from "../utils/testing.ts";
 
 const sample = `GOLANGCI_PACKAGE ?= github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
 AIR_PACKAGE := github.com/air-verse/air@v1.65.1
@@ -137,7 +138,7 @@ test("resolveGoModuleRoot applies GOPROXY comma and pipe error fallbacks", async
   await expect(resolveWith("|", pipeSeen)).resolves.toBe("example.com/mod");
   expect(pipeSeen).toContain("https://backup/example.com/mod/@latest");
   const commaSeen: Array<string> = [];
-  await expect(resolveWith(",", commaSeen)).rejects.toThrow("500");
+  expect((await rejection(resolveWith(",", commaSeen)))?.message).toMatch("500");
   expect(commaSeen.some(url => url.startsWith("https://backup/"))).toBe(false);
 });
 
@@ -163,8 +164,8 @@ test("resolveGoModuleRoot returns null when nothing resolves and throws when a p
   const path = "golang.org/x/vuln/cmd/govulncheck";
   expect(await resolveGoModuleRoot(path, ".", rootCtx(rootHit("nothing")), [])).toBeNull();
   const rateLimited = rootCtx(() => Promise.resolve({ok: false, status: 429, statusText: "Too Many Requests"} as any));
-  await expect(resolveGoModuleRoot(path, ".", rateLimited, [])).rejects.toThrow("429");
-  await expect(resolveGoModuleRoot(path, ".", rootCtx(() => Promise.reject(new Error("network"))), [])).rejects.toThrow("network");
+  expect((await rejection(resolveGoModuleRoot(path, ".", rateLimited, [])))?.message).toMatch("429");
+  expect((await rejection(resolveGoModuleRoot(path, ".", rootCtx(() => Promise.reject(new Error("network"))), [])))?.message).toMatch("network");
   let calls = 0;
   const slow = rootCtx(url => ++calls === 1 ?
     Promise.reject(Object.assign(new Error("timeout"), {transient: true})) :
@@ -228,7 +229,7 @@ test("resolveGoModuleRoot surfaces direct and GONOPROXY lookup failures", async 
   const direct = rootCtx(() => Promise.resolve({ok: true} as any), "direct", () => failure("dial tcp: lookup failed"));
   await expect(resolveGoModuleRoot("git.corp.example/x/cmd/tool", ".", direct, [])).rejects.toThrow("lookup failed");
   const noProxy = rootCtx(() => Promise.resolve({ok: true} as any), "https://proxy", () => failure("authentication required"));
-  await expect(resolveGoModuleRoot("git.corp.example/x/cmd/tool", ".", noProxy, ["git.corp.example"])).rejects.toThrow("authentication required");
+  expect((await rejection(resolveGoModuleRoot("git.corp.example/x/cmd/tool", ".", noProxy, ["git.corp.example"])))?.message).toMatch("authentication required");
 });
 
 const digestA = `sha256:${"a".repeat(64)}`;
