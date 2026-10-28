@@ -356,13 +356,18 @@ sequential("getForgeTokens", {concurrent: false}, async () => {
   const forHost = (host: string) => getForgeTokens(host, "https://api.github.com");
   expect(await forHost("")).toEqual([]);
   expect(await forHost("gitea.example.com")).toEqual([]);
-  await withEnv({UPDATES_FORGE_TOKENS: "localhost:3500:ported,git.example.com:bare,api.github.com:", GH_TOKEN: "env-token"}, async () => {
+  await withEnv({UPDATES_FORGE_TOKENS: "localhost:3500:ported,Git.Example.com:bare,api.github.com:", GH_TOKEN: "env-token"}, async () => {
     expect(await forHost("localhost:3500")).toEqual(["ported"]);
     expect(await forHost("api.github.com")).toContain("env-token");
     expect(await forHost("git.example.com")).toEqual(["bare"]);
     expect(await forHost("localhost:9999")).toEqual([]);
     expect(await forHost("git.example.com:8080")).toEqual([]);
     expect(await forHost("localhost")).toEqual([]);
+  });
+  await withEnv({GITEA_URL: "https://gitea.example.com/", UPDATES_GITEA_API_TOKEN: "updates-gitea", GITEA_API_TOKEN: undefined,
+    GITEA_AUTH_TOKEN: "gitea-auth", GITEA_TOKEN: undefined, FORGEJO_TOKEN: undefined}, async () => {
+    expect(await forHost("gitea.example.com")).toEqual(["updates-gitea", "gitea-auth"]);
+    expect(await forHost("git.example.com")).toEqual([]);
   });
 });
 

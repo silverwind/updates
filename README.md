@@ -156,12 +156,14 @@ const output = await updates({
 |:-|:-|
 |`UPDATES_FORGE_TOKENS`|Comma-separated list of `host:token` pairs for forge APIs, e.g. `github.com:ghp_xxx,localhost:3500:tok_xxx`. The host must match the URL exactly, port included|
 |`UPDATES_GITHUB_API_TOKEN`|GitHub API token, with `GITHUB_API_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN` and `HOMEBREW_GITHUB_API_TOKEN` as fallbacks, in that order. Only ever sent to GitHub itself|
+|`UPDATES_GITEA_API_TOKEN`|Gitea or Forgejo API token, with `GITEA_API_TOKEN`, `GITEA_AUTH_TOKEN`, `GITEA_TOKEN` and `FORGEJO_TOKEN` as fallbacks, in that order. Only ever sent to the instance in `GITEA_URL`|
+|`GITEA_URL`|URL of the Gitea or Forgejo instance the Gitea tokens belong to, e.g. `https://gitea.example.com`|
 |`pnpm_config__auth`|npm registry credentials as [pnpm](https://pnpm.io/npmrc#_auth) reads them, e.g. `{"https://registry.npmjs.org":{"@":{"authToken":"npm-token"},"@org":{"authToken":"org-token"}}}`. `@` is the registry-wide token, `@org` binds a token and registry to that scope. The `_auth` key of pnpm's global `config.yaml` is read the same way|
 |`GOPROXY`|Go module proxy list, honored as go itself does. Default: `https://proxy.golang.org,direct`|
 |`GONOPROXY`|Comma-separated list of Go module patterns to fetch directly, bypassing the proxy|
 |`GOPRIVATE`|Fallback for `GONOPROXY` when not set|
 
-`updates --login <host>` reads a token from stdin or a prompt and stores it for that forge, `updates --logout <host>` removes it. A host in `UPDATES_FORGE_TOKENS` wins over a stored token, which wins over the GitHub tokens.
+`updates --login <host>` reads a token from stdin or a prompt and stores it for that forge, `updates --logout <host>` removes it. A host in `UPDATES_FORGE_TOKENS` wins over a stored token, which wins over the GitHub and Gitea tokens.
 
 npm registries resolve in pnpm's order: `--registry`, then `pnpm_config__auth`, `pnpm-workspace.yaml`, the global `config.yaml`, its `_auth` routes, and finally `.npmrc`. A scope-specific token wins over a registry-wide one.
 

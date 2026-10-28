@@ -394,6 +394,7 @@ export function getExecFile(): Promise<ExecFile> {
 }
 
 const githubTokenEnvNames = ["UPDATES_GITHUB_API_TOKEN", "GITHUB_API_TOKEN", "GH_TOKEN", "GITHUB_TOKEN", "HOMEBREW_GITHUB_API_TOKEN"];
+const giteaTokenEnvNames = ["UPDATES_GITEA_API_TOKEN", "GITEA_API_TOKEN", "GITEA_AUTH_TOKEN", "GITEA_TOKEN", "FORGEJO_TOKEN"];
 
 const reExtraheader = /^http\.(\S+)\/\.extraheader AUTHORIZATION:\s*basic\s+(\S+)$/i;
 
@@ -437,12 +438,13 @@ export function forgeTokenHint(host: string): string {
 export async function getForgeTokens(host: string, forgeApiUrl: string): Promise<string[]> {
   if (!host) return [];
   const token = commaSeparatedToArray(env.UPDATES_FORGE_TOKENS ?? "")
-    .find(entry => entry.lastIndexOf(":") === host.length && entry.startsWith(host))?.slice(host.length + 1);
+    .find(entry => entry.lastIndexOf(":") === host.length && entry.slice(0, host.length).toLowerCase() === host)?.slice(host.length + 1);
   if (token) return [token];
 
   const forgeHost = forgeHostOf(host);
   const stored = (await readTokens())[forgeHost];
-  const tokens = forgeHost === "github.com" || host === urlHost(forgeApiUrl) ? githubTokenEnvNames.map(name => env[name]) : [];
+  const tokens = (forgeHost === "github.com" || host === urlHost(forgeApiUrl) ? githubTokenEnvNames :
+    host === urlHost(env.GITEA_URL ?? "") ? giteaTokenEnvNames : []).map(name => env[name]);
   const header = (await getExtraheaderTokens()).get(forgeHost);
   return Array.from(new Set([stored, ...tokens, header].filter(Boolean) as string[]));
 }
