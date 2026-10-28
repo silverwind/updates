@@ -283,7 +283,7 @@ export async function runCli(rawArgs: Array<string>, io: CliIo, prewarm = true):
       if (output.message) writeLine(output.message);
       else if (hasResults) writeLine(formatOutput(output, red, green));
       if (config.update) for (const mode of resultModes) writeLine(green(`✨ ${mode} updated`));
-      for (const {mode, name, error} of errors) writeLine(red(`${mode} ${name}: ${error}`));
+      for (const line of new Set(errors.map(({mode, name, error}) => `${mode} ${name}: ${error}`))) writeLine(red(line)); // one per file otherwise
     }
 
     if (errors.length) return 1;

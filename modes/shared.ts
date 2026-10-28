@@ -430,6 +430,10 @@ export function forgeHostOf(host: string): string {
   return host === "api.github.com" ? "github.com" : host;
 }
 
+export function forgeTokenHint(host: string): string {
+  return `set a token for ${forgeHostOf(host)} in UPDATES_FORGE_TOKENS or run "updates --login ${forgeHostOf(host)}"`;
+}
+
 export async function getForgeTokens(host: string, forgeApiUrl: string): Promise<string[]> {
   if (!host) return [];
   const token = commaSeparatedToArray(env.UPDATES_FORGE_TOKENS ?? "")
@@ -485,8 +489,7 @@ async function checkForgeResponse(res: Response, url: string, host: string, hasT
   }
   const reset = await rateLimitReset(res);
   if (reset === null) return res;
-  const hint = hasToken ? " even though a token was sent" :
-    `, set one for this host in UPDATES_FORGE_TOKENS or run "updates --login ${forgeHostOf(host)}"`;
+  const hint = hasToken ? " even though a token was sent" : `, ${forgeTokenHint(host)}`;
   const until = reset ? `, resets at ${new Date(reset * 1000).toISOString()}` : "";
   throw new ForgeError("rateLimit", host, `Rate limit exceeded for ${host}${hint}${until}`, {status: res.status, reset});
 }

@@ -15,7 +15,7 @@ import {
   fieldSep, normalizeUrl, fetchTimeout, goProbeTimeout, maxSockets,
   doFetch, fetchActionTags, fetchForge, findVersion, findNewVersion, getInfoUrl, getLimiter,
   passesCooldown, stripv, hashRe, isVersionLikeRef, defaultApiUrls, formatVersionPrecision, getExecFile,
-  coerceToVersion, goPinAllowsDowngrade, goVersionPredicate, pypiReleaseDate, redactUrlCredentials,
+  coerceToVersion, goPinAllowsDowngrade, goVersionPredicate, pypiReleaseDate, redactUrlCredentials, forgeTokenHint,
   type Dep, type Deps, type DepsByMode, type Limiter, type Output as ModeOutput, type ModeContext, type TagEntry,
 } from "./modes/shared.ts";
 import {flushCacheWrites} from "./utils/fetchCache.ts";
@@ -1164,7 +1164,10 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
       const url = `${apiUrl}/repos/${owner}/${repo}/${path}/${encodeURIComponent(exactRef)}`;
       const response = await fetchForge(url, ctx);
       if (response.status === 404) return "";
-      if (!response.ok) throw new Error(`Unable to fetch ${owner}/${repo}@${exactRef}`);
+      if (!response.ok) {
+        const hint = response.status === 401 || response.status === 403 ? `, ${forgeTokenHint(new URL(url).host)}` : "";
+        throw new Error(`Received ${response.status} from ${url}${hint}`);
+      }
       const body = await response.json();
       return [body?.sha, body?.id, body?.commit?.sha, body?.commit?.id].find(value => typeof value === "string") ?? "";
     });

@@ -1043,6 +1043,14 @@ test("actions cooldown uses the later commit or publication date of the selected
   ]);
 });
 
+test("a forbidden followed branch prints its status and token hint once across workflow files", async () => {
+  const pin = "o/private@dddd000000000000000000000000000000000000 # main";
+  const dir = writeTree("actions-forbidden", {".github/workflows/a.yaml": workflowSteps(pin), ".github/workflows/b.yaml": workflowSteps(pin)});
+  routes.set("/github/repos/o/private/branches/main", (_, res) => { res.writeHead(403).end(); });
+  const {stdout} = await captureCli(["-n", "--forgeapi", githubUrl, "-M", "actions", "-f", join(dir, ".github/workflows")]);
+  expect(stdout.match(/^actions o\/private: Received 403 from .*, set a token for .* or run "updates --login .*"$/gm)).toHaveLength(1);
+});
+
 test("text output renders several modes with a MODE column", async () => {
   const {stdout, stderr} = await captureCli(["-n", "--forgeapi", githubUrl, "--dockerapi", dockerUrl, "-M", "actions,docker", "-f", actionsDir]);
   expect(stderr).toEqual("");
