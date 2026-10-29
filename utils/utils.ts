@@ -19,6 +19,16 @@ export function highlightDiff(a: string, b: string, colorFn: (str: string) => st
   return diff ? a.substring(0, i) + colorFn(diff) : a;
 }
 
+export function shortenHash(hash: string): string {
+  return hash.replace(/^[^:]+:/, "").substring(0, 7);
+}
+
+export function shortenPair(oldValue: string, newValue: string, shorten: (value: string) => string,
+  fallback = (value: string) => value): {old: string, new: string} {
+  const [oldShort, newShort] = [shorten(oldValue), shorten(newValue)];
+  return oldShort === newShort ? {old: fallback(oldValue), new: fallback(newValue)} : {old: oldShort, new: newShort};
+}
+
 const pep508Re = /^(\s*)([A-Za-z0-9][A-Za-z0-9._-]*)(\s*)((?:\[[^\]]*\])?)(\s*)(.*)$/;
 const pep508ParenRe = /^(\s*\()([^)]*)(\)\s*)$/;
 const pep440SpecifierRe = /^(\s*)(===|==|!=|~=|<=|>=|<|>)(\s*)(\S+)(\s*)$/;

@@ -76,6 +76,19 @@ const yamlPairRe = /^(\s*(?:-\s*)?)(?:"([^"]+)"|'([^']+)'|([^\s:#][^:#]*)):\s*([
 
 export type YamlPathEntry = {indent: number, key: string};
 
+export function* yamlLines(lines: Array<string>): Generator<[number, string]> {
+  let blockIndent = -1;
+  for (const [lineNumber, line] of lines.entries()) {
+    if (blockIndent !== -1) {
+      if (!line.trim() || line.length - line.trimStart().length > blockIndent) continue;
+      blockIndent = -1;
+    }
+    const pair = yamlPairRe.exec(line);
+    if (pair && /^[>|](?:[+-]?\d?|\d[+-]?)$/.test(pair[5].replace(/(?:^|\s)#.*$/, "").trim())) blockIndent = pair[1].length;
+    yield [lineNumber, line];
+  }
+}
+
 // pops path down to this line's level, the caller decides whether to push the pair onto it
 export function walkYamlPair(line: string, path: Array<YamlPathEntry>): {indent: number, key: string, value: string} | null {
   const pair = yamlPairRe.exec(line);
@@ -106,32 +119,27 @@ type ActionUpdate = {name: string, oldRef: string, newRef: string, oldComment?: 
 export function updateWorkflowFile(content: string, actionDeps: Array<ActionUpdate>): string {
   const depByUses = new Map(actionDeps.map(dep => [`${dep.name}@${dep.oldRef}${dep.oldComment ? `#${dep.oldComment}` : ""}`, dep]));
   const yamlPath: Array<YamlPathEntry> = [];
-  let blockIndent = -1;
-  return content.split("\n").map(line => {
-    if (blockIndent !== -1) {
-      if (!line.trim() || line.length - line.trimStart().length > blockIndent) return line;
-      blockIndent = -1;
-    }
+  const lines = content.split("\n");
+  for (const [lineNumber, line] of yamlLines(lines)) {
     const pair = walkYamlPair(line, yamlPath);
-    if (!pair) return line;
+    if (!pair) continue;
     const isUses = pair.key === "uses" && (
       yamlPath.length === 3 && yamlPath[0].key === "jobs" && yamlPath[2].key === "steps" ||
       yamlPath.length === 2 && (yamlPath[0].key === "jobs" || yamlPath[0].key === "runs" && yamlPath[1].key === "steps")
     );
-    const pairValue = pair.value.replace(/(?:^|\s)#.*$/, "").trim();
-    if (!pairValue) yamlPath.push(pair);
-    if (/^[>|](?:[+-]?\d?|\d[+-]?)$/.test(pairValue)) { blockIndent = pair.indent; return line; }
+    if (!pair.value.replace(/(?:^|\s)#.*$/, "").trim()) yamlPath.push(pair);
     const parsed = isUses && parseUsesLine(line);
-    if (!parsed) return line;
+    if (!parsed) continue;
     const {prefix, quote, value, gap, comment, pinnedVersion, pinnedEnd} = parsed;
     const scheme = /^https?:\/\//.exec(value)?.[0] ?? "";
     const oldComment = pinnedVersion || /^#\s*(\S+)\s*$/.exec(comment)?.[1] || "";
     const unqualifiedUses = value.slice(scheme.length);
     const dep = depByUses.get(`${unqualifiedUses}${oldComment ? `#${oldComment}` : ""}`) ?? depByUses.get(unqualifiedUses);
-    if (!dep) return line;
+    if (!dep) continue;
     const newComment = dep.newComment && pinnedVersion ? `# ${dep.newComment}${comment.slice(pinnedEnd)}` : comment;
-    return `${prefix}${quote}${scheme}${dep.name}@${dep.newRef}${quote}${gap}${newComment}`;
-  }).join("\n");
+    lines[lineNumber] = `${prefix}${quote}${scheme}${dep.name}@${dep.newRef}${quote}${gap}${newComment}`;
+  }
+  return lines.join("\n");
 }
 
 const workflowFileRe = new RegExp( // renovate's github-actions manager patterns

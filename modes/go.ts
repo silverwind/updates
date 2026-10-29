@@ -8,7 +8,7 @@ import {
   type Deps, type GoProxyEntry, type ModeContext, type PackageInfo,
 } from "./shared.ts";
 import {gt, valid} from "../utils/semver.ts";
-import {esc, getOrSet, pushTo, tryOrNull} from "../utils/utils.ts";
+import {esc, getOrSet, pushTo, shortenHash, tryOrNull} from "../utils/utils.ts";
 
 export function parseGoProxy(value: string): Array<GoProxyEntry> {
   const entries: Array<GoProxyEntry> = [];
@@ -564,4 +564,8 @@ export function shortenGoModule(module: string): string {
 
 export function shortenGoVersion(version: string): string {
   return version.replace(/(\d{7})\d{7}-[0-9a-f]{12}$/, "$1");
+}
+
+export function shortenGoHash(version: string): string {
+  return version.replace(/(?<=\d{14}-)[0-9a-f]{12}$/, hash => shortenHash(hash));
 }

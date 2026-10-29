@@ -502,17 +502,25 @@ test("go pseudo-version update rewrites the full version", async () => {
   expect(updated).not.toContain("754e69321358");
 });
 
-test("make mode bumps go install versions and rewrites paths on major bumps", async () => {
+test("make mode bumps go install versions and rewrites paths on major bumps, printing full specs when only the path moves", async () => {
+  lazyRoute("/go/github.com/example/tool/@latest", () => ({Version: "v2.0.0+incompatible"}));
+  lazyRoute("/go/github.com/example/tool/v2/@latest", () => ({Version: "v2.1.0"}));
   const dir = writeTree("make", {Makefile: lines(
     "UUID_PACKAGE ?= github.com/google/uuid@v1.4.0",
     "TESTPKG_PACKAGE := github.com/example/testpkg@v1.0.0  # pinned tool",
+    "TOOL := github.com/example/tool/cmd/tool@v2",
     "# DISABLED := github.com/example/testpkg@v0.5.0",
     "SOURCE := $(wildcard *.go)",
   )});
-  await updates({files: [join(dir, "Makefile")], goproxy: goProxyUrl, update: true, color: false, noCache: true});
+  const {results} = await updates({files: [join(dir, "Makefile")], goproxy: goProxyUrl, update: true, color: false, noCache: true});
+  expect(Object.values(results.make)[0]).toMatchObject({
+    "github.com/example/testpkg": {old: "v1.0.0", new: "v2.0.0"},
+    "github.com/example/tool/cmd/tool": {old: "github.com/example/tool/cmd/tool@v2", new: "github.com/example/tool/v2/cmd/tool@v2"},
+  });
   expect(read(dir, "Makefile")).toBe(lines(
     "UUID_PACKAGE ?= github.com/google/uuid/v2@v2.0.0-20260217135312-8c5a7de9ffa1",
     "TESTPKG_PACKAGE := github.com/example/testpkg/v2@v2.0.0  # pinned tool",
+    "TOOL := github.com/example/tool/v2/cmd/tool@v2",
     "# DISABLED := github.com/example/testpkg@v0.5.0",
     "SOURCE := $(wildcard *.go)",
   ));
@@ -604,6 +612,7 @@ test("make and shell modes bump discovered files alike, leaving current, unresol
   });
   expect(Object.fromEntries(Object.entries(results).map(([mode, files]) => [mode, Object.keys(files).map(file => basename(file))])))
     .toEqual({make: ["Makefile"], shell: ["build.sh"]});
+  expect(Object.keys(Object.values(results.shell)[0])).not.toContain("github.com/example/pseudoupd");
   expect(errors!.map(({mode, name}) => [mode, name])).toEqual([["shell", "example/broken"]]);
   expect(read(dir, "Makefile")).toBe(lines("TOOL ?= github.com/example/testpkg/v2@v2.0.0", "IMAGE := example/image:1.1"));
   expect(read(dir, "build.sh")).toBe(lines(
@@ -941,6 +950,8 @@ test.each([
   ["patch", "1.0.0", "1.9.0", ["1.0.1", "1.1.0", "1.9.0"], {patch: true}, "1.0.1"],
   ["minor", "1.0.0", "2.0.0", ["1.0.1", "1.1.0", "2.0.0"], {minor: true}, "1.1.0"],
   ["pseudo patch", "1.0.0-20240101000000-aaaaaaaaaaaa", "1.9.0", ["1.0.0-20240201000000-bbbbbbbbbbbb", "1.9.0"], {patch: true}, "1.0.0-2024020"],
+  ["pseudo patch sharing the shortened timestamp", "1.0.0-20240101000000-aaaaaaaaaaaa", "1.9.0",
+    ["1.0.0-20240102000000-bbbbbbbbbbbb", "1.9.0"], {patch: true}, "1.0.0-20240102000000-bbbbbbb"],
   ["prerelease patch", "1.0.0-beta.1", "1.9.0", ["1.0.0-beta.2", "1.9.0"], {patch: true}, "1.0.0-beta.2"],
   ["patch current", "1.0.0", "1.0.0", ["1.0.0"], {patch: true}, ""],
   ["downgrade current", "1.2.0", "1.2.0", ["1.1.0", "1.2.0"], {minor: true, allowDowngrade: true}, ""],
@@ -969,9 +980,13 @@ test.each([
   if (options.patch || options.minor) expect(requestedUrls.some(url => url.startsWith(`/go/${name}/v2/`))).toBe(false);
 });
 
-test("branch-only actions do not fetch forge metadata", async () => {
-  const dir = writeTree("actions-branches", {".github/workflows/ci.yml": "jobs:\n  test:\n    steps:\n      - uses: one/repo@main\n      - uses: two/repo@develop\n"});
-  await updates({files: [join(dir, ".github/workflows/ci.yml")], modes: ["actions"], forgeapi: githubUrl, noCache: true, noColor: true});
+test("branch-only actions and uses lines inside block scalars do not fetch forge metadata", async () => {
+  const content = lines("jobs:", "  test:", "    steps:", "      - uses: one/repo@main", "      - run: |",
+    "          uses: one/repo@v1", "", "          uses: two/repo@v1", "      - uses: two/repo@develop");
+  const dir = writeTree("actions-branches", {".github/workflows/ci.yml": content});
+  expect((await updates({files: [join(dir, ".github/workflows/ci.yml")], modes: ["actions"], forgeapi: githubUrl,
+    noCache: true, noColor: true, update: true})).message).toContain("up to date");
+  expect(read(dir, ".github/workflows/ci.yml")).toBe(content);
   expect(requestedUrls.filter(url => /^\/github\/repos\/(?:one|two)\/repo\//.test(url))).toEqual([]);
 });
 
@@ -1090,30 +1105,52 @@ sequential("actions update rewrites tags, keeps same-sha pin identities distinct
   ]);
 });
 
-test("actions hash pin comments keep their precision only for an alias on the selected tag's commit, uncommented pins report the full version", async () => {
+test("actions hash pin comments keep their precision only for an alias on the selected tag's commit, uncommented pins report the full version, unchanged versions print their short digests", async () => {
   const oldDigest = "dddd000000000000000000000000000000000000";
   lazyRoute("/github/repos/o/precision/tags", () => [["v5", 1], ["v5.1", 2], ["v5.1.0", 2], ["v4.2", 0]].map(([name, sha]) => ({
     name, commit: {sha: `aaaa${String(sha).padStart(36, "0")}`},
   })));
+  lazyRoute("/github/repos/o/moved/tags", () => ["v1", "v1.1.0"].map(name => ({name, commit: {sha: `aaaa${"3".padStart(36, "0")}`}})));
+  lazyRoute("/github/repos/o/shared/tags", () => ["v2.0.0", "v1.0.0"].map(name => ({name, commit: {sha: oldDigest}})));
   const dir = writeTree("actions-hash", {".github/workflows/ci.yaml": workflowSteps(
     `actions/checkout@${oldDigest} # v4.2.0`,
     `actions/setup-node@${oldDigest} # v10.0.0`,
     `o/precision@${oldDigest} # v4`,
     `o/precision@${oldDigest} # v4.2`,
-  ), ".github/workflows/plain.yaml": workflowSteps(`o/precision@aaaa${"0".repeat(36)}`)});
-  const {results} = await updates({files: [join(dir, ".github/workflows")], modes: ["actions"], forgeapi: githubUrl, noCache: true, color: false, update: true});
+    `o/moved@${oldDigest} # v1`,
+    `o/moved/same@AAAA${"3".padStart(36, "0")} # v1`,
+    `actions/setup-node/same@BBBB${"10".padStart(36, "0")} # v10.0.0`,
+    `o/shared@${oldDigest} # v1.0.0`,
+    "o/shared@v1.0.0",
+    `o/shared/same@${oldDigest}`,
+  ), ".github/workflows/plain.yaml": workflowSteps(`o/precision@AAAA${"0".repeat(36)}`)});
+  expect((await captureCli(["-n", "--forgeapi", githubUrl, "-M", "actions", "-i", "actions/setup-node",
+    "-f", join(dir, ".github/workflows/ci.yaml")])).stdout).toMatch(/ dddd000 +bbbb000 /);
+  const {results} = await updates({files: [join(dir, ".github/workflows")], modes: ["actions"], forgeapi: githubUrl,
+    noCache: true, color: false, update: true, pin: {"o/shared": "^2"}});
   const byFile = (name: string) => Object.entries<any>(results.actions).find(([file]) => file.endsWith(name))![1];
   expect(byFile("ci.yaml")).toMatchObject({
     "actions/checkout": {old: "4.2.0", new: "10.0.1"},
     "actions/setup-node": {old: "v10.0.0", new: "v10.0.0", newDigest: "bbbb000000000000000000000000000000000010"},
+    "o/moved": {old: "v1", new: "v1", oldDigest, newDigest: "aaaa000000000000000000000000000000000003"},
   });
   expect(read(dir, ".github/workflows/ci.yaml")).toBe(workflowSteps(
     "actions/checkout@cccc000000000000000000000000000000000011 # v10.0.1",
     "actions/setup-node@bbbb000000000000000000000000000000000010 # v10.0.0",
     "o/precision@aaaa000000000000000000000000000000000002 # v5.1.0",
     "o/precision@aaaa000000000000000000000000000000000002 # v5.1",
+    "o/moved@aaaa000000000000000000000000000000000003 # v1",
+    `o/moved/same@AAAA${"3".padStart(36, "0")} # v1`,
+    `actions/setup-node/same@BBBB${"10".padStart(36, "0")} # v10.0.0`,
+    `o/shared@${oldDigest} # v2.0.0`,
+    "o/shared@v2.0.0",
+    `o/shared/same@${oldDigest}`,
   ));
   expect(byFile("plain.yaml")["o/precision"].new).toBe("5.1.0");
+  expect(Object.keys(byFile("ci.yaml"))).not.toContain("o/moved/same");
+  expect(Object.keys(byFile("ci.yaml"))).not.toContain("actions/setup-node/same");
+  expect(Object.keys(byFile("ci.yaml"))).not.toContain("o/shared/same");
+  expect(read(dir, ".github/workflows/plain.yaml")).toBe(workflowSteps(`o/precision@aaaa${"2".padStart(36, "0")}`));
 });
 
 test("actions composite action discovery", async () => {
@@ -1168,7 +1205,7 @@ test("docker allowedVersions compares floating tags with Docker semantics", asyn
   expect(read(dir, "Dockerfile")).toBe("FROM node:20\n");
 });
 
-test.each([1, 5])("docker digest refresh respects cooldown for a Docker Hub and a registry tag aged %sd", async days => {
+test.each([1, 5])("docker digest refresh respects cooldown for a Docker Hub and a registry tag aged %sd, then reports nothing", async days => {
   const oldDigest = `sha256:${"a".repeat(64)}`;
   const newDigest = `sha256:${"b".repeat(64)}`;
   const pushed = new Date(Date.now() - days * 24 * 3600 * 1000).toISOString();
@@ -1184,6 +1221,7 @@ test.each([1, 5])("docker digest refresh respects cooldown for a Docker Hub and 
   expect(output.errors).toBeUndefined();
   expect(Boolean(output.results.docker)).toBe(days >= 3);
   expect(read(file)).toBe(days >= 3 ? input.replaceAll(oldDigest, () => newDigest) : input);
+  expect((days >= 3 ? await updates(apiOpts({files: [file], modes: ["docker"], cooldown: "3d"})) : output).message).toContain("up to date");
 });
 
 test("actions mode does not include docker from workflows", async () => {
@@ -1326,8 +1364,16 @@ test("api messages, filters, undated deps held under cooldown and mode validatio
   expect(emptyOutput.results).toEqual({});
   expect((await updates(apiOpts({include: ["updates"], cooldown: "999999d"}))).message).toBe("All dependencies are up to date.");
   lazyRoute("/github/repos/o/undated/commits", () => [{sha: "def5678901234", commit: {}}]);
-  const undatedFile = join(writeTree("undated", {"package.json": JSON.stringify({dependencies: {undated: "github:o/undated#abc1234"}})}), "package.json");
-  expect((await npmUpdates({files: [undatedFile]})).undated).toMatchObject({new: "def5678"});
+  lazyRoute("/npm/constructor", () => ({name: "constructor", "dist-tags": {latest: "2.0.0"}, versions: {"2.0.0": {}}}));
+  const undatedFile = join(writeTree("undated", {"package.json": JSON.stringify({dependencies: {
+    undated: "github:o/undated#abc1234", constructor: "1.0.0",
+  }, constructor: {constructor: "1.0.0"}})}), "package.json");
+  const undated = await npmUpdates({files: [undatedFile]});
+  expect(undated.undated).toMatchObject({new: "def5678"});
+  expect(undated.constructor).toMatchObject({new: "2.0.0"});
+  expect((await updates(apiOpts({files: [undatedFile], types: ["constructor"]}))).results).toMatchObject({npm: {
+    constructor: {constructor: {old: "1.0.0", new: "2.0.0"}},
+  }});
   expect((await updates(apiOpts({files: [undatedFile], cooldown: "1d"}))).message).toBe("All dependencies are up to date.");
   expect(Object.keys(await npmUpdates({include: [/^noty$/]}))).toEqual(["noty"]);
   expect(Object.keys(await npmUpdates({include: ["noty", "gulp-sourcemaps"], exclude: [/sourcemaps/]}))).toEqual(["noty"]);

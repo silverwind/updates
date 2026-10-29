@@ -1,7 +1,7 @@
 import {
   highlightDiff, parseUvDependencies, parseDuration, matchesAny, commaSeparatedToArray,
   timestamp, textTable, pMap, expandDepTypes, uvTypes, cargoTypes, cargoTargetTypes, patternToRegex,
-  npmTypes,
+  npmTypes, shortenHash,
 } from "./utils.ts";
 
 test("highlightDiff", () => {
@@ -13,6 +13,10 @@ test("highlightDiff", () => {
     [">=2.0.0", ">=2.6.5", ">=2.[0.0]"], ["4.0.0-alpha.2", "4.0.0-beta.11", "4.0.0-[alpha.2]"],
     ["537ccb7", "6941e05", "[537ccb7]"],
   ]) expect(highlightDiff(oldValue, newValue, str => `[${str}]`), `${oldValue} to ${newValue}`).toBe(expected);
+});
+
+test("shortenHash strips any algorithm prefix", () => {
+  expect(["sha-256:abcdef012345", "abcdef012345"].map(shortenHash)).toEqual(["abcdef0", "abcdef0"]);
 });
 
 test("parseUvDependencies", () => {

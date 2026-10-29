@@ -9,7 +9,7 @@ import {timerel} from "timerel";
 import {
   npmTypes, uvTypes, goTypes, cargoTypes, cargoTargetTypes, expandDepTypes, parseUvDependencies, nonPackageEngines,
   parseDuration, parsePositiveInt, matchesAny, memoizeAsync, timestamp, forgeDirs, modeByFileName, pMap, tryOrNull,
-  walkUpSync, getOrSet,
+  walkUpSync, getOrSet, shortenHash, shortenPair,
 } from "./utils/utils.ts";
 import {
   fieldSep, normalizeUrl, fetchTimeout, goProbeTimeout, maxSockets,
@@ -30,10 +30,10 @@ import {fetchPypiInfo, isPypiRange, pypiSatisfies, updatePyprojectToml, updateRe
 import {
   resolveGoProxyChain, parseGoNoProxy,
   parseGoMod, parseGoModule, parseGoWork, resolveGoWorkModule, fetchGoProxyInfo, updateGoMod, rewriteGoImports,
-  getGoInfoUrl, goModulePathForVersion, shortenGoVersion, shortenGoModule,
+  getGoInfoUrl, goModulePathForVersion, shortenGoHash, shortenGoVersion, shortenGoModule,
 } from "./modes/go.ts";
 import {
-  parseActionRef, parseUsesLine, getForgeApiBaseUrl, walkYamlPair,
+  parseActionRef, parseUsesLine, getForgeApiBaseUrl, walkYamlPair, yamlLines,
   fetchActionTagDate, formatActionVersion,
   updateWorkflowFile, isWorkflowFile, resolveWorkflowFiles, resolveSelfApiUrl,
   type ActionRef, type YamlPathEntry,
@@ -224,7 +224,7 @@ function displayKey(value: string): string {
 }
 
 function buildOutput(deps: DepsByMode): Output {
-  const output: Output = {results: {}};
+  const output: Output = {results: Object.create(null)};
   const rowsPerName = new Map<string, number>();
   const modes = Object.entries(deps).sort(([left], [right]) => modeOrder.indexOf(left) - modeOrder.indexOf(right));
   for (const [mode, modeDeps] of modes) {
@@ -237,18 +237,15 @@ function buildOutput(deps: DepsByMode): Output {
     for (const [key, {oldPrint, newPrint, oldOrig, date: _date, cooldownDays: _cooldownDays, ...props}] of Object.entries(modeDeps)) {
       const [type, name, ref] = key.split(fieldSep);
       if (typeof oldPrint === "string") props.old = oldPrint;
-      else if (typeof oldOrig === "string" && !isJsr(oldOrig)) props.old = mode === "go" ? shortenGoVersion(oldOrig) : oldOrig;
+      else if (typeof oldOrig === "string" && !isJsr(oldOrig)) props.old = oldOrig;
       if (typeof newPrint === "string") props.new = newPrint;
-      if (mode === "go") props.new = shortenGoVersion(props.new);
-      else if (mode === "actions" && !props.digestOnly) {
-        props.old = stripv(props.old);
-        props.new = stripv(props.new);
-      }
+      if (mode === "go") Object.assign(props, shortenPair(props.old, props.new, shortenGoVersion, shortenGoHash));
+      else if (mode === "actions") Object.assign(props, shortenPair(props.old, props.new, stripv));
 
       const label = ref && rowsPerName.get(rowId(mode, key))! > 1 ?
         mode === "pypi" ? ref : `${name}${mode === "actions" ? "@" : ":"}${displayKey(ref)}` : name;
-      const modeResults = output.results[mode] ??= {};
-      (modeResults[displayKey(type)] ??= {})[label] = props;
+      const modeResults = output.results[mode] ??= Object.create(null);
+      (modeResults[displayKey(type)] ??= Object.create(null))[label] = props;
     }
   }
   for (const modeResults of Object.values(output.results)) {
@@ -445,9 +442,9 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
   validatePin(config.pin); // the CLI validates on parse, the programmatic caller has not
   const globalPin: Record<string, string> = config.pin ?? {};
   const resolvePin = (names: Array<string>, filePin: Record<string, string>, noDowngrade?: Config["pinNoDowngrade"]) => {
-    const authored = names.find(name => globalPin[name]);
+    const authored = names.find(name => Object.hasOwn(globalPin, name));
     if (authored) return {pinnedRange: globalPin[authored], pinNoDowngrade: false};
-    const inherited = names.find(name => filePin[name]);
+    const inherited = names.find(name => Object.hasOwn(filePin, name));
     const inheritedFromRenovate = Boolean(inherited && Array.isArray(noDowngrade) && noDowngrade.includes(inherited));
     return {pinnedRange: inherited && !inheritedFromRenovate ? filePin[inherited] : undefined, pinNoDowngrade: inheritedFromRenovate};
   };
@@ -490,7 +487,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
     return true;
   };
 
-  const addDep = (mode: string, key: string, old: string, oldOrig: string) => {
+  const addDep = (mode: string, key: string, old: string, oldOrig?: string) => {
     deps[mode][key] = {old, oldOrig} as Dep;
   };
 
@@ -553,7 +550,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
             mode === "npm" ? npmTargetName(selectorName(depType, name), value) : mode === "pypi" ? normalizePep503(name) : name,
             name), filters, depType)) continue;
           if (mode === "npm") addNpmDep(key, name, value);
-          else if (mode === "go") addDep(mode, key, shortenGoVersion(value), stripv(value));
+          else if (mode === "go") addDep(mode, key, stripv(value));
           else if (validRange(value)) addDep(mode, key, normalizeRange(value), value);
         }
       }
@@ -602,7 +599,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
   const actionDepInfos: Array<ActionRef & {key: string, apiUrl: string, filters: FileFilters, comment: string,
     identity: DependencyIdentity}> = [];
   const dockerDepInfos: Array<{key: string, ref: DockerImageRef, filters: FileFilters}> = [];
-  type MakeDepInfo = {mode: "make" | "shell", key: string, oldSpec: string, filters: FileFilters, newSpec?: string} & (
+  type MakeDepInfo = {mode: "make" | "shell", key: string, filters: FileFilters} & (
     {kind: "go", installPath: string, version: string} |
     {kind: "docker", image: MakeDockerImage}
   );
@@ -737,7 +734,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
       fileData[relPath] = {absPath: file, content, fileType: "workflow", workflowLines};
       const yamlPath: Array<YamlPathEntry> = [];
 
-      for (const [lineNumber, line] of content.split(/\r?\n/).entries()) {
+      for (const [lineNumber, line] of yamlLines(content.split(/\r?\n/))) {
         if (actionsEnabled) {
           const parsed = parseUsesLine(line);
           const action = parsed && parseActionRef(parsed.value);
@@ -802,20 +799,16 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
         const key = dependencyKey(relPath, installPath, version);
         if (!canIncludeDep(specMode, key, resolveDependencyIdentity("go", installPath), filters, specMode)) continue;
         if (modeDeps[key]) continue;
-        modeDeps[key] = {old: stripv(version), oldOrig: version} as Dep;
-        makeDepInfos.push({
-          mode: specMode, kind: "go", key, oldSpec: `${installPath}@${version}`, installPath, version, filters,
-        });
+        modeDeps[key] = {old: `${installPath}@${version}`, oldPrint: version} as Dep;
+        makeDepInfos.push({mode: specMode, kind: "go", key, installPath, version, filters});
       }
       for (const image of images) {
-        const key = dependencyKey(relPath, image.writtenImage, image.ref.tag);
+        const key = dependencyKey(relPath, image.writtenImage, `${image.ref.tag}${image.digest ? `@${image.digest}` : ""}`);
         if (!canIncludeDep(specMode, key, resolveDependencyIdentity("docker", image.writtenImage), filters, specMode)) continue;
         if (modeDeps[key]) continue;
-        const parsed = parseDockerTag(image.ref.tag);
-        if (!parsed) continue;
-        const oldSpec = formatMakeImageSpec(image.writtenImage, image.ref.tag, image.digest);
-        modeDeps[key] = {old: parsed.version, oldOrig: image.ref.tag} as Dep;
-        makeDepInfos.push({mode: specMode, kind: "docker", key, oldSpec, image, filters});
+        if (!parseDockerTag(image.ref.tag)) continue;
+        modeDeps[key] = {old: formatMakeImageSpec(image.writtenImage, image.ref.tag, image.digest), oldPrint: image.ref.tag} as Dep;
+        makeDepInfos.push({mode: specMode, kind: "docker", key, image, filters});
       }
       continue;
     }
@@ -858,7 +851,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
       for (const [name, value] of Object.entries(goWork.replace)) {
         const key = manifestDependencyKey("replace", workspaceSuffix, name);
         if (!internalNames.has(name) && canIncludeDep(mode, key, resolveDependencyIdentity(mode, name), filters, "replace")) {
-          addDep(mode, key, shortenGoVersion(value), stripv(value));
+          addDep(mode, key, stripv(value));
         }
       }
       continue;
@@ -1095,8 +1088,8 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
         const dep: Dep = modeDeps[key] = {
           old: maybeUrlDeps[key].old,
           new: newRange,
-          oldPrint: hashRe.test(oldRef) ? oldRef.substring(0, 7) : oldRef,
-          newPrint: hashRe.test(newRef) ? newRef.substring(0, 7) : newRef,
+          oldPrint: hashRe.test(oldRef) ? shortenHash(oldRef) : oldRef,
+          newPrint: hashRe.test(newRef) ? shortenHash(newRef) : newRef,
           info: `https://github.com/${user}/${repo}`,
           cooldownDays,
         };
@@ -1143,7 +1136,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
     const commitShaToTag = new Map<string, string>();
     for (const tag of tags) {
       entryByName.set(tag.name, tag);
-      if (tag.commitSha) commitShaToTag.set(tag.commitSha, tag.name);
+      if (tag.commitSha) commitShaToTag.set(tag.commitSha.toLowerCase(), tag.name);
     }
     const tagsByAllowedVersions = new Map<string | undefined, {
       tagByVersion: Map<string, string>, versions: Array<string>, allowedTags: Set<string>,
@@ -1208,12 +1201,14 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
     await pMap(infos, async (info) => {
       try {
         const {key, host, ref, comment, isHash} = info;
+        const normalizedRef = ref.toLowerCase();
+        const isPinnedSha = (sha: string) => sha.toLowerCase().startsWith(normalizedRef) || normalizedRef.startsWith(sha.toLowerCase());
         const dep = deps.actions[key];
         const infoUrl = `${info.name.startsWith("self:") ? apiUrl.replace(/\/api\/v1$/, "") : `https://${host || "github.com"}`}/${owner}/${repo}`;
 
         let oldRef = ref;
         if (isHash) {
-          oldRef = comment || commitShaToTag.get(ref) || commitShaToTag.entries().find(([sha]) => sha.startsWith(ref))?.[1] || "";
+          oldRef = comment || commitShaToTag.get(normalizedRef) || commitShaToTag.entries().find(([sha]) => sha.startsWith(normalizedRef))?.[1] || "";
         } else if (!isVersionLikeRef(ref)) {
           oldRef = "";
         }
@@ -1226,7 +1221,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
         if (!result) { // a commented sha pin still follows its ref when no newer version exists
           if (!isHash || !comment) { delete deps.actions[key]; return; }
           const newDigest = await getExactDigest(comment);
-          if (!newDigest || newDigest.startsWith(ref) || ref.startsWith(newDigest)) { delete deps.actions[key]; return; }
+          if (!newDigest || isPinnedSha(newDigest)) { delete deps.actions[key]; return; }
           if (versionOpts.cooldownDays) {
             const date = await getDate(newDigest, comment);
             if (date === undefined) throw new Error(`Unable to fetch the commit date for ${owner}/${repo}@${comment}`);
@@ -1235,7 +1230,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
           dep.old = comment;
           dep.new = comment;
           dep.oldDigest = ref;
-          dep.newDigest = newDigest;
+          dep.newDigest = newDigest.substring(0, ref.length);
           dep.digestOnly = true;
           dep.info = infoUrl;
           setDepAge(dep, await tryOrNull(getDate(newDigest, comment)));
@@ -1246,11 +1241,12 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
         const newRef = filteredTags.allowedTags.has(formatted) ? formatted : newTag;
 
         if (isHash) {
-          if (!newCommitSha || newCommitSha.startsWith(ref) || ref.startsWith(newCommitSha)) { delete deps.actions[key]; return; }
-          dep.old = ref;
-          dep.new = newCommitSha.substring(0, ref.length);
-          dep.oldPrint = oldRef; // the tag the pinned sha resolved to
-          dep.newPrint = comment && entryByName.get(newRef)!.commitSha === newCommitSha ? newRef : newTag;
+          const newPrint = comment && entryByName.get(newRef)!.commitSha === newCommitSha ? newRef : newTag;
+          if (!newCommitSha || isPinnedSha(newCommitSha) && (!comment || newPrint === oldRef)) { delete deps.actions[key]; return; }
+          dep.old = oldRef; // the tag the pinned sha resolved to
+          dep.new = newPrint;
+          dep.oldDigest = ref;
+          dep.newDigest = newCommitSha.substring(0, ref.length);
         } else {
           if (newRef === ref) { delete deps.actions[key]; return; }
           dep.new = newRef;
@@ -1289,7 +1285,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
             return;
           }
           const newDigest = await resolveDockerTagDigest(info.ref.fullImage, newTag);
-          if (!newDigest || newDigest === info.ref.digest && !result) { delete deps.docker[info.key]; return; }
+          if (!newDigest) { delete deps.docker[info.key]; return; }
           dep.oldDigest = info.ref.digest;
           dep.newDigest = newDigest;
           dep.digestOnly = info.ref.digestOnly;
@@ -1323,9 +1319,9 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
         const newModulePath = data.newPath ?? goModulePathForVersion(modulePath, newVersion);
         const newInstallPath = `${newModulePath}${info.installPath.slice(modulePath.length)}`;
         const formattedVersion = formatVersionPrecision(newVersion, info.version);
-        if (newInstallPath === info.installPath && formattedVersion === info.version) { delete modeDeps[info.key]; return; }
-        info.newSpec = `${newInstallPath}@${formattedVersion}`;
-        dep.new = formattedVersion;
+        dep.new = `${newInstallPath}@${formattedVersion}`;
+        if (formattedVersion === info.version) delete dep.oldPrint; // a path-only migration shows the full specs
+        else dep.newPrint = formattedVersion;
         dep.info = getGoInfoUrl(newModulePath);
         setDepAge(dep, data.Time);
       } else {
@@ -1339,8 +1335,8 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
         const newDigest = info.image.digest ?
           await resolveDockerTagDigest(fullImage, dockerUpdate.newTag) : null;
         if (info.image.digest && !newDigest) { delete modeDeps[info.key]; return; }
-        info.newSpec = formatMakeImageSpec(info.image.writtenImage, dockerUpdate.newTag, newDigest);
-        dep.new = dockerUpdate.newTag;
+        dep.new = formatMakeImageSpec(info.image.writtenImage, dockerUpdate.newTag, newDigest);
+        dep.newPrint = dockerUpdate.newTag;
         dep.info = getDockerInfoUrl(info.image.ref);
         setDepAge(dep, dockerUpdate.date);
       }
@@ -1353,6 +1349,12 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
     await Promise.all([...modeTasks, actionsTask, dockerTask, makeTask]);
   } finally {
     if (!config.noCache) await flushCacheWrites();
+  }
+
+  for (const modeDeps of Object.values(deps)) {
+    for (const [key, dep] of Object.entries(modeDeps)) {
+      if (dep.new === (dep.oldOrig || dep.old) && dep.newDigest === dep.oldDigest) delete modeDeps[key];
+    }
   }
 
   if (!hasDeps(deps)) {
@@ -1389,15 +1391,12 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
       if (mode === "actions") {
         for (const [relPath, entries] of byRelPath(Object.entries(deps.actions))) {
           const fileInfo = fileData[relPath];
-          fileInfo.content = updateWorkflowFile(fileInfo.content, entries.map(([key, dep]) => {
-            const oldRef = dep.oldDigest ?? dep.old;
-            return {
-              name: key.split(fieldSep)[1], oldRef,
-              newRef: dep.newDigest ? dep.newDigest.substring(0, oldRef.length) : dep.new,
-              oldComment: actionComments.get(key) || undefined,
-              newComment: dep.digestOnly ? undefined : hashRe.test(dep.old) ? dep.newPrint : undefined,
-            };
-          }));
+          fileInfo.content = updateWorkflowFile(fileInfo.content, entries.map(([key, dep]) => ({
+            name: key.split(fieldSep)[1], oldRef: dep.oldDigest ?? dep.old,
+            newRef: dep.newDigest ?? dep.new,
+            oldComment: actionComments.get(key) || undefined,
+            newComment: dep.oldDigest && !dep.digestOnly ? dep.new : undefined,
+          })));
           write(fileInfo.absPath, fileInfo.content);
         }
       } else if (mode === "docker") {
@@ -1410,10 +1409,9 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
           write(absPath, updateFn(content, Object.fromEntries(entries)));
         }
       } else if (mode === "make" || mode === "shell") {
-        const makeUpdates = makeDepInfos.filter(info => info.newSpec && deps[mode][info.key]);
-        for (const [relPath, infos] of Map.groupBy(makeUpdates, info => info.key.split(fieldSep)[0])) {
+        for (const [relPath, entries] of byRelPath(Object.entries(deps[mode]))) {
           const {absPath, content} = fileData[relPath];
-          write(absPath, updateMakefile(content, infos.map(info => ({oldSpec: info.oldSpec, newSpec: info.newSpec!}))));
+          write(absPath, updateMakefile(content, entries.map(([_key, dep]) => ({oldSpec: dep.old, newSpec: dep.new}))));
         }
       } else if (mode === "go") {
         for (const goMod of [...goModFiles, ...(plainFiles.go ?? [])]) {

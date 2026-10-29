@@ -9,7 +9,7 @@ import {cliBaseConfig, options, optionalValueOptions, parseMixedArg, getOptionKe
   loadConfig, findConfigUp} from "./config.ts";
 import {forgeHostOf, normalizeUrl, redactUrlCredentials, verifyToken} from "./modes/shared.ts";
 import {removeToken, storeToken} from "./utils/tokens.ts";
-import {highlightDiff, parsePositiveInt, splitGlobAlternatives, textTable} from "./utils/utils.ts";
+import {highlightDiff, parsePositiveInt, shortenHash, splitGlobAlternatives, textTable} from "./utils/utils.ts";
 import {shortenGoModule} from "./modes/go.ts";
 import type {Arg} from "./config.ts";
 import type {Output, UpdatesOptions} from "./api.ts";
@@ -306,14 +306,15 @@ function formatOutput(output: Output, red: (text: string) => string, green: (tex
   for (const mode of modes) {
     const rows = Object.values(output.results[mode]).flatMap(typeDeps => Object.entries(typeDeps));
     for (const [name, data] of rows.sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) {
-      const id = `${mode}|${name}|${data.old}|${data.new}`;
+      const digests = data.newDigest && data.old === data.new ? {old: shortenHash(data.oldDigest!), new: shortenHash(data.newDigest)} : null;
+      const id = [mode, name, data.old, data.new, ...(digests ? [data.oldDigest, data.newDigest] : [])].join("|");
       if (seen.has(id)) continue;
       seen.add(id);
       arr.push([
         mode === "go" ? shortenGoModule(name) : name,
         ...(hasMultipleModes ? [mode] : []),
-        highlightDiff(data.old, data.new, red),
-        highlightDiff(data.new, data.old, green),
+        digests ? red(digests.old) : highlightDiff(data.old, data.new, red),
+        digests ? green(digests.new) : highlightDiff(data.new, data.old, green),
         data.age || "",
         data.info || "",
       ]);
