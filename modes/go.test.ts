@@ -26,23 +26,7 @@ import {
   fieldSep, isGoPseudoVersion, findNewVersion, goPinAllowsDowngrade, goVersionPredicate,
   type GoProxyEntry, type ModeContext,
 } from "./shared.ts";
-import {rejection} from "../utils/testing.ts";
-
-async function withEnv(values: Record<string, string | undefined>, fn: () => void | Promise<void>): Promise<void> {
-  const assign = (entries: Record<string, string | undefined>) => {
-    for (const [name, value] of Object.entries(entries)) {
-      if (value === undefined) delete process.env[name];
-      else process.env[name] = value;
-    }
-  };
-  const saved = Object.fromEntries(Object.keys(values).map(name => [name, process.env[name]]));
-  assign(values);
-  try {
-    await fn();
-  } finally {
-    assign(saved);
-  }
-}
+import {rejection, withEnv} from "../utils/testing.ts";
 
 test("parseGoProxy", () => {
   expect(parseGoProxy("https://a,https://b|https://c")).toEqual([

@@ -15,24 +15,7 @@ import {esc} from "../utils/utils.ts";
 import {pep440Versioning} from "../utils/semver.ts";
 import {flushCacheWrites} from "../utils/fetchCache.ts";
 import {storeToken} from "../utils/tokens.ts";
-import {rejection} from "../utils/testing.ts";
-
-const setEnv = (values: Record<string, string | undefined>) => {
-  for (const [name, value] of Object.entries(values)) {
-    if (value === undefined) delete env[name];
-    else env[name] = value;
-  }
-};
-
-const withEnv = async (values: Record<string, string | undefined>, fn: () => Promise<unknown>) => {
-  const saved = Object.fromEntries(Object.keys(values).map(name => [name, env[name]]));
-  setEnv(values);
-  try {
-    await fn();
-  } finally {
-    setEnv(saved);
-  }
-};
+import {rejection, sequential, setEnv, withEnv} from "../utils/testing.ts";
 
 const configHome = mkdtempSync(join(tmpdir(), "updates-tokens-"));
 const savedConfigHome = env.XDG_CONFIG_HOME;
@@ -350,8 +333,6 @@ test.each([
 ])("findNewVersion go mode returns %s", (_name, data, opts, expected) => {
   expect(findNewVersion(data, {...goOpts, ...opts})).toBe(expected);
 });
-
-const sequential = (test as any).serial ?? test;
 
 sequential("getForgeTokens", {concurrent: false}, async () => {
   const forHost = (host: string) => getForgeTokens(host, "https://api.github.com");

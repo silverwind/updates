@@ -1,8 +1,9 @@
 import {resolve, join} from "node:path";
 import {readdirSync} from "node:fs";
+import {env} from "node:process";
 import {parse} from "../utils/semver.ts";
 import {
-  type ModeContext, commitHashRe, ForgeError, fetchForge, formatVersionPrecision, githubApiUrl, parseCommitDate,
+  type ModeContext, commitHashRe, ForgeError, fetchForge, formatVersionPrecision, getExecFile, githubApiUrl, parseCommitDate,
 } from "./shared.ts";
 import {getCache, setCache} from "../utils/fetchCache.ts";
 import {forgeDirs, longestFirstAlternation} from "../utils/utils.ts";
@@ -10,10 +11,38 @@ import {forgeDirs, longestFirstAlternation} from "../utils/utils.ts";
 export type ActionRef = {host: string | null, owner: string, repo: string, ref: string, name: string, isHash: boolean};
 
 export function parseActionRef(uses: string): ActionRef | null {
-  const match = /^(?!\.\.?\/)(?:https?:\/\/([^/]+)\/)?(([^/@]+)\/([^/@]+)[^@]*)@(.+)$/.exec(uses);
+  const match = /^(?!\.\.?\/|\$\/)(self:|https?:\/\/([^/]+)\/)?(([^/@]+)\/([^/@]+)[^@]*)@(.+)$/.exec(uses);
   if (!match) return null;
-  const [_match, host = null, path, owner, repo, ref] = match;
-  return {host, owner, repo, ref, name: host ? `${host}/${path}` : path, isHash: commitHashRe.test(ref)};
+  const [_match, prefix = "", host = null, path, owner, repo, ref] = match;
+  return {host, owner, repo, ref, name: host ? `${host}/${path}` : `${prefix}${path}`, isHash: commitHashRe.test(ref)};
+}
+
+export function instanceUrlFromRemote(remote: string): string | null {
+  if (!remote.includes("://")) {
+    const host = /^(?:[^@/]+@)?([^/:\\]{2,}):/.exec(remote)?.[1];
+    return host ? `https://${host}` : null;
+  }
+  try {
+    const url = new URL(remote);
+    if (url.protocol === "ssh:") return `https://${url.hostname}`;
+    if (url.protocol === "https:" || url.protocol === "http:") return `${url.origin}${url.pathname.replace(/(?:\/[^/]+){2}\/?$/, "")}`;
+  } catch {}
+  return null;
+}
+
+async function originInstanceUrl(dir: string): Promise<string | null> {
+  try {
+    const {stdout} = await (await getExecFile())("git", ["remote", "get-url", "origin"], {cwd: dir, encoding: "utf8", timeout: 5000});
+    return instanceUrlFromRemote(stdout.trim());
+  } catch {
+    return null;
+  }
+}
+
+export async function resolveSelfApiUrl(dir: string): Promise<string> {
+  const serverUrl = (env.GITEA_SERVER_URL || env.GITHUB_SERVER_URL || "").replace(/\/+$/, "");
+  const instanceUrl = serverUrl && serverUrl !== "https://github.com" ? serverUrl : await originInstanceUrl(dir);
+  return instanceUrl ? `${instanceUrl}/api/v1` : "";
 }
 
 export function getForgeApiBaseUrl(host: string | null, forgeApiUrl: string): string {

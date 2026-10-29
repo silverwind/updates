@@ -11,7 +11,7 @@
 - `pyproject.toml` - uv dependencies, including `build-system.requires` and `tool.uv.dev-dependencies`
 - `go.mod`, `go.work` - go dependencies
 - `Cargo.toml` - rust dependencies, including workspaces
-- `.{github,gitea,forgejo}/{workflows,actions}`, `workflow-templates`, `action.{yml,yaml}` - actions and docker images
+- `.{github,gitea,forgejo}/{workflows,actions}`, `workflow-templates`, `action.{yml,yaml}` - actions, including Gitea's `self:owner/repo@ref`, and docker images
 - `{Docker,Container}file*`, `*.{Docker,Container}file`, `compose*.{yml,yaml}`, `docker-*.{yml,yaml}` - docker images
 - `Makefile`, `*.mk`, `*.sh` - go tool versions in `go install` paths and docker image tags, of any registry in variables named `*_IMAGE`
 
@@ -157,6 +157,7 @@ const output = await updates({
 |`UPDATES_FORGE_TOKENS`|Comma-separated list of `host:token` pairs for forge APIs, e.g. `github.com:ghp_xxx,localhost:3500:tok_xxx`. The host must match the URL exactly, port included|
 |`UPDATES_GITHUB_API_TOKEN`|GitHub API token, with `GITHUB_API_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN` and `HOMEBREW_GITHUB_API_TOKEN` as fallbacks, in that order. Only ever sent to GitHub itself|
 |`UPDATES_GITEA_API_TOKEN`|Gitea or Forgejo API token, with `GITEA_API_TOKEN`, `GITEA_AUTH_TOKEN`, `GITEA_TOKEN` and `FORGEJO_TOKEN` as fallbacks, in that order. Only ever sent to the instance in `GITEA_URL`|
+|`GITEA_SERVER_URL`|URL of the Gitea instance `self:` actions resolve against, e.g. `https://gitea.example.com`. Falls back to `GITHUB_SERVER_URL` unless it is github.com, then to the `origin` remote|
 |`GITEA_URL`|URL of the Gitea or Forgejo instance the Gitea tokens belong to, e.g. `https://gitea.example.com`|
 |`pnpm_config__auth`|npm registry credentials as [pnpm](https://pnpm.io/npmrc#_auth) reads them, e.g. `{"https://registry.npmjs.org":{"@":{"authToken":"npm-token"},"@org":{"authToken":"org-token"}}}`. `@` is the registry-wide token, `@org` binds a token and registry to that scope. The `_auth` key of pnpm's global `config.yaml` is read the same way|
 |`GOPROXY`|Go module proxy list, honored as go itself does. Default: `https://proxy.golang.org,direct`|
