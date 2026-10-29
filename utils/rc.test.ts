@@ -1,10 +1,10 @@
-import {mkdtempSync, writeFileSync} from "node:fs";
+import {mkdtempSync, rmSync, writeFileSync} from "node:fs";
 import {join} from "node:path";
 import {tmpdir} from "node:os";
 import {env} from "node:process";
 import rc, {parseIni, parseEnvVars} from "./rc.ts";
 
-test("parseIni", () => {
+test("parseIni parses values and preserves prototype-named keys", () => {
   const cases: Array<[string, string, Record<string, string>]> = [
     ["basic", "key=value", {key: "value"}],
     ["multiple lines", "a=1\nb=2\nc=3", {a: "1", b: "2", c: "3"}],
@@ -21,6 +21,8 @@ test("parseIni", () => {
     ["CR lines and literal backslashes", "a=1\rcafile=C:\\new\\ca.pem", {a: "1", cafile: "C:\\new\\ca.pem"}],
     ["inline comments", "a=1 # note\nb=2; note\nc=3\\#4\\;5\nd=\"6#7;8\"", {a: "1", b: "2", c: "3#4;5", d: "6#7;8"}],
     ["JSON", "{\"key\": \"value\"}", {key: "value"}],
+    ["prototype-named keys", "__proto__=old\n__proto__=1\nconstructor=2\ntoString=3\nhasOwnProperty=4\nvalueOf=5",
+      {["__proto__"]: "1", constructor: "2", toString: "3", hasOwnProperty: "4", valueOf: "5"}],
     ["empty", "", {}],
     ["only comments", "# comment\n; another", {}],
     ["scoped auth", [
@@ -47,10 +49,27 @@ test("project config is found from the supplied directory", () => {
   expect(rc("npm", {registry: "https://default.test"}).registry).not.toBe("https://from-manifest-dir.test");
 });
 
-test("parseEnvVars", () => {
+test("rc preserves JSON prototype keys as own properties when merging config files", () => {
+  const dir = mkdtempSync(join(tmpdir(), "updates-rc-prototype-"));
+  try {
+    writeFileSync(join(dir, ".testrcprototyperc"), '{"__proto__":{"inherited":"value"},"constructor":"1"}');
+    const result = rc("testrcprototype", {}, dir);
+    expect(Object.getOwnPropertyDescriptor(result, "__proto__")).toEqual({
+      value: {inherited: "value"}, writable: true, enumerable: true, configurable: true,
+    });
+    expect(result.inherited).toBeUndefined();
+    expect(result.constructor).toBe("1");
+  } finally {
+    rmSync(dir, {recursive: true, force: true});
+  }
+});
+
+test("parseEnvVars preserves nested values under prototype-named keys", () => {
   const vars = {
     testrc_option: "42", testrc2_someOpt__a: "42", testrc2_someOpt__z: "99", testrc3_a__b__c: "deep", TESTRC4_upperCase: "187",
     testrc5_opt__a: "42", testrc5_opt__a__b: "186", testrc6_w__w__: "18629", testrc7___z__i__: "9999",
+    testrc8_constructor__value: "1", testrc8_toString__value: "2", testrc8_hasOwnProperty__value: "3", testrc8_valueOf__value: "4",
+    testrc8_nested__constructor__value: "5",
   };
   Object.assign(env, vars);
   try {
@@ -58,6 +77,10 @@ test("parseEnvVars", () => {
     expect(["testrc3_", "testrc4_", "testrc5_", "testrc6_", "testrc7_"].map(prefix => parseEnvVars(prefix))).toMatchObject([
       {a: {b: {c: "deep"}}}, {upperCase: "187"}, {opt: {a: "42"}}, {w: {w: "18629"}}, {z: {i: "9999"}},
     ]);
+    expect(parseEnvVars("testrc8_")).toEqual({
+      constructor: {value: "1"}, toString: {value: "2"}, hasOwnProperty: {value: "3"}, valueOf: {value: "4"},
+      nested: {constructor: {value: "5"}},
+    });
   } finally {
     for (const key of Object.keys(vars)) delete env[key];
   }

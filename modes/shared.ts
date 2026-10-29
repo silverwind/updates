@@ -442,11 +442,12 @@ export async function getForgeTokens(host: string, forgeApiUrl: string): Promise
   if (token) return [token];
 
   const forgeHost = forgeHostOf(host);
-  const stored = (await readTokens())[forgeHost];
+  const storedTokens = await readTokens();
   const tokens = (forgeHost === "github.com" || host === urlHost(forgeApiUrl) ? githubTokenEnvNames :
     host === urlHost(env.GITEA_URL ?? "") ? giteaTokenEnvNames : []).map(name => env[name]);
   const header = (await getExtraheaderTokens()).get(forgeHost);
-  return Array.from(new Set([stored, ...tokens, header].filter(Boolean) as string[]));
+  return Array.from(new Set([Object.hasOwn(storedTokens, forgeHost) ? storedTokens[forgeHost] : undefined,
+    ...tokens, header].filter(Boolean) as string[]));
 }
 
 export async function verifyToken(host: string, token: string, forgeApiUrl = githubApiUrl): Promise<string> {

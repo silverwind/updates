@@ -123,7 +123,7 @@ export function expandDepTypes(types: Array<string>, doc: Record<string, any>): 
     if (!value || typeof value !== "object") return;
     const segment = segments[index];
     const keys = segment !== "*" ? [segment] : Array.isArray(value) ? [] : Object.keys(value);
-    for (const key of keys) walk(segments, index + 1, [...path, key], value[key], structured);
+    for (const key of keys) if (Object.hasOwn(value, key)) walk(segments, index + 1, [...path, key], value[key], structured);
   };
   for (const type of types) walk(type.split("."), 0, [], doc, type.startsWith("target.*."));
   return ret;

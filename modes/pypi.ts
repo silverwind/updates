@@ -12,14 +12,12 @@ type PypiFile = {upload_time_iso_8601?: string, yanked?: boolean};
 const pypiDataByCtx = new WeakMap<ModeContext, Map<string, Promise<Record<string, any>>>>();
 
 function reducePypiReleases(data: Record<string, any>): Record<string, Array<PypiFile>> {
-  const releases: Record<string, Array<PypiFile>> = {};
-  for (const [version, files] of Object.entries(data ?? {})) {
-    releases[version] = ((files as Array<Record<string, any>>) ?? []).map(file => ({
+  return Object.fromEntries(Object.entries(data ?? {}).map(([version, files]) => [
+    version, ((files as Array<Record<string, any>>) ?? []).map(file => ({
       ...(file.upload_time_iso_8601 && {upload_time_iso_8601: file.upload_time_iso_8601}),
       ...(file.yanked && {yanked: true}),
-    }));
-  }
-  return releases;
+    })),
+  ]));
 }
 
 export async function fetchPypiInfo(name: string, ctx: ModeContext): Promise<PackageInfo> {

@@ -108,7 +108,7 @@ test.each([
       "replace github.com/old/mod => github.com/new/mod v1.0.0", "", "exclude (", "\tgithub.com/foo/bar v1.3.0",
       "\tgithub.com/foo/bar v1.4.0", ")", "", "tool (", "\tgithub.com/foo/bar/cmd/tool // build tool", ")"],
     {deps: {}, indirect: {"github.com/baz/qux": "v0.5.0"}, replace: {"github.com/new/mod": "v1.0.0"},
-      tool: {"github.com/foo/bar": "v1.2.3"}, exclude: {"github.com/foo/bar": ["v1.3.0", "v1.4.0"]}}],
+      tool: {"github.com/foo/bar": "v1.2.3"}, exclude: new Map([["github.com/foo/bar", new Set(["v1.3.0", "v1.4.0"])]])}],
   ["a single-line require", ["module example.com/mod", "", "require foo v1.0.0"],
     {deps: {"foo": "v1.0.0"}, indirect: {}, replace: {}, tool: {}}],
   ["invalid and placeholder versions are not update candidates",
@@ -140,8 +140,24 @@ test.each([
     ["module example.com/mod", "", "require (", "\tgithub.com/a v1.0.0", "\tgithub.com/a/b v1.1.0", ")", "",
       "tool (", "\tgithub.com/a/b/cmd/first", "\tgithub.com/a/b/cmd/second", ")"],
     {deps: {"github.com/a": "v1.0.0"}, indirect: {}, replace: {}, tool: {"github.com/a/b": "v1.1.0"}}],
+  ["a direct tool module named constructor",
+    ["require constructor v1.0.0", "tool constructor/cmd/tool"],
+    {deps: {}, indirect: {}, replace: {}, tool: {constructor: "v1.0.0"}}],
+  ["exclusions named like inherited properties",
+    ["exclude constructor v1.0.0", "exclude __proto__ v1.0.0", "exclude __proto__ v1.1.0"],
+    {deps: {}, indirect: {}, replace: {}, tool: {},
+      exclude: new Map([["constructor", new Set(["v1.0.0"])], ["__proto__", new Set(["v1.0.0", "v1.1.0"])]])}],
 ])("parseGoMod %s", (_name, lines, expected) => {
   expect(parseGoMod(lines.join("\n"))).toEqual(expected);
+});
+
+test("parseGoMod preserves __proto__ module paths in dependency tables", () => {
+  for (const [type, content] of [
+    ["deps", "require __proto__ v1.0.0"],
+    ["indirect", "require __proto__ v1.0.0 // indirect"],
+    ["replace", "replace example.com/original => __proto__ v1.0.0"],
+    ["tool", "require __proto__ v1.0.0\ntool __proto__/cmd/tool"],
+  ] as const) expect(Object.entries(parseGoMod(content)[type])).toEqual([["__proto__", "v1.0.0"]]);
 });
 
 test("Go display transforms", () => {
@@ -222,10 +238,14 @@ test.each([
     "module x\n\nrequire example.com/dep v1.0.0\r\n",
     {[`deps${fieldSep}example.com/dep`]: {old: "1.0.0", new: "1.1.0"}},
     "module x\n\nrequire example.com/dep v1.1.0\r\n", {}],
+  ["a __proto__ module's major version and import mapping",
+    goMod("require __proto__ v1.0.0"),
+    {[`deps${fieldSep}__proto__`]: {old: "1.0.0", new: "2.0.0"}},
+    goMod("require __proto__/v2 v2.0.0"), {["__proto__"]: "__proto__/v2"}],
 ])("updateGoMod rewrites %s", (_name, content, deps, expected, expectedRewrites) => {
   const [result, rewrites] = updateGoMod(content, deps);
   expect(result).toBe(expected);
-  expect(rewrites).toEqual(expectedRewrites);
+  expect(Object.fromEntries(rewrites)).toEqual(expectedRewrites);
 });
 
 const goProxyBase = "https://proxy";
@@ -516,6 +536,9 @@ test.each([
     ["go 1.24", "", "use ./app", "", "replace (", "\tgithub.com/old/a => github.com/new/a v1.0.0",
       "\tgithub.com/old/b v1.2.0 => github.com/new/b v2.0.0", ")"],
     {use: ["./app"], replace: {"github.com/new/a": "v1.0.0", "github.com/new/b": "v2.0.0"}}],
+  ["preserves a __proto__ replace target",
+    ["use ./app", "replace example.com/original => __proto__ v1.0.0"],
+    {use: ["./app"], replace: {["__proto__"]: "v1.0.0"}}],
 ])("parseGoWork %s", (_name, lines, expected) => {
   expect(parseGoWork(lines.join("\n"))).toEqual(expected);
 });
@@ -537,10 +560,10 @@ test("resolveGoWorkModule resolves valid members and skips resolution errors", (
 });
 
 test("rewriteGoImports rewrites matching imports and skips empty work", () => {
-  rewriteGoImports(resolve("fixtures/go"), {}, () => { throw new Error("unexpected write"); });
-  rewriteGoImports(resolve("fixtures/cargo"), {"github.com/old": "github.com/new"}, () => { throw new Error("unexpected write"); });
+  rewriteGoImports(resolve("fixtures/go"), new Map(), () => { throw new Error("unexpected write"); });
+  rewriteGoImports(resolve("fixtures/cargo"), new Map([["github.com/old", "github.com/new"]]), () => { throw new Error("unexpected write"); });
   let written = "";
-  rewriteGoImports(resolve("fixtures/go"), {"github.com/google/uuid": "github.com/google/uuid/v2"}, (_, content) => { written = content; });
+  rewriteGoImports(resolve("fixtures/go"), new Map([["github.com/google/uuid", "github.com/google/uuid/v2"]]), (_, content) => { written = content; });
   expect(written).toContain(`"github.com/google/uuid/v2"`);
   expect(written).not.toContain(`"github.com/google/uuid"`);
 });
@@ -558,7 +581,7 @@ import "github.com/old"
 
 var ordinary = "github.com/old/string"
 `;
-  expect(rewriteGoImportPaths(content, {"github.com/old": "github.com/new/v2"})).toBe(content
+  expect(rewriteGoImportPaths(content, new Map([["github.com/old", "github.com/new/v2"]]))).toBe(content
     .replace('"github.com/old/sub"', '"github.com/new/v2/sub"')
     .replace("`github.com/old/raw`", "`github.com/new/v2/raw`")
     .replace('import "github.com/old"', 'import "github.com/new/v2"'));
@@ -566,5 +589,5 @@ var ordinary = "github.com/old/string"
 
 test("rewriteGoImportPaths handles a 10 MB unterminated block comment", () => {
   const content = `/*${"a".repeat(10 * 1024 * 1024)}`;
-  expect(rewriteGoImportPaths(content, {"github.com/old": "github.com/new/v2"})).toBe(content);
+  expect(rewriteGoImportPaths(content, new Map([["github.com/old", "github.com/new/v2"]]))).toBe(content);
 });

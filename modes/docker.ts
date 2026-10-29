@@ -209,7 +209,8 @@ async function fetchHubJson(url: string, ctx: ModeContext, name: string, reduce:
 
 function fetchDockerHubTagPages(namespace: string, repo: string, ctx: ModeContext): Promise<HubTags> {
   return dedupe(hubTagsByCtx, ctx, `${namespace}/${repo}`, async () => {
-    const tags: HubTags = {dates: {}, digests: new Map()};
+    const dates = new Map<string, string>();
+    const digests = new Map<string, string>();
     const baseUrl = `${ctx.dockerApiUrl}/v2/repositories/${namespace}/${repo}/tags`;
     const pageUrl = (page: number) => `${baseUrl}?page_size=${dockerTagPageSize}&ordering=last_updated&page=${page}`;
     const fetchPage = (url: string) => fetchHubJson(url, ctx, `${namespace}/${repo}`, data => ({
@@ -220,13 +221,13 @@ function fetchDockerHubTagPages(namespace: string, repo: string, ctx: ModeContex
     }), `${url}#digest`); // the digest in the key keeps entries reduced without it from being reused
     const take = (page: any): void => {
       for (const tag of page.results ?? []) {
-        tags.dates[tag.name] = tag.tag_last_pushed || tag.last_updated || "";
-        if (typeof tag.digest === "string") tags.digests.set(tag.name, tag.digest);
+        dates.set(tag.name, tag.tag_last_pushed || tag.last_updated || "");
+        if (typeof tag.digest === "string") digests.set(tag.name, tag.digest);
       }
     };
 
     const page = await fetchPage(pageUrl(1));
-    if (!page) return tags;
+    if (!page) return {dates: {}, digests};
     take(page);
     const pageUrls = Array.from({length: Math.min(maxDockerTagPages, Math.ceil(page.count / dockerTagPageSize)) - 1},
       (_, index) => pageUrl(index + 2));
@@ -235,7 +236,7 @@ function fetchDockerHubTagPages(namespace: string, repo: string, ctx: ModeContex
       if (!laterPage) break;
       take(laterPage);
     }
-    return tags;
+    return {dates: Object.fromEntries(dates), digests};
   });
 }
 
@@ -288,7 +289,7 @@ async function fetchRegistry(url: string, path: string, ctx: ModeContext, method
 
 function fetchRegistryTags(registry: string, path: string, ctx: ModeContext): Promise<Record<string, string>> {
   return dedupe(registryTagsByCtx, ctx, `${registry}/${path}`, async () => {
-    const tags: Record<string, string> = {};
+    const tags = new Map<string, string>();
     if (registry === "quay.io") { // lists newest first, its registry API lexically
       for (let page = 1; page <= maxDockerTagPages; page++) {
         const url = `https://quay.io/api/v1/repository/${path}/tag/?limit=100&onlyActiveTags=true&page=${page}`;
@@ -296,10 +297,10 @@ function fetchRegistryTags(registry: string, path: string, ctx: ModeContext): Pr
         if (noTagsStatus.has(res.status)) break;
         if (!res.ok) throwFetchError(res, url, `${registry}/${path}`, registry);
         const data = await res.json();
-        for (const {name, start_ts} of data.tags ?? []) tags[name] = start_ts ? new Date(start_ts * 1000).toISOString() : "";
+        for (const {name, start_ts} of data.tags ?? []) tags.set(name, start_ts ? new Date(start_ts * 1000).toISOString() : "");
         if (!data.has_additional) break;
       }
-      return tags;
+      return Object.fromEntries(tags);
     }
     let url: string | undefined = registryUrl(registry, path, "tags/list?n=1000");
     for (let page = 0; url && page < maxDockerTagPages; page++) {
@@ -307,14 +308,14 @@ function fetchRegistryTags(registry: string, path: string, ctx: ModeContext): Pr
       if (noTagsStatus.has(res.status)) break;
       if (!res.ok) throwFetchError(res, url, `${registry}/${path}`, registry);
       const data = await res.json();
-      for (const tag of data.tags ?? []) tags[tag] = "";
+      for (const tag of data.tags ?? []) tags.set(tag, "");
       for (const {tag = [], timeUploadedMs} of Object.values<any>(data.manifest ?? {})) { // Google registries list upload times
-        for (const name of tag) if (Number(timeUploadedMs)) tags[name] = new Date(Number(timeUploadedMs)).toISOString();
+        for (const name of tag) if (Number(timeUploadedMs)) tags.set(name, new Date(Number(timeUploadedMs)).toISOString());
       }
       const next = nextLinkRe.exec(res.headers.get("link") ?? "")?.[1];
       url = next ? new URL(next, url).href : undefined;
     }
-    return tags;
+    return Object.fromEntries(tags);
   });
 }
 

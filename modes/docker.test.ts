@@ -317,9 +317,13 @@ test.each([
   ["reads tag_last_pushed", [{name: "18", tag_last_pushed: "2024-01-01"}, {name: "20", tag_last_pushed: "2024-06-01"}],
     {"18": "2024-01-01", "20": "2024-06-01"}],
   ["falls back to last_updated", [{name: "18", last_updated: "2024-01-01"}], {"18": "2024-01-01"}],
+  ["preserves __proto__ tags", [{name: "__proto__", tag_last_pushed: "2024-01-01"}],
+    Object.fromEntries([["__proto__", "2024-01-01"]])],
 ])("fetchDockerHubTags %s", async (_name, results, expected) => {
   const ctx = hubCtx(hubBody({count: results.length, results}));
-  expect(await fetchDockerHubTags("library", "node", ctx)).toEqual(expected);
+  const tags = await fetchDockerHubTags("library", "node", ctx);
+  expect(tags).toEqual(expected);
+  expect(Object.getPrototypeOf(tags)).toBe(Object.prototype);
 });
 
 test("fetchDockerHubTags walks past pages older than the authored tag", async () => {
@@ -431,7 +435,7 @@ test("filterStableTags drops the ubuntu development series", () => {
   expect(filterStableTags("node", tags, now)).toBe(tags);
 });
 
-test("fetchDockerInfo lists another registry's tags across pages after its token challenge", async () => {
+test("fetchDockerInfo preserves __proto__ tags across registry pages after its token challenge", async () => {
   const requests: Array<string> = [];
   const respond = (url: string, authorization?: string) => {
     if (url.startsWith("https://ghcr.io/token")) return Response.json({token: "t"});
@@ -444,7 +448,7 @@ test("fetchDockerInfo lists another registry's tags across pages after its token
         "sha256:b": {tag: ["1.2.0"], timeCreatedMs: "0"},
       }});
     }
-    return Response.json({tags: ["1.0.0"]}, {headers: {link: '</v2/owner/repo/tags/list?last=1.0.0&n=1000>; rel="next"'}});
+    return Response.json({tags: ["1.0.0", "__proto__"]}, {headers: {link: '</v2/owner/repo/tags/list?last=1.0.0&n=1000>; rel="next"'}});
   };
   const doFetch = (url: string, opts?: RequestInit) => {
     const authorization = (opts?.headers as Record<string, string> | undefined)?.authorization;
@@ -452,7 +456,10 @@ test("fetchDockerInfo lists another registry's tags across pages after its token
     return Promise.resolve(respond(url, authorization));
   };
   const [info] = await fetchDockerInfo("ghcr.io/owner/repo", hubCtx(doFetch));
-  expect(info.tags).toEqual({"1.0.0": "", "1.1.0": "2026-01-01T00:00:00.000Z", "1.2.0": ""});
+  expect(info.tags).toEqual(Object.fromEntries([
+    ["1.0.0", ""], ["__proto__", ""], ["1.1.0", "2026-01-01T00:00:00.000Z"], ["1.2.0", ""],
+  ]));
+  expect(Object.getPrototypeOf(info.tags)).toBe(Object.prototype);
   expect(requests).toEqual([
     "https://ghcr.io/v2/owner/repo/tags/list?n=1000",
     "https://ghcr.io/token?service=ghcr.io&scope=repository%3Aowner%2Frepo%3Apull",
@@ -461,16 +468,26 @@ test("fetchDockerInfo lists another registry's tags across pages after its token
   ]);
 });
 
-test("fetchDockerInfo dates quay.io tags from its tag API", async () => {
+test("fetchDockerInfo preserves __proto__ tags and dates from quay.io", async () => {
   const requests: Array<string> = [];
   const ctx = hubCtx((url: string, opts?: RequestInit) => {
     requests.push(`${url} ${(opts?.headers as Record<string, string>)["x-requested-with"]}`);
-    if (url.endsWith("page=1")) return hubBody({tags: [{name: "v2", start_ts: 1767225600}], has_additional: true})();
+    if (url.endsWith("page=1")) return hubBody({tags: [{name: "__proto__", start_ts: 1767225600}], has_additional: true})();
     return hubBody({tags: [{name: "v1"}], has_additional: false})();
   });
-  expect((await fetchDockerInfo("quay.io/org/repo", ctx))[0].tags).toEqual({v2: "2026-01-01T00:00:00.000Z", v1: ""});
+  const [info] = await fetchDockerInfo("quay.io/org/repo", ctx);
+  expect(info.tags).toEqual(Object.fromEntries([["__proto__", "2026-01-01T00:00:00.000Z"], ["v1", ""]]));
+  expect(Object.getPrototypeOf(info.tags)).toBe(Object.prototype);
   expect(requests).toEqual([
     "https://quay.io/api/v1/repository/org/repo/tag/?limit=100&onlyActiveTags=true&page=1 XMLHttpRequest",
     "https://quay.io/api/v1/repository/org/repo/tag/?limit=100&onlyActiveTags=true&page=2 XMLHttpRequest",
   ]);
+});
+
+test("fetchDockerInfo preserves __proto__ tag dates from Google registry manifests", async () => {
+  const [info] = await fetchDockerInfo("gcr.io/org/repo", hubCtx(hubBody({manifest: {
+    "sha256:a": {tag: ["__proto__"], timeUploadedMs: "1767225600000"},
+  }})));
+  expect(info.tags).toEqual(Object.fromEntries([["__proto__", "2026-01-01T00:00:00.000Z"]]));
+  expect(Object.getPrototypeOf(info.tags)).toBe(Object.prototype);
 });

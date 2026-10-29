@@ -148,19 +148,19 @@ type NpmRegistryConfig = {registry?: string, registries: Record<string, string>}
 
 export function parsePnpmRegistryConfig(content: string): NpmRegistryConfig {
   let registry: string | undefined;
-  const registries: Record<string, string> = {};
+  const registries = new Map<string, string>();
   let inRegistries = false;
   for (const line of content.split(/\r?\n/)) {
     const pair = parseYamlPair(line);
     if (pair?.indent === 0) {
       inRegistries = pair.key === "registries";
       if (pair.key === "registry" && pair.value) registry = pair.value;
-      if (inRegistries) for (const entry of flowPairs(pair.value, pair.valueIndex)) registries[entry.key] = entry.value;
+      if (inRegistries) for (const entry of flowPairs(pair.value, pair.valueIndex)) registries.set(entry.key, entry.value);
     } else if (inRegistries && pair?.value) {
-      registries[pair.key] = pair.value;
+      registries.set(pair.key, pair.value);
     }
   }
-  return {registry, registries: Object.fromEntries(Object.entries(registries).filter(([_scope, url]) => !url.includes("${")))};
+  return {registry, registries: Object.fromEntries([...registries].filter(([_scope, url]) => !url.includes("${")))};
 }
 
 function readIfExists(file: string): {content: string} | null {
@@ -173,14 +173,14 @@ function readIfExists(file: string): {content: string} | null {
 }
 
 export function parseYamlMap(content: string): Record<string, any> {
-  const root: Record<string, any> = {};
+  const root: Record<string, any> = Object.create(null);
   const stack = [{indent: -1, map: root}];
   for (const line of content.split(/\r?\n/)) {
     const pair = parseYamlPair(line);
     if (!pair) continue;
     while (pair.indent <= stack.at(-1)!.indent) stack.pop();
     const map = stack.at(-1)!.map;
-    map[pair.key] = pair.value || {};
+    map[pair.key] = pair.value || Object.create(null);
     if (!pair.value) stack.push({indent: pair.indent, map: map[pair.key]});
   }
   return root;
@@ -189,21 +189,22 @@ export function parseYamlMap(content: string): Record<string, any> {
 export type PnpmAuth = {tokens: Record<string, string>, registries: Record<string, string>};
 
 export function parsePnpmAuth(value: unknown, source: string): PnpmAuth {
-  const result: PnpmAuth = {tokens: {}, registries: {}};
+  const tokens: Record<string, string> = {};
+  const registries = new Map<string, string>();
   try {
     const parsed = (typeof value === "string" ? JSON.parse(value) : value ?? {}) as Record<string, Record<string, {authToken?: string}>>;
     for (const [url, scopes] of Object.entries(parsed)) {
       const {host, pathname, href} = new URL(url);
       for (const [scope, {authToken}] of Object.entries(scopes)) {
         if (typeof authToken !== "string") continue;
-        result.tokens[`//${host}${pathname.replace(/\/$/, "")}/:${scope === "@" ? "" : `${scope}:`}_authToken`] = authToken;
-        result.registries[scope === "@" ? "default" : scope] = href;
+        tokens[`//${host}${pathname.replace(/\/$/, "")}/:${scope === "@" ? "" : `${scope}:`}_authToken`] = authToken;
+        registries.set(scope === "@" ? "default" : scope, href);
       }
     }
   } catch (err) {
     throw new Error(`Invalid _auth in ${source}: ${(err as Error).message}`);
   }
-  return result;
+  return {tokens, registries: Object.fromEntries(registries)};
 }
 
 const nativeRegistryCache = new Map<string, NpmRegistryConfig>();

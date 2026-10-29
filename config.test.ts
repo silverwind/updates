@@ -2,11 +2,33 @@ import {mkdtemp, mkdir, readFile, rm, writeFile} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
 import {cliConfigBaseDir} from "./api.ts";
-import {cliBaseConfig, loadConfig} from "./config.ts";
+import {cliBaseConfig, loadConfig, parsePinArg} from "./config.ts";
 import {rejection} from "./utils/testing.ts";
 
 test("the package API preserves cliConfigBaseDir", () => {
   expect(cliConfigBaseDir).toBe(cliBaseConfig);
+});
+
+test("parses and validates __proto__ pins while preserving the result prototype", () => {
+  const pin = parsePinArg(["react=^1", "__proto__=^1", "__proto__=^2"]);
+  expect(pin).toStrictEqual({react: "^1", ["__proto__"]: "^2"});
+  expect(Object.getPrototypeOf(pin)).toBe(Object.prototype);
+  expect(() => parsePinArg(["__proto__=invalid"])).toThrow("Invalid pin range for __proto__: invalid");
+});
+
+test("keeps Renovate pins named after prototype properties unless locally overridden", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "updates-config-"));
+  try {
+    await writeFile(join(dir, "updates.config.mjs"), 'export default {pin: {toString: "^2", react: "^2"}};\n');
+    await writeFile(join(dir, "renovate.json"), JSON.stringify({packageRules: [{
+      matchPackageNames: ["constructor", "toString", "hasOwnProperty", "valueOf", "react", "vue"], allowedVersions: "^1",
+    }]}));
+    const config = await loadConfig(dir);
+    expect(config.pin).toEqual({constructor: "^1", toString: "^2", hasOwnProperty: "^1", valueOf: "^1", react: "^2", vue: "^1"});
+    expect(config.pinNoDowngrade).toEqual(["constructor", "hasOwnProperty", "valueOf", "vue"]);
+  } finally {
+    await rm(dir, {recursive: true, force: true});
+  }
 });
 
 test("config discovery starts at the target and loads only the highest-priority module", async () => {

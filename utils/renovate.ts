@@ -130,7 +130,7 @@ export function testRenovateMatcher(matcher: RegExp, value: string, packageName:
 
 function applyRules(rules: Array<Record<string, unknown>>, inheritCooldown: boolean) {
   const enabledRules: Array<{enabled: boolean, matchers: RenovateVersionRule}> = [];
-  const pin: Record<string, string> = {};
+  const pin = new Map<string, string>();
   const pinCandidates = new Set<string>();
   const versionRules: Array<RenovateVersionRule> = [];
 
@@ -159,12 +159,12 @@ function applyRules(rules: Array<Record<string, unknown>>, inheritCooldown: bool
   for (const name of pinCandidates) {
     const allowedVersions = versionRules.findLast(rule =>
       rule.allowedVersions !== undefined && matchesRenovateRule(rule, name, name))?.allowedVersions;
-    if (allowedVersions && validRange(allowedVersions)) pin[name] = allowedVersions;
+    if (allowedVersions && validRange(allowedVersions)) pin.set(name, allowedVersions);
   }
 
   const disabled = enabledRules.some(rule => !rule.enabled) ? new RenovateNameMatcher("renovate-package-rules", (packageName, depName) =>
     enabledRules.findLast(rule => matchesRenovateRule(rule.matchers, packageName, depName))?.enabled === false) : undefined;
-  return {disabled, pin, versionRules};
+  return {disabled, pin: Object.fromEntries(pin), versionRules};
 }
 
 function normalize(raw: Record<string, unknown>, opts: RenovateImportOptions): Partial<Config> {

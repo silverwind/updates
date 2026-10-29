@@ -78,14 +78,14 @@ test("fetchPypiInfo shares a normalized request in flight", async () => {
   expect(urls).toEqual(["https://pypi.org/pypi/foo-bar-baz/json"]);
 });
 
-test("fetchPypiInfo preserves yank and upload metadata through the size reducer", async () => {
+test("fetchPypiInfo preserves release keys, yank and upload metadata through the size reducer", async () => {
   const files = (allYanked: boolean) => Array.from({length: 40}, (_, idx) => ({
     filename: `pkg-${idx}.whl`,
     url: `https://files.pythonhosted.org/packages/${"0".repeat(200)}/pkg-${idx}.whl`,
     upload_time_iso_8601: idx === 39 ? "2024-12-01T00:00:00.000000Z" : "2025-01-01T00:00:00.000000Z",
     yanked: allYanked || idx === 39,
   }));
-  const mockData = {info: {name: "pkg", version: "1.0.1"}, releases: {"1.0.0": files(false), "1.0.1": files(true)}};
+  const mockData = {info: {name: "pkg", version: "1.0.1"}, releases: {"1.0.0": files(false), "1.0.1": files(true), ["__proto__"]: files(true)}};
   const [data] = await fetchPypiInfo("reduced-pkg", pypiCtx(mockData));
   expect(data.releases["1.0.0"]).toHaveLength(40);
   expect(data.releases["1.0.0"][0]).toEqual({
@@ -97,6 +97,8 @@ test("fetchPypiInfo preserves yank and upload metadata through the size reducer"
   });
   expect(data.releases["1.0.1"]).toHaveLength(40);
   expect(data.releases["1.0.1"].every((file: any) => file.yanked)).toBe(true);
+  expect(Object.entries(data.releases).at(-1)).toEqual(["__proto__", data.releases["1.0.1"]]);
+  expect(Object.getPrototypeOf(data.releases)).toBe(Object.prototype);
 });
 
 test("fetchPypiInfo failure throws", async () => {

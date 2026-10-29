@@ -120,11 +120,11 @@ export function parseGoModule(content: string): string {
 }
 
 export function parseGoMod(content: string) {
-  const deps: Record<string, string> = {};
-  const indirect: Record<string, string> = {};
-  const replace: Record<string, string> = {};
-  const tool: Record<string, string> = {};
-  const exclude: Record<string, Array<string>> = {};
+  const deps: Record<string, string> = Object.create(null);
+  const indirect: Record<string, string> = Object.create(null);
+  const replace: Record<string, string> = Object.create(null);
+  const tool: Record<string, string> = Object.create(null);
+  const exclude: GoExcludes = new Map();
   const replacedModules = new Set<string>();
   const toolPaths: string[] = [];
 
@@ -140,7 +140,7 @@ export function parseGoMod(content: string) {
     } else if (kind === "exclude" || kind === "require") {
       const match = requireEntryRe.exec(value);
       if (!match) continue;
-      if (kind === "exclude") (exclude[trimQuotes(match[1])] ??= []).push(match[2]);
+      if (kind === "exclude") getOrSet(exclude, trimQuotes(match[1]), () => new Set<string>()).add(match[2]);
       else if (isUsableGoVersion(match[2])) (value.includes("// indirect") ? indirect : deps)[trimQuotes(match[1])] = match[2];
     }
   }
@@ -160,7 +160,7 @@ export function parseGoMod(content: string) {
     }
   }
 
-  return {deps, indirect, replace, tool, ...(Object.keys(exclude).length && {exclude})};
+  return {deps, indirect, replace, tool, ...(exclude.size && {exclude})};
 }
 
 type GoExcludes = Map<string, Set<string>>;
@@ -178,9 +178,7 @@ function getGoExcludes(goCwd: string, type: string, ctx: ModeContext): GoExclude
     const manifestPath = resolve(manifest);
     const excludes = getOrSet(byManifest, manifestPath, (): GoExcludes | null => {
       try {
-        return new Map(Object.entries(parseGoMod(readFileSync(manifestPath, "utf8")).exclude ?? {}).map(
-          ([name, versions]) => [name, new Set(versions)],
-        ));
+        return parseGoMod(readFileSync(manifestPath, "utf8")).exclude ?? new Map();
       } catch {
         return null;
       }
@@ -398,8 +396,8 @@ const quotedPath = (name: string) => `("?)${esc(name)}\\2`;
 const versionedPathRe = (prefix: string, name: string, version: string) =>
   new RegExp(`(${prefix})${quotedPath(name)}(\\s+)v${version}(?=\\s*(?://.*)?$)`);
 
-export function updateGoMod(pkgStr: string, deps: Deps): [string, Record<string, string>] {
-  const majorVersionRewrites: Record<string, string> = {};
+export function updateGoMod(pkgStr: string, deps: Deps): [string, Map<string, string>] {
+  const majorVersionRewrites = new Map<string, string>();
   const entries = Object.entries(deps);
   if (!entries.length) return [pkgStr, majorVersionRewrites];
   const lineEndings = pkgStr.match(/\r?\n/g) ?? [];
@@ -455,7 +453,7 @@ export function updateGoMod(pkgStr: string, deps: Deps): [string, Record<string,
     }
     if (requireVersion !== null && rewriteLines(
       requireLines.get(name), versionedPathRe("^\\s*(?:require\\s+)?", name, requireVersion), replacement,
-    ) && newPath !== name) majorVersionRewrites[name] = newPath;
+    ) && newPath !== name) majorVersionRewrites.set(name, newPath);
     if (depType === "tool" && newPath !== name) {
       rewriteLines(
         toolLines.get(name), new RegExp(`(^\\s*(?:tool\\s+)?)("?)${esc(name)}((?:/[^"\\s]+)?)\\2(?=\\s*(?://.*)?$)`),
@@ -468,8 +466,8 @@ export function updateGoMod(pkgStr: string, deps: Deps): [string, Record<string,
 
 const goTokenRe = /\s+|\/\/[^\n]*(?:\n|$)|\/\*[\s\S]*?(?:\*\/|$)|[A-Za-z_][A-Za-z0-9_]*|"(?:\\[\s\S]|[^"\\])*(?:"|$)|`[^`]*(?:`|$)|'(?:\\[\s\S]|[^'\\])*(?:'|$)|./g;
 
-export function rewriteGoImportPaths(content: string, rewrites: Record<string, string>): string {
-  const entries = Object.entries(rewrites).sort(([left], [right]) => right.length - left.length);
+export function rewriteGoImportPaths(content: string, rewrites: Map<string, string>): string {
+  const entries = [...rewrites].sort(([left], [right]) => right.length - left.length);
   if (!entries.length) return content;
   const replacements: Array<{start: number, end: number, value: string}> = [];
   const addImport = (value: string, start: number): boolean => {
@@ -513,8 +511,8 @@ const goIgnoredPath = (path: string): boolean => { // mirrors go's `./...`, glob
   return name === "vendor" || name === "testdata" || name[0] === "_";
 };
 
-export function rewriteGoImports(projectDir: string, majorVersionRewrites: Record<string, string>, write: (file: string, content: string) => void): void {
-  if (!Object.keys(majorVersionRewrites).length) return;
+export function rewriteGoImports(projectDir: string, majorVersionRewrites: Map<string, string>, write: (file: string, content: string) => void): void {
+  if (!majorVersionRewrites.size) return;
   const nested = new Map<string, boolean>();
   const inNestedModule = (dir: string): boolean => dir.length > projectDir.length &&
     getOrSet(nested, dir, () => existsSync(join(dir, "go.mod")) || inNestedModule(dirname(dir)));
@@ -529,7 +527,7 @@ export function rewriteGoImports(projectDir: string, majorVersionRewrites: Recor
 
 export function parseGoWork(content: string): {use: string[], replace: Record<string, string>} {
   const use: string[] = [];
-  const replace: Record<string, string> = {};
+  const replace: Record<string, string> = Object.create(null);
   for (const {kind, value} of scanGoDirectives(content.split(/\r?\n/))) {
     if (kind === "use") {
       use.push(value.split(/\s/, 1)[0]);

@@ -3,7 +3,7 @@ import {join} from "node:path";
 import {tmpdir} from "node:os";
 import {env, platform} from "node:process";
 import {
-  checkUrlDep, fetchJsrInfo, fetchNpmInfo, getLatestCommit, isCatalogRef, isJsr, isLocalDep, normalizeRange,
+  checkUrlDep, fetchJsrInfo, fetchNpmInfo, fetchNpmVersionInfo, getLatestCommit, isCatalogRef, isJsr, isLocalDep, normalizeRange,
   parseJsrDependency, parseNpmAlias, resolutionsBasePackage, updatePackageJson, updateVersionRange,
 } from "./npm.ts";
 import {type ModeContext, fetchTimeout, fieldSep} from "./shared.ts";
@@ -140,13 +140,20 @@ const textRes = (body: unknown) => Promise.resolve({ok: true, text: () => Promis
 const jsonRes = (body: unknown) => Promise.resolve({ok: true, json: () => Promise.resolve(body), headers: new Headers()});
 const tempDir = () => mkdtempSync(join(tempRoot, "dir-"));
 
-test("fetchJsrInfo", async () => {
-  const jsrData = {latest: "1.0.0", versions: {"1.0.0": {createdAt: "2025-01-01T00:00:00Z"}, "0.9.0": {createdAt: "2024-06-01T00:00:00Z"}}};
+test("fetchJsrInfo preserves __proto__ versions and timestamps", async () => {
+  const jsrData = {latest: "1.0.0", versions: {
+    "1.0.0": {createdAt: "2025-01-01T00:00:00Z"}, "0.9.0": {createdAt: "2024-06-01T00:00:00Z"},
+    ["__proto__"]: {createdAt: "2024-01-01T00:00:00Z"},
+  }};
   const ctx = modeCtx({jsrApiUrl: "https://jsr.io", doFetch: () => textRes(jsrData)});
   const [data, registry] = await fetchJsrInfo("@std/semver", ctx);
   expect(registry).toBe("https://jsr.io");
   expect(data).toMatchObject({name: "@std/semver", "dist-tags": {latest: "1.0.0"}, time: {"1.0.0": "2025-01-01T00:00:00Z"}});
-  expect(Object.keys(data.versions)).toEqual(["1.0.0", "0.9.0"]);
+  expect(Object.keys(data.versions)).toEqual(["1.0.0", "0.9.0", "__proto__"]);
+  expect(Object.getPrototypeOf(data.versions)).toBe(Object.prototype);
+  expect(Object.getPrototypeOf(data.time)).toBe(Object.prototype);
+  expect(Object.hasOwn(data.time, "__proto__")).toBe(true);
+  expect(data.time).toMatchObject({["__proto__"]: "2024-01-01T00:00:00Z"});
   expect((await rejection(fetchJsrInfo("noscopepkg", {} as ModeContext)))?.message).toMatch("Invalid JSR package name");
   const failureCtx = modeCtx({jsrApiUrl: "https://jsr.io",
     doFetch: () => Promise.resolve({ok: false, status: 404, statusText: "Not Found"})});
@@ -265,6 +272,24 @@ test("fetchNpmInfo requests the full doc only when dates are needed, never reusi
   await fetchNpmInfo("both", "dependencies", {}, {}, ctx);
   await fetchNpmInfo("both", "dependencies", {}, {needsDates: true}, ctx);
   expect(accepts.slice(2)).toEqual(["application/vnd.npm.install-v1+json", undefined]);
+});
+
+test("fetchNpmInfo preserves __proto__ versions when reducing registry documents", async () => {
+  const [data] = await fetchNpmInfo("pkg", "dependencies", {}, {}, modeCtx({noCache: true, doFetch: () => textRes({versions: {
+    "1.0.0": {readme: "x".repeat(16384)}, ["__proto__"]: {deprecated: "obsolete"},
+  }})}));
+  expect(data.versions).toEqual({"1.0.0": {}, ["__proto__"]: {deprecated: true}});
+  expect(Object.getPrototypeOf(data.versions)).toBe(Object.prototype);
+});
+
+test("fetchNpmVersionInfo ignores inherited timestamps in cached and full documents", async () => {
+  for (const needsDates of [false, true]) {
+    const ctx = modeCtx({noCache: true, doFetch: () => Promise.resolve(Response.json({time: {}}))});
+    if (needsDates) await fetchNpmInfo("pkg", "dependencies", {}, {needsDates}, ctx);
+    for (const version of ["constructor", "__proto__", "toString", "hasOwnProperty", "valueOf"]) {
+      expect((await fetchNpmVersionInfo("pkg", version, {}, {needsDates}, ctx)).date, `${version}, needsDates: ${needsDates}`).toBe("");
+    }
+  }
 });
 
 test("getLatestCommit", async () => {

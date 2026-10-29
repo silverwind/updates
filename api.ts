@@ -224,7 +224,7 @@ function displayKey(value: string): string {
 }
 
 function buildOutput(deps: DepsByMode): Output {
-  const output: Output = {results: Object.create(null)};
+  const results = new Map<string, Map<string, Map<string, Dep>>>();
   const rowsPerName = new Map<string, number>();
   const modes = Object.entries(deps).sort(([left], [right]) => modeOrder.indexOf(left) - modeOrder.indexOf(right));
   for (const [mode, modeDeps] of modes) {
@@ -244,17 +244,11 @@ function buildOutput(deps: DepsByMode): Output {
 
       const label = ref && rowsPerName.get(rowId(mode, key))! > 1 ?
         mode === "pypi" ? ref : `${name}${mode === "actions" ? "@" : ":"}${displayKey(ref)}` : name;
-      const modeResults = output.results[mode] ??= Object.create(null);
-      (modeResults[displayKey(type)] ??= Object.create(null))[label] = props;
+      getOrSet(getOrSet(results, mode, () => new Map()), displayKey(type), () => new Map()).set(label, props);
     }
   }
-  for (const modeResults of Object.values(output.results)) {
-    for (const [type, typeDeps] of Object.entries(modeResults)) {
-      modeResults[type] = Object.fromEntries(Object.entries(typeDeps)
-        .sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0));
-    }
-  }
-  return output;
+  return {results: Object.fromEntries(Array.from(results, ([mode, types]) => [mode, Object.fromEntries(Array.from(types,
+    ([type, typeDeps]) => [type, Object.fromEntries([...typeDeps].sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0))]))]))};
 }
 
 function versionAllowedPredicate(mode: string, allowedVersions: string): (version: string, tag?: string) => boolean {
@@ -1268,6 +1262,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
       for (const info of infos) rejectDep("docker", info.key, err);
       return;
     }
+    const tagDate = (tag: string) => Object.hasOwn(data.tags, tag) ? data.tags[tag] : undefined;
 
     await pMap(infos, async (info) => {
       try {
@@ -1280,7 +1275,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
         ) : null;
         const newTag = result?.newTag ?? oldTag;
         if (info.ref.digest) {
-          if (!result && !passesCooldown(data.tags[oldTag] || (opts.cooldownDays ? await resolveDate?.(oldTag) : ""), opts.cooldownDays, opts.now)) {
+          if (!result && !passesCooldown(tagDate(oldTag) || (opts.cooldownDays ? await resolveDate?.(oldTag) : ""), opts.cooldownDays, opts.now)) {
             delete deps.docker[info.key];
             return;
           }
@@ -1296,7 +1291,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
 
         dep.new = newTag;
         dep.info = getDockerInfoUrl(info.ref);
-        setDepAge(dep, result?.date || data.tags[newTag]);
+        setDepAge(dep, result?.date || tagDate(newTag));
       } catch (err) {
         rejectDep("docker", info.key, err);
       }

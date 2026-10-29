@@ -170,13 +170,14 @@ export function validatePin(pin: Config["pin"]): void {
 }
 
 export function parsePinArg(arg: Arg): Record<string, string> {
-  const result: Record<string, string> = {};
+  const pins = new Map<string, string>();
   for (const val of Array.isArray(arg) ? arg : [arg]) {
     if (typeof val !== "string") continue;
     const eq = val.indexOf("=");
     if (eq < 1) throw new Error(`Invalid pin: ${val}, expected <dep>=<range>`);
-    result[val.slice(0, eq)] = val.slice(eq + 1);
+    pins.set(val.slice(0, eq), val.slice(eq + 1));
   }
+  const result = Object.fromEntries(pins);
   validatePin(result);
   return result;
 }
@@ -212,7 +213,7 @@ export const loadConfig = memoizeAsync(async (startDir: string): Promise<Config>
   const config: Config = {...renovateConfig, ...raw};
   if (renovateConfig.pin) {
     config.pin = {...renovateConfig.pin, ...raw.pin};
-    config.pinNoDowngrade = Object.keys(renovateConfig.pin).filter(name => !raw.pin?.[name]);
+    config.pinNoDowngrade = Object.keys(renovateConfig.pin).filter(name => !Object.hasOwn(raw.pin ?? {}, name));
   }
   if (renovateConfig.overrides?.length) config.overrides = [...renovateConfig.overrides, ...(raw.overrides ?? [])];
   if (renovateConfig.filePatterns) config.filePatterns = {...renovateConfig.filePatterns, ...raw.filePatterns};

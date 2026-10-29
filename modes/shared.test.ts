@@ -334,10 +334,13 @@ test.each([
   expect(findNewVersion(data, {...goOpts, ...opts})).toBe(expected);
 });
 
-sequential("getForgeTokens", {concurrent: false}, async () => {
+sequential("getForgeTokens ignores inherited host names and resolves configured tokens", {concurrent: false}, async () => {
   const forHost = (host: string) => getForgeTokens(host, "https://api.github.com");
   expect(await forHost("")).toEqual([]);
   expect(await forHost("gitea.example.com")).toEqual([]);
+  for (const host of ["constructor", "__proto__", "toString", "hasOwnProperty", "valueOf"]) {
+    expect(await forHost(host)).toEqual([]);
+  }
   await withEnv({UPDATES_FORGE_TOKENS: "localhost:3500:ported,Git.Example.com:bare,api.github.com:", GH_TOKEN: "env-token"}, async () => {
     expect(await forHost("localhost:3500")).toEqual(["ported"]);
     expect(await forHost("api.github.com")).toContain("env-token");
@@ -351,6 +354,8 @@ sequential("getForgeTokens", {concurrent: false}, async () => {
     expect(await forHost("gitea.example.com")).toEqual(["updates-gitea", "gitea-auth"]);
     expect(await forHost("git.example.com")).toEqual([]);
   });
+  await storeToken("constructor", "stored-constructor");
+  expect(await forHost("constructor")).toEqual(["stored-constructor"]);
 });
 
 test("parseExtraheaders reads a CI token per host", () => {

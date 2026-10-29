@@ -19,6 +19,7 @@ function expectImport(actual: Record<string, any>, {$disabled = [], $enabled = [
   for (const name of $enabled) expect(enabled(name), `${name} should be enabled`).toBe(true);
   const {include: _include, exclude: _exclude, ...rest} = actual;
   expect(rest).toEqual(expected);
+  if (actual.pin) expect(Object.getPrototypeOf(actual.pin)).toBe(Object.prototype);
 }
 
 afterAll(() => rmSync(root, {recursive: true, force: true}));
@@ -35,6 +36,10 @@ test.each([
     {packageRules: [{matchPackageNames: ["react"], allowedVersions: "^18.0.0"}]},
     {pin: {react: "^18.0.0"}, pinNoDowngrade: true,
       renovateVersionRules: [{matchPackageNames: ["react"], allowedVersions: "^18.0.0"}]}],
+  ["allowedVersions preserves a package named __proto__", "renovate.json",
+    {packageRules: [{matchPackageNames: ["__proto__"], allowedVersions: "^1"}]},
+    {pin: {["__proto__"]: "^1"}, pinNoDowngrade: true,
+      renovateVersionRules: [{matchPackageNames: ["__proto__"], allowedVersions: "^1"}]}],
   ["PEP 440 allowedVersions without a pin", "renovate.json", {packageRules: [{matchPackageNames: ["requests"], allowedVersions: "~=2.31"}]},
     {renovateVersionRules: [{matchPackageNames: ["requests"], allowedVersions: "~=2.31"}]}],
   ["later glob and regex allowedVersions rules replace literal pins", "renovate.json", {packageRules: [

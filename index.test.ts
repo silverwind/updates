@@ -1224,6 +1224,25 @@ test.each([1, 5])("docker digest refresh respects cooldown for a Docker Hub and 
   expect((days >= 3 ? await updates(apiOpts({files: [file], modes: ["docker"], cooldown: "3d"})) : output).message).toContain("up to date");
 });
 
+test("docker digest pins ignore inherited tag dates for age and cooldown", async () => {
+  const oldDigest = `sha256:${"a".repeat(64)}`;
+  const newDigest = `sha256:${"b".repeat(64)}`;
+  const image = `${mockUrl.replace("http://", "")}/example/inherited-tag`;
+  const input = `FROM ${image}:constructor@${oldDigest}\n`;
+  const file = join(writeTree("docker-inherited-tag", {Dockerfile: input}), "Dockerfile");
+  lazyRoute("/v2/example/inherited-tag/tags/list", () => ({tags: []}));
+  routes.set("/v2/example/inherited-tag/manifests/constructor", (req, res) => {
+    if (req.method === "HEAD") res.writeHead(200, {"docker-content-digest": newDigest}).end();
+    else res.end(JSON.stringify({annotations: {"org.opencontainers.image.created": "2024-01-01T00:00:00Z"}}));
+  });
+  expect(Object.values((await updates(apiOpts({files: [file], modes: ["docker"]}))).results.docker)[0][image].age).toBeUndefined();
+  const output = await updates(apiOpts({files: [file], modes: ["docker"], cooldown: "3d", update: true}));
+  expect(output.errors).toBeUndefined();
+  expect(Object.values(output.results.docker)[0][image])
+    .toMatchObject({old: "constructor", new: "constructor", oldDigest, newDigest});
+  expect(read(file)).toBe(input.replace(oldDigest, () => newDigest));
+});
+
 test("actions mode does not include docker from workflows", async () => {
   expect((await runCliExec([...actionsArgs, "-j", "-f", actionsDir, "-f", dockerActionsDir])).results.docker).toBeUndefined();
 });

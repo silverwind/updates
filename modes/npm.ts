@@ -87,7 +87,7 @@ const jsrDataByCtx = new WeakMap<ModeContext, Map<string, Promise<Record<string,
 const docCacheKey = (url: string, needsDates: boolean) => `${url}${fieldSep}v2${needsDates ? "-dates" : ""}`;
 
 function reduceNpmDoc(data: Record<string, any>): Record<string, any> {
-  const versions: Record<string, {deprecated?: true}> = {};
+  const versions: Record<string, {deprecated?: true}> = Object.create(null);
   for (const version of Object.keys(data.versions ?? {})) versions[version] = data.versions[version]?.deprecated ? {deprecated: true} : {};
   return {name: data.name, "dist-tags": data["dist-tags"], versions, time: data.time, error: data.error};
 }
@@ -129,13 +129,17 @@ export async function fetchNpmVersionInfo(name: string, version: string, config:
       const data = JSON.parse(result.body);
       const match = /(\d{13})/.exec(data?._npmOperationalInternal?.tmp ?? "");
       let date = match ? new Date(Number(match[1])).toISOString() : "";
-      if (!date && args.needsDates) date = (await npmDataByCtx.get(ctx)?.get(docCacheKey(fullUrl, true)))?.time?.[version] || "";
+      if (!date && args.needsDates) {
+        const time = (await npmDataByCtx.get(ctx)?.get(docCacheKey(fullUrl, true)))?.time;
+        if (time && Object.hasOwn(time, version)) date = time[version] || "";
+      }
       if (!date) {
         const fullData = await tryOrNull(dedupe(npmFullDataByCtx, ctx, fullUrl, async () => {
           const res = await fetchWithRetry(ctx, fullUrl, fetchOpts);
           return res.ok ? await res.json() : null;
         }));
-        date = fullData?.time?.[version] || "";
+        const time = fullData?.time;
+        date = time && Object.hasOwn(time, version) ? time[version] || "" : "";
       }
       return {repository: data.repository, homepage: data.homepage, date, integrity: data.dist?.integrity};
     } catch {
@@ -186,13 +190,12 @@ export async function fetchJsrInfo(packageName: string, ctx: ModeContext): Promi
     if (!("body" in result)) throwFetchError(result.res, url, packageName, "JSR");
 
     const responseData = JSON.parse(result.body);
-    const versions: Record<string, any> = {};
-    const time: Record<string, string> = {};
-    for (const [version, metadata] of Object.entries((responseData.versions ?? {}) as Record<string, any>)) {
-      versions[version] = {version, time: metadata.createdAt};
-      time[version] = metadata.createdAt;
-    }
-    return {name: packageName, "dist-tags": {latest: responseData.latest}, versions, time};
+    const versionEntries = Object.entries((responseData.versions ?? {}) as Record<string, any>);
+    return {
+      name: packageName, "dist-tags": {latest: responseData.latest},
+      versions: Object.fromEntries(versionEntries.map(([version, metadata]) => [version, {version, time: metadata.createdAt}])),
+      time: Object.fromEntries(versionEntries.map(([version, metadata]) => [version, metadata.createdAt])),
+    };
   });
   return [data, ctx.jsrApiUrl];
 }

@@ -64,7 +64,7 @@ test("parseUvDependencies", () => {
   ]);
 });
 
-test("expandDepTypes", () => {
+test("expandDepTypes expands own dependency tables and ignores inherited keys", () => {
   const pyproject = {
     project: {
       "dependencies": ["requests>=2.0.0"],
@@ -84,6 +84,11 @@ test("expandDepTypes", () => {
     ["tool.uv.dev-dependencies", pyproject.tool.uv["dev-dependencies"]],
   ]);
   expect(expandDepTypes(uvTypes, {})).toEqual([]);
+  const prototypeTypes = ["constructor", "__proto__", "toString", "hasOwnProperty", "valueOf"];
+  expect(expandDepTypes(prototypeTypes, {})).toEqual([]);
+  expect(expandDepTypes(["project.constructor", "__proto__.constructor"], {project: {}})).toEqual([]);
+  expect(expandDepTypes(prototypeTypes, Object.fromEntries(prototypeTypes.map(type => [type, {pkg: "1"}]))))
+    .toEqual(prototypeTypes.map(type => [type, {pkg: "1"}]));
 
   const cargo = {
     dependencies: {serde: "1.0"},

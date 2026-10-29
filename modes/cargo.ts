@@ -34,8 +34,8 @@ export async function fetchCratesIoInfo(name: string, ctx: ModeContext): Promise
   const data = await dedupe(cratesIoByCtx, ctx, url, async () => {
     const result = await fetchWithEtag(url, ctx, getFetchOpts(), reduceSparseIndex);
     if (!("body" in result)) throwFetchError(result.res, url, name, ctx.cratesIoUrl);
-    const versions: Record<string, Record<string, never>> = {};
-    const time: Record<string, string> = {};
+    const versions = new Map<string, Record<string, never>>();
+    const time = new Map<string, string>();
     let latest = "";
     let latestPre = "";
     let parsedLines = 0;
@@ -50,8 +50,8 @@ export async function fetchCratesIoInfo(name: string, ctx: ModeContext): Promise
       parsedLines++;
       if (!record?.vers || record.yanked) continue;
       const version = record.vers.split("+")[0];
-      versions[version] = {};
-      if (record.pubtime) time[version] = record.pubtime;
+      versions.set(version, {});
+      if (record.pubtime) time.set(version, record.pubtime);
       const parsed = parse(version);
       if (!parsed) continue;
       if (parsed.prerelease.length) {
@@ -61,7 +61,7 @@ export async function fetchCratesIoInfo(name: string, ctx: ModeContext): Promise
       }
     }
     if (!parsedLines && result.body.trim()) throw new Error(`Invalid JSON from ${url}`);
-    return {name, versions, time, "dist-tags": {latest: latest || latestPre}};
+    return {name, versions: Object.fromEntries(versions), time: Object.fromEntries(time), "dist-tags": {latest: latest || latestPre}};
   });
   return [data, null];
 }

@@ -90,18 +90,22 @@ test("updateCargoToml rewrites multiple dependencies within one table", () => {
     .replace(`[dependencies."serde_json"]\nversion = "1.0.0"`, `[dependencies."serde_json"]\nversion = "1.0.2"`));
 });
 
-test("fetchCratesIoInfo happy path", async () => {
+test("fetchCratesIoInfo preserves version keys and publication times", async () => {
   const urls: Array<string> = [];
   const body = sparse(
     {name: "serde", vers: "1.0.0", yanked: false, pubtime: "2024-01-01T12:00:00Z"},
     {name: "serde", vers: "1.0.100", yanked: false, pubtime: "2024-06-01T12:00:00Z"},
     {name: "serde", vers: "1.0.200+spec-1.1.0", yanked: false, pubtime: "2025-01-15T12:00:00Z"},
+    {name: "serde", vers: "__proto__", pubtime: "2025-01-15T12:00:00Z"},
   );
   const [data, registry] = await fetchCratesIoInfo("serde", sparseCtx(body, urls));
   expect(urls).toEqual(["https://index.crates.io/se/rd/serde"]);
   expect(registry).toBeNull();
   expect(data).toMatchObject({name: "serde", "dist-tags": {latest: "1.0.200"}, time: {"1.0.200": "2025-01-15T12:00:00Z"}});
-  expect(Object.keys(data.versions)).toEqual(["1.0.0", "1.0.100", "1.0.200"]);
+  expect(Object.entries(data.versions)).toEqual([["1.0.0", {}], ["1.0.100", {}], ["1.0.200", {}], ["__proto__", {}]]);
+  expect(Object.entries(data.time)).toContainEqual(["__proto__", "2025-01-15T12:00:00Z"]);
+  expect(Object.getPrototypeOf(data.versions)).toBe(Object.prototype);
+  expect(Object.getPrototypeOf(data.time)).toBe(Object.prototype);
 });
 
 test("fetchCratesIoInfo reads every version of a large index body distilled to the fields it reads", async () => {

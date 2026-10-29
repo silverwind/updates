@@ -5,7 +5,7 @@ import {walkUpSync} from "./utils.ts";
 
 export function parseIni(content: string): Record<string, string> {
   if (/^\s*\{/.test(content)) return JSON.parse(content);
-  const result: Record<string, string> = {};
+  const result: Record<string, string> = Object.create(null);
   for (const line of content.split(/[\r\n]+/)) {
     const trimmed = line.trim();
     const eqIndex = trimmed.indexOf("=");
@@ -42,7 +42,7 @@ function findUp(filename: string, startDir: string): string | null {
 }
 
 export function parseEnvVars(prefix: string): Record<string, any> {
-  const result: Record<string, any> = {};
+  const result: Record<string, any> = Object.create(null);
   const prefixLower = prefix.toLowerCase();
   for (const [key, value] of Object.entries(env)) {
     if (!key.toLowerCase().startsWith(prefixLower)) continue;
@@ -51,7 +51,7 @@ export function parseEnvVars(prefix: string): Record<string, any> {
     if (!leaf) continue;
     let cursor = result;
     for (const subKey of keyPath) {
-      cursor[subKey] ??= {};
+      cursor[subKey] ??= Object.create(null);
       cursor = typeof cursor[subKey] === "object" ? cursor[subKey] : {};
     }
     cursor[leaf] = value;
@@ -68,5 +68,5 @@ export default function rc(name: string, defaults: Record<string, any> = {}, sta
     findUp(`.${name}rc`, startDir),
     envConfig.config,
   ]);
-  return Object.assign({}, defaults, ...Array.from(files).filter(Boolean).map(readConfigFile), envConfig);
+  return Object.assign(Object.create(null), defaults, ...Array.from(files).filter(Boolean).map(readConfigFile), envConfig);
 }

@@ -121,29 +121,44 @@ test("parsePnpmWorkspace", () => {
   ]);
 });
 
-test("parse pnpm registry config", () => {
-  expect(parsePnpmRegistryConfig("registry: https://pnpm.test\nregistries: {'@foo': https://foo.pnpm.test, default: https://default.pnpm.test}\n")).toEqual({
+test("parse pnpm registry config preserves __proto__ registry keys", () => {
+  const config = parsePnpmRegistryConfig("registry: https://pnpm.test\nregistries: {'@foo': https://foo.pnpm.test, default: https://default.pnpm.test, __proto__: https://proto.pnpm.test}\n");
+  expect(config).toEqual({
     registry: "https://pnpm.test",
-    registries: {"@foo": "https://foo.pnpm.test", default: "https://default.pnpm.test"},
+    registries: {"@foo": "https://foo.pnpm.test", "default": "https://default.pnpm.test", ["__proto__"]: "https://proto.pnpm.test"},
   });
+  expect(Object.getPrototypeOf(config.registries)).toBe(Object.prototype);
+  expect(parsePnpmRegistryConfig("registries:\n  __proto__: https://proto.pnpm.test\n").registries)
+    .toEqual({["__proto__"]: "https://proto.pnpm.test"});
 });
 
-test("parsePnpmAuth maps registry urls and scopes to npmrc keys and routes from json and yaml", () => {
+test("parseYamlMap preserves __proto__ and constructor keys", () => {
+  expect(parseYamlMap("__proto__:\n  registry: https://pnpm.test\nconstructor:\n  __proto__: value\n")).toEqual({["__proto__"]: {registry: "https://pnpm.test"}, constructor: {["__proto__"]: "value"}});
+});
+
+test("parsePnpmAuth maps registry urls and preserves __proto__ scopes from json and yaml", () => {
   const expected = {
     tokens: {
       "//registry.npmjs.org/:_authToken": "npm-token",
       "//registry.npmjs.org/:@org:_authToken": "org-token",
+      "//registry.npmjs.org/:__proto__:_authToken": "proto-token",
       "//npm.test/sub/:@sub:_authToken": "sub-token",
     },
-    registries: {default: "https://registry.npmjs.org/", "@org": "https://registry.npmjs.org/", "@sub": "https://npm.test/sub/"},
+    registries: {
+      "default": "https://registry.npmjs.org/", "@org": "https://registry.npmjs.org/", "@sub": "https://npm.test/sub/",
+      ["__proto__"]: "https://registry.npmjs.org/",
+    },
   };
   expect(parsePnpmAuth(JSON.stringify({
-    "https://registry.npmjs.org": {"@": {authToken: "npm-token"}, "@org": {authToken: "org-token"}},
+    "https://registry.npmjs.org": {
+      "@": {authToken: "npm-token"}, "@org": {authToken: "org-token"}, ["__proto__"]: {authToken: "proto-token"},
+    },
     "https://npm.test/sub/": {"@sub": {authToken: "sub-token"}, "@empty": {}, "@list": {authToken: ["nope"]}},
   }), "env")).toEqual(expected);
   expect(parsePnpmAuth(parseYamlMap([
     "_auth: # credentials", "  https://registry.npmjs.org:", '    "@":', "      authToken: npm-token", '    "@org":',
-    "      authToken: 'org-token' # comment", "  https://npm.test/sub/:", '    "@sub":', "      authToken: sub-token", "",
+    "      authToken: 'org-token' # comment", "    __proto__:", "      authToken: proto-token", "  https://npm.test/sub/:",
+    '    "@sub":', "      authToken: sub-token", "",
   ].join("\n"))._auth, "config.yaml")).toEqual(expected);
   expect(parsePnpmAuth(undefined, "config.yaml")).toEqual({tokens: {}, registries: {}});
   expect(() => parsePnpmAuth("{", "env")).toThrow("Invalid _auth in env");
