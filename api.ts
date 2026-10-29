@@ -35,7 +35,7 @@ import {
 import {
   parseActionRef, parseUsesLine, getForgeApiBaseUrl, walkYamlPair,
   fetchActionTagDate, formatActionVersion,
-  updateWorkflowFile, isWorkflowFile, resolveWorkflowFiles,
+  updateWorkflowFile, isWorkflowFile, resolveWorkflowFiles, resolveSelfApiUrl,
   type ActionRef, type YamlPathEntry,
 } from "./modes/actions.ts";
 import {
@@ -618,6 +618,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
   const configOverrides = Object.fromEntries(Object.entries(config).filter(([key, value]) =>
     value !== undefined && (!cliKeys || cliKeys.has(key))));
 
+  const resolveDirSelfApiUrl = memoizeAsync(resolveSelfApiUrl);
   const resolveDirConfig = memoizeAsync(async (projectDir: string) => {
     const modeConfig = {...await loadConfig(projectDir), ...configOverrides};
     return {
@@ -748,8 +749,8 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
               const key = dependencyKey(relPath, action.name, action.isHash && comment ? `${comment}@${action.ref}` : action.ref);
               if (!deps.actions[key]) {
                 deps.actions[key] = {old: action.ref} as Dep;
-                actionDepInfos.push({...action, key, comment, identity,
-                  apiUrl: getForgeApiBaseUrl(action.host, ctx.forgeApiUrl), filters});
+                actionDepInfos.push({...action, key, comment, identity, filters, apiUrl: action.name.startsWith("self:") ?
+                  await resolveDirSelfApiUrl(dirname(file)) : getForgeApiBaseUrl(action.host, ctx.forgeApiUrl)});
               }
             }
           }
@@ -1110,6 +1111,16 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
 
   const actionsTask = pMap(Map.groupBy(actionDepInfos, info => `${info.apiUrl}/${info.owner}/${info.repo}`).values(), async (infos) => {
     const {apiUrl, owner, repo} = infos[0];
+    if (!apiUrl) {
+      for (const info of infos) {
+        if (info.isHash || isVersionLikeRef(info.ref)) {
+          rejectDep("actions", info.key, `Unable to resolve the instance of ${info.name}, set GITEA_SERVER_URL or an origin remote`);
+        } else {
+          delete deps.actions[info.key];
+        }
+      }
+      return;
+    }
     const versionConsumers = infos.filter(info => info.isHash ? !isDigestOnlyPin(info) : isVersionLikeRef(info.ref));
     const needsOlderTags = versionConsumers.some(info => {
       const {allowDowngrade, pinnedRange, pinNoDowngrade} = resolveVersionOpts(info.filters, info.identity);
@@ -1198,7 +1209,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
       try {
         const {key, host, ref, comment, isHash} = info;
         const dep = deps.actions[key];
-        const infoUrl = `https://${host || "github.com"}/${owner}/${repo}`;
+        const infoUrl = `${info.name.startsWith("self:") ? apiUrl.replace(/\/api\/v1$/, "") : `https://${host || "github.com"}`}/${owner}/${repo}`;
 
         let oldRef = ref;
         if (isHash) {

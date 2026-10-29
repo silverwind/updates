@@ -19,7 +19,7 @@ import {forgeDirs, getOrSet} from "./utils/utils.ts";
 import {updates} from "./api.ts";
 import {parseCliArgs, resolveConfig, runCli} from "./cli.ts";
 import type {UpdatesOptions} from "./api.ts";
-import {rejection} from "./utils/testing.ts";
+import {rejection, sequential, withEnv} from "./utils/testing.ts";
 
 const execFileAsync = promisify(execFile);
 const cliStderr = new AsyncLocalStorage<(text: string) => void>();
@@ -218,8 +218,6 @@ function copyFixture(name: string) {
   cpSync(fixture(name), dir, {recursive: true});
   return dir;
 }
-
-const sequential = (test as any).serial ?? test;
 
 sequential("login verifies and stores tokens, logout removes them", {concurrent: false}, async () => {
   const path = join(env.XDG_CONFIG_HOME!, "updates", "tokens.json");
@@ -1061,22 +1059,35 @@ test("text output renders several modes with a MODE column", async () => {
   expect(stdout).toContain("https://hub.docker.com/_/node");
 });
 
-test("actions update rewrites tags and keeps same-sha pin identities distinct", async () => {
+sequential("actions update rewrites tags, keeps same-sha pin identities distinct and follows self: pins on the GITEA_SERVER_URL instance, erroring without one only where a lookup is needed", {concurrent: false}, async () => {
+  lazyRoute("/gitea/api/v1/repos/actions/cache/tags", () => []);
+  lazyRoute("/gitea/api/v1/repos/actions/cache/branches/main", () => ({commit: {id: "eeee000000000000000000000000000000000003"}}));
   const dir = writeTree("actions-update", {".github/workflows/ci.yaml": workflowSteps(
     "actions/checkout@v2",
     "actions/setup-node@v1",
     "actions/checkout@dddd000000000000000000000000000000000000 # v4.2.0",
     "actions/checkout@dddd000000000000000000000000000000000000 # main",
     "actions/checkout@dddd000000000000000000000000000000000000 # release",
+    "self:actions/cache@dddd000000000000000000000000000000000000 # main",
+    "self:actions/cache@main",
   )});
-  await runCliExec(["-u", ...actionsArgs, "-f", join(dir, ".github/workflows")]);
+  await promisify(execFile)("git", ["init", "-q", dir]);
+  const {results} = await withEnv({GITEA_SERVER_URL: `${mockUrl}/gitea`, GITHUB_SERVER_URL: undefined}, () =>
+    runCliExec(["-u", ...actionsArgs, "-f", join(dir, ".github/workflows")]));
   expect(read(dir, ".github/workflows/ci.yaml")).toBe(workflowSteps(
     "actions/checkout@v10",
     "actions/setup-node@v10.0.0",
     "actions/checkout@cccc000000000000000000000000000000000011 # v10.0.1",
     "actions/checkout@aaaa000000000000000000000000000000000001 # main",
     "actions/checkout@bbbb000000000000000000000000000000000002 # release",
+    "self:actions/cache@eeee000000000000000000000000000000000003 # main",
+    "self:actions/cache@main",
   ));
+  expect(dependencyRows(results).find(row => row[2] === "self:actions/cache")![3].info).toBe(`${mockUrl}/gitea/actions/cache`);
+  expect((await withEnv({GITEA_SERVER_URL: undefined, GITHUB_SERVER_URL: undefined}, () =>
+    runCliExec([...actionsArgs, "-f", join(dir, ".github/workflows")]))).errors).toMatchObject([
+    {mode: "actions", name: "self:actions/cache", error: "Unable to resolve the instance of self:actions/cache, set GITEA_SERVER_URL or an origin remote"},
+  ]);
 });
 
 test("actions hash pin comments keep their precision only for an alias on the selected tag's commit, uncommented pins report the full version", async () => {

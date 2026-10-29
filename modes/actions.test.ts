@@ -1,9 +1,13 @@
-import {resolve} from "node:path";
+import {execFileSync} from "node:child_process";
+import {mkdtempSync, rmSync} from "node:fs";
+import {join, resolve} from "node:path";
+import {tmpdir} from "node:os";
 import {
-  fetchActionTagDate, formatActionVersion, getForgeApiBaseUrl, isWorkflowFile, parseActionRef, parseUsesLine,
-  resolveWorkflowFiles, updateWorkflowFile as updateWorkflowContent,
+  fetchActionTagDate, formatActionVersion, getForgeApiBaseUrl, instanceUrlFromRemote, isWorkflowFile, parseActionRef,
+  parseUsesLine, resolveSelfApiUrl, resolveWorkflowFiles, updateWorkflowFile as updateWorkflowContent,
 } from "./actions.ts";
 import {type ModeContext, commitHashRe, fetchTimeout, isVersionLikeRef} from "./shared.ts";
+import {sequential, withEnv} from "../utils/testing.ts";
 
 const workflowPrefix = "runs:\n  steps:\n";
 const updateWorkflowFile = (content: string, updates: Parameters<typeof updateWorkflowContent>[1]) =>
@@ -15,8 +19,10 @@ test.each([
   ["hex tag", "actions/checkout@deadbeef", {host: null, owner: "actions", repo: "checkout", ref: "deadbeef", name: "actions/checkout", isHash: false}],
   ["sub-path", "actions/cache/restore@v4", {host: null, owner: "actions", repo: "cache", ref: "v4", name: "actions/cache/restore", isHash: false}],
   ["URL with host", "https://gitea.example.com/owner/repo@v1", {host: "gitea.example.com", owner: "owner", repo: "repo", ref: "v1", name: "gitea.example.com/owner/repo", isHash: false}],
+  ["same-instance ref", "self:owner/repo/sub@v1", {host: null, owner: "owner", repo: "repo", ref: "v1", name: "self:owner/repo/sub", isHash: false}],
   ["docker prefix", "docker://node:18", null],
   ["local path", "./actions/my-action", null],
+  ["same-repository path", "$/actions/my-action@v1", null],
   ["parent-relative local path", "../actions/my-action@v1", null],
   ["empty repository path", "https://gitea.example.com/owner//@v1", null],
   ["no @", "actions/checkout", null],
@@ -31,6 +37,44 @@ test.each([
   ["lets a gitea host win over the configured forge", "gitea.example.com", "https://api.github.com", "https://gitea.example.com/api/v1"],
 ])("getForgeApiBaseUrl %s", (_name, host, configured, expected) => {
   expect(getForgeApiBaseUrl(host, configured)).toBe(expected);
+});
+
+test.each([
+  ["https keeps scheme, port and subpath and drops credentials", "https://user:token@git.example.com:8443/sub/owner/repo.git", "https://git.example.com:8443/sub"],
+  ["http keeps its scheme", "http://localhost:3500/owner/repo", "http://localhost:3500"],
+  ["ssh url maps to https on its host", "ssh://git@git.example.com:2222/owner/repo.git", "https://git.example.com"],
+  ["scp-like remote maps to https on its host", "git@git.example.com:owner/repo.git", "https://git.example.com"],
+  ["scp-like remote with an absolute path", "git@git.example.com:/owner/repo.git", "https://git.example.com"],
+  ["local path", "/srv/git/repo.git", null],
+  ["windows path", "C:\\git\\repo", null],
+  ["file url", "file:///srv/git/repo.git", null],
+])("instanceUrlFromRemote %s", (_name, remote, expected) => {
+  expect(instanceUrlFromRemote(remote)).toBe(expected);
+});
+
+sequential("resolveSelfApiUrl prefers GITEA_SERVER_URL, then a GITHUB_SERVER_URL other than github.com, then the origin remote", {concurrent: false}, async () => {
+  const root = mkdtempSync(join(tmpdir(), "updates-self-"));
+  const repo = (name: string, remote?: string) => {
+    const dir = join(root, name);
+    execFileSync("git", ["init", "-q", dir]);
+    if (remote) execFileSync("git", ["-C", dir, "remote", "add", "origin", remote]);
+    return dir;
+  };
+  try {
+    const withOrigin = repo("origin", "https://git.example.com/sub/owner/repo.git");
+    await withEnv({GITEA_SERVER_URL: "https://gitea.example.com/sub/", GITHUB_SERVER_URL: "https://other.example.com"}, async () => {
+      expect(await resolveSelfApiUrl(withOrigin)).toBe("https://gitea.example.com/sub/api/v1");
+    });
+    await withEnv({GITEA_SERVER_URL: undefined, GITHUB_SERVER_URL: "https://gitea.example.com"}, async () => {
+      expect(await resolveSelfApiUrl(withOrigin)).toBe("https://gitea.example.com/api/v1");
+    });
+    await withEnv({GITEA_SERVER_URL: undefined, GITHUB_SERVER_URL: "https://github.com"}, async () => {
+      expect(await resolveSelfApiUrl(withOrigin)).toBe("https://git.example.com/sub/api/v1");
+      expect(await resolveSelfApiUrl(repo("without-origin"))).toBe("");
+    });
+  } finally {
+    rmSync(root, {recursive: true});
+  }
 });
 
 test.each([
