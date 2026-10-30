@@ -13,7 +13,8 @@
 - `Cargo.toml` - rust dependencies, including workspaces
 - `.{github,gitea,forgejo}/{workflows,actions}`, `workflow-templates`, `action.{yml,yaml}` - actions, including Gitea's `self:owner/repo@ref`, and docker images
 - `{Docker,Container}file*`, `*.{Docker,Container}file`, `compose*.{yml,yaml}`, `docker-*.{yml,yaml}` - docker images
-- `Makefile`, `*.mk`, `*.sh` - go tool versions in `go install` paths and docker image tags, of any registry in variables named `*_IMAGE`
+- `Makefile`, `*.mk`, `*.sh` - go tool versions in `go install` paths under `go`, and docker image tags of any registry in variables named `*_IMAGE` under `docker`
+- The workflow, docker, make and shell files above, plus non-manifest files passed via `--file` - versions marked by a `renovate:` or `updates:` comment, see [Annotations](#annotations)
 
 ## Usage
 
@@ -33,7 +34,7 @@ pnpm dlx updates -u && pnpm i
 |`-f, --file <path,...>`|File or directory to use, defaults to current directory|
 |`-N, --include-paths <glob,...>`|Only use paths matching the globs|
 |`-X, --exclude-paths <glob,...>`|Skip paths matching the globs|
-|`-M, --modes <mode,...>`|Which modes to enable. Either `npm`, `pypi`, `go`, `cargo`, `actions`, `docker`, `make`, `shell`. Default: all|
+|`-M, --modes <mode,...>`|Which modes to enable. Either `npm`, `pypi`, `go`, `cargo`, `actions`, `docker`. Default: all|
 |`-i, --include <dep,...>`|Include only given dependencies|
 |`-e, --exclude <dep,...>`|Exclude given dependencies|
 |`-l, --pin <dep=range>`|Pin dependency to given semver range|
@@ -66,6 +67,20 @@ Options taking multiple arguments accept comma-separated values or repetition. A
 Path filters also apply to workspace members, except files passed with `--file`.
 
 A failed lookup is reported on its own, does not hold back the other results and exits with code 1, ahead of `-E` and `-U`. With `-j`, failures are listed in an `errors` array next to `results`.
+
+## Annotations
+
+Versions marked by a [Renovate](https://docs.renovatebot.com/modules/manager/regex/)-style `renovate:` or `updates:` comment are updated. The comment goes after the version or on the line above it:
+
+```sh
+RENOVATE_VERSION=44.172.2 # renovate: datasource=npm depName=renovate
+# updates: datasource=github-releases depName=mvdan/gofumpt
+GOFUMPT_VERSION=v0.12.0
+```
+
+Supported datasources are `npm`, `pypi`, `crate`, `go`, `docker` and `{github,gitea,forgejo}-{tags,releases}`. Fields are `depName`, `packageName`, `lookupName` and `versioning`, plus `extractVersion` and an `https://` `registryUrl` for forges. Names are optional for docker images and go `module@version` values. On lines with several versions, attach the version to its package name, like `black@24.1.0` or `black==24.1.0`.
+
+Annotations are reported under their datasource's mode, with `crate` under `cargo` and forges under `actions`. Annotations on lines handled by an enabled native mode are skipped. Unsupported datasources, fields and versioning schemes are skipped, `--verbose` shows why.
 
 ## Config File
 

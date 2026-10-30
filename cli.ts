@@ -187,7 +187,7 @@ export async function runCli(rawArgs: Array<string>, io: CliIo, prewarm = true):
     -f, --file <path,...>              File or directory to use, defaults to current directory
     -N, --include-paths <glob,...>     Only use paths matching the globs
     -X, --exclude-paths <glob,...>     Skip paths matching the globs
-    -M, --modes <mode,...>             Which modes to enable. Default: npm,pypi,go,cargo,actions,docker,make,shell
+    -M, --modes <mode,...>             Which modes to enable. Default: npm,pypi,go,cargo,actions,docker
     -i, --include <dep,...>            Include only given dependencies
     -e, --exclude <dep,...>            Exclude given dependencies
     -l, --pin <dep=range>              Pin dependency to given semver range

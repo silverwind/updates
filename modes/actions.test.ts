@@ -141,6 +141,7 @@ test.each([
   ["tag= prefix", "actions/checkout@11bd719 # tag=v4.2.2", "actions/checkout@3d3c42e # v7.0.1"],
   ["pin prefix", "actions/checkout@11bd719 # pin v4.2.2", "actions/checkout@3d3c42e # v7.0.1"],
   ["renovate prefix", "actions/checkout@11bd719 # renovate: tag=v4.2.2", "actions/checkout@3d3c42e # v7.0.1"],
+  ["updates prefix", "actions/checkout@11bd719 # updates: tag=v4.2.2", "actions/checkout@3d3c42e # v7.0.1"],
   ["ratchet prefix", "actions/checkout@11bd719 # ratchet:actions/checkout@v4.2.2", "actions/checkout@3d3c42e # v7.0.1"],
   ["subpath ratchet prefix", "actions/cache/restore@11bd719 # ratchet:actions/cache/restore@v4.2.2", "actions/cache/restore@3d3c42e # v7.0.1"],
   ["no space before hash", "actions/checkout@11bd719 #v4.2.2", "actions/checkout@3d3c42e # v7.0.1"],

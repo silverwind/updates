@@ -153,12 +153,19 @@ export function parseDockerTag(tag: string): DockerTag | null {
   return {version: match[1], prerelease: match[2] || "", suffix: match[3] || ""};
 }
 
-export function extractDockerRefs(content: string, fileType: "dockerfile" | "compose"): Array<{ref: DockerImageRef, match: string}> {
-  const results: Array<{ref: DockerImageRef, match: string}> = [];
+export function extractDockerRefs(content: string, fileType: "dockerfile" | "compose"): Array<{ref: DockerImageRef, match: string, lines: Array<number>}> {
+  const results: Array<{ref: DockerImageRef, match: string, lines: Array<number>}> = [];
+  const lineAt = (index: number) => content.slice(0, index).split("\n").length - 1;
   if (fileType === "dockerfile") {
-    for (const {image, resolved} of dockerfileImages(content, true)) {
+    for (const {image, resolved, index, args} of dockerfileImages(content, true)) {
       const ref = parseDockerImageRef(resolved);
-      if (ref) results.push({ref, match: image});
+      if (!ref) continue;
+      const lines = new Set([lineAt(index)]);
+      for (const variable of image.matchAll(/\$(?:\{(\w+)\}|(\w+))/g)) { // updateDockerfile rewrites only directly referenced ARGs
+        const arg = args.get(variable[1] || variable[2]);
+        if (arg) lines.add(lineAt(arg.start));
+      }
+      results.push({ref, match: image, lines: [...lines]});
     }
     return results;
   }
@@ -166,7 +173,7 @@ export function extractDockerRefs(content: string, fileType: "dockerfile" | "com
   for (const match of content.matchAll(composeImageRe)) {
     if (locallyBuilt.has(match.index + match[0].indexOf("image:"))) continue;
     const ref = parseDockerImageRef(match[1].replace(/^\$\{\w+:-([^${}]+)\}$/, "$1"));
-    if (ref) results.push({ref, match: match[1]});
+    if (ref) results.push({ref, match: match[1], lines: [lineAt(match.index)]});
   }
   return results;
 }

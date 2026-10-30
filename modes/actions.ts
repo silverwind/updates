@@ -99,7 +99,7 @@ export function walkYamlPair(line: string, path: Array<YamlPathEntry>): {indent:
   return {indent, key: (pair[2] ?? pair[3] ?? pair[4]).trim(), value: pair[5]};
 }
 
-const pinTokenRe = /^\s*(?:(?:renovate\s*:\s*)?(?:pin\s+|tag\s*=\s*)?|ratchet:[\w-]+\/[.\w-]+(?:\/[.\w-]+)*)@?((?:[\w-]*[-/])?v?\d+(?:\.\d+(?:\.\d+)?)?(?:-[a-zA-Z0-9.]+)?)/;
+const pinTokenRe = /^\s*(?:(?:(?:renovate|updates)\s*:\s*)?(?:pin\s+|tag\s*=\s*)?|ratchet:[\w-]+\/[.\w-]+(?:\/[.\w-]+)*)@?((?:[\w-]*[-/])?v?\d+(?:\.\d+(?:\.\d+)?)?(?:-[a-zA-Z0-9.]+)?)/;
 
 export function parseUsesLine(line: string) {
   const match = /^(\s*(?:-\s*)?uses:\s*)(?:(["'])(.*?)\2|((?!["'#])\S+))([^\n]*)$/.exec(line);

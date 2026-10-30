@@ -506,7 +506,7 @@ test.each([
   const seen: Array<string> = [];
   let subprocessGoProxy = "";
   const execFile = (_file: string, args: Array<string>, options: Record<string, any>) => {
-    expect(args.slice(0, -1)).toEqual(["list", "-m", "-mod=readonly", "-versions", "-json"]);
+    expect(args.slice(0, -1)).toEqual(["list", "-m", "-mod=readonly", "-versions", "-json", "--"]);
     subprocessGoProxy = options.env?.GOPROXY ?? "";
     return Promise.reject(Object.assign(new Error("Command failed"), {stderr: "no such host"}));
   };

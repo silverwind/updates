@@ -76,7 +76,9 @@ const [npmUrl, githubUrl, pypiUrl, jsrUrl, goProxyUrl, cargoUrl, dockerUrl] =
 const apiUrls = {registry: npmUrl, forgeapi: githubUrl, pypiapi: pypiUrl, jsrapi: jsrUrl, goproxy: goProxyUrl, cargoapi: cargoUrl, dockerapi: dockerUrl};
 globalThis.fetch = ((input: any, init?: any) => {
   const url = String(input?.url ?? input);
-  const mockedUrl = url.replace("https://api.github.com/repos/o/cooldown/", () => `${githubUrl}repos/o/cooldown/`);
+  const mockedUrl = url.replace("https://api.github.com/repos/o/", () => `${githubUrl}repos/o/`)
+    .replace("https://code.forgejo.org/", () => `${mockUrl}/forgejo/`)
+    .replace("https://[2001:db8::1]:5000/", () => `${mockUrl}/ipv6/`);
   if (!/^http:\/\/(?:127\.0\.0\.1|localhost)[:/]/.test(mockedUrl)) throw new Error(`test attempted a non-mocked network request to ${url}`);
   return realFetch(mockedUrl === url ? input : mockedUrl, init);
 }) as typeof fetch;
@@ -311,6 +313,12 @@ test("piped output stays colored with -c, on stdout and on -V stderr, and parsea
   expect(JSON.parse(json).results.npm.dependencies.prismjs.new).toBe("1.17.1");
 });
 
+test("npm override paths printing alike share a row", async () => {
+  const file = join(writeTree("override-labels", {"package.json": JSON.stringify({overrides: {"a.b": {prismjs: "1.0.0"}, a: {b: {prismjs: "1.0.0"}}}})}),
+    "package.json");
+  expect(Object.keys((await updates(apiOpts({files: [file]}))).results.npm.overrides)).toEqual(["prismjs:overrides.a.b.prismjs"]);
+});
+
 test.skipIf(Boolean(versions.bun))("global", async () => {
   const bin = join(testDir, "global", ...(platform === "win32" ? ["updates.cmd"] : ["bin", "updates"]));
   mkdirSync(dirname(bin), {recursive: true});
@@ -502,24 +510,25 @@ test("go pseudo-version update rewrites the full version", async () => {
   expect(updated).not.toContain("754e69321358");
 });
 
-test("make mode bumps go install versions and rewrites paths on major bumps, printing full specs when only the path moves", async () => {
+test("go mode bumps Makefile go install versions and rewrites paths on major bumps, printing full specs when only the path moves, keeping its annotated lines", async () => {
   lazyRoute("/go/github.com/example/tool/@latest", () => ({Version: "v2.0.0+incompatible"}));
   lazyRoute("/go/github.com/example/tool/v2/@latest", () => ({Version: "v2.1.0"}));
   const dir = writeTree("make", {Makefile: lines(
     "UUID_PACKAGE ?= github.com/google/uuid@v1.4.0",
-    "TESTPKG_PACKAGE := github.com/example/testpkg@v1.0.0  # pinned tool",
+    "TESTPKG_PACKAGE := github.com/example/testpkg@v1.0.0  # renovate: datasource=go",
     "TOOL := github.com/example/tool/cmd/tool@v2",
     "# DISABLED := github.com/example/testpkg@v0.5.0",
     "SOURCE := $(wildcard *.go)",
   )});
   const {results} = await updates({files: [join(dir, "Makefile")], goproxy: goProxyUrl, update: true, color: false, noCache: true});
-  expect(Object.values(results.make)[0]).toMatchObject({
+  expect(Object.values(results.go)[0]).toMatchObject({
     "github.com/example/testpkg": {old: "v1.0.0", new: "v2.0.0"},
     "github.com/example/tool/cmd/tool": {old: "github.com/example/tool/cmd/tool@v2", new: "github.com/example/tool/v2/cmd/tool@v2"},
   });
+  expect(Object.keys(results)).toEqual(["go"]);
   expect(read(dir, "Makefile")).toBe(lines(
     "UUID_PACKAGE ?= github.com/google/uuid/v2@v2.0.0-20260217135312-8c5a7de9ffa1",
-    "TESTPKG_PACKAGE := github.com/example/testpkg/v2@v2.0.0  # pinned tool",
+    "TESTPKG_PACKAGE := github.com/example/testpkg/v2@v2.0.0  # renovate: datasource=go",
     "TOOL := github.com/example/tool/v2/cmd/tool@v2",
     "# DISABLED := github.com/example/testpkg@v0.5.0",
     "SOURCE := $(wildcard *.go)",
@@ -528,8 +537,8 @@ test("make mode bumps go install versions and rewrites paths on major bumps, pri
 
 test("auto-discovery finds a Makefile once on a case-insensitive filesystem", async () => {
   const dir = writeTree("make-discovery", {Makefile: "UUID_PACKAGE ?= github.com/google/uuid@v1.4.0\n"});
-  const {results} = await runCliExec(["-j", "-x", "-M", "make", ...apiArgs, "-f", dir]);
-  expect(Object.keys(results.make).map(file => basename(file))).toEqual(["Makefile"]);
+  const {results} = await runCliExec(["-j", "-x", "-M", "go", ...apiArgs, "-f", dir]);
+  expect(Object.keys(results.go).map(file => basename(file))).toEqual(["Makefile"]);
 });
 
 test("auto-discovery finds tracked and untracked files at any depth, skipping gitignored ones unless passed and excluded paths", async () => {
@@ -540,7 +549,7 @@ test("auto-discovery finds tracked and untracked files at any depth, skipping gi
   }));
   await execFileAsync("git", ["init", "-q"], {cwd: dir});
   await execFileAsync("git", ["add", ".", ":!untracked"], {cwd: dir});
-  const discovered = async (options: UpdatesOptions) => Object.values((await updates(apiOpts({files: [dir], modes: ["make", "docker"], ...options}))).results)
+  const discovered = async (options: UpdatesOptions) => Object.values((await updates(apiOpts({files: [dir], modes: ["go", "docker"], ...options}))).results)
     .flatMap(Object.keys).map(file => relative(dir, file).replaceAll("\\", "/")).sort();
   expect(await discovered({})).toEqual(["Makefile", "deep/er/Makefile", "svc/app.Dockerfile", "tools/tools.mk", "untracked/Makefile"]);
   expect(await discovered({excludePaths: ["deep/**"]})).toEqual([
@@ -551,7 +560,7 @@ test("auto-discovery finds tracked and untracked files at any depth, skipping gi
   expect(await discovered({files: [join(dir, "gitignored/Makefile")]})).toEqual(["gitignored/Makefile"]);
 });
 
-test("make mode bumps docker image tags and re-resolves digests in Makefiles", async () => {
+test("docker mode bumps image tags and re-resolves digests in Makefiles", async () => {
   const dir = writeTree("make-docker", {Makefile: lines(
     `SHELLCHECK_IMAGE ?= docker.io/koalaman/shellcheck:v0.11.0@sha256:${"a".repeat(64)}  # renovate: datasource=docker`,
     "PLAIN := koalaman/shellcheck:v0.11.0",
@@ -565,7 +574,7 @@ test("make mode bumps docker image tags and re-resolves digests in Makefiles", a
   ));
 });
 
-test("shell mode bumps an *_IMAGE image and its digest on another registry after its token challenge, under cooldown dated by image metadata, but not a plain variable", async () => {
+test("docker mode bumps a shell script *_IMAGE image and its digest on another registry after its token challenge, under cooldown dated by image metadata, but not a plain variable", async () => {
   const registry = mockUrl.replace("http://", "");
   const [oldDigest, newDigest] = [`sha256:${"a".repeat(64)}`, `sha256:${"b".repeat(64)}`];
   const challenge = {"www-authenticate": `Bearer realm="${mockUrl}/registry-token",service="test"`};
@@ -585,11 +594,11 @@ test("shell mode bumps an *_IMAGE image and its digest on another registry after
   registryRoute("manifests/sha256:image", json({config: {digest: "sha256:config"}}));
   registryRoute("blobs/sha256:config", json({created: "2024-01-01T00:00:00Z"}));
   const dir = writeTree("registry-image", {"build.sh": lines(`TOOL_IMAGE="${registry}/o/tool:1.0.0@${oldDigest}"`, `MIRROR=${registry}/o/tool:1.0.0`)});
-  await updates({files: [join(dir, "build.sh")], modes: ["shell"], update: true, color: false, noCache: true, cooldown: "3d"});
+  await updates({files: [join(dir, "build.sh")], modes: ["docker"], update: true, color: false, noCache: true, cooldown: "3d"});
   expect(read(dir, "build.sh")).toBe(lines(`TOOL_IMAGE="${registry}/o/tool:1.1.0@${newDigest}"`, `MIRROR=${registry}/o/tool:1.0.0`));
 });
 
-test("make and shell modes bump discovered files alike, leaving current, unresolvable, excluded and failed values untouched", async () => {
+test("go and docker modes bump discovered Makefiles and shell scripts alike, leaving current, unresolvable, excluded and failed values untouched", async () => {
   const digest = `sha256:${"a".repeat(64)}`;
   const tools = [
     "github.com/example/testpkg/v2@v2.0.0", "github.com/example/pseudoupd@v1", "github.com/example/missing@v1.0.0",
@@ -607,13 +616,13 @@ test("make and shell modes bump discovered files alike, leaving current, unresol
     "noop.sh": "echo done\n",
   });
   const {results, errors} = await updates({
-    files: [dir], modes: ["make", "shell"], exclude: ["github.com/example/excluded"], goproxy: goProxyUrl, dockerapi: dockerUrl,
+    files: [dir], modes: ["go", "docker"], exclude: ["github.com/example/excluded"], goproxy: goProxyUrl, dockerapi: dockerUrl,
     update: true, color: false, noCache: true,
   });
-  expect(Object.fromEntries(Object.entries(results).map(([mode, files]) => [mode, Object.keys(files).map(file => basename(file))])))
-    .toEqual({make: ["Makefile"], shell: ["build.sh"]});
-  expect(Object.keys(Object.values(results.shell)[0])).not.toContain("github.com/example/pseudoupd");
-  expect(errors!.map(({mode, name}) => [mode, name])).toEqual([["shell", "example/broken"]]);
+  expect(Object.fromEntries(Object.entries(results).map(([mode, files]) => [mode, Object.keys(files).map(file => basename(file)).sort()])))
+    .toEqual({go: ["Makefile", "build.sh"], docker: ["Makefile", "build.sh"]});
+  expect(Object.values(results.go).flatMap(Object.keys)).not.toContain("github.com/example/pseudoupd");
+  expect(errors!.map(({mode, name}) => [mode, name])).toEqual([["docker", "example/broken"]]);
   expect(read(dir, "Makefile")).toBe(lines("TOOL ?= github.com/example/testpkg/v2@v2.0.0", "IMAGE := example/image:1.1"));
   expect(read(dir, "build.sh")).toBe(lines(
     `TOOL="\${TOOL:-github.com/example/testpkg/v2@v2.0.0}"`,
@@ -623,7 +632,7 @@ test("make and shell modes bump discovered files alike, leaving current, unresol
   ));
 });
 
-test("make allowedVersions falls back to the highest allowed candidate", async () => {
+test("Makefile allowedVersions falls back to the highest allowed candidate", async () => {
   const dir = writeTree("make-allowed", {
     "Makefile": lines("TOOL := github.com/example/makeallowed/cmd/tool@v1.0.0", "IMAGE := example/makeallowed:1.0"),
     "renovate.json": JSON.stringify({packageRules: [
@@ -631,8 +640,217 @@ test("make allowedVersions falls back to the highest allowed candidate", async (
       {matchPackageNames: ["example/makeallowed"], allowedVersions: "<2"},
     ]}),
   });
-  await updates({files: [join(dir, "Makefile")], modes: ["make"], goproxy: goProxyUrl, dockerapi: dockerUrl, update: true, color: false, noCache: true});
+  await updates({files: [join(dir, "Makefile")], goproxy: goProxyUrl, dockerapi: dockerUrl, update: true, color: false, noCache: true});
   expect(read(dir, "Makefile")).toBe(lines("TOOL := github.com/example/makeallowed/cmd/tool@v1.1.0", "IMAGE := example/makeallowed:1.1"));
+});
+
+test("annotations respect native ownership, lookup identity, versioning, cooldowns and write validation across datasource modes", async () => {
+  const digest = `sha256:${"a".repeat(64)}`;
+  const release = (tag: string, prerelease = false) => ({tag_name: tag, prerelease});
+  lazyRoute("/github/repos/o/annotated/releases", () => [release("v3-init"), release("v2.0.0-rc.1", true), release("v1.8.0")]);
+  lazyRoute("/forgejo/api/v1/repos/o/annotated/releases", () => [release("v9.0.0$(id)"), release("v1.8.0")]);
+  lazyRoute("/npm/annotated-newline", () => ({name: "annotated-newline", "dist-tags": {latest: "2.0.0\n"}, versions: {"1.0.0": {}, "2.0.0\n": {}}}));
+  const input = {
+    ".github/workflows/ci.yml": lines(
+      "env:",
+      "  PRISM_VERSION: 1.15.0 # renovate: datasource=npm depName=prismjs",
+      `  TEST_IMAGE: koalaman/shellcheck:v0.11.0@${digest} # renovate: datasource=docker`,
+      "  GH_VERSION: 1.7.0 # renovate: datasource=github-releases depName=o/annotated extractVersion=^v(?<version>.+)$",
+      "  RNA_VERSION: v1.7.3 # updates: datasource=forgejo-releases depName=o/annotated registryUrl=https://code.forgejo.org",
+      "jobs:",
+      "  test:",
+      "    container:",
+      "      image: koalaman/shellcheck:v0.11.0 # renovate: datasource=docker",
+    ),
+    "Makefile": lines(
+      "SHELLCHECK_IMAGE := koalaman/shellcheck:v0.11.0",
+      "# renovate: datasource=docker depName=koalaman/shellcheck",
+      "SHELLCHECK_VERSION := v0.11.0",
+      "# renovate: datasource=go packageName=github.com/example/testpkg/cmd/tool",
+      "TESTPKG_VERSION := v0.9.0",
+    ),
+    "versions.env": lines(
+      "# renovate: datasource=crate lookupName=tokio",
+      "TOKIO_VERSION=1.30.0",
+      "PRISM_VERSION=1.15.0 # renovate: datasource=npm depName=prismjs allowedVersions=<1.16",
+      "HTTP_VERSION=1.7.0 # updates: datasource=github-releases depName=o/annotated registryUrl=http://github.com",
+      "SHORT_VERSION=v1.7 # renovate: datasource=github-releases depName=o/annotated",
+      "TYPES_VERSION=2.32 # renovate: datasource=pypi depName=types-requests",
+      "NEWLINE_VERSION=1.0.0 # renovate: datasource=npm depName=annotated-newline",
+      "MISSING_VERSION=1.0.0 # renovate: datasource=github-releases depName=o/missing",
+      "SUFFIXED_VERSION=1.0.0-alpine # updates: datasource=github-tags depName=o/annotated versioning=docker",
+    ),
+  };
+  const dir = writeTree("annotations", input);
+  const run = (options: UpdatesOptions) => updates({...apiUrls, files: [dir, join(dir, "versions.env")], noCache: true, color: false, ...options});
+  expect(Object.keys((await run({modes: ["cargo"]})).results)).toEqual(["cargo"]);
+  const {results, errors} = await run({update: true});
+  expect(Object.fromEntries(errors!.map(({mode, name, error}) => [name, [mode, error]]))).toEqual({
+    "annotated-newline": ["npm", "Refusing to write \"2.0.0\\n\""], "o/missing": ["actions", "No releases found for o/missing"],
+  });
+  expect(Object.fromEntries(Object.entries(results).map(([mode, files]) =>
+    [mode, Object.values(files).flatMap(Object.keys).sort()]))).toEqual({
+    actions: ["o/annotated", "o/annotated@1.7.0", "o/annotated@v1.7.3"],
+    cargo: ["tokio"],
+    docker: ["koalaman/shellcheck:v0.11.0", "koalaman/shellcheck:v0.11.0", `koalaman/shellcheck:v0.11.0@${digest}`],
+    go: ["github.com/example/testpkg/cmd/tool"],
+    npm: ["prismjs"],
+    pypi: ["types-requests"],
+  });
+  expect(read(dir, ".github/workflows/ci.yml")).toBe(input[".github/workflows/ci.yml"].replace("1.15.0", "1.17.1")
+    .replace(`v0.11.0@${digest}`, "v0.12.0@sha256:list-new").replace("1.7.0", "1.8.0").replace("v1.7.3", "v1.8.0").replace("v0.11.0", "v0.12.0"));
+  expect(read(dir, "Makefile")).toBe(input.Makefile.replaceAll("v0.11.0", "v0.12.0").replace("v0.9.0", "v1.0.0"));
+  expect(read(dir, "versions.env")).toBe(input["versions.env"].replace("1.30.0", "1.35.0").replace("=v1.7 ", "=v1.8.0 ")
+    .replace("=2.32 ", "=2.32.4.20250611 "));
+
+  const dockerVersions = ["1.0", "1.1", "1.2"];
+  lazyRoute("/docker/v2/repositories/library/review-image/tags", () => ({count: 3,
+    results: dockerVersions.map(name => ({name, tag_last_pushed: "2024-01-01", digest: "sha256:new"}))}));
+  lazyRoute("/github/repos/o/ownership/tags", () => ["v3.0.0", "v1.0.0"].map(name => ({name, commit: {sha: ""}})));
+  lazyRoute("/github/repos/o/ownership/releases", () => [release("v2.0.0")]);
+  lazyRoute("/ipv6/v2/o/tool/tags/list", () => ({tags: ["1.0.0", "1.1.0"]}));
+  lazyRoute("/go/github.com/example/~tool/@latest", () => ({Version: "v1.1.0", Time: "2024-01-01"}));
+  const ownership = writeTree("annotation-ownership", {
+    ".github/workflows/ci.yml": lines("jobs:", "  test:", "    runs-on: ubuntu-latest", "    steps:",
+      "      - uses: o/ownership@v1.0.0 # renovate: datasource=github-releases depName=o/ownership",
+      "    container: review-image:1.0",
+      "env:", "  VERSION: 1.0 # updates: datasource=docker depName=review-image"),
+    "Dockerfile": lines("ARG UNUSED=1.0 # renovate: datasource=docker depName=review-image",
+      "ARG USED=1.0 # updates: datasource=docker depName=alias", "ARG NESTED=1.0 # updates: datasource=docker depName=review-image",
+      "ARG NESTED_IMAGE=review-image:$NESTED", "FROM review-image:$USED",
+      "ENV TEST_IMAGE=review-image:1.0 # updates: datasource=docker", "FROM $NESTED_IMAGE"),
+    "compose.yml": lines("services:", "  test:", "    image: review-image:1.0 # updates: datasource=docker",
+      "    environment:", "      - TEST_IMAGE=review-image:1.0 # updates: datasource=docker"),
+    "Makefile": lines("BASE_IMAGE := review-image:1.0", "V := review-image:1.0 # updates: datasource=docker depName=alias",
+      "CHECK_IMAGE := \\", "  review-image:1.0 # updates: datasource=docker depName=alias",
+      "IPV6_IMAGE := [2001:db8::1]:5000/o/tool:1.0.0",
+      "TOOL := github.com/example/~tool@v1.0.0"),
+    "build.sh": lines("BASE_IMAGE=review-image:1.0", "V=review-image:1.0 # updates: datasource=docker depName=alias",
+      "IPV6_IMAGE=[2001:db8::1]:5000/o/tool:1.0.0", "TOOL=github.com/example/~tool@v1.0.0"),
+    "go.mod": lines("module example.com/main", "", "go 1.23", "", "require github.com/example/testpkg v1.0.0"),
+    "main.go": lines("package main", 'import _ "github.com/example/testpkg"; const version = "1.15.0" // updates: datasource=npm depName=prismjs'),
+    "digest.env": lines(`IMAGE=review-image:1.2@${digest} # updates: datasource=docker`,
+      "MIRROR=example/mirror:1.0 # updates: datasource=docker packageName=review-image"),
+  });
+  const owned = await updates(apiOpts({files: [ownership, join(ownership, "main.go"), join(ownership, "digest.env")],
+    pin: {alias: "1.1"}, update: true}));
+  expect(owned.errors).toBeUndefined();
+  expect(Object.values(owned.results.actions).flatMap(Object.values).map(({new: value}) => value)).toEqual(["3.0.0"]);
+  expect(read(ownership, ".github/workflows/ci.yml")).toContain("o/ownership@v3.0.0");
+  expect(read(ownership, ".github/workflows/ci.yml")).toContain("container: review-image:1.2");
+  expect(read(ownership, ".github/workflows/ci.yml")).toContain("VERSION: 1.2 # updates:");
+  expect(read(ownership, "Dockerfile")).toBe(lines("ARG UNUSED=1.2 # renovate: datasource=docker depName=review-image",
+    "ARG USED=1.2 # updates: datasource=docker depName=alias", "ARG NESTED=1.2 # updates: datasource=docker depName=review-image",
+    "ARG NESTED_IMAGE=review-image:$NESTED", "FROM review-image:$USED",
+    "ENV TEST_IMAGE=review-image:1.2 # updates: datasource=docker", "FROM $NESTED_IMAGE"));
+  expect(read(ownership, "compose.yml")).not.toContain("review-image:1.0");
+  for (const file of ["Makefile", "build.sh"]) {
+    expect(read(ownership, file)).toContain("review-image:1.1 # updates: datasource=docker depName=alias");
+    expect(read(ownership, file)).toContain(`BASE_IMAGE${file === "Makefile" ? " := " : "="}review-image:1.2`);
+    expect(read(ownership, file)).toContain("[2001:db8::1]:5000/o/tool:1.1.0");
+    expect(read(ownership, file)).toContain("github.com/example/~tool@v1.1.0");
+  }
+  expect(read(ownership, "Makefile")).toContain("  review-image:1.2 # updates: datasource=docker depName=alias");
+  expect(read(ownership, "main.go")).toContain('import _ "github.com/example/testpkg/v2"; const version = "1.17.1"');
+  expect(read(ownership, "digest.env")).toContain("MIRROR=example/mirror:1.2 # updates:");
+  expect(Object.values(owned.results.docker).flatMap(Object.values).find(({old}) => old.includes("@")))
+    .toMatchObject({old: `review-image:1.2@${digest}`, new: "review-image:1.2@sha256:new"});
+
+  for (const [name, latest] of [["review-a", "2.0.0"], ["review-b", "3.0.0"]]) {
+    lazyRoute(`/npm/${name}`, () => ({name, "dist-tags": {latest}, versions: {"1.0.0": {}, [latest]: {}}, time: {[latest]: "2024-01-01"}}));
+    lazyRoute(`/npm/${name}/${latest}`, () => ({}));
+  }
+  for (const name of ["review-foo", "review-bar", "review-epoch"]) {
+    const latest = name === "review-epoch" ? "1!2.0" : name === "review-foo" ? "2.0.0" : "3.0.0";
+    lazyRoute(`/pypi/pypi/${name}/json`, () => ({info: {name, version: latest}, releases: {[latest]: [{}]}}));
+  }
+  lazyRoute("/npm/review-pre", () => ({name: "review-pre", "dist-tags": {latest: "1.0.0"}, versions: {"1.0.0": {}, "2.0.0-rc.1": {}}}));
+  lazyRoute("/npm/review-pre/2.0.0-rc.1", () => ({}));
+  lazyRoute("/forgejo/api/v1/repos/o/identity/releases", () => [release("v2.0.0")]);
+  lazyRoute("/forgejo/other/api/v1/repos/o/identity/releases", () => [release("v3.0.0")]);
+  const identities = writeTree("annotation-identities", {
+    "versions.env": lines("A=1.0.0 # updates: datasource=npm depName=tool packageName=review-a",
+      "B=1.0.0 # updates: datasource=npm depName=tool packageName=review-b", "PRE=1.0 # updates: datasource=npm depName=review-pre",
+      "F=1.0.0 # updates: datasource=forgejo-releases depName=o/identity registryUrl=https://code.forgejo.org",
+      "G=1.0.0 # updates: datasource=forgejo-releases depName=o/identity registryUrl=https://code.forgejo.org/other",
+      ...["review-foo", "review-bar"].flatMap(depName => ["1.0.0", "1.5.0"].map(value =>
+        `V=${value} # updates: datasource=pypi depName=${depName}`)),
+      "EPOCH=1!1.0 # updates: datasource=pypi depName=review-epoch"),
+  });
+  const distinct = await updates(apiOpts({files: [join(identities, "versions.env")],
+    overrides: [{include: ["review-pre"], prerelease: true}], update: true}));
+  expect(distinct.errors).toBeUndefined();
+  expect(read(identities, "versions.env")).toContain("A=2.0.0 # updates:");
+  expect(read(identities, "versions.env")).toContain("B=3.0.0 # updates:");
+  expect(read(identities, "versions.env")).toContain("PRE=2.0.0-rc.1 # updates:");
+  expect(read(identities, "versions.env")).toContain("F=2.0.0 # updates:");
+  expect(read(identities, "versions.env")).toContain("G=3.0.0 # updates:");
+  expect(Object.values(distinct.results.npm).flatMap(Object.values).map(({new: value}) => value).sort((left, right) => left.localeCompare(right)))
+    .toEqual(["2.0.0", "2.0.0-rc.1", "3.0.0"]);
+  expect(Object.values(distinct.results.actions).flatMap(Object.values).map(({new: value}) => value).sort((left, right) => left.localeCompare(right))).toEqual(["2.0.0", "3.0.0"]);
+  expect(Object.keys(Object.values(distinct.results.pypi)[0]).sort())
+    .toEqual(["review-bar==1.0.0", "review-bar==1.5.0", "review-epoch", "review-foo==1.0.0", "review-foo==1.5.0"]);
+  expect(read(identities, "versions.env")).toContain("EPOCH=1!2.0 # updates:");
+
+  const oldDate = "2024-01-01T00:00:00Z";
+  const recentDate = new Date().toISOString();
+  const commitRequests: Array<string> = [];
+  lazyRoute("/github/repos/o/annotation-cooldown/tags", () => ["v2.0.0", "v1.1.0", "v1.0.0"].map(name =>
+    ({name, commit: {sha: name === "v2.0.0" ? "recent" : "old"}})));
+  lazyRoute("/github/repos/o/annotation-cooldown/releases", () => ["v2.0.0", "v1.1.0"].map(tag_name =>
+    ({tag_name, prerelease: false, published_at: oldDate})));
+  for (const sha of ["recent", "old"]) {
+    routes.set(`/github/repos/o/annotation-cooldown/git/commits/${sha}`, (req, res) => {
+      commitRequests.push(req.url);
+      res.end(JSON.stringify({committer: {date: sha === "recent" ? recentDate : oldDate}}));
+    });
+  }
+  lazyRoute("/npm/review-cooled", () => ({name: "review-cooled", "dist-tags": {latest: "2.0.0"}, versions: {"1.0.0": {}, "2.0.0": {}},
+    time: {"2.0.0": oldDate}}));
+  lazyRoute("/npm/review-cooled/2.0.0", () => ({_npmOperationalInternal: {tmp: String(Date.now())}}));
+  const cooldown = writeTree("annotation-cooldown", {
+    ".github/workflows/ci.yml": lines("jobs:", "  test:", "    steps:", "      - uses: o/annotation-cooldown@v1.0.0"),
+    "one.env": "V=v1.0.0 # updates: datasource=github-tags depName=o/annotation-cooldown\n",
+    "two.env": "V=v1.0.0 # updates: datasource=github-tags depName=o/annotation-cooldown\nN=1.0.0 # updates: datasource=npm depName=review-cooled\n",
+  });
+  const cooled = await updates(apiOpts({files: [cooldown, join(cooldown, "one.env"), join(cooldown, "two.env")],
+    forgeapi: "https://api.github.com", cooldown: 7, update: true}));
+  expect(cooled.errors).toBeUndefined();
+  expect(cooled.results.npm).toBeUndefined();
+  expect(Object.values(cooled.results.actions).flatMap(Object.values).map(({new: value}) => value)).toEqual(["1.1.0", "1.1.0", "1.1.0"]);
+  expect(commitRequests.sort()).toEqual(["/github/repos/o/annotation-cooldown/git/commits/old", "/github/repos/o/annotation-cooldown/git/commits/recent"]);
+  routes.set("/github/repos/o/short-tags/tags", (_req, res) => {
+    res.setHeader("x-total-count", "1000");
+    res.end(JSON.stringify(Array.from({length: 100}, (_value, index) => ({name: `v1.${100 - index}.0`, commit: {sha: ""}}))));
+  });
+  const lookups = [
+    {name: "short-tags", datasource: "github-tags", current: "v1.1.0", expected: "v1.100.0", fields: "", options: {}},
+    {name: "pre-tags", datasource: "github-tags", current: "v2.0.0-rc.1", expected: "v2.0.0-rc.2", fields: "", options: {}},
+    {name: "pre-releases", datasource: "github-releases", current: "v2.0.0-rc.1", expected: "v2.0.0-rc.2", fields: "", options: {}},
+    {name: "draft", datasource: "github-releases", current: "v1.0.0", expected: "v2.0.0-rc.2", fields: "", options: {prerelease: true}},
+    {name: "pep-beta", datasource: "github-releases", current: "1.0b1", expected: "1.0b2", fields: "versioning=pep440", options: {}},
+    {name: "pep-post", datasource: "github-tags", current: "1.0", expected: "1.1.post1", fields: "versioning=pep440", options: {}},
+    {name: "many-releases", datasource: "github-releases", current: "v1.0.0", expected: "v1.1.0", fields: "", options: {cooldown: 7}},
+    {name: "mixed-tags", datasource: "github-tags", current: "v1.0.0", expected: "2.0.0", fields: "", options: {}},
+  ];
+  lazyRoute("/github/repos/o/pre-tags/tags", () => ["v2.0.0-rc.2", "v2.0.0-rc.1"].map(name => ({name, commit: {sha: ""}})));
+  lazyRoute("/github/repos/o/mixed-tags/tags", () => ["2.0.0", "v1.0.0"].map(name => ({name, commit: {sha: ""}})));
+  for (const name of ["pre-tags", "pre-releases", "draft"]) {
+    lazyRoute(`/github/repos/o/${name}/releases`, () => [{...release("v9.0.0"), draft: true}, release("v2.0.0-rc.2", true)]);
+  }
+  lazyRoute("/github/repos/o/pep-beta/releases", () => [release("1.0b2", true)]);
+  lazyRoute("/github/repos/o/pep-post/tags", () => [{name: "1.1.post1", commit: {sha: ""}}]);
+  lazyRoute("/github/repos/o/many-releases/releases", () => [
+    ...Array.from({length: 100}, (_value, index) => ({...release(`v2.0.${index}`), published_at: recentDate})),
+    {...release("v1.1.0"), published_at: oldDate},
+  ]);
+  const tagRequestsBefore = requestedUrls.filter(url => url.startsWith("/github/repos/o/short-tags/tags")).length;
+  const target = writeTree("annotation-lookups", Object.fromEntries(lookups.map(({name, datasource, current, fields}) =>
+    [`${name}.env`, `V=${current} # updates: datasource=${datasource} depName=o/${name} ${fields}\n`])));
+  expect((await updates(apiOpts({files: lookups.map(({name}) => join(target, `${name}.env`)),
+    overrides: lookups.map(({name, options}) => ({include: [`o/${name}`], ...options})), update: true}))).errors).toBeUndefined();
+  for (const {name, expected} of lookups) expect(read(target, `${name}.env`)).toContain(`V=${expected} # updates:`);
+  expect(requestedUrls.filter(url => url.startsWith("/github/repos/o/short-tags/tags"))).toHaveLength(tagRequestsBefore + 1);
 });
 
 test("docker image names match with and without the docker.io prefix", async () => {

@@ -50,6 +50,7 @@ test("package.json prewarms only the registry its dependency uses", () => {
   expect(prewarmOrigins(makeDir({"pnpm-workspace.yaml": ""}), {})).toEqual(expect.arrayContaining(npmOrigins));
   expect(prewarmOrigins(dir, {modes: ["docker"]})).toEqual([]);
   expect(prewarmOrigins(makeDir({".github/workflows/ci.yml": ""}), {modes: ["docker"]})).toEqual(["https://hub.docker.com/"]);
+  expect(prewarmOrigins(makeDir({"Makefile": ""}), {modes: ["go"]})).toEqual(["https://proxy.golang.org/"]);
   expect(prewarmOrigins(makeDir({".github/workflows/ci.yml": "steps:\n  - run: |\n      uses: docker://node:18\n"}), {})).toEqual([]);
 });
 

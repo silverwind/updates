@@ -141,6 +141,8 @@ test("extractDockerRefs", () => {
   expect(extractDockerRefs(`services:\n  web:\n    image: "\${IMAGE:-node:18}"\n`, "compose").map(({ref}) => ref))
     .toMatchObject([{fullImage: "node", tag: "18"}]);
   expect(extractDockerRefs("\uFEFFFROM node:18\n", "dockerfile").map(({ref}) => ref.tag)).toEqual(["18"]);
+  expect(extractDockerRefs("ARG VERSION=18\nARG BASE=node:$VERSION\nFROM $BASE\n", "dockerfile").map(({lines}) => lines))
+    .toEqual([[2, 1]]);
 });
 
 test("findDockerVersion basic selection", async () => {

@@ -581,31 +581,33 @@ export function fetchForgeEtag(
   url: string, ctx: ModeContext, flavor: "commits" | "tags" | "releases", reduce: (res: Response) => Promise<string>,
 ): Promise<string | null> {
   const key = `${flavor}${fieldSep}${url}`;
+  const cacheKey = flavor === "releases" ? `${url}#draft` : url;
   return dedupe(forgeEtagsByCtx, ctx, key, async () => {
-    const cached = ctx.noCache ? null : await getCache(url);
+    const cached = ctx.noCache ? null : await getCache(cacheKey);
     const res = await fetchForge(url, ctx, cached ? {"if-none-match": cached.etag} : undefined);
     if (res.status === 304 && cached) return cached.body;
     if (!res.ok) { forgeEtagsByCtx.get(ctx)!.delete(key); return null; }
     const body = await reduce(res);
     const etag = res.headers.get("etag");
-    if (etag && !ctx.noCache) setCache(url, etag, body);
+    if (etag && !ctx.noCache) setCache(cacheKey, etag, body);
     return body;
   });
 }
 
-type Release = {name: string, isStable: boolean, releaseTimestamp?: string};
+type Release = {name: string, isStable: boolean, isDraft?: true, releaseTimestamp?: string};
 
 function parseReleases(data: any, cached = false): Array<Release> {
   if (!Array.isArray(data)) throw new TypeError(`Invalid ${cached ? "cached " : ""}Forge releases response`);
   return data.map(release => {
     const name = cached ? release?.name : release?.tag_name;
-    const isStable = cached ? release?.isStable : !release?.prerelease && release?.draft !== true;
+    const isDraft = (cached ? release?.isDraft : release?.draft) === true;
+    const isStable = cached ? release?.isStable : !release?.prerelease && !isDraft;
     const releaseTimestamp = cached ? release?.releaseTimestamp : release?.published_at;
     if (typeof name !== "string" || (cached ? typeof isStable !== "boolean" :
       typeof release?.prerelease !== "boolean" || release.draft !== undefined && typeof release.draft !== "boolean")) {
       throw new TypeError(`Invalid ${cached ? "cached " : ""}Forge release entry`);
     }
-    return {name, isStable, ...(releaseTimestamp && {releaseTimestamp})};
+    return {name, isStable, ...(isDraft && {isDraft}), ...(releaseTimestamp && {releaseTimestamp})};
   });
 }
 
@@ -671,6 +673,20 @@ export async function fetchForgeTags(
     },
   );
   return tags;
+}
+
+export async function fetchForgeReleases(
+  apiUrl: string, owner: string, repo: string, ctx: ModeContext, oldRefs: Array<string> = [],
+): Promise<Array<Release>> {
+  const releases: Array<Release> = [];
+  await fetchForgePages(
+    page => `${apiUrl}/repos/${owner}/${repo}/releases?${apiUrl.endsWith("/api/v1") ? "limit" : "per_page"}=100&page=${page}`,
+    ctx, "releases", parseReleases, entries => {
+      releases.push(...entries.filter(release => !release.isDraft));
+      return entries.some(release => oldRefs.includes(release.name));
+    },
+  );
+  return releases;
 }
 
 export async function fetchActionTags(

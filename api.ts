@@ -1,10 +1,12 @@
 import {cwd, platform, stderr} from "node:process";
 import {styleText} from "node:util";
 import {join, dirname, basename, relative, resolve} from "node:path";
-import {statSync, realpathSync, truncateSync, writeFileSync, accessSync, type Stats} from "node:fs";
+import {statSync, realpathSync, truncateSync, writeFileSync, readFileSync, accessSync, type Stats} from "node:fs";
 import {readFile} from "node:fs/promises";
 import {parseToml} from "./utils/toml.ts";
-import {githubActionsVersioning, satisfies, valid, validRange} from "./utils/semver.ts";
+import {
+  githubActionsVersioning, pep440Versioning, satisfies, valid, validRange, type Versioning,
+} from "./utils/semver.ts";
 import {timerel} from "timerel";
 import {
   npmTypes, uvTypes, goTypes, cargoTypes, cargoTargetTypes, expandDepTypes, parseUvDependencies, nonPackageEngines,
@@ -13,7 +15,7 @@ import {
 } from "./utils/utils.ts";
 import {
   fieldSep, normalizeUrl, fetchTimeout, goProbeTimeout, maxSockets,
-  doFetch, fetchActionTags, fetchForge, findVersion, findNewVersion, getInfoUrl, getLimiter,
+  doFetch, fetchActionTags, fetchForge, fetchForgeReleases, findVersion, findNewVersion, getInfoUrl, getLimiter,
   passesCooldown, stripv, hashRe, isVersionLikeRef, defaultApiUrls, formatVersionPrecision, getExecFile,
   coerceToVersion, goPinAllowsDowngrade, goVersionPredicate, pypiReleaseDate, redactUrlCredentials, forgeTokenHint,
   type Dep, type Deps, type DepsByMode, type Limiter, type Output as ModeOutput, type ModeContext, type TagEntry,
@@ -23,10 +25,13 @@ import {cliBaseConfig, loadConfig, configMixedToRegexes, patternsToRegexSet, val
 import type {Config, Override} from "./config.ts";
 import {matchesRenovateRule, testRenovateMatcher, type RenovateVersionRule} from "./utils/renovate.ts";
 import {
-  fetchNpmInfo, fetchNpmVersionInfo, fetchJsrInfo, isJsr, isLocalDep, isCatalogRef, parseJsrDependency, parseNpmAlias,
-  updatePackageJson, updateVersionRange, normalizeRange, checkUrlDep, resolutionsBasePackage, selectorTypes, npmTargetName,
+  fetchNpmInfo, fetchNpmVersionInfo, fetchJsrInfo, isJsr, isLocalDep, isCatalogRef,
+  parseJsrDependency, parseNpmAlias, updatePackageJson, updateVersionRange, normalizeRange, checkUrlDep,
+  resolutionsBasePackage, selectorTypes, npmTargetName,
 } from "./modes/npm.ts";
-import {fetchPypiInfo, isPypiRange, pypiSatisfies, updatePyprojectToml, updateRequirement} from "./modes/pypi.ts";
+import {
+  fetchPypiInfo, isPypiRange, normalizePep503, pypiSatisfies, updatePyprojectToml, updateRequirement,
+} from "./modes/pypi.ts";
 import {
   resolveGoProxyChain, parseGoNoProxy,
   parseGoMod, parseGoModule, parseGoWork, resolveGoWorkModule, fetchGoProxyInfo, updateGoMod, rewriteGoImports,
@@ -47,11 +52,15 @@ import {
   type DockerImageRef,
 } from "./modes/docker.ts";
 import {
-  isMakeFileName, makeExactFileNames, makeAssignmentValues, parseGoInstalls, parseImages,
+  isMakeFileName, makeExactFileNames, makeAssignmentValues, parseGoInstalls, parseImages, parseMakeImageValue,
   resolveGoModuleRoot, formatMakeImageSpec, updateMakefile,
   type MakeDockerImage,
 } from "./modes/make.ts";
 import {isShellFileName, shellAssignmentValues} from "./modes/shell.ts";
+import {
+  annotationMode, forgeDatasourceRe, parseAnnotations, unsupportedAnnotationField,
+  updateAnnotatedLines,
+} from "./modes/annotations.ts";
 import {
   fetchCratesIoInfo, updateCargoToml, updateCargoRange, cargoToNpmRange, parseCargoLock, findLockedVersion,
 } from "./modes/cargo.ts";
@@ -72,8 +81,7 @@ const isDigestOnlyPin = (info: {isHash: boolean, comment: string}): boolean =>
 /** A dependency whose lookup failed. Every other dependency is still resolved and written. */
 export type DepError = {
   mode: string,
-  /** The dependency type, or the file path for the file-scoped modes, as in `results` */
-  type: string,
+  /** The dependency type, or the file path for file-scoped dependencies, as in `results` */ type: string,
   name: string,
   error: string,
 };
@@ -84,8 +92,25 @@ export type Output = ModeOutput & {errors?: Array<DepError>};
 export type {Config, Override, Dep, Deps, DepsByMode};
 export {cliBaseConfig as cliConfigBaseDir, defaultExcludePaths};
 
-const modeOrder = [...new Set(Object.values(modeByFileName)), "actions", "docker", "make", "shell"];
+const modeOrder = [...new Set(Object.values(modeByFileName)), "actions", "docker"];
 const defaultModes = new Set(modeOrder);
+
+const forgeWebUrls: Record<string, string> = {github: "https://github.com", gitea: "https://gitea.com", forgejo: "https://code.forgejo.org"};
+
+async function pickDatedVersion(
+  versions: Array<string>, opts: Parameters<typeof findVersion>[2], versionDate: (version: string) => Promise<string>,
+): Promise<{version: string, date: string} | null> {
+  const selectOpts = {...opts, cooldownDays: undefined};
+  for (let attempt = 0; attempt < 100; attempt++) {
+    const picked = findVersion({}, versions, selectOpts);
+    if (!picked) return null;
+    if (!opts.cooldownDays) return {version: picked, date: ""};
+    const date = await versionDate(picked);
+    if (passesCooldown(date, opts.cooldownDays, opts.now)) return {version: picked, date};
+    versions = versions.filter(version => version !== picked);
+  }
+  return null;
+}
 
 const semversByPrecision = {
   patch: new Set(["patch"]),
@@ -133,8 +158,6 @@ const depBelongsToMember = (key: string, memberPath: string): boolean => {
 };
 
 const hasDeps = (deps: DepsByMode) => Object.values(deps).some(modeDeps => Object.keys(modeDeps).length > 0);
-
-const normalizePep503 = (name: string) => name.toLowerCase().replace(/[-_.]+/g, "-");
 
 const selectorName = (depType: string, name: string) => selectorTypes.has(depType) ? resolutionsBasePackage(name) : name;
 
@@ -235,7 +258,7 @@ function buildOutput(deps: DepsByMode): Output {
   }
   for (const [mode, modeDeps] of modes) {
     for (const [key, {oldPrint, newPrint, oldOrig, date: _date, cooldownDays: _cooldownDays, ...props}] of Object.entries(modeDeps)) {
-      const [type, name, ref] = key.split(fieldSep);
+      const [type, name, ref, identity] = key.split(fieldSep);
       if (typeof oldPrint === "string") props.old = oldPrint;
       else if (typeof oldOrig === "string" && !isJsr(oldOrig)) props.old = oldOrig;
       if (typeof newPrint === "string") props.new = newPrint;
@@ -244,7 +267,10 @@ function buildOutput(deps: DepsByMode): Output {
 
       const label = ref && rowsPerName.get(rowId(mode, key))! > 1 ?
         mode === "pypi" ? ref : `${name}${mode === "actions" ? "@" : ":"}${displayKey(ref)}` : name;
-      getOrSet(getOrSet(results, mode, () => new Map()), displayKey(type), () => new Map()).set(label, props);
+      const rows = getOrSet(getOrSet(results, mode, () => new Map()), displayKey(type), () => new Map());
+      const existing = rows.get(label);
+      if (existing?.old === props.old && existing.new === props.new) continue;
+      rows.set(existing && identity ? `${label} ${displayKey(identity)}` : label, props);
     }
   }
   return {results: Object.fromEntries(Array.from(results, ([mode, types]) => [mode, Object.fromEntries(Array.from(types,
@@ -563,25 +589,30 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
   const files = await resolveFiles(config.files, cwdStr, pathFilters, isPatternWorkflow);
   const patternWorkflows = new Set(Array.from(files.keys()).filter(isPatternWorkflow));
   const isWorkflow = (file: string) => isWorkflowFile(file) || patternWorkflows.has(file);
-  const fileContents = new Map(await pMap(Array.from(files.keys()).filter(file => {
+  const readsNatively = (file: string) => {
+    const filename = basename(file);
     if (isWorkflow(file)) return enabledModes.has("actions") || enabledModes.has("docker");
+    if (isDockerFileName(filename)) return enabledModes.has("docker");
+    if (isMakeFileName(filename) || isShellFileName(filename)) return enabledModes.has("go") || enabledModes.has("docker");
+    return Object.hasOwn(modeByFileName, filename);
+  };
+  const fileContents = new Map(await pMap(Array.from(files.keys()).filter(file => {
     const filename = basename(file);
     if (Object.hasOwn(workspaceFileOf, filename) && files.has(join(dirname(file), workspaceFileOf[filename]))) return false;
-    if (isDockerFileName(filename)) return enabledModes.has("docker");
-    if (isMakeFileName(filename)) return enabledModes.has("make");
-    if (isShellFileName(filename)) return enabledModes.has("shell");
-    return enabledModes.has(modeByFileName[filename]);
+    return isWorkflow(file) || !Object.hasOwn(modeByFileName, filename) || enabledModes.has(modeByFileName[filename]);
   }), async (file): Promise<[string, string]> => {
     try {
       return [file, await readFile(file, "utf8")];
     } catch (err) {
+      if (!readsNatively(file)) return [file, ""];
       throw new Error(`Unable to open ${file}: ${(err as Error).message}`);
     }
   }, {concurrency}));
 
   const fileData: Record<string, {
-    absPath: string, content: string, fileType?: "dockerfile" | "compose" | "workflow", workflowLines?: Set<number>,
-  }> = {};
+    absPath: string, fileType?: "dockerfile" | "compose" | "workflow",
+    nativeLines?: Set<number>, workflowLines?: Set<number>,
+  }> = Object.create(null);
 
   const goModFiles: WorkspaceMember[] = [];
   const goWorkFiles: WorkspaceMember[] = [];
@@ -592,12 +623,18 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
 
   const actionDepInfos: Array<ActionRef & {key: string, apiUrl: string, filters: FileFilters, comment: string,
     identity: DependencyIdentity}> = [];
-  const dockerDepInfos: Array<{key: string, ref: DockerImageRef, filters: FileFilters}> = [];
-  type MakeDepInfo = {mode: "make" | "shell", key: string, filters: FileFilters} & (
-    {kind: "go", installPath: string, version: string} |
-    {kind: "docker", image: MakeDockerImage}
+  const dockerDepInfos: Array<{key: string, mode: string, ref: DockerImageRef, filters: FileFilters}> = [];
+  type MakeDepInfo = {key: string, filters: FileFilters, identity: DependencyIdentity} & (
+    {mode: "go", installPath: string, version: string} |
+    {mode: "docker", image: MakeDockerImage}
   );
   const makeDepInfos: Array<MakeDepInfo> = [];
+  type AnnotationDepInfo = {
+    key: string, mode: string, fields: Record<string, string>, value: string, filters: FileFilters, identity: DependencyIdentity,
+    image: MakeDockerImage | null, locations: Array<{line: number, column: number}>,
+  };
+  const annotationDepInfos = new Map<string, AnnotationDepInfo>();
+  const annotatedLines = new Map<string, Set<number>>();
   const modeContextsBySuffix: Record<string, Map<string, FileFilters>> = {};
   const registerModeContext = (mode: string, memberPath: string, filters: FileFilters) => {
     const typeSuffix = memberPath === "." ? "" : `|${memberPath}`;
@@ -653,18 +690,19 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
     return entries;
   };
 
-  function collectDockerRef(ref: DockerImageRef, relPath: string, filters: FileFilters): void {
+  function collectDockerRef(ref: DockerImageRef, relPath: string, filters: FileFilters): boolean {
     deps.docker ??= {};
     const key = dependencyKey(relPath, ref.fullImage, `${ref.tag}${ref.digest ? `@${ref.digest}` : ""}`);
-    if (!canIncludeDep("docker", key, resolveDependencyIdentity("docker", ref.fullImage), filters, "docker")) return;
-    if (deps.docker[key]) return;
+    if (!canIncludeDep("docker", key, resolveDependencyIdentity("docker", ref.fullImage), filters, "docker")) return false;
+    if (deps.docker[key]) return true;
     const parsed = parseDockerTag(ref.tag);
-    if (!parsed && !ref.digest) return;
+    if (!parsed && !ref.digest) return false;
     deps.docker[key] = {
       old: parsed?.version ?? ref.tag, oldOrig: ref.tag,
       ...(ref.digest && {oldDigest: ref.digest}), ...(ref.digestOnly && {digestOnly: true}),
     } as Dep;
-    dockerDepInfos.push({key, ref, filters});
+    dockerDepInfos.push({key, mode: "docker", ref, filters});
+    return true;
   }
 
   const cargoWorkspaceFiles = new Map<string, Record<string, any>>();
@@ -717,6 +755,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
     collectDeps("npm", pkg, registerModeContext("npm", memberPath, filters), filters, internalNames);
   };
   for (const file of new Set([...cargoWorkspaceFiles.keys(), ...npmWorkspaceFiles.keys(), ...fileContents.keys()])) {
+    if (!readsNatively(file)) continue;
     const filename = basename(file);
     const content = fileContents.get(file)!;
     if (isWorkflow(file)) {
@@ -725,7 +764,8 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
       const relPath = toRelPath(file);
       const filters = await resolveDirConfig(dirname(file));
       const workflowLines = new Set<number>();
-      fileData[relPath] = {absPath: file, content, fileType: "workflow", workflowLines};
+      const nativeLines = new Set<number>();
+      fileData[relPath] = {absPath: file, fileType: "workflow", workflowLines, nativeLines};
       const yamlPath: Array<YamlPathEntry> = [];
 
       for (const [lineNumber, line] of yamlLines(content.split(/\r?\n/))) {
@@ -735,6 +775,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
           if (action) {
             const identity = resolveDependencyIdentity("actions", `${action.owner}/${action.repo}`, action.name);
             if (canInclude(identity, "actions", filters, "actions")) {
+              nativeLines.add(lineNumber);
               deps.actions ??= {};
               const comment = parsed.pinnedVersion || /^#\s*(\S+)\s*$/.exec(parsed.comment)?.[1] || "";
               const key = dependencyKey(relPath, action.name, action.isHash && comment ? `${comment}@${action.ref}` : action.ref);
@@ -763,7 +804,10 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
         if ((container || image || uses) && pair.value) {
           const value = pair.value.replace(/\s+#.*$/, "").replace(/^(['"])(.*)\1$/, "$2");
           const ref = parseDockerImageRef(value);
-          if (ref) { collectDockerRef(ref, relPath, filters); workflowLines.add(lineNumber); }
+          if (ref && collectDockerRef(ref, relPath, filters)) {
+            workflowLines.add(lineNumber);
+            nativeLines.add(lineNumber);
+          }
         }
         yamlPath.push({indent, key});
       }
@@ -774,45 +818,52 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
       const relPath = toRelPath(file);
       const filters = await resolveDirConfig(dirname(file));
       const fileType = isDockerfile(filename) ? "dockerfile" : "compose";
-      fileData[relPath] = {absPath: file, content, fileType};
-      for (const {ref} of extractDockerRefs(content, fileType)) collectDockerRef(ref, relPath, filters);
+      const nativeLines = new Set<number>();
+      fileData[relPath] = {absPath: file, fileType, nativeLines};
+      for (const {ref, lines} of extractDockerRefs(content, fileType)) {
+        if (collectDockerRef(ref, relPath, filters)) for (const line of lines) nativeLines.add(line);
+      }
       continue;
     }
 
-    const specMode = isMakeFileName(filename) ? "make" : isShellFileName(filename) ? "shell" : null;
-    if (specMode) {
-      const values = specMode === "make" ? makeAssignmentValues(content) : shellAssignmentValues(content);
-      const goInstalls = parseGoInstalls(values);
-      const images = parseImages(values);
+    if (isMakeFileName(filename) || isShellFileName(filename)) {
+      const values = isMakeFileName(filename) ? makeAssignmentValues(content) : shellAssignmentValues(content);
+      const goInstalls = enabledModes.has("go") ? parseGoInstalls(values) : [];
+      const images = enabledModes.has("docker") ? parseImages(values) : [];
       if (!goInstalls.length && !images.length) continue;
       const relPath = toRelPath(file);
       const filters = await resolveDirConfig(dirname(file));
-      fileData[relPath] = {absPath: file, content};
-      const modeDeps = deps[specMode] ??= {};
-      for (const {installPath, version} of goInstalls) {
+      const nativeLines = new Set<number>();
+      fileData[relPath] = {absPath: file, nativeLines};
+      const modeDeps = deps.make ??= {};
+      for (const {installPath, version, line} of goInstalls) {
         const key = dependencyKey(relPath, installPath, version);
-        if (!canIncludeDep(specMode, key, resolveDependencyIdentity("go", installPath), filters, specMode)) continue;
+        const identity = resolveDependencyIdentity("go", installPath);
+        if (!canInclude(identity, "go", filters, "go")) continue;
+        nativeLines.add(line!);
         if (modeDeps[key]) continue;
         modeDeps[key] = {old: `${installPath}@${version}`, oldPrint: version} as Dep;
-        makeDepInfos.push({mode: specMode, kind: "go", key, installPath, version, filters});
+        makeDepInfos.push({mode: "go", key, installPath, version, filters, identity});
       }
       for (const image of images) {
         const key = dependencyKey(relPath, image.writtenImage, `${image.ref.tag}${image.digest ? `@${image.digest}` : ""}`);
-        if (!canIncludeDep(specMode, key, resolveDependencyIdentity("docker", image.writtenImage), filters, specMode)) continue;
-        if (modeDeps[key]) continue;
+        const identity = resolveDependencyIdentity("docker", image.writtenImage);
+        if (!canInclude(identity, "docker", filters, "docker")) continue;
         if (!parseDockerTag(image.ref.tag)) continue;
+        nativeLines.add(image.line!);
+        if (modeDeps[key]) continue;
         modeDeps[key] = {old: formatMakeImageSpec(image.writtenImage, image.ref.tag, image.digest), oldPrint: image.ref.tag} as Dep;
-        makeDepInfos.push({mode: specMode, kind: "docker", key, image, filters});
+        makeDepInfos.push({mode: "docker", key, image, filters, identity});
       }
       continue;
     }
 
+    const mode = modeByFileName[filename];
     const absFile = resolve(file);
     if (filename === "go.mod" && goModFiles.some(member => member.absPath === absFile)) continue;
     if (filename === "package.json" && pnpmMemberFiles.some(member => member.absPath === absFile)) continue;
     if (filename === "Cargo.toml" && cargoMemberFiles.some(member => member.absPath === absFile)) continue;
 
-    const mode = modeByFileName[filename];
     const projectDir = dirname(absFile);
     const isSelectedManifest = (absPath: string, authoredPath: string) =>
       passesPathFilters(relative(files.get(file)!, authoredPath).replaceAll("\\", "/"), pathFilters) || files.has(absPath);
@@ -962,6 +1013,41 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
     collectDeps(mode, pkg, addPlainFile(mode, file, content, filters), filters);
   }
 
+  for (const [file, content] of fileContents) {
+    if (Object.hasOwn(modeByFileName, basename(file))) continue;
+    const annotations = parseAnnotations(content);
+    if (!annotations.length) continue;
+    const relPath = toRelPath(file);
+    const filters = await resolveDirConfig(dirname(file));
+    const {nativeLines} = fileData[relPath] ??= {absPath: file};
+    for (const {line, column, value, fields} of annotations) {
+      if (nativeLines?.has(line)) continue;
+      getOrSet(annotatedLines, relPath, () => new Set()).add(line);
+      const unsupported = unsupportedAnnotationField(fields);
+      if (unsupported) {
+        if (config.verbose) writeVerbose(`${timestamp()} ${magenta("SKIP")} ${relPath}:${line + 1}: unsupported ${unsupported}`);
+        continue;
+      }
+      const mode = annotationMode(fields.datasource)!;
+      if (!enabledModes.has(mode)) continue;
+      const image = fields.datasource === "docker" ? parseMakeImageValue(value) : null;
+      const install = fields.datasource === "go" ? parseGoInstalls([{name: "", value}])[0] : undefined;
+      const packageName = install?.installPath ?? (fields.packageName || fields.lookupName || image?.ref.fullImage || fields.depName);
+      const depName = fields.depName || packageName;
+      const key = `${dependencyKey(relPath, depName, fields.datasource === "pypi" ? `${depName}==${value}` :
+        image ? value.slice(image.writtenImage.length + 1) : install?.version ?? value)}${fieldSep}${JSON.stringify([
+        fields.datasource, packageName, fields.registryUrl || "", fields.extractVersion || "", fields.versioning || "", value,
+      ])}`;
+      const existing = annotationDepInfos.get(key);
+      if (existing) { existing.locations.push({line, column}); continue; }
+      const identity = resolveDependencyIdentity(fields.datasource,
+        fields.datasource === "pypi" ? normalizePep503(packageName) : packageName, depName);
+      if (!canInclude(identity, mode, filters, mode)) continue;
+      (deps.annotations ??= {})[key] = {old: value, oldPrint: image?.ref.tag ?? install?.version} as Dep;
+      annotationDepInfos.set(key, {key, mode, fields, value, filters, identity, image, locations: [{line, column}]});
+    }
+  }
+
   const hasMaybeUrlDeps = Object.keys(maybeUrlDeps).length > 0;
   if (!hasDeps(deps) && !hasMaybeUrlDeps) {
     return {results: {}, message: "No dependencies found, nothing to do."};
@@ -1096,6 +1182,32 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
     }
   });
 
+  type ForgeEntry = Omit<TagEntry, "commitSha"> & {commitSha?: string};
+  function forgeVersionTags(
+    entries: Array<ForgeEntry>, allowedVersions?: string, versioning: Versioning = githubActionsVersioning,
+    includePrerelease = false, extractVersion = "", annotation = false,
+  ) {
+    const isAllowed = allowedVersions ? versionAllowedPredicate(versioning === pep440Versioning ? "pypi" : "actions", allowedVersions) : null;
+    const extract = extractVersion ? new RegExp(extractVersion) : null;
+    const byVersion = new Map<string, {written: string, entry: ForgeEntry}>();
+    const allowedTags = new Set<string>();
+    for (const entry of entries) {
+      const written = extract ? extract.exec(entry.name)?.groups?.version : entry.name;
+      const version = written && (!annotation || versioning !== githubActionsVersioning || isVersionLikeRef(written)) && versioning.parse(written)?.version;
+      if (!version || entry.isStable === false && !includePrerelease || isAllowed && !isAllowed(version, written)) continue;
+      allowedTags.add(written);
+      if (written.length > (byVersion.get(version)?.written.length ?? 0)) byVersion.set(version, {written, entry});
+    }
+    return {byVersion, versions: Array.from(byVersion.keys()), allowedTags};
+  }
+  const commitDates = new Map<string, ReturnType<typeof fetchActionTagDate>>();
+  const forgeDate = async (apiUrl: string, owner: string, repo: string, {name, commitSha, releaseTimestamp}: ForgeEntry) => {
+    const date = commitSha ? await getOrSet(commitDates, `${apiUrl}/${owner}/${repo}/${commitSha}`,
+      () => fetchActionTagDate(apiUrl, owner, repo, commitSha, ctx)) : "";
+    if (date === undefined) throw new Error(`Unable to fetch the commit date for ${owner}/${repo}@${name}`);
+    return releaseTimestamp && (!date || Date.parse(releaseTimestamp) > Date.parse(date)) ? releaseTimestamp : date;
+  };
+
   const actionsTask = pMap(Map.groupBy(actionDepInfos, info => `${info.apiUrl}/${info.owner}/${info.repo}`).values(), async (infos) => {
     const {apiUrl, owner, repo} = infos[0];
     if (!apiUrl) {
@@ -1132,29 +1244,11 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
       entryByName.set(tag.name, tag);
       if (tag.commitSha) commitShaToTag.set(tag.commitSha.toLowerCase(), tag.name);
     }
-    const tagsByAllowedVersions = new Map<string | undefined, {
-      tagByVersion: Map<string, string>, versions: Array<string>, allowedTags: Set<string>,
-    }>();
-    const versionTags = (allowedVersions?: string) => getOrSet(tagsByAllowedVersions, allowedVersions, () => {
-      const isAllowed = allowedVersions ? versionAllowedPredicate("actions", allowedVersions) : null;
-      const tagByVersion = new Map<string, string>();
-      const allowedTags = new Set<string>();
-      for (const tag of tags) {
-        const version = githubActionsVersioning.parse(tag.name)?.version;
-        if (!version || tag.isStable === false || isAllowed && !isAllowed(version, tag.name)) continue;
-        allowedTags.add(tag.name);
-        if (tag.name.length > (tagByVersion.get(version)?.length ?? 0)) tagByVersion.set(version, tag.name);
-      }
-      return {tagByVersion, versions: Array.from(tagByVersion.keys()), allowedTags};
-    });
-
-    const getCommitDate = memoizeAsync((commitSha: string) => fetchActionTagDate(apiUrl, owner, repo, commitSha, ctx));
-    const getDate = async (commitSha: string, tag: string) => {
-      const date = await getCommitDate(commitSha);
-      const releaseTimestamp = entryByName.get(tag)?.releaseTimestamp;
-      return date !== undefined && releaseTimestamp && (!date || Date.parse(releaseTimestamp) > Date.parse(date)) ?
-        releaseTimestamp : date;
-    };
+    const tagsByAllowedVersions = new Map<string | undefined, ReturnType<typeof forgeVersionTags>>();
+    const versionTags = (allowedVersions?: string) =>
+      getOrSet(tagsByAllowedVersions, allowedVersions, () => forgeVersionTags(tags, allowedVersions));
+    const getDate = (commitSha: string, tag: string) => forgeDate(apiUrl, owner, repo,
+      {...entryByName.get(tag), name: tag, commitSha});
     const getExactDigest = memoizeAsync(async (exactRef: string): Promise<string> => {
       const tagged = entryByName.get(exactRef)?.commitSha;
       if (tagged) return tagged;
@@ -1169,28 +1263,6 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
       const body = await response.json();
       return [body?.sha, body?.id, body?.commit?.sha, body?.commit?.id].find(value => typeof value === "string") ?? "";
     });
-
-    async function pickVersion(opts: Parameters<typeof findVersion>[2], {tagByVersion, versions}: ReturnType<typeof versionTags>): Promise<{version: string, tag: string, commitSha: string, date: string} | null> {
-      const selectOpts = {...opts, cooldownDays: undefined, now: undefined};
-      const denylist = new Set<string>();
-      for (let attempt = 0; attempt < 100; attempt++) { // bounded, each attempt is a serial commit-date fetch
-        const candidates = denylist.size ? versions.filter(version => !denylist.has(version)) : versions;
-        const picked = findVersion({}, candidates, selectOpts);
-        if (!picked) return null;
-        const tag = tagByVersion.get(picked)!;
-        const {commitSha, releaseTimestamp} = entryByName.get(tag)!;
-        if (!opts.cooldownDays) return {version: picked, tag, commitSha, date: ""};
-        if (releaseTimestamp && !passesCooldown(releaseTimestamp, opts.cooldownDays, opts.now)) {
-          denylist.add(picked);
-          continue;
-        }
-        const date = commitSha ? await getDate(commitSha, tag) : "";
-        if (date === undefined) throw new Error(`Unable to fetch the commit date for ${owner}/${repo}@${tag}`);
-        if (passesCooldown(date, opts.cooldownDays, opts.now)) return {version: picked, tag, commitSha, date};
-        denylist.add(picked);
-      }
-      return null;
-    }
 
     await pMap(infos, async (info) => {
       try {
@@ -1210,15 +1282,18 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
 
         const versionOpts = resolveVersionOpts(info.filters, info.identity);
         const filteredTags = versionTags(versionOpts.allowedVersions);
-        const result = isVersionLikeRef(oldRef) ? await pickVersion({...versionOpts, range: oldRef, versioning: githubActionsVersioning},
-          filteredTags) : null;
+        const result = isVersionLikeRef(oldRef) ? await pickDatedVersion(filteredTags.versions,
+          {...versionOpts, range: oldRef, versioning: githubActionsVersioning}, async version => {
+            const {written: tag, entry: {commitSha, releaseTimestamp}} = filteredTags.byVersion.get(version)!;
+            if (releaseTimestamp && !passesCooldown(releaseTimestamp, versionOpts.cooldownDays, versionOpts.now)) return releaseTimestamp;
+            return commitSha ? getDate(commitSha, tag) : "";
+          }) : null;
         if (!result) { // a commented sha pin still follows its ref when no newer version exists
           if (!isHash || !comment) { delete deps.actions[key]; return; }
           const newDigest = await getExactDigest(comment);
           if (!newDigest || isPinnedSha(newDigest)) { delete deps.actions[key]; return; }
           if (versionOpts.cooldownDays) {
             const date = await getDate(newDigest, comment);
-            if (date === undefined) throw new Error(`Unable to fetch the commit date for ${owner}/${repo}@${comment}`);
             if (!passesCooldown(date, versionOpts.cooldownDays, versionOpts.now)) { delete deps.actions[key]; return; }
           }
           dep.old = comment;
@@ -1230,7 +1305,8 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
           setDepAge(dep, await tryOrNull(getDate(newDigest, comment)));
           return;
         }
-        const {tag: newTag, commitSha: newCommitSha, date} = result;
+        const {written: newTag, entry: {commitSha: newCommitSha}} = filteredTags.byVersion.get(result.version)!;
+        const {date} = result;
         const formatted = formatActionVersion(newTag, oldRef);
         const newRef = filteredTags.allowedTags.has(formatted) ? formatted : newTag;
 
@@ -1253,95 +1329,136 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
     }, {concurrency});
   }, {concurrency});
 
-  const dockerTask = pMap(Map.groupBy(dockerDepInfos, info => info.ref.fullImage).entries(), async ([fullImage, infos]) => {
-    const resolveDate = infos[0].ref.registry ? (tag: string) => fetchRegistryTagDate(fullImage, tag, ctx) : undefined;
-    let data: Record<string, any>;
-    try {
-      [data] = await fetchDockerInfo(fullImage, ctx);
-    } catch (err) {
-      for (const info of infos) rejectDep("docker", info.key, err);
-      return;
-    }
+  type VersionOpts = ReturnType<typeof resolveVersionOpts>;
+
+  const resolveImage = async (ref: DockerImageRef, digest: string | null | undefined, opts: VersionOpts) => {
+    const [data] = await fetchDockerInfo(ref.fullImage, ctx);
     const tagDate = (tag: string) => Object.hasOwn(data.tags, tag) ? data.tags[tag] : undefined;
+    const resolveDate = ref.registry ? (tag: string) => fetchRegistryTagDate(ref.fullImage, tag, ctx) : undefined;
+    const result = ref.digestOnly ? null : await findDockerVersion(
+      filterVersionData(data, "docker", opts.allowedVersions).tags, ref.tag, opts.semvers, opts.cooldownDays, opts.now,
+      opts.pinnedRange, opts.usePre, opts.useRel, resolveDate,
+    );
+    const newTag = result?.newTag ?? ref.tag;
+    if (!result && (!digest ||
+      !passesCooldown(tagDate(newTag) || (opts.cooldownDays ? await resolveDate?.(newTag) : ""), opts.cooldownDays, opts.now))) return null;
+    const newDigest = digest ? await resolveDockerTagDigest(ref.fullImage, newTag) : null;
+    return digest && !newDigest ? null : {newTag, newDigest, date: result?.date || tagDate(newTag)};
+  };
 
-    await pMap(infos, async (info) => {
-      try {
-        const dep = deps.docker[info.key];
-        const oldTag = dep.oldOrig || dep.old;
-        const opts = resolveVersionOpts(info.filters, depIdentities.docker.get(info.key)!, false);
-        const result = !info.ref.digestOnly && parseDockerTag(oldTag) ? await findDockerVersion(
-          filterVersionData(data, "docker", opts.allowedVersions).tags, oldTag, opts.semvers, opts.cooldownDays, opts.now,
-          opts.pinnedRange, opts.usePre, opts.useRel, resolveDate,
-        ) : null;
-        const newTag = result?.newTag ?? oldTag;
-        if (info.ref.digest) {
-          if (!result && !passesCooldown(tagDate(oldTag) || (opts.cooldownDays ? await resolveDate?.(oldTag) : ""), opts.cooldownDays, opts.now)) {
-            delete deps.docker[info.key];
-            return;
-          }
-          const newDigest = await resolveDockerTagDigest(info.ref.fullImage, newTag);
-          if (!newDigest) { delete deps.docker[info.key]; return; }
-          dep.oldDigest = info.ref.digest;
-          dep.newDigest = newDigest;
-          dep.digestOnly = info.ref.digestOnly;
-        } else if (!result) {
-          delete deps.docker[info.key];
-          return;
-        }
+  type LookupResult = Omit<Partial<Dep>, "date"> & {new: string, date?: string | null};
 
-        dep.new = newTag;
-        dep.info = getDockerInfoUrl(info.ref);
-        setDepAge(dep, result?.date || tagDate(newTag));
-      } catch (err) {
-        rejectDep("docker", info.key, err);
-      }
-    }, {concurrency});
-  }, {concurrency});
+  const lookupGo = async (
+    installPath: string, version: string, opts: VersionOpts, projectDir: string, isModule = false,
+  ): Promise<LookupResult | null> => {
+    const modulePath = await resolveGoModuleRoot(installPath, projectDir, ctx, goNoProxy);
+    if (!modulePath) return null;
+    const constraints = goVersionConstraints(opts, stripv(version));
+    if (isModule) constraints.allowMajor = false; // a bare version can not move to a new major's module path
+    const [data] = await fetchGoProxyInfo(modulePath, "tool", stripv(version), projectDir, ctx, goNoProxy, constraints);
+    const newVersion = findNewVersion(data, {...opts, mode: "go", range: stripv(version), acceptsGoVersion: constraints.accepts});
+    if (!newVersion) return null;
+    const newModulePath = data.newPath ?? goModulePathForVersion(modulePath, newVersion);
+    const formatted = formatVersionPrecision(newVersion, version);
+    return {new: isModule ? formatted : `${newModulePath}${installPath.slice(modulePath.length)}@${formatted}`,
+      newPrint: isModule || formatted === version ? undefined : formatted, info: getGoInfoUrl(newModulePath), date: data.Time};
+  };
 
-  const makeTask = pMap(makeDepInfos, async (info) => {
-    const opts = resolveVersionOpts(info.filters, depIdentities[info.mode].get(info.key)!);
-    const modeDeps = deps[info.mode];
-    const dep = modeDeps[info.key];
+  const lookupImage = async (image: MakeDockerImage, opts: VersionOpts, tagOnly = false): Promise<LookupResult | null> => {
+    const result = await resolveImage(image.ref, image.digest, opts);
+    if (!result) return null;
+    const spec = formatMakeImageSpec(image.writtenImage, result.newTag, result.newDigest);
+    return {new: tagOnly ? spec.slice(image.writtenImage.length + 1) : spec,
+      newPrint: tagOnly || image.digest && result.newTag === image.ref.tag ? undefined : result.newTag,
+      info: getDockerInfoUrl(image.ref), date: result.date};
+  };
+
+  const lookupForge = async (
+    [datasource, forge, kind]: RegExpExecArray, {fields, value, identity: {packageName}}: AnnotationDepInfo, opts: VersionOpts,
+  ): Promise<LookupResult | null> => {
+    const [owner, repo, ...rest] = packageName.split("/");
+    if (!repo || rest.length) throw new Error(`Invalid ${datasource} repository ${packageName}`);
+    const webUrl = normalizeUrl(fields.registryUrl || forgeWebUrls[forge]);
+    const apiUrl = forge !== "github" ? `${webUrl}/api/v1` : webUrl === forgeWebUrls.github ? ctx.forgeApiUrl : `${webUrl}/api/v3`;
+    const oldRefs = opts.allowDowngrade || opts.pinnedRange && !opts.pinNoDowngrade || fields.extractVersion ? [] : [value];
+    const entries = await (kind === "releases" ? fetchForgeReleases : fetchActionTags)(apiUrl, owner, repo, ctx, oldRefs);
+    if (!entries.length) throw new Error(`No ${kind} found for ${owner}/${repo}`);
+    const versioning = fields.versioning === "pep440" ? pep440Versioning : githubActionsVersioning;
+    const {byVersion, versions, allowedTags} = forgeVersionTags(entries, opts.allowedVersions,
+      versioning, opts.usePre || versioning.isRangePrerelease(value), fields.extractVersion, true);
+    const dateOf = (entry: ForgeEntry) => forgeDate(apiUrl, owner, repo, entry);
+    const selectOpts = {...opts, range: value, versioning};
+    const releaseDate = (version: string) => byVersion.get(version)!.entry.releaseTimestamp;
+    const released = kind === "releases" && findVersion({}, versions, {...selectOpts, getVersionDate: releaseDate});
+    const picked = kind === "releases" ? released && {version: released, date: releaseDate(released) || ""} :
+      await pickDatedVersion(versions, selectOpts, version => dateOf(byVersion.get(version)!.entry));
+    if (!picked) return null;
+    const written = byVersion.get(picked.version)!.written;
+    const formatted = versioning === githubActionsVersioning ? formatActionVersion(written, value) : written;
+    return {
+      new: allowedTags.has(formatted) || !allowedTags.has(value) && allowedTags.values().some(tag => stripv(tag) === stripv(formatted)) ?
+        formatted : written, // a value naming a tag stays an existing tag, a version keeps its v-prefix style
+      info: `${webUrl}/${owner}/${repo}`, date: picked.date || await tryOrNull(dateOf(byVersion.get(picked.version)!.entry)),
+    };
+  };
+
+  const lookupAnnotation = async (info: AnnotationDepInfo): Promise<LookupResult | null> => {
+    const {fields: {datasource}, mode, value, filters, identity, image} = info;
+    const {packageName} = identity;
+    const opts = resolveVersionOpts(filters, identity);
+    if (datasource === "docker") {
+      const target = parseMakeImageValue(`${packageName}:${image?.ref.tag ?? value}`);
+      return target && lookupImage(image ? {...image, ref: target.ref} : target, opts, !image);
+    }
+    if (datasource === "go") return lookupGo(packageName, value.slice(value.indexOf("@") + 1), opts, filters.projectDir, !value.includes("@"));
+    const forge = forgeDatasourceRe.exec(datasource);
+    if (forge) return lookupForge(forge, info, opts);
+
+    const npmArgs = {needsDates: argsForNpm.needsDates || Boolean(opts.cooldownDays)};
+    const [rawData, registry] = mode === "npm" ?
+      await fetchNpmInfo(packageName, "dependencies", filters.modeConfig, npmArgs, ctx, filters.projectDir) :
+      mode === "pypi" ? await fetchPypiInfo(packageName, ctx) : await fetchCratesIoInfo(packageName, ctx);
+    if (rawData.error) throw new Error(rawData.error);
+    const data = filterVersionData(rawData, mode, opts.allowedVersions);
+    const newVersion = findNewVersion(data, {...opts, mode, range: value});
+    if (!newVersion) return null;
+    const spec = mode === "pypi" || /[-+]/.test(newVersion) ? newVersion : formatVersionPrecision(newVersion, value);
+    if (spec === value) return null;
+    if (mode === "pypi") return {new: spec, info: getInfoUrl(data, registry, data.info.name), date: pypiReleaseDate(data.releases[newVersion])};
+    if (mode === "cargo") return {new: spec, info: `https://crates.io/crates/${data.name}`, date: data.time[newVersion]};
+    const versionInfo = await fetchNpmVersionInfo(data.name, newVersion, filters.modeConfig, npmArgs, ctx, filters.projectDir);
+    const date = versionInfo.date || data.time?.[newVersion];
+    return passesCooldown(date, opts.cooldownDays, opts.now) ? {new: spec, info: getInfoUrl(versionInfo, null, packageName), date} : null;
+  };
+
+  const lookupTask = <T extends {key: string, mode: string}>(infos: Iterable<T>,
+    lookup: (info: T) => Promise<LookupResult | null>, modeDeps: Deps) => pMap(infos, async (info) => {
     try {
-      if (info.kind === "go") {
-        const {projectDir} = info.filters;
-        const modulePath = await resolveGoModuleRoot(info.installPath, projectDir, ctx, goNoProxy);
-        if (!modulePath) { delete modeDeps[info.key]; return; }
-        const constraints = goVersionConstraints(opts, stripv(info.version));
-        const [data] = await fetchGoProxyInfo(modulePath, "tool", stripv(info.version), projectDir, ctx, goNoProxy, constraints);
-        const newVersion = findNewVersion(data, {...opts, mode: "go", range: stripv(info.version), acceptsGoVersion: constraints.accepts});
-        if (!newVersion) { delete modeDeps[info.key]; return; }
-        const newModulePath = data.newPath ?? goModulePathForVersion(modulePath, newVersion);
-        const newInstallPath = `${newModulePath}${info.installPath.slice(modulePath.length)}`;
-        const formattedVersion = formatVersionPrecision(newVersion, info.version);
-        dep.new = `${newInstallPath}@${formattedVersion}`;
-        if (formattedVersion === info.version) delete dep.oldPrint; // a path-only migration shows the full specs
-        else dep.newPrint = formattedVersion;
-        dep.info = getGoInfoUrl(newModulePath);
-        setDepAge(dep, data.Time);
-      } else {
-        const {registry, fullImage} = info.image.ref;
-        const [data] = await fetchDockerInfo(fullImage, ctx);
-        const dockerUpdate = await findDockerVersion(
-          filterVersionData(data, "docker", opts.allowedVersions).tags, info.image.ref.tag, opts.semvers, opts.cooldownDays,
-          opts.now, opts.pinnedRange, opts.usePre, opts.useRel, registry ? tag => fetchRegistryTagDate(fullImage, tag, ctx) : undefined,
-        );
-        if (!dockerUpdate) { delete modeDeps[info.key]; return; }
-        const newDigest = info.image.digest ?
-          await resolveDockerTagDigest(fullImage, dockerUpdate.newTag) : null;
-        if (info.image.digest && !newDigest) { delete modeDeps[info.key]; return; }
-        dep.new = formatMakeImageSpec(info.image.writtenImage, dockerUpdate.newTag, newDigest);
-        dep.newPrint = dockerUpdate.newTag;
-        dep.info = getDockerInfoUrl(info.image.ref);
-        setDepAge(dep, dockerUpdate.date);
-      }
+      const result = await lookup(info);
+      if (!result) { delete modeDeps[info.key]; return; }
+      if (!/^[\w.+@:/~![\]-]+$/.test(result.new)) throw new Error(`Refusing to write ${JSON.stringify(result.new)}`);
+      const {date, ...fields} = result;
+      const dep = Object.assign(modeDeps[info.key], fields);
+      if (!dep.newPrint) delete dep.oldPrint;
+      setDepAge(dep, date);
     } catch (err) {
-      rejectDep(info.mode, info.key, err);
+      delete modeDeps[info.key];
+      addKeyError(info.mode, info.key, err);
     }
   }, {concurrency});
+
+  const dockerTask = lookupTask(dockerDepInfos, async ({key, ref, filters}) => {
+    const result = await resolveImage(ref, ref.digest, resolveVersionOpts(filters, depIdentities.docker.get(key)!, false));
+    return result && {new: result.newTag, info: getDockerInfoUrl(ref), date: result.date, ...(ref.digest && {newDigest: result.newDigest!})};
+  }, deps.docker);
+  const makeTask = lookupTask(makeDepInfos, info => {
+    const opts = resolveVersionOpts(info.filters, info.identity);
+    return info.mode === "go" ? lookupGo(info.installPath, info.version, opts, info.filters.projectDir) : lookupImage(info.image, opts);
+  }, deps.make);
+  const annotationsTask = lookupTask(annotationDepInfos.values(), lookupAnnotation, deps.annotations);
 
   try {
-    await Promise.all([...modeTasks, actionsTask, dockerTask, makeTask]);
+    await Promise.all([...modeTasks, actionsTask, dockerTask, makeTask, annotationsTask]);
   } finally {
     if (!config.noCache) await flushCacheWrites();
   }
@@ -1378,35 +1495,37 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
       }
     };
     const actionComments = new Map(actionDepInfos.map(info => [info.key, info.comment]));
-    const byRelPath = <T>(entries: Array<[string, T]>) => Map.groupBy(entries, ([key]) => key.split(fieldSep)[0]);
 
-    for (const mode of Object.keys(deps).sort((left, right) => Number(left === "docker") - Number(right === "docker"))) {
+    const writeOrder = (mode: string) => mode === "annotations" ? -1 : Number(mode === "docker");
+    for (const mode of Object.keys(deps).sort((left, right) => writeOrder(left) - writeOrder(right))) {
       if (!Object.keys(deps[mode]).length) continue;
 
-      if (mode === "actions") {
-        for (const [relPath, entries] of byRelPath(Object.entries(deps.actions))) {
-          const fileInfo = fileData[relPath];
-          fileInfo.content = updateWorkflowFile(fileInfo.content, entries.map(([key, dep]) => ({
-            name: key.split(fieldSep)[1], oldRef: dep.oldDigest ?? dep.old,
-            newRef: dep.newDigest ?? dep.new,
-            oldComment: actionComments.get(key) || undefined,
-            newComment: dep.oldDigest && !dep.digestOnly ? dep.new : undefined,
-          })));
-          write(fileInfo.absPath, fileInfo.content);
-        }
-      } else if (mode === "docker") {
-        for (const [relPath, entries] of byRelPath(Object.entries(deps.docker))) {
-          const {absPath, content, fileType, workflowLines} = fileData[relPath];
-          const updateFn = fileType === "dockerfile" ? updateDockerfile :
-            fileType === "compose" ? updateComposeFile : (workflow: string, workflowDeps: Deps) =>
-              workflow.split("\n").map((line, lineNumber) =>
-                workflowLines!.has(lineNumber) ? updateWorkflowDockerImages(line, workflowDeps) : line).join("\n");
-          write(absPath, updateFn(content, Object.fromEntries(entries)));
-        }
-      } else if (mode === "make" || mode === "shell") {
-        for (const [relPath, entries] of byRelPath(Object.entries(deps[mode]))) {
-          const {absPath, content} = fileData[relPath];
-          write(absPath, updateMakefile(content, entries.map(([_key, dep]) => ({oldSpec: dep.old, newSpec: dep.new}))));
+      if (["actions", "docker", "make", "annotations"].includes(mode)) {
+        for (const [relPath, entries] of Map.groupBy(Object.entries(deps[mode]), ([key]) => key.split(fieldSep)[0])) {
+          const {absPath, fileType, workflowLines} = fileData[relPath];
+          const content = readFileSync(absPath, "utf8");
+          let updated: string;
+          if (mode === "actions") {
+            updated = updateWorkflowFile(content, entries.map(([key, dep]) => ({
+              name: key.split(fieldSep)[1], oldRef: dep.oldDigest ?? dep.old,
+              newRef: dep.newDigest ?? dep.new,
+              oldComment: actionComments.get(key) || undefined,
+              newComment: dep.oldDigest && !dep.digestOnly ? dep.new : undefined,
+            })));
+          } else if (mode === "annotations") {
+            updated = updateAnnotatedLines(content, entries.flatMap(([key, dep]) => annotationDepInfos.get(key)!.locations
+              .map(location => ({...location, oldValue: dep.old, newValue: dep.new}))));
+          } else if (mode === "make") {
+            updated = updateMakefile(content, entries.map(([_key, dep]) => ({oldSpec: dep.old, newSpec: dep.new})),
+              annotatedLines.get(relPath));
+          } else if (fileType === "workflow") {
+            const fileDeps = Object.fromEntries(entries);
+            updated = content.split("\n").map((line, lineNumber) =>
+              workflowLines!.has(lineNumber) ? updateWorkflowDockerImages(line, fileDeps) : line).join("\n");
+          } else {
+            updated = (fileType === "dockerfile" ? updateDockerfile : updateComposeFile)(content, Object.fromEntries(entries));
+          }
+          write(absPath, updated);
         }
       } else if (mode === "go") {
         for (const goMod of [...goModFiles, ...(plainFiles.go ?? [])]) {
@@ -1435,6 +1554,12 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
     }
   }
 
+  for (const {key, mode} of [...makeDepInfos, ...annotationDepInfos.values()]) {
+    const dep = deps.make?.[key] ?? deps.annotations?.[key];
+    if (dep) (deps[mode] ??= {})[key] = dep;
+  }
+  delete deps.make;
+  delete deps.annotations;
   const output = buildOutput(deps);
   if (errors.length) output.errors = errors;
   return output;

@@ -23,14 +23,14 @@ function modeByName(filename: string): string {
   if (filename === "go.mod" || filename === "go.work") return "go";
   if (/^(?:[Dd]ocker|[Cc]ontainer)file|\.(?:[Dd]ocker|[Cc]ontainer)file$/.test(filename) ||
     /^(?:docker-|compose).*\.ya?ml$/.test(filename)) return "docker";
-  if (["Makefile", "makefile", "GNUmakefile"].includes(filename) || filename.endsWith(".mk")) return "make";
-  if (filename.endsWith(".sh")) return "shell";
+  if (["Makefile", "makefile", "GNUmakefile"].includes(filename) || /\.(?:mk|sh)$/.test(filename)) return "make";
   if (/\.ya?ml$/.test(filename)) return "actions";
   return "";
 }
 
 export function prewarmOrigins(dir: string, args: Record<string, unknown>): string[] {
   const enabledModes = Array.isArray(args.modes) ? new Set(args.modes) : null;
+  const isEnabled = (mode: string) => !enabledModes || enabledModes.has(mode);
   const resources = new Set<keyof typeof defaults>();
   const candidates = new Set<string>();
   const paths = Array.isArray(args.files) && args.files.length ? args.files.filter(path => typeof path === "string") : [dir];
@@ -57,7 +57,8 @@ export function prewarmOrigins(dir: string, args: Record<string, unknown>): stri
   for (const path of candidates) {
     const filename = basename(path);
     const mode = modeByName(filename);
-    if (!mode || enabledModes && !enabledModes.has(mode) && !(mode === "actions" && enabledModes.has("docker"))) continue;
+    if (!mode || !isEnabled(mode) && !(mode === "actions" && isEnabled("docker")) &&
+      !(mode === "make" && (isEnabled("go") || isEnabled("docker")))) continue;
     try {
       const content = readFileSync(path, "utf8");
       if (filename === "package.json") {
@@ -83,18 +84,18 @@ export function prewarmOrigins(dir: string, args: Record<string, unknown>): stri
         if (/^\s*(?:require\s+)?\S+\s+v\d/m.test(content)) resources.add("goproxy");
       } else if (mode === "docker") {
         if (/^\s*(?:FROM\s+(?:--\S+\s+)*|image\s*:\s*)[^\s#]+[:@]/im.test(content)) resources.add("dockerapi");
-      } else if (mode === "make" || mode === "shell") {
-        if (/[\w-]+\.[\w.-]+\/\S*@v\d/.test(content)) resources.add("goproxy");
-        if (/[\w.-]+\/[\w.-]+:[\w.-]+/.test(content)) resources.add("dockerapi");
+      } else if (mode === "make") {
+        if (isEnabled("go") && /[\w-]+\.[\w.-]+\/\S*@v\d/.test(content)) resources.add("goproxy");
+        if (isEnabled("docker") && /[\w.-]+\/[\w.-]+:[\w.-]+/.test(content)) resources.add("dockerapi");
       } else {
         let blockIndent = -1;
         for (const line of content.split(/\r?\n/)) {
           const indent = line.search(/\S|$/);
           if (blockIndent !== -1 && (!line.trim() || indent > blockIndent)) continue;
           blockIndent = /:\s*[|>](?:[1-9][+-]?|[+-][1-9]?)?\s*(?:#.*)?$/.test(line) ? indent : -1;
-          if ((!enabledModes || enabledModes.has("actions")) &&
+          if (isEnabled("actions") &&
             /^\s*(?:-\s*)?uses\s*:\s*["']?(?!\.\/|docker:\/\/)[^\s#]+@/.test(line)) resources.add("forgeapi");
-          if ((!enabledModes || enabledModes.has("docker")) &&
+          if (isEnabled("docker") &&
             /^\s*(?:(?:container|image)\s*:\s*["']?[^\s#]+[:@]|(?:-\s*)?uses\s*:\s*["']?docker:\/\/)/.test(line)) {
             resources.add("dockerapi");
           }

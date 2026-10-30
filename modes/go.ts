@@ -254,7 +254,7 @@ function fetchGoVcsInfo(
   const goListQuery = async (modulePath: string, timeout: number, version?: string) => {
     const spec = `${modulePath}@${version ?? "latest"}`;
     try {
-      const args = ["list", "-m", "-mod=readonly", ...(!version ? ["-versions"] : []), "-json", spec];
+      const args = ["list", "-m", "-mod=readonly", ...(!version ? ["-versions"] : []), "-json", "--", spec];
       const {stdout} = await ctx.execFile("go", args, {timeout, cwd: goCwd, env: {...env, GOPROXY: "direct"}});
       const data = JSON.parse(stdout) as {Version: string, Time?: string, Versions?: Array<string>};
       return {Version: data.Version, Time: data.Time || "", path: modulePath, Versions: data.Versions};

@@ -463,18 +463,20 @@ const tagPage = (url: string, lastPage: number) => {
   };
 };
 
-test("fetchActionTags single page no link header, commit or not, keeping release metadata before a failed page", async () => {
-  const tagsData = [{name: "v1.0.0", commit: {sha: "abc"}}, {name: "v2.0.0", commit: {sha: "def"}}, {name: "v3.0.0"}];
+test("fetchActionTags single page no link header, commit or not, keeping release metadata before a failed page, drafts unstable", async () => {
+  const tagsData = [{name: "v1.0.0", commit: {sha: "abc"}}, {name: "v2.0.0", commit: {sha: "def"}}, {name: "v3.0.0"}, {name: "v4.0.0"}];
   const ctx = modeCtx({doFetch: (url: string) => Promise.resolve({ok: true,
     json: () => Promise.resolve(new URL(url).pathname.endsWith("/releases") ? [
       {tag_name: "v1.0.0", prerelease: false, draft: false, published_at: "2026-10-14T00:00:00Z"},
       {tag_name: "v2.0.0", prerelease: true, draft: false},
+      {tag_name: "v4.0.0", prerelease: false, draft: true},
     ] : tagsData), headers: new Headers()})});
   const result = await fetchActionTags("https://api.github.com", "actions", "checkout", ctx);
   expect(result).toEqual([
     {name: "v1.0.0", commitSha: "abc", isStable: true, releaseTimestamp: "2026-10-14T00:00:00Z"},
     {name: "v2.0.0", commitSha: "def", isStable: false},
     {name: "v3.0.0", commitSha: ""},
+    {name: "v4.0.0", commitSha: "", isStable: false},
   ]);
 
   const partial = modeCtx({noCache: true, doFetch: (url: string) => {

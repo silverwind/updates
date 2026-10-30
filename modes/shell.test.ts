@@ -15,10 +15,10 @@ const script = [
 test("shellAssignmentValues feeds make's parsers, unwrapping arrays and default expansions, with any registry under *_IMAGE", () => {
   const values = shellAssignmentValues(script);
   expect(parseGoInstalls(values)).toEqual([
-    {installPath: "example.com/org/tool/cmd/tool", version: "v1"},
-    {installPath: "example.com/org/linter", version: "v1.2.3"},
-    {installPath: "example.com/org/a", version: "v1.0.0"},
-    {installPath: "example.com/org/b", version: "v2.0.0"},
+    {installPath: "example.com/org/tool/cmd/tool", version: "v1", line: 0},
+    {installPath: "example.com/org/linter", version: "v1.2.3", line: 1},
+    {installPath: "example.com/org/a", version: "v1.0.0", line: 2},
+    {installPath: "example.com/org/b", version: "v2.0.0", line: 2},
   ]);
   expect(parseImages(values).map(image => `${image.writtenImage}:${image.ref.tag}`)).toEqual(["org/app:1.0", "ghcr.io/zizmorcore/zizmor:1.30.1"]);
 });

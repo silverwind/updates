@@ -33,18 +33,18 @@ test("isMakeFileName matches make filenames", () => {
 
 test("parseGoInstalls extracts go install specs across make assignment operators", () => {
   expect(parseGoInstalls(makeAssignmentValues(sample))).toEqual([
-    {installPath: "github.com/golangci/golangci-lint/v2/cmd/golangci-lint", version: "v2.12.2"},
-    {installPath: "github.com/air-verse/air", version: "v1.65.1"},
-    {installPath: "github.com/go-delve/delve/cmd/dlv", version: "v1"},
-    {installPath: "golang.org/x/vuln/cmd/govulncheck", version: "v1.2.0"},
-    {installPath: "github.com/golangci/misspell/cmd/misspell", version: "v0.8.0"},
-    {installPath: "golang.org/x/tools/cmd/goimports", version: "v0.0.0-20200103221440-774c71fcf114"},
-    {installPath: "github.com/foo/bar", version: "v1.2.3-rc.1"},
-    {installPath: "github.com/foo/baz", version: "v2.0.0+incompatible"},
-    {installPath: "github.com/foo/qux", version: "v1.0.0"},
-    {installPath: "github.com/foo/prefixed", version: "v1.0.0"},
-    {installPath: "github.com/foo/quoted", version: "v1.2.3"},
-    {installPath: "github.com/foo/aggregate", version: "v2.0.0"},
+    {installPath: "github.com/golangci/golangci-lint/v2/cmd/golangci-lint", version: "v2.12.2", line: 0},
+    {installPath: "github.com/air-verse/air", version: "v1.65.1", line: 1},
+    {installPath: "github.com/go-delve/delve/cmd/dlv", version: "v1", line: 2},
+    {installPath: "golang.org/x/vuln/cmd/govulncheck", version: "v1.2.0", line: 3},
+    {installPath: "github.com/golangci/misspell/cmd/misspell", version: "v0.8.0", line: 5},
+    {installPath: "golang.org/x/tools/cmd/goimports", version: "v0.0.0-20200103221440-774c71fcf114", line: 8},
+    {installPath: "github.com/foo/bar", version: "v1.2.3-rc.1", line: 9},
+    {installPath: "github.com/foo/baz", version: "v2.0.0+incompatible", line: 10},
+    {installPath: "github.com/foo/qux", version: "v1.0.0", line: 11},
+    {installPath: "github.com/foo/prefixed", version: "v1.0.0", line: 12},
+    {installPath: "github.com/foo/quoted", version: "v1.2.3", line: 14},
+    {installPath: "github.com/foo/aggregate", version: "v2.0.0", line: 14},
   ]);
 });
 
@@ -235,12 +235,14 @@ test("resolveGoModuleRoot surfaces direct and GONOPROXY lookup failures", async 
 const digestA = `sha256:${"a".repeat(64)}`;
 const digestB = `sha256:${"b".repeat(64)}`;
 
-test("parseMakeImageValue parses a Hub image with registry prefix and digest", () => {
+test("parseMakeImageValue parses a Hub image with registry prefix and a digest of any algorithm", () => {
   expect(parseMakeImageValue(`docker.io/koalaman/shellcheck:v0.11.0@${digestA}`)).toEqual({
     writtenImage: "docker.io/koalaman/shellcheck",
     ref: {registry: null, namespace: "koalaman", repo: "shellcheck", tag: "v0.11.0", fullImage: "koalaman/shellcheck"},
     digest: digestA,
   });
+  expect(parseMakeImageValue(`example/image:1.0@sha512:${"c".repeat(128)}`))
+    .toMatchObject({writtenImage: "example/image", digest: `sha512:${"c".repeat(128)}`});
   expect(parseMakeImageValue("plain-no-tag")).toBe(null);
 });
 

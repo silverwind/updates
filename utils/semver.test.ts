@@ -26,6 +26,7 @@ test("coerce, diff, and ordering", () => {
   for (const [input, expected] of [
     ["1.2.3", "1.2.3"], ["v1.2.3", "1.2.3"], ["v1.2", "1.2.0"], ["v1", "1.0.0"],
     ["42.6.7", "42.6.7"], ["foo1.2.3bar", "1.2.3"], ["version3.2", "3.2.0"], ["v10", "10.0.0"], ["~2.1.0", "2.1.0"],
+    ["2026.08.09", "2026.8.9"],
   ]) expect(coerce(input)).toEqual({version: expected});
   expect(coerce("no version here")).toBeNull();
   expect(coerce("...")).toBeNull();

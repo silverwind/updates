@@ -7,6 +7,8 @@ import {anchorSpecifier, getOrSet, parsePep508, serializePep508, type Pep508Spec
 
 const pypiNameSeparatorRe = /[-_.]+/g;
 
+export const normalizePep503 = (name: string) => name.toLowerCase().replace(pypiNameSeparatorRe, "-");
+
 type PypiFile = {upload_time_iso_8601?: string, yanked?: boolean};
 
 const pypiDataByCtx = new WeakMap<ModeContext, Map<string, Promise<Record<string, any>>>>();
@@ -21,7 +23,7 @@ function reducePypiReleases(data: Record<string, any>): Record<string, Array<Pyp
 }
 
 export async function fetchPypiInfo(name: string, ctx: ModeContext): Promise<PackageInfo> {
-  const url = `${ctx.pypiApiUrl}/pypi/${name.toLowerCase().replace(pypiNameSeparatorRe, "-")}/json`;
+  const url = `${ctx.pypiApiUrl}/pypi/${normalizePep503(name)}/json`;
   const data = await dedupe(pypiDataByCtx, ctx, url, async () => {
     const result = await fetchWithEtag(url, ctx, {
       headers: {"accept-encoding": "gzip, deflate, br"},

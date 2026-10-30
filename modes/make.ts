@@ -11,47 +11,56 @@ export function isMakeFileName(filename: string): boolean {
   return makeExactFileNames.includes(filename) || filename.endsWith(".mk");
 }
 
-const makeAssignRe = /^\s*(?:(?:export|override|private|unexport)\s+)*([A-Za-z_][\w.]*)\s*(?:::=|:=|\?=|\+=|=)\s*(.*)$/;
+const makeAssignRe = /^\s*(?:(?:export|override|private|unexport)\s+)*([A-Za-z_][\w.]*)\s*(?:::=|:=|\?=|\+=|=)\s*(.*)$/s;
 const makeGoInstallRe = /^([^@\s]+)@(v\d\S*)$/;
 const goHostRe = /^[^/\s]+\.[^/\s]+\//;
 
-export type AssignmentValue = {name: string, value: string};
+export type AssignmentValue = {name: string, value: string, line?: number};
 
 function* assignmentWords(content: string, assignRe: RegExp): Generator<AssignmentValue> {
   let logicalLine = "";
-  for (const rawLine of [...content.split(/\r?\n/), ""]) {
+  let logicalStart = 0;
+  for (const [lineNumber, rawLine] of [...content.split(/\r?\n/), ""].entries()) {
+    if (!logicalLine) logicalStart = lineNumber;
     const commentIndex = rawLine.indexOf("#");
     const line = commentIndex === -1 ? rawLine : rawLine.slice(0, commentIndex);
     let backslashes = 0;
     while (line[line.length - backslashes - 1] === "\\") backslashes++;
     if (backslashes % 2) {
-      logicalLine += `${line.slice(0, -1)} `;
+      logicalLine += `${line.slice(0, -1)}\n`;
       continue;
     }
-    const assignment = assignRe.exec(logicalLine + line);
+    const text = logicalLine + line;
+    const assignment = assignRe.exec(text);
     logicalLine = "";
     if (!assignment) continue;
     let quote = "";
     let value = "";
+    let valueLine = logicalStart;
+    let currentLine = logicalStart + text.slice(0, text.length - assignment[2].length).split("\n").length - 1;
     const name = assignment[1];
     for (const char of assignment[2]) {
+      if (!value && !quote && !/\s/.test(char)) valueLine = currentLine;
+      if (char === "\n") currentLine++;
       if (quote) {
         if (char === quote) quote = "";
         else value += char;
       } else if (char === "\"" || char === "'") {
         quote = char;
       } else if (/\s/.test(char)) {
-        if (value) yield {name, value};
+        if (value) yield {name, value, line: valueLine};
         value = "";
       } else {
         value += char;
       }
     }
-    if (value && !quote) yield {name, value};
+    if (value && !quote) yield {name, value, line: valueLine};
   }
 }
 
-export function assignmentValues(content: string, assignRe: RegExp, unwrapRe?: RegExp): Array<AssignmentValue> {
+export function assignmentValues(
+  content: string, assignRe: RegExp, unwrapRe?: RegExp,
+): Array<AssignmentValue> {
   const values: Array<AssignmentValue> = [];
   for (const entry of assignmentWords(content, assignRe)) {
     if (unwrapRe) entry.value = unwrapRe.exec(entry.value)?.[1] ?? entry.value;
@@ -64,16 +73,16 @@ export function makeAssignmentValues(content: string): Array<AssignmentValue> {
   return assignmentValues(content, makeAssignRe);
 }
 
-export function parseGoInstalls(values: Array<AssignmentValue>): Array<{installPath: string, version: string}> {
-  return values.flatMap(({value}) => {
+export function parseGoInstalls(values: Array<AssignmentValue>): Array<{installPath: string, version: string, line?: number}> {
+  return values.flatMap(({value, line}) => {
     const match = makeGoInstallRe.exec(value);
-    return match && goHostRe.test(match[1]) ? {installPath: match[1], version: match[2]} : [];
+    return match && goHostRe.test(match[1]) ? {installPath: match[1], version: match[2], line} : [];
   });
 }
 
-export type MakeDockerImage = {writtenImage: string, ref: DockerImageRef, digest: string | null};
+export type MakeDockerImage = {writtenImage: string, ref: DockerImageRef, digest: string | null, line?: number};
 
-const makeImageDigestRe = /@(sha256:[0-9a-f]{64})$/;
+export const makeImageDigestRe = /@([a-z][\w+.-]*:[\da-f]+)$/i;
 const imageVariableRe = /(?:^|_)IMAGE$/i;
 
 export function formatMakeImageSpec(writtenImage: string, tag: string, digest: string | null): string {
@@ -89,9 +98,9 @@ export function parseMakeImageValue(value: string): MakeDockerImage | null {
 }
 
 export function parseImages(values: Array<AssignmentValue>): Array<MakeDockerImage> {
-  return values.flatMap(({name, value}) => {
+  return values.flatMap(({name, value, line}) => {
     const image = parseMakeImageValue(value);
-    return image && (imageVariableRe.test(name) || !image.ref.registry && image.ref.namespace !== "library") ? image : [];
+    return image && (imageVariableRe.test(name) || !image.ref.registry && image.ref.namespace !== "library") ? {...image, line} : [];
   });
 }
 
@@ -102,7 +111,7 @@ function probeDirectGoModule(candidate: string, goCwd: string, ctx: ModeContext)
   return dedupe(directGoProbesByCtx, ctx, `${resolve(goCwd)}${fieldSep}${candidate}`, async () => {
     let stdout: string;
     try {
-      ({stdout} = await ctx.execFile("go", ["list", "-m", "-e", "-json", `${candidate}@latest`], {
+      ({stdout} = await ctx.execFile("go", ["list", "-m", "-e", "-json", "--", `${candidate}@latest`], {
         timeout: ctx.fetchTimeout, cwd: goCwd, env: {...env, GOPROXY: "direct"},
       }));
     } catch (err) {
@@ -142,15 +151,19 @@ export async function resolveGoModuleRoot(installPath: string, goCwd: string, ct
   return null;
 }
 
-export function updateMakefile(content: string, rewrites: Array<{oldSpec: string, newSpec: string}>): string {
+export function updateMakefile(
+  content: string, rewrites: Array<{oldSpec: string, newSpec: string}>,
+  annotatedLines = new Set<number>(),
+): string {
   const bySpec = new Map(rewrites.map(({oldSpec, newSpec}) => [oldSpec, newSpec]));
   if (!bySpec.size) return content;
   const specs = Array.from(bySpec.keys()).sort((left, right) => right.length - left.length)
     .map(spec => Array.from(spec, esc).join(`["']*`)).join("|");
   const specRe = new RegExp(`(?:(?<=\\$\\{\\w+:?-)|(?<![\\w./@:-]))(${specs})(?![\\w./@:+-])`, "g");
-  return content.replace(/^[^#\n]*/gm, code => code.replace(specRe, authoredSpec => {
-    const newSpec = bySpec.get(authoredSpec.replace(/["']/g, ""))!;
-    let newIndex = 0;
-    return authoredSpec.replace(/[^"']/g, () => newSpec[newIndex++] ?? "") + newSpec.slice(newIndex);
-  }));
+  return content.split("\n").map((text, lineNumber) => annotatedLines.has(lineNumber) ? text :
+    text.replace(/^[^#]*/, code => code.replace(specRe, authoredSpec => {
+      const newSpec = bySpec.get(authoredSpec.replace(/["']/g, ""))!;
+      let newIndex = 0;
+      return authoredSpec.replace(/[^"']/g, () => newSpec[newIndex++] ?? "") + newSpec.slice(newIndex);
+    }))).join("\n");
 }

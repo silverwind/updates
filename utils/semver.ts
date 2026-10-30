@@ -67,7 +67,7 @@ export function coerce(v: string): {version: string} | null {
   if (typeof v !== "string") return null;
   return getOrSet(coerceCache, v, () => {
     const m = coerceRe.exec(v);
-    return m ? {version: `${m[1]}.${m[2] || "0"}.${m[3] || "0"}`} : null;
+    return m ? {version: `${Number(m[1])}.${Number(m[2] ?? 0)}.${Number(m[3] ?? 0)}`} : null;
   });
 }
 
@@ -317,7 +317,7 @@ const actionsParseCache = new Map<string, SemVer | null>();
 function parseActionsVersion(v: string): SemVer | null {
   return getOrSet(actionsParseCache, v, () => {
     const stripped = v.trim().replace(/^v/i, "");
-    return parse(stripped) ?? parse(stripped.replace(/^(\d+\.\d+)(-.+)$/, "$1.0$2")) ??
+    return parse(stripped) ?? parse(stripped.replace(/^(\d+)(?:\.(\d+))?(-.+)$/, (_match, major, minor = "0", pre) => `${major}.${minor}.0${pre}`)) ??
       (/^\d/.test(stripped) ? parse(coerce(stripped)?.version ?? "") : null);
   });
 }
