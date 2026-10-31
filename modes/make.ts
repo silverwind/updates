@@ -5,7 +5,7 @@ import {esc} from "../utils/utils.ts";
 import {fetchGoLatest, goListError, goProxyChainFor} from "./go.ts";
 import {type DockerImageRef, parseDockerImageRef} from "./docker.ts";
 
-export const makeExactFileNames = ["Makefile", "makefile", "GNUmakefile"];
+export const makeExactFileNames: Array<string> = ["Makefile", "makefile", "GNUmakefile"];
 
 export function isMakeFileName(filename: string): boolean {
   return makeExactFileNames.includes(filename) || filename.endsWith(".mk");
@@ -82,7 +82,7 @@ export function parseGoInstalls(values: Array<AssignmentValue>): Array<{installP
 
 export type MakeDockerImage = {writtenImage: string, ref: DockerImageRef, digest: string | null, line?: number};
 
-export const makeImageDigestRe = /@([a-z][\w+.-]*:[\da-f]+)$/i;
+export const makeImageDigestRe: RegExp = /@([a-z][\w+.-]*:[\da-f]+)$/i;
 const imageVariableRe = /(?:^|_)IMAGE$/i;
 
 export function formatMakeImageSpec(writtenImage: string, tag: string, digest: string | null): string {
@@ -153,7 +153,7 @@ export async function resolveGoModuleRoot(installPath: string, goCwd: string, ct
 
 export function updateMakefile(
   content: string, rewrites: Array<{oldSpec: string, newSpec: string}>,
-  annotatedLines = new Set<number>(),
+  annotatedLines: Set<number> = new Set<number>(),
 ): string {
   const bySpec = new Map(rewrites.map(({oldSpec, newSpec}) => [oldSpec, newSpec]));
   if (!bySpec.size) return content;

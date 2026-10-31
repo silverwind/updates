@@ -24,7 +24,7 @@ export function shortenHash(hash: string): string {
 }
 
 export function shortenPair(oldValue: string, newValue: string, shorten: (value: string) => string,
-  fallback = (value: string) => value): {old: string, new: string} {
+  fallback = (value: string): string => value): {old: string, new: string} {
   const [oldShort, newShort] = [shorten(oldValue), shorten(newValue)];
   return oldShort === newShort ? {old: fallback(oldValue), new: fallback(newValue)} : {old: oldShort, new: newShort};
 }
@@ -78,7 +78,7 @@ export function anchorSpecifier(specifiers: Array<Pep508Specifier>): Pep508Speci
   return specifiers.find(({op, version}) => lowerBoundOps.has(op) && plainVersionRe.test(version));
 }
 
-export function parseUvDependencies(specs: Array<unknown>) {
+export function parseUvDependencies(specs: Array<unknown>): Array<{name: string, version: string, spec: string}> {
   const ret: Array<{name: string, version: string, spec: string}> = [];
   for (const spec of specs) {
     if (typeof spec !== "string") continue;
@@ -90,12 +90,12 @@ export function parseUvDependencies(specs: Array<unknown>) {
   return ret;
 }
 
-export const npmTypes = [
+export const npmTypes: Array<string> = [
   "dependencies", "devDependencies", "peerDependencies", "optionalDependencies", "resolutions", "overrides",
   "pnpm.overrides", "packageManager",
 ];
 
-export const nonPackageEngines = ["node", "deno", "bun"];
+export const nonPackageEngines: Array<string> = ["node", "deno", "bun"];
 
 export const forgeDirs = [".github", ".gitea", ".forgejo"] as const;
 
@@ -103,15 +103,15 @@ export const modeByFileName: Record<string, string> = {
   "pnpm-workspace.yaml": "npm", "package.json": "npm", "pyproject.toml": "pypi", "go.work": "go", "go.mod": "go", "Cargo.toml": "cargo",
 };
 
-export const uvTypes = [
+export const uvTypes: Array<string> = [
   "project.dependencies", "project.optional-dependencies.*", "dependency-groups.*", "build-system.requires", "tool.uv.dev-dependencies",
 ];
 
-export const goTypes = ["deps", "indirect", "replace", "tool"];
+export const goTypes: Array<string> = ["deps", "indirect", "replace", "tool"];
 
-export const cargoTypes = ["dependencies", "dev-dependencies", "build-dependencies", "workspace.dependencies"];
+export const cargoTypes: Array<string> = ["dependencies", "dev-dependencies", "build-dependencies", "workspace.dependencies"];
 
-export const cargoTargetTypes = ["target.*.dependencies", "target.*.dev-dependencies", "target.*.build-dependencies"];
+export const cargoTargetTypes: Array<string> = ["target.*.dependencies", "target.*.dev-dependencies", "target.*.build-dependencies"];
 
 export function expandDepTypes(types: Array<string>, doc: Record<string, any>): Array<[string, any]> {
   const ret: Array<[string, any]> = [];

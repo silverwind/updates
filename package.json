@@ -2,7 +2,7 @@
   "name": "updates",
   "version": "20.0.0",
   "description": "CLI to update npm, uv, cargo, go, docker and actions dependencies",
-  "author": "silverwind",
+  "author": "silverwind <me@silverwind.io>",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/silverwind/updates.git"
@@ -26,6 +26,8 @@
     "docker",
     "makefile"
   ],
+  "type": "module",
+  "sideEffects": false,
   "bin": "dist/index.js",
   "exports": {
     ".": {
@@ -33,8 +35,6 @@
       "types": "./dist/api.d.ts"
     }
   },
-  "type": "module",
-  "sideEffects": false,
   "files": [
     "dist"
   ],
@@ -45,16 +45,15 @@
   },
   "devDependencies": {
     "@types/node": "26.6.6",
-    "@typescript/native-preview": "7.0.0-dev.20260707.2",
     "@vitest/coverage-v8": "5.0.5",
     "eslint": "10.14.0",
-    "eslint-config-silverwind": "155.1.0",
+    "eslint-config-silverwind": "155.2.0",
     "timerel": "5.9.2",
     "tsdown": "0.23.4",
-    "tsdown-config-silverwind": "4.1.4",
-    "typescript": "6.0.3",
+    "tsdown-config-silverwind": "4.2.0",
+    "typescript": "7.0.2",
     "typescript-config-silverwind": "21.0.2",
-    "updates-config-silverwind": "4.0.9",
+    "updates-config-silverwind": "4.1.0",
     "versions": "15.5.2",
     "vitest": "5.0.5",
     "vitest-config-silverwind": "12.0.6"

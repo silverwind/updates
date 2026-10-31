@@ -15,7 +15,7 @@ type AuthAndRegistry = {auth: {token: string, type: string} | undefined, registr
 
 const npmVersionRe = /[0-9]+(\.[0-9]+)?(\.[0-9]+)?/g;
 
-export const selectorTypes = new Set(["resolutions", "overrides"]);
+export const selectorTypes: Set<string> = new Set<string>(["resolutions", "overrides"]);
 
 export function resolutionsBasePackage(name: string): string {
   const target = name.replace(/^.*?[^ |@]>/, "").trim();

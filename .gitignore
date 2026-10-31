@@ -2,9 +2,8 @@
 /dist
 /node_modules
 /npm-debug.log*
-/yarn-error.log
-/yarn.lock
+.pnpm-store
+.pnpm-debug.log*
 /bun.lock
 /__snapshots__
 .DS_Store
-

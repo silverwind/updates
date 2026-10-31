@@ -46,7 +46,7 @@ export type ModeContext = {
 export type ExecFile = (file: string, args: Array<string>, opts: Record<string, any>) =>
 Promise<{stdout: string, stderr: string}>;
 
-export const packageVersion = pkg.version;
+export const packageVersion: string = pkg.version;
 export const fieldSep = "\0";
 export const fetchTimeout = 5000;
 export const goProbeTimeout = 2500;
@@ -58,7 +58,7 @@ export const githubApiUrl = "https://api.github.com";
 export const defaultApiUrls = {
   registry: "https://registry.npmjs.org",
   jsrapi: "https://jsr.io",
-  forgeapi: githubApiUrl,
+  forgeapi: githubApiUrl as typeof githubApiUrl,
   pypiapi: "https://pypi.org",
   cargoapi: "https://crates.io",
   dockerapi: "https://hub.docker.com",
@@ -67,7 +67,7 @@ export const defaultApiUrls = {
 const fetchRetries = 2;
 
 export const stripv = (str: string): string => str[0] === "v" ? str.substring(1) : str;
-export const normalizeUrl = (url: string) => url.endsWith("/") ? url.slice(0, -1) : url;
+export const normalizeUrl = (url: string): string => url.endsWith("/") ? url.slice(0, -1) : url;
 
 export function getFetchOpts(authType?: string, authToken?: string): RequestInit {
   return {
@@ -231,7 +231,9 @@ export function isVersionPrerelease(version: string, versioning: Versioning = se
 const allPrereleaseCache = new WeakMap<Set<string>, Set<string>>();
 const sameReleasePrereleaseCache = new WeakMap<Set<string>, Set<string>>();
 
-export function prereleaseOpts(range: string, usePre: boolean, useRel: boolean, semvers: Set<string>, versioning: Versioning = semverVersioning) {
+export function prereleaseOpts(
+  range: string, usePre: boolean, useRel: boolean, semvers: Set<string>, versioning: Versioning = semverVersioning,
+): {effectiveSemvers: Set<string>, skipsPrerelease: Versioning["isPrerelease"]} {
   const anyPrerelease = usePre || versioning.isRangePrerelease(range);
   const effectiveSemvers = anyPrerelease ? getOrSet(usePre ? allPrereleaseCache : sameReleasePrereleaseCache, semvers, () => {
     const levels = new Set(semvers).add("prerelease");
@@ -303,7 +305,7 @@ export function goPinAllowsDowngrade(
 const goVersionPredicates = new Map<string, (version: string) => boolean>();
 
 export function goVersionPredicate(
-  {range, usePre, useRel, semvers, pinnedRange, pinNoDowngrade, allowDowngrade}: FindVersionOpts, currentVersion = range,
+  {range, usePre, useRel, semvers, pinnedRange, pinNoDowngrade, allowDowngrade}: FindVersionOpts, currentVersion: string = range,
 ): (version: string) => boolean {
   const key = JSON.stringify([
     range, currentVersion, [...semvers].sort(), usePre, useRel, pinnedRange || "", pinNoDowngrade, allowDowngrade,
@@ -450,7 +452,7 @@ export async function getForgeTokens(host: string, forgeApiUrl: string): Promise
     ...tokens, header].filter(Boolean) as string[]));
 }
 
-export async function verifyToken(host: string, token: string, forgeApiUrl = githubApiUrl): Promise<string> {
+export async function verifyToken(host: string, token: string, forgeApiUrl: string = githubApiUrl): Promise<string> {
   const url = host === "github.com" ? `${forgeApiUrl}/user` : `https://${host}/api/v1/user`;
   const res = await doFetch(url, {...getFetchOpts("Bearer", token), signal: AbortSignal.timeout(fetchTimeout)});
   if (res.status === 401) throw new Error(`token for ${host} was rejected`);
@@ -550,8 +552,8 @@ export function resolvePackageJsonUrl(url: string): string {
   return /^[a-z0-9-]+\/[a-z0-9-]+$/.test(cleaned) ? `https://github.com/${cleaned}` : cleaned;
 }
 
-export const commitHashRe = /^(?:[0-9a-f]{6,7}|[0-9a-f]{40}|[0-9a-f]{64})$/i;
-export const hashRe = /^(?=.*[a-f])[0-9a-f]{7,40}$/i;
+export const commitHashRe: RegExp = /^(?:[0-9a-f]{6,7}|[0-9a-f]{40}|[0-9a-f]{64})$/i;
+export const hashRe: RegExp = /^(?=.*[a-f])[0-9a-f]{7,40}$/i;
 
 export function isVersionLikeRef(ref: string): boolean {
   return /^v?\d+(?:\.\d+)*(?:[-+][\w.-]+)?$/.test(ref);

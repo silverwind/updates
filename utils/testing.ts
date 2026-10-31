@@ -10,7 +10,7 @@ export async function rejection(promise: Promise<unknown>): Promise<Error | unde
   return undefined;
 }
 
-export const sequential = (test as any).serial ?? test;
+export const sequential: typeof test = (test as any).serial ?? test;
 
 export function setEnv(values: Record<string, string | undefined>): void {
   for (const [name, value] of Object.entries(values)) {

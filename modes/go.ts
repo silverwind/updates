@@ -119,7 +119,10 @@ export function parseGoModule(content: string): string {
   return "";
 }
 
-export function parseGoMod(content: string) {
+export function parseGoMod(content: string): {
+  deps: Record<string, string>, indirect: Record<string, string>, replace: Record<string, string>, tool: Record<string, string>,
+  exclude?: GoExcludes,
+} {
   const deps: Record<string, string> = Object.create(null);
   const indirect: Record<string, string> = Object.create(null);
   const replace: Record<string, string> = Object.create(null);
@@ -336,7 +339,7 @@ function pickGoVersion(
 }
 
 export function pickGoListVersion(
-  body: string, major = 0, excluded = new Set<string>(), constraints?: GoVersionConstraints,
+  body: string, major = 0, excluded: Set<string> = new Set<string>(), constraints?: GoVersionConstraints,
 ): GoListVersion | null {
   return pickGoVersion(parseGoList(body), major, excluded, constraints);
 }

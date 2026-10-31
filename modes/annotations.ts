@@ -7,9 +7,9 @@ import {parsePep440} from "../utils/semver.ts";
 type Annotation = {line: number, column: number, value: string, fields: Record<string, string>};
 type AnnotationEdit = {line: number, column: number, oldValue: string, newValue: string};
 
-export const forgeDatasourceRe = /^(github|gitea|forgejo)-(tags|releases)$/;
+export const forgeDatasourceRe: RegExp = /^(github|gitea|forgejo)-(tags|releases)$/;
 const datasourceModes = new Map([["npm", "npm"], ["pypi", "pypi"], ["crate", "cargo"], ["go", "go"], ["docker", "docker"]]);
-export const annotationMode = (datasource: string) => forgeDatasourceRe.test(datasource) ? "actions" : datasourceModes.get(datasource);
+export const annotationMode = (datasource: string): string | undefined => forgeDatasourceRe.test(datasource) ? "actions" : datasourceModes.get(datasource);
 const versionings = new Set(["semver", "semver-coerced", "loose", "docker", "pep440"]);
 const knownFields = new Set(["datasource", "depName", "packageName", "lookupName", "versioning", "registryUrl", "extractVersion"]);
 

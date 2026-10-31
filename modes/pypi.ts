@@ -7,7 +7,7 @@ import {anchorSpecifier, getOrSet, parsePep508, serializePep508, type Pep508Spec
 
 const pypiNameSeparatorRe = /[-_.]+/g;
 
-export const normalizePep503 = (name: string) => name.toLowerCase().replace(pypiNameSeparatorRe, "-");
+export const normalizePep503 = (name: string): string => name.toLowerCase().replace(pypiNameSeparatorRe, "-");
 
 type PypiFile = {upload_time_iso_8601?: string, yanked?: boolean};
 

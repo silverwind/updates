@@ -100,7 +100,7 @@ export type Override = {
 };
 
 export type Arg = string | boolean | Array<string | boolean> | undefined;
-export const cliBaseConfig = Symbol("cliBaseConfig");
+export const cliBaseConfig: unique symbol = Symbol("cliBaseConfig");
 
 export const options: ParseArgsOptionsConfig = {
   "allow-downgrade": {short: "d", type: "string", multiple: true},
@@ -143,7 +143,7 @@ export const options: ParseArgsOptionsConfig = {
 };
 
 // the `[<dep,...>]` options in --help, valid on their own
-export const optionalValueOptions = new Set(["greatest", "prerelease", "release", "patch", "minor", "allow-downgrade"]);
+export const optionalValueOptions: Set<string> = new Set<string>(["greatest", "prerelease", "release", "patch", "minor", "allow-downgrade"]);
 
 export function parseMixedArg(arg: Arg): boolean | Set<string> {
   if (!Array.isArray(arg)) return arg === true;
@@ -159,7 +159,7 @@ export function patternsToRegexSet(patterns: Array<string | RegExp>): Set<RegExp
   return new Set(patterns.map(patternToRegex));
 }
 
-export function parseArgList(arg: Arg, split = commaSeparatedToArray): Array<string> {
+export function parseArgList(arg: Arg, split: typeof commaSeparatedToArray = commaSeparatedToArray): Array<string> {
   return Array.isArray(arg) ? arg.filter(value => typeof value === "string").flatMap(split) : [];
 }
 
@@ -188,7 +188,7 @@ export function configMixedToRegexes(val: boolean | Array<string | RegExp> | und
   return patternsToRegexSet(val);
 }
 
-export const findConfigUp = memoizeAsync((startDir: string) => walkUp(startDir, async dir => {
+export const findConfigUp: (startDir: string) => Promise<Config | null> = memoizeAsync((startDir: string) => walkUp(startDir, async dir => {
   for (const ext of ["js", "ts", "mjs", "mts"]) {
     const filename = `updates.config.${ext}`;
     const fullPath = join(dir, filename);
@@ -207,7 +207,7 @@ export const findConfigUp = memoizeAsync((startDir: string) => walkUp(startDir, 
   return null;
 }));
 
-export const loadConfig = memoizeAsync(async (startDir: string): Promise<Config> => {
+export const loadConfig: (startDir: string) => Promise<Config> = memoizeAsync(async (startDir: string): Promise<Config> => {
   const raw = await findConfigUp(startDir) ?? {};
   const renovateConfig = await loadRenovateConfig(startDir, raw.inherit?.renovate);
   const config: Config = {...renovateConfig, ...raw};

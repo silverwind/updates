@@ -374,7 +374,7 @@ export function fetchRegistryTagDate(image: string, tag: string, ctx: ModeContex
 
 const ubuntuLtsRe = /^\d?[02468]\.04$/;
 
-export function filterStableTags(repo: string, tags: Record<string, string>, now = Date.now()): Record<string, string> {
+export function filterStableTags(repo: string, tags: Record<string, string>, now: number = Date.now()): Record<string, string> {
   if (repo !== "ubuntu") return tags;
   return Object.fromEntries(Object.entries(tags).filter(([tag]) => {
     const version = parseDockerTag(tag)?.version;
@@ -593,7 +593,7 @@ export function updateWorkflowDockerImages(content: string, deps: Deps): string 
   ]);
 }
 
-export const dockerExactFileNames = [
+export const dockerExactFileNames: Array<string> = [
   "Dockerfile", "dockerfile", "Containerfile", "containerfile", "compose.yml", "compose.yaml",
   "compose.override.yml", "compose.override.yaml", "docker-compose.yml", "docker-compose.yaml",
   "docker-compose.override.yml", "docker-compose.override.yaml",

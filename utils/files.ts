@@ -12,7 +12,7 @@ const execFileAsync = promisify(execFile);
 const forgeDirNames = new Set<string>(forgeDirs);
 
 /** renovate's `:ignoreModulesAndTests` preset from its `config:recommended` */
-export const defaultExcludePaths = [
+export const defaultExcludePaths: string[] = [
   "**/node_modules/**",
   "**/bower_components/**",
   "**/vendor/**",
