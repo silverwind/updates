@@ -1,13 +1,11 @@
-import {nodeLib} from "tsdown-config-silverwind";
+import {nodeCli, nodeLib} from "tsdown-config-silverwind";
 import {defineConfig} from "tsdown";
 import {basename} from "node:path";
 
 export default defineConfig([
-  nodeLib({
+  nodeCli({
     url: import.meta.url,
     entry: ["index.ts", "api.ts"],
-    minify: true,
-    dts: false,
     outputOptions: {
       codeSplitting: true,
       chunkFileNames: "[name].js",
