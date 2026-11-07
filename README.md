@@ -14,7 +14,7 @@
 - `.{github,gitea,forgejo}/{workflows,actions}`, `workflow-templates`, `action.{yml,yaml}` - actions, including Gitea's `self:owner/repo@ref`, and docker images
 - `{Docker,Container}file*`, `*.{Docker,Container}file`, `compose*.{yml,yaml}`, `docker-*.{yml,yaml}` - docker images
 - `Makefile`, `*.mk`, `*.sh` - go tool versions in `go install` paths under `go`, and docker image tags of any registry in variables named `*_IMAGE` under `docker`
-- The workflow, docker, make and shell files above, plus non-manifest files passed via `--file` - versions marked by a `renovate:` or `updates:` comment, see [Annotations](#annotations)
+- `renovate:` and `updates:` comments - marked versions, see [Annotations](#annotations)
 
 ## Usage
 
@@ -70,7 +70,7 @@ A failed lookup is reported on its own, does not hold back the other results and
 
 ## Annotations
 
-Versions marked by a [Renovate](https://docs.renovatebot.com/modules/manager/regex/)-style `renovate:` or `updates:` comment are updated. The comment goes after the version or on the line above it:
+Versions marked by a [Renovate](https://docs.renovatebot.com/modules/manager/regex/)-style `renovate:` or `updates:` comment are updated in the workflow, docker, make and shell files, and in non-manifest files passed via `--file`. The comment goes after the version or on the line above it:
 
 ```sh
 RENOVATE_VERSION=44.172.2 # renovate: datasource=npm depName=renovate
