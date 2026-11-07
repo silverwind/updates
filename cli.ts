@@ -200,7 +200,7 @@ export async function runCli(rawArgs: Array<string>, io: CliIo, prewarm = true):
     -m, --minor [<dep,...>]            Consider only up to semver-minor
     -d, --allow-downgrade [<dep,...>]  Allow downgrading onto a lower latest tag
     -s, --sockets <num>                Maximum number of parallel HTTP sockets opened. Default: 50
-    -T, --timeout <ms>                 Network request timeout in ms (go probes use half). Default: 5000
+    -T, --timeout <ms>                 Network request timeout in ms. Default: 5000
     -r, --registry <url>               Override npm registry URL
     -L, --login <host>                 Verify and store a forge API token
     -O, --logout <host>                Remove a stored forge API token
@@ -222,14 +222,7 @@ export async function runCli(rawArgs: Array<string>, io: CliIo, prewarm = true):
     $ updates -M npm
     $ updates -e react,react-dom
     $ updates -f package.json
-    $ updates -f pyproject.toml
-    $ updates -f go.mod
-    $ updates -f Cargo.toml
     $ updates -f .github
-    $ updates -f Dockerfile
-    $ updates -f docker-compose.yml
-    $ updates -f Makefile
-    $ updates -f build.sh
 `);
       return 0;
     }

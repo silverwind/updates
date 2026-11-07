@@ -8,12 +8,12 @@
 ## Supported files
 
 - `package.json`, `pnpm-workspace.yaml` - npm dependencies
-- `pyproject.toml` - uv dependencies, including `build-system.requires` and `tool.uv.dev-dependencies`
+- `pyproject.toml` - python dependencies
 - `go.mod`, `go.work` - go dependencies
-- `Cargo.toml` - rust dependencies, including workspaces
-- `.{github,gitea,forgejo}/{workflows,actions}`, `workflow-templates`, `action.{yml,yaml}` - actions, including Gitea's `self:owner/repo@ref`, and docker images
+- `Cargo.toml` - rust dependencies
+- `.{github,gitea,forgejo}/{workflows,actions}`, `action.{yml,yaml}` - actions and docker images
 - `{Docker,Container}file*`, `*.{Docker,Container}file`, `compose*.{yml,yaml}`, `docker-*.{yml,yaml}` - docker images
-- `Makefile`, `*.mk`, `*.sh` - go tool versions in `go install` paths under `go`, and docker image tags of any registry in variables named `*_IMAGE` under `docker`
+- `Makefile`, `*.mk`, `*.sh` - `go install` versions and docker images in `*_IMAGE` variables
 - `renovate:` and `updates:` comments - marked versions, see [Annotations](#annotations)
 
 ## Usage
@@ -34,11 +34,11 @@ pnpm dlx updates -u && pnpm i
 |`-f, --file <path,...>`|File or directory to use, defaults to current directory|
 |`-N, --include-paths <glob,...>`|Only use paths matching the globs|
 |`-X, --exclude-paths <glob,...>`|Skip paths matching the globs|
-|`-M, --modes <mode,...>`|Which modes to enable. Either `npm`, `pypi`, `go`, `cargo`, `actions`, `docker`. Default: all|
+|`-M, --modes <mode,...>`|Modes to enable: `npm`, `pypi`, `go`, `cargo`, `actions`, `docker`. Default: all|
 |`-i, --include <dep,...>`|Include only given dependencies|
 |`-e, --exclude <dep,...>`|Exclude given dependencies|
 |`-l, --pin <dep=range>`|Pin dependency to given semver range|
-|`-C, --cooldown <duration>`|Minimum dependency age, like `12h`, `7d`, `2w`, `5m` (30 days), `1y` (365 days). A bare number is days|
+|`-C, --cooldown <duration>`|Minimum dependency age, like `12h`, `7d` or `2w`. A bare number is days|
 |`-p, --prerelease [<dep,...>]`|Consider prereleases, implying `--greatest`|
 |`-R, --release [<dep,...>]`|Never consider prereleases|
 |`-g, --greatest [<dep,...>]`|Ignore the `latest` tag and take the greatest release|
@@ -47,7 +47,7 @@ pnpm dlx updates -u && pnpm i
 |`-m, --minor [<dep,...>]`|Consider only up to semver-minor|
 |`-d, --allow-downgrade [<dep,...>]`|Allow downgrading onto a lower `latest` tag|
 |`-s, --sockets <num>`|Maximum number of parallel HTTP sockets opened. Default: 50|
-|`-T, --timeout <ms>`|Network request timeout in ms, go probes use half. Default: 5000|
+|`-T, --timeout <ms>`|Network request timeout in ms. Default: 5000|
 |`-r, --registry <url>`|Override npm registry URL|
 |`-L, --login <host>`|Verify and store a forge API token|
 |`-O, --logout <host>`|Remove a stored forge API token|
@@ -62,15 +62,11 @@ pnpm dlx updates -u && pnpm i
 |`-V, --verbose`|Print verbose output to stderr|
 |`-h, --help`|Print the help|
 
-Options taking multiple arguments accept comma-separated values or repetition. An option with an optional `dep` argument applies to all dependencies when the argument is omitted. `dep` matches globs like `foo*` or regexes wrapped in slashes like `'/^foo/'`, except for `--pin`, which takes an exact name.
-
-Path filters also apply to workspace members, except files passed with `--file`.
-
-A failed lookup is reported on its own, does not hold back the other results and exits with code 1, ahead of `-E` and `-U`. With `-j`, failures are listed in an `errors` array next to `results`.
+Lists are comma-separated or repeated. `dep` takes globs like `foo*` or regexes like `'/^foo/'`, except in `--pin`. Failed lookups are reported separately and exit with code 1.
 
 ## Annotations
 
-Versions marked by a [Renovate](https://docs.renovatebot.com/modules/manager/regex/)-style `renovate:` or `updates:` comment are updated in the workflow, docker, make and shell files, and in non-manifest files passed via `--file`. The comment goes after the version or on the line above it:
+Versions marked by a [Renovate](https://docs.renovatebot.com/modules/manager/regex/)-style `renovate:` or `updates:` comment are updated in workflow, docker, make and shell files, and in other files passed via `--file`. The comment goes after the version or on the line above it:
 
 ```sh
 RENOVATE_VERSION=44.172.2 # renovate: datasource=npm depName=renovate
@@ -78,13 +74,13 @@ RENOVATE_VERSION=44.172.2 # renovate: datasource=npm depName=renovate
 GOFUMPT_VERSION=v0.12.0
 ```
 
-Supported datasources are `npm`, `pypi`, `crate`, `go`, `docker` and `{github,gitea,forgejo}-{tags,releases}`. Fields are `depName`, `packageName`, `lookupName` and `versioning`, plus `extractVersion` and an `https://` `registryUrl` for forges. Names are optional for docker images and go `module@version` values. On lines with several versions, attach the version to its package name, like `black@24.1.0` or `black==24.1.0`.
+Supported datasources are `npm`, `pypi`, `crate`, `go`, `docker` and `{github,gitea,forgejo}-{tags,releases}`. Fields are `depName`, `packageName`, `lookupName` and `versioning`, plus `extractVersion` and `registryUrl` for forges. On lines with several versions, attach the version to its package name, like `black@24.1.0` or `black==24.1.0`.
 
-Annotations are reported under their datasource's mode, with `crate` under `cargo` and forges under `actions`. Annotations on lines handled by an enabled native mode are skipped. Unsupported datasources, fields and versioning schemes are skipped, `--verbose` shows why.
+Annotations belong to their datasource's mode, with `crate` under `cargo` and forges under `actions`. `--verbose` shows why an annotation is skipped.
 
 ## Config File
 
-Configure via `updates.config.{js,ts,mjs,mts}`. Each manifest uses the nearest config above it, and workspace members use the workspace root config. CLI arguments win over configured values, including `include`, `exclude` and `pin`.
+Configure via `updates.config.{js,ts,mjs,mts}`. Each manifest uses the nearest config above it, and CLI arguments take precedence.
 
 ```ts
 import type {Config} from "updates";
@@ -102,13 +98,11 @@ Mirrors the [CLI options](#options) in camelCase, with `--file` as `files`, plus
 
 - `overrides` *Array\<Override>*: Per-package option overrides (see [Overrides](#overrides))
 - `inherit` *object*: Fields to inherit from other tools' configs (see [Renovate config](#renovate-config))
-- `filePatterns` *object*: Extra files per mode, currently only `actions`, as path globs or RegExps relative to the current directory, e.g. `{actions: [/\.ya?ml\.tmpl$/]}` for templated workflows. Files another mode reads are left to it
-
-`include`, `exclude` and the `dep` options take `Array<string | RegExp>`, `pin` takes a `Record<string, string>` keyed by exact dependency name, `files`, `modes`, `includePaths` and `excludePaths` take `Array<string>`.
+- `filePatterns` *object*: Extra files for the `actions` mode as globs or RegExps, e.g. `{actions: [/\.ya?ml\.tmpl$/]}`
 
 ### Overrides
 
-`overrides` applies options to a subset of dependencies. Each entry takes `include` and/or `exclude` patterns, omit `include` to match all, plus any of `cooldown`, `greatest`, `prerelease`, `release`, `patch`, `minor`, `allowDowngrade`. An override beats the top-level option and the last match wins.
+Each override applies any of `cooldown`, `greatest`, `prerelease`, `release`, `patch`, `minor` and `allowDowngrade` to the dependencies matching its `include` and `exclude` patterns, or to all when `include` is omitted. Overrides beat top-level options and the last match wins.
 
 ```ts
 import type {Config} from "updates";
@@ -125,7 +119,7 @@ export default {
 
 ### Renovate config
 
-A [Renovate](https://docs.renovatebot.com/) `renovate.json`, `renovate.jsonc` or `renovate.json5` is picked up automatically, inheriting `ignoreDeps`, `enabled` and `allowedVersions` from matching local `packageRules` as `include`/`exclude`/`pin`, and the `github-actions` manager's `managerFilePatterns` and legacy `fileMatch` as `filePatterns.actions`. Exact-name semver `allowedVersions` ranges become pin ceilings that never downgrade. PyPI `allowedVersions` also accepts PEP 440 specifier sets. Local fields are imported when `extends` is present, but preset contents are not resolved. `minimumReleaseAge` is not inherited unless opted in:
+A [Renovate](https://docs.renovatebot.com/) `renovate.json`, `renovate.jsonc` or `renovate.json5` is picked up automatically. Its `ignoreDeps`, the `enabled` and `allowedVersions` of its `packageRules` and its `github-actions` file patterns are inherited. Presets in `extends` are not resolved. `minimumReleaseAge` is only inherited when opted in:
 
 ```ts
 export default {
@@ -169,18 +163,14 @@ const output = await updates({
 
 |Variable|Description|
 |:-|:-|
-|`UPDATES_FORGE_TOKENS`|Comma-separated list of `host:token` pairs for forge APIs, e.g. `github.com:ghp_xxx,localhost:3500:tok_xxx`. The host must match the URL exactly, port included|
-|`UPDATES_GITHUB_API_TOKEN`|GitHub API token, with `GITHUB_API_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN` and `HOMEBREW_GITHUB_API_TOKEN` as fallbacks, in that order. Only ever sent to GitHub itself|
-|`UPDATES_GITEA_API_TOKEN`|Gitea or Forgejo API token, with `GITEA_API_TOKEN`, `GITEA_AUTH_TOKEN`, `GITEA_TOKEN` and `FORGEJO_TOKEN` as fallbacks, in that order. Only ever sent to the instance in `GITEA_URL`|
-|`GITEA_SERVER_URL`|URL of the Gitea instance `self:` actions resolve against, e.g. `https://gitea.example.com`. Falls back to `GITHUB_SERVER_URL` unless it is github.com, then to the `origin` remote|
-|`GITEA_URL`|URL of the Gitea or Forgejo instance the Gitea tokens belong to, e.g. `https://gitea.example.com`|
-|`pnpm_config__auth`|npm registry credentials as [pnpm](https://pnpm.io/npmrc#_auth) reads them, e.g. `{"https://registry.npmjs.org":{"@":{"authToken":"npm-token"},"@org":{"authToken":"org-token"}}}`. `@` is the registry-wide token, `@org` binds a token and registry to that scope. The `_auth` key of pnpm's global `config.yaml` is read the same way|
-|`GOPROXY`|Go module proxy list, honored as go itself does. Default: `https://proxy.golang.org,direct`|
-|`GONOPROXY`|Comma-separated list of Go module patterns to fetch directly, bypassing the proxy|
-|`GOPRIVATE`|Fallback for `GONOPROXY` when not set|
+|`UPDATES_FORGE_TOKENS`|Comma-separated `host:token` pairs for forge APIs, e.g. `github.com:ghp_xxx,localhost:3500:tok_xxx`|
+|`UPDATES_GITHUB_API_TOKEN`|GitHub API token. Falls back to `GITHUB_API_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN` and `HOMEBREW_GITHUB_API_TOKEN`|
+|`UPDATES_GITEA_API_TOKEN`|Gitea or Forgejo API token for `GITEA_URL`. Falls back to `GITEA_API_TOKEN`, `GITEA_AUTH_TOKEN`, `GITEA_TOKEN` and `FORGEJO_TOKEN`|
+|`GITEA_URL`|URL of the Gitea or Forgejo instance the Gitea token belongs to, e.g. `https://gitea.example.com`|
+|`GITEA_SERVER_URL`|URL of the Gitea instance for `self:owner/repo@ref` actions. Falls back to `GITHUB_SERVER_URL` and the `origin` remote|
+|`pnpm_config__auth`|npm registry credentials in [pnpm's format](https://pnpm.io/npmrc#_auth), e.g. `{"https://registry.npmjs.org":{"@":{"authToken":"npm-token"}}}`|
+|`GOPROXY`, `GONOPROXY`, `GOPRIVATE`|Go module proxy settings, honored as go does|
 
-`updates --login <host>` reads a token from stdin or a prompt and stores it for that forge, `updates --logout <host>` removes it. A host in `UPDATES_FORGE_TOKENS` wins over a stored token, which wins over the GitHub and Gitea tokens.
-
-npm registries resolve in pnpm's order: `--registry`, then `pnpm_config__auth`, `pnpm-workspace.yaml`, the global `config.yaml`, its `_auth` routes, and finally `.npmrc`. A scope-specific token wins over a registry-wide one.
+Tokens in `UPDATES_FORGE_TOKENS` win over ones stored with `--login`, which win over the other token variables. npm registries and credentials resolve like pnpm does, including `pnpm-workspace.yaml`, pnpm's global `config.yaml` and `.npmrc`.
 
 © [silverwind](https://github.com/silverwind), distributed under BSD licence

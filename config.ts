@@ -55,7 +55,7 @@ export type Config = {
   noColor?: boolean;
   /** Disable HTTP cache */
   noCache?: boolean;
-  /** Network request timeout in ms, go probes use half */
+  /** Network request timeout in ms */
   timeout?: number;
   /** Maximum number of parallel HTTP sockets */
   sockets?: number;
