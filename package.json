@@ -47,7 +47,7 @@
     "@types/node": "26.6.6",
     "@vitest/coverage-v8": "5.1.0",
     "eslint": "10.14.0",
-    "eslint-config-silverwind": "156.0.2",
+    "eslint-config-silverwind": "157.0.0",
     "timerel": "6.0.0",
     "tsdown": "0.23.7",
     "tsdown-config-silverwind": "5.0.0",

@@ -80,7 +80,7 @@ const startsWithDigitRe = /^\d/;
 const wildcardRe = /^(\d+(?:\.\d+)*)((?:\.[*xX])+)$/;
 const trimRe = /^(\s*)(.*?)(\s*)$/s;
 
-export const cargoToNpmRange = (range: string): string => range.split(/\s*,\s*/)
+export const cargoToNpmRange = (range: string): string => range.split(",")
   .map(part => {
     const value = part.trim();
     return startsWithDigitRe.test(value) && !wildcardRe.test(value) ? `^${value}` : value;
@@ -107,7 +107,7 @@ function updateComparator(comparator: string, newVersion: string): string {
 }
 
 export function updateCargoRange(oldOrig: string, newVersion: string): string {
-  return oldOrig.split(/(\s*,\s*)/).map((part, idx) => idx % 2 ? part : updateComparator(part, newVersion)).join("");
+  return oldOrig.split(",").map(part => updateComparator(part, newVersion)).join(",");
 }
 
 export function findLockedVersion(allVersions: Map<string, string[]>, name: string, range: string): string | undefined {

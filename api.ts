@@ -682,7 +682,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
       const key = (pair[2] ?? pair[3] ?? pair[4]).trim();
       if (indent === 0) { inOverridesSection = key === "overrides"; continue; }
       if (!inOverridesSection || !pair[5]) continue;
-      const trimmedValue = pair[5].replace(/\s+#.*$/, "").trim();
+      const trimmedValue = pair[5].replace(/\s#.*$/, "").trim();
       const quoted = /^(['"])(.*)\1$/.exec(trimmedValue);
       const value = quoted?.[2] ?? trimmedValue;
       entries.push({selector: key, value, lineNumber, valueIndex: line.length - pair[5].length + Number(Boolean(quoted))});
@@ -802,7 +802,7 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
           yamlPath.length === 2 && yamlPath[0].key === "runs" && yamlPath[1].key === "steps"
         );
         if ((container || image || uses) && pair.value) {
-          const value = pair.value.replace(/\s+#.*$/, "").replace(/^(['"])(.*)\1$/, "$2");
+          const value = pair.value.replace(/\s#.*$/, "").trimEnd().replace(/^(['"])(.*)\1$/, "$2");
           const ref = parseDockerImageRef(value);
           if (ref && collectDockerRef(ref, relPath, filters)) {
             workflowLines.add(lineNumber);

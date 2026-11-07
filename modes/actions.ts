@@ -40,7 +40,7 @@ async function originInstanceUrl(dir: string): Promise<string | null> {
 }
 
 export async function resolveSelfApiUrl(dir: string): Promise<string> {
-  const serverUrl = (env.GITEA_SERVER_URL || env.GITHUB_SERVER_URL || "").replace(/\/+$/, "");
+  const serverUrl = (env.GITEA_SERVER_URL || env.GITHUB_SERVER_URL || "").replace(/(^|[^/])\/+$/, "$1");
   const instanceUrl = serverUrl && serverUrl !== "https://github.com" ? serverUrl : await originInstanceUrl(dir);
   return instanceUrl ? `${instanceUrl}/api/v1` : "";
 }

@@ -253,8 +253,8 @@ export async function fetchDockerHubTags(namespace: string, repo: string, ctx: M
 
 const localRegistryRe = /^(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/;
 const bearerChallengeRe = /(?:^|,\s*)Bearer\s+(.+)$/i;
-const challengeParamRe = /(\w+)=(?:"([^"]*)"|([^\s,]*))/g;
-const nextLinkRe = /<([^>]+)>[^,]*?;\s*rel="?next"?/;
+const challengeParamRe = /\b(\w+)=(?:"([^"]*)"|([^\s,]*))/g;
+const nextLinkRe = /<([^<>]+)>[^,]*?;\s*rel="?next"?/;
 const manifestAccept = [
   "application/vnd.oci.image.index.v1+json", "application/vnd.docker.distribution.manifest.list.v2+json",
   "application/vnd.oci.image.manifest.v1+json", "application/vnd.docker.distribution.manifest.v2+json",

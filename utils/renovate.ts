@@ -11,7 +11,7 @@ const daysPerUnit: Record<string, number> = {y: 365.25, w: 7, d: 1, h: 1 / 24, m
 function parseRenovateDuration(value: unknown): number | undefined {
   if (value === null) return 0;
   if (typeof value !== "string") return undefined;
-  const parts = value.split(/(.*?[a-z]+)/).map(part => part.trim()).filter(Boolean);
+  const parts = value.match(/[^a-z\n\r\u2028\u2029]*[a-z]*/g)!.map(part => part.trim()).filter(Boolean);
   if (!parts.length) return undefined;
   let total = 0;
   for (const part of parts) {

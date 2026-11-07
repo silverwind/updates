@@ -31,7 +31,7 @@ export function resolveGoProxyChain(override?: string): Array<GoProxyEntry> {
 }
 
 export function parseGoNoProxy(): Array<string> {
-  return (env.GONOPROXY || env.GOPRIVATE || "").split(",").map(entry => entry.trim().replace(/\/+$/, "")).filter(Boolean);
+  return (env.GONOPROXY || env.GOPRIVATE || "").split(",").map(entry => normalizeUrl(entry.trim())).filter(Boolean);
 }
 
 const goPatternCache = new Map<string, RegExp>();
@@ -39,7 +39,7 @@ const goPatternCache = new Map<string, RegExp>();
 export function isGoNoProxy(modulePath: string, goNoProxy: Array<string>): boolean {
   return goNoProxy.some(pattern => getOrSet(goPatternCache, pattern, () => {
     let body = "";
-    for (const [token, characterClass] of pattern.matchAll(/\[([^\]]*)\]|./gs)) {
+    for (const [token, characterClass] of pattern.matchAll(/\[([^\]]*)\]|./gsy)) {
       body += characterClass !== undefined ? `[${characterClass.replace(/\\/g, "\\\\")}]` :
         token === "*" ? "[^/]*" : token === "?" ? "[^/]" : esc(token);
     }
@@ -175,7 +175,7 @@ const goExcludesByCtx = new WeakMap<ModeContext, Map<string, GoExcludes | null>>
 
 function getGoExcludes(goCwd: string, type: string, ctx: ModeContext): GoExcludes {
   // multi-root workspaces prefix the member with `<relWorkspaceFile>:`
-  const memberPath = /\|(?:[^:]*:)?(.*)/s.exec(type)?.[1] ?? "";
+  const memberPath = /^[^|]*\|(?:[^:]*:)?(.*)/s.exec(type)?.[1] ?? "";
   const byManifest = getOrSet(goExcludesByCtx, ctx, () => new Map<string, GoExcludes | null>());
   for (const manifest of memberPath ? [join(goCwd, memberPath, "go.mod"), join(goCwd, "go.mod")] : [join(goCwd, "go.mod")]) {
     const manifestPath = resolve(manifest);
@@ -467,7 +467,7 @@ export function updateGoMod(pkgStr: string, deps: Deps): [string, Map<string, st
   return [lines.map((line, index) => `${line}${lineEndings[index] ?? ""}`).join(""), majorVersionRewrites];
 }
 
-const goTokenRe = /\s+|\/\/[^\n]*(?:\n|$)|\/\*[\s\S]*?(?:\*\/|$)|[A-Za-z_][A-Za-z0-9_]*|"(?:\\[\s\S]|[^"\\])*(?:"|$)|`[^`]*(?:`|$)|'(?:\\[\s\S]|[^'\\])*(?:'|$)|./g;
+const goTokenRe = /\s+|\/\/[^\n]*\n?|\/\*[\s\S]*?(?:\*\/|$)|[A-Za-z_][A-Za-z0-9_]*|"(?:\\[\s\S]|[^"\\])*(?:"|$)|`[^`]*(?:`|$)|'(?:\\[\s\S]|[^'\\])*(?:'|$)|./g;
 
 export function rewriteGoImportPaths(content: string, rewrites: Map<string, string>): string {
   const entries = [...rewrites].sort(([left], [right]) => right.length - left.length);

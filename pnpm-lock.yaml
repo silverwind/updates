@@ -176,8 +176,8 @@ importers:
         specifier: 10.14.0
         version: 10.14.0(supports-color@7.2.0)
       eslint-config-silverwind:
-        specifier: 156.0.2
-        version: 156.0.2(eslint@10.14.0(supports-color@7.2.0))(supports-color@7.2.0)
+        specifier: 157.0.0
+        version: 157.0.0(eslint@10.14.0(supports-color@7.2.0))(supports-color@7.2.0)
       timerel:
         specifier: 6.0.0
         version: 6.0.0
@@ -1007,8 +1007,8 @@ packages:
     resolution: {integrity: sha512-TtpcNJ3XAzx3Gq8sWRzJaVajRs0uVxA2YAkdb1jm2YkPz4G6egUFAyA3n5vtEIZefPk5Wa4UXbKuS5fKkJWdgA==}
     engines: {node: '>=10'}
 
-  eslint-config-silverwind@156.0.2:
-    resolution: {integrity: sha512-dNkaOFVoZsaM9rRvsqXJ4CRgsUu2ZCzdiQlZEZW+E7R/7oTzztmXCJafJuPQXuQ+CLp599xxUD47TtRL4fEOMA==}
+  eslint-config-silverwind@157.0.0:
+    resolution: {integrity: sha512-NyZrM6rLbgnkGDFzmQaO8pVjFipubNzE4AtXHEKylgWcVuXIE5lhBnFpqfwrgSyO4Hbp280KxYY0iF1Oo0OuTQ==}
     hasBin: true
     peerDependencies:
       eslint: '*'
@@ -1462,8 +1462,8 @@ packages:
     resolution: {integrity: sha512-wXR/dYpcqKmfWpEdZjiKJOwCNFndD0DMnrW/cYjVGttEkBfVgcLFHoNrlj47mjOVic9yyNu65alsgF4NQyTa2g==}
     engines: {node: '>=12.0.0'}
 
-  tinyps@0.5.1:
-    resolution: {integrity: sha512-B6Ykif5HflC3AdDkS4Zst/2muYVfeXoVMy+KorqH80s/1x4vunIORpNySH681X7fjj+dFM9MDKD6/Hsccjb87Q==}
+  tinyps@0.5.2:
+    resolution: {integrity: sha512-sYhvdbpuo2rGE7u/jPUMiZz4H2LCaOodUtRD9ot4DLNFQbr884g9zozoJnxLI+1r4hXqWkmdHUl8Yig2Rllxxw==}
 
   tinyrainbow@3.2.0:
     resolution: {integrity: sha512-LgO3D9yZJjApUiuUfl9iFAwrtaX4+lok3wJIqttGoKCHlWUqHqbQpnxCf82L8FjgKsh4iGo78hqJwgL8F6To2A==}
@@ -2251,7 +2251,7 @@ snapshots:
 
   escape-string-regexp@4.0.0: {}
 
-  eslint-config-silverwind@156.0.2(eslint@10.14.0(supports-color@7.2.0))(supports-color@7.2.0):
+  eslint-config-silverwind@157.0.0(eslint@10.14.0(supports-color@7.2.0))(supports-color@7.2.0):
     dependencies:
       '@eslint-community/eslint-utils': 4.10.1(eslint@10.14.0(supports-color@7.2.0))
       '@eslint/css-tree': 4.1.2
@@ -2691,7 +2691,7 @@ snapshots:
       fdir: 6.5.0(picomatch@4.0.7)
       picomatch: 4.0.7
 
-  tinyps@0.5.1: {}
+  tinyps@0.5.2: {}
 
   tinyrainbow@3.2.0: {}
 
@@ -2716,7 +2716,7 @@ snapshots:
       rolldown-plugin-dts: 0.30.0(rolldown@1.3.0)(typescript@7.0.2)
       tinyexec: 1.3.1
       tinyglobby: 0.2.17
-      tinyps: 0.5.1
+      tinyps: 0.5.2
       unconfig-core: 7.5.0
       verkit: 0.5.0
     optionalDependencies:

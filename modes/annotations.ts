@@ -37,7 +37,7 @@ function selectValue(code: string, {datasource, versioning, depName, packageName
     matches(specRe, value => parseGoInstalls([{name: "", value}]).length || name && isVersionLikeRef(value)) : name ?
       matches(versionRe, datasource === "pypi" || versioning === "pep440" ? parsePep440 : isVersionLikeRef) : [];
   const named = name ? candidates.filter(match => match[0].startsWith(`${name}@`) || match[0].startsWith(`${name}:`) ||
-    normalize(/([^\s"'`=,;()[\]{}<>]+)(?:@|==)$/.exec(code.slice(Math.max(0, match.index - name.length - 3), match.index))?.[1] ?? "") ===
+    normalize(/(?:^|[\s"'`=,;()[\]{}<>])([^\s"'`=,;()[\]{}<>]+)(?:@|==)$/.exec(code.slice(Math.max(0, match.index - name.length - 3), match.index))?.[1] ?? "") ===
     normalize(name)) : [];
   const selected = named.length ? named : candidates;
   return selected.length === 1 ? selected[0] : undefined;

@@ -79,14 +79,14 @@ export function prewarmOrigins(dir: string, args: Record<string, unknown>): stri
       } else if (filename === "pyproject.toml") {
         if (/^[ \t]*["'][A-Za-z0-9][\w.-]*(?:\[[^\]]+\])?\s*(?:[<>=!~]|@)/m.test(content)) resources.add("pypiapi");
       } else if (filename === "Cargo.toml") {
-        if (/^\s*\[(?:target\.[^\]]+\.)?(?:dev-|build-)?dependencies\]/m.test(content)) resources.add("cargoapi");
+        if (/^[ \t\uFEFF]*\[(?:target\.[^\]]+\.)?(?:dev-|build-)?dependencies\]/m.test(content)) resources.add("cargoapi");
       } else if (filename === "go.mod" || filename === "go.work") {
-        if (/^\s*(?:require\s+)?\S+\s+v\d/m.test(content)) resources.add("goproxy");
+        if (/^[ \t\uFEFF]*(?:require\s+)?\S+\s+v\d/m.test(content)) resources.add("goproxy");
       } else if (mode === "docker") {
-        if (/^\s*(?:FROM\s+(?:--\S+\s+)*|image\s*:\s*)[^\s#]+[:@]/im.test(content)) resources.add("dockerapi");
+        if (/^[ \t\uFEFF]*(?:FROM\s+(?:--\S+\s+)*|image\s*:\s*)[^\s#]+[:@]/im.test(content)) resources.add("dockerapi");
       } else if (mode === "make") {
-        if (isEnabled("go") && /[\w-]+\.[\w.-]+\/\S*@v\d/.test(content)) resources.add("goproxy");
-        if (isEnabled("docker") && /[\w.-]+\/[\w.-]+:[\w.-]+/.test(content)) resources.add("dockerapi");
+        if (isEnabled("go") && /[\w-]\.[\w.-]+\/\S*@v\d/.test(content)) resources.add("goproxy");
+        if (isEnabled("docker") && /[\w.-]\/[\w.-]+:[\w.-]+/.test(content)) resources.add("dockerapi");
       } else {
         let blockIndent = -1;
         for (const line of content.split(/\r?\n/)) {
@@ -108,7 +108,7 @@ export function prewarmOrigins(dir: string, args: Record<string, unknown>): stri
   for (const resource of resources) {
     let value = args[resource];
     if (resource === "registry" && typeof value !== "string") {
-      try { value = /^\s*registry\s*=\s*(\S+)\s*$/m.exec(readFileSync(join(dir, ".npmrc"), "utf8"))?.[1]; } catch {}
+      try { value = /^[ \t\uFEFF]*registry\s*=\s*(\S+)\s*$/m.exec(readFileSync(join(dir, ".npmrc"), "utf8"))?.[1]; } catch {}
     } else if (resource === "goproxy" && typeof value !== "string") {
       value = env.GOPROXY;
     }

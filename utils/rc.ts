@@ -16,7 +16,7 @@ export function parseIni(content: string): Record<string, string> {
     } else if (/^".*"$/s.test(value)) {
       try { value = JSON.parse(value); } catch {}
     } else {
-      value = value.replace(/\\([\\;#])|[;#].*$/g, "$1").trim();
+      value = value.replace(/\\([\\;#])|[;#].*/g, "$1").trim();
     }
     result[trimmed.slice(0, eqIndex).trim()] = value;
   }

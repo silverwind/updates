@@ -90,7 +90,7 @@ function isTransientFetchError(err: any): boolean {
   return typeof code === "string" && transientErrorCodes.has(code);
 }
 
-export const redactUrlCredentials = (text: string): string => text.replace(/([a-z][a-z\d+.-]*:\/\/)[^/?#\s]*@/gi, "$1");
+export const redactUrlCredentials = (text: string): string => text.replace(/:\/\/[^/?#\s]*@/g, "://");
 
 export async function doFetch(url: string, opts?: RequestInit): Promise<Response> {
   try {
@@ -547,7 +547,7 @@ export function selectTag(tags: Array<string>, oldRef: string): string | null {
 }
 
 export function resolvePackageJsonUrl(url: string): string {
-  const cleaned = url.replace("git@", "").replace(/.+?\/\//, "https://").replace(/\.git$/, "");
+  const cleaned = url.replace("git@", "").replace(/^.+?\/\//m, "https://").replace(/\.git$/, "");
   if (/^[a-z]+:[a-z0-9-]+\/[a-z0-9-]+$/.test(cleaned)) return cleaned.replace(/^(.+?):/, "https://$1.com/");
   return /^[a-z0-9-]+\/[a-z0-9-]+$/.test(cleaned) ? `https://github.com/${cleaned}` : cleaned;
 }
@@ -630,7 +630,7 @@ async function fetchForgePage<T>(
 }
 
 function lastPageFromLink(link: string): number {
-  const last = /<([^>]+)>;\s*rel="last"/.exec(link);
+  const last = /<([^<>]+)>;\s*rel="last"/.exec(link);
   if (!last) return 0;
   const page = Number(new URL(last[1]).searchParams.get("page"));
   if (!Number.isSafeInteger(page) || page < 1) throw new TypeError("Invalid Forge pagination URL");

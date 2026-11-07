@@ -211,7 +211,7 @@ export type Pep440 = {epoch: number, release: Array<number>, pre: [string, numbe
 
 const pep440Pattern = "v?(?:(\\d+)!)?(\\d+(?:\\.\\d+)*)(?:[-_.]?(a|b|c|rc|alpha|beta|pre|preview)[-_.]?(\\d+)?)?(?:-(\\d+)|[-_.]?(post|rev|r)[-_.]?(\\d+)?)?(?:[-_.]?(dev)[-_.]?(\\d+)?)?(?:\\+([a-z0-9]+(?:[-_.][a-z0-9]+)*))?";
 const pep440Re = new RegExp(`^${pep440Pattern}$`, "i");
-const pep440SearchRe = new RegExp(pep440Pattern, "i");
+const pep440SearchRe = new RegExp(`(?:^|\\D)(${pep440Pattern})`, "i");
 const preSpellings: Record<string, string> = {alpha: "a", beta: "b", c: "rc", pre: "rc", preview: "rc"};
 
 const pep440Cache = new Map<string, Pep440 | null>();
@@ -235,7 +235,7 @@ export function parsePep440(v: string): Pep440 | null {
 }
 
 function parsePep440Range(range: string): Pep440 | null {
-  return parsePep440(range) ?? parsePep440(pep440SearchRe.exec(range)?.[0] ?? "");
+  return parsePep440(range) ?? parsePep440(pep440SearchRe.exec(range)?.[1] ?? "");
 }
 
 const isPep440Prerelease = (v: Pep440): boolean => Boolean(v.pre) || v.dev !== null;
@@ -300,15 +300,15 @@ export type Versioning<T extends {version: string} = any> = {
   satisfiesRange: (parsed: T, range: string) => boolean;
 };
 
-const rangeVersionRe = /\d+\.\d+\.\d+(?:-[a-zA-Z0-9_.-]+)?/;
+const rangeVersionRe = /(?:^|\D)(\d+\.\d+\.\d+(?:-[a-zA-Z0-9_.-]+)?)/;
 
 export const semverVersioning: Versioning<SemVer> = {
   parse,
-  parseRange: range => parse(rangeVersionRe.exec(range)?.[0] ?? "") ?? parse(coerce(range)?.version ?? ""),
+  parseRange: range => parse(rangeVersionRe.exec(range)?.[1] ?? "") ?? parse(coerce(range)?.version ?? ""),
   compare: compareParsed,
   diff: diffParsed,
   isPrerelease: parsed => parsed.prerelease.length > 0,
-  isRangePrerelease: range => /[0-9]+\.[0-9]+\.[0-9]+-.+/.test(range),
+  isRangePrerelease: range => /[0-9]\.[0-9]+\.[0-9]+-.+/.test(range),
   satisfiesRange: satisfiesParsed,
 };
 
