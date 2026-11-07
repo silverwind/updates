@@ -1275,6 +1275,17 @@ test("actions cooldown uses the later commit or publication date of the selected
   ]);
 });
 
+test("actions with prerelease enabled select a tag whose release is marked prerelease", async () => {
+  const dir = writeTree("actions-prerelease", {".github/workflows/ci.yml": workflowSteps("o/prerelease@v1.0.0")});
+  lazyRoute("/github/repos/o/prerelease/tags", () => [{name: "v2.0.0-rc.1"}]);
+  lazyRoute("/github/repos/o/prerelease/releases", () => [{tag_name: "v2.0.0-rc.1", prerelease: true}]);
+  const run = (prerelease: boolean) => updates({
+    files: [dir], modes: ["actions"], forgeapi: "https://api.github.com", noCache: true, color: false, prerelease,
+  });
+  expect((await run(false)).message).toContain("up to date");
+  expect(Object.values((await run(true)).results.actions)).toMatchObject([{"o/prerelease": {new: "2.0.0-rc.1"}}]);
+});
+
 test("a forbidden followed branch prints its status and token hint once across workflow files", async () => {
   const pin = "o/private@dddd000000000000000000000000000000000000 # main";
   const dir = writeTree("actions-forbidden", {".github/workflows/a.yaml": workflowSteps(pin), ".github/workflows/b.yaml": workflowSteps(pin)});

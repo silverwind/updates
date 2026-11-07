@@ -1244,9 +1244,9 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
       entryByName.set(tag.name, tag);
       if (tag.commitSha) commitShaToTag.set(tag.commitSha.toLowerCase(), tag.name);
     }
-    const tagsByAllowedVersions = new Map<string | undefined, ReturnType<typeof forgeVersionTags>>();
-    const versionTags = (allowedVersions?: string) =>
-      getOrSet(tagsByAllowedVersions, allowedVersions, () => forgeVersionTags(tags, allowedVersions));
+    const tagsByFilter = new Map<string, ReturnType<typeof forgeVersionTags>>();
+    const versionTags = (allowedVersions: string | undefined, includePrerelease: boolean) => getOrSet(tagsByFilter,
+      `${includePrerelease} ${allowedVersions}`, () => forgeVersionTags(tags, allowedVersions, githubActionsVersioning, includePrerelease));
     const getDate = (commitSha: string, tag: string) => forgeDate(apiUrl, owner, repo,
       {...entryByName.get(tag), name: tag, commitSha});
     const getExactDigest = memoizeAsync(async (exactRef: string): Promise<string> => {
@@ -1281,7 +1281,8 @@ async function runUpdates(opts: UpdatesOptions): Promise<Output> {
         if (!oldRef) { delete deps.actions[key]; return; }
 
         const versionOpts = resolveVersionOpts(info.filters, info.identity);
-        const filteredTags = versionTags(versionOpts.allowedVersions);
+        const filteredTags = versionTags(versionOpts.allowedVersions,
+          versionOpts.usePre || githubActionsVersioning.isRangePrerelease(oldRef));
         const result = isVersionLikeRef(oldRef) ? await pickDatedVersion(filteredTags.versions,
           {...versionOpts, range: oldRef, versioning: githubActionsVersioning}, async version => {
             const {written: tag, entry: {commitSha, releaseTimestamp}} = filteredTags.byVersion.get(version)!;
