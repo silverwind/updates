@@ -43,8 +43,7 @@ export type ModeContext = {
   doFetch: typeof doFetch, execFile: ExecFile, noCache: boolean,
 };
 
-export type ExecFile = (file: string, args: Array<string>, opts: Record<string, any>) =>
-Promise<{stdout: string, stderr: string}>;
+export type ExecFile = (file: string, args: Array<string>, opts: Record<string, any>) => Promise<{stdout: string, stderr: string}>;
 
 export const packageVersion: string = pkg.version;
 export const fieldSep = "\0";

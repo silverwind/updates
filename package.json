@@ -38,16 +38,16 @@
   "files": [
     "dist"
   ],
-  "packageManager": "pnpm@12.18.0",
+  "packageManager": "pnpm@12.21.0",
   "engines": {
     "node": ">=24",
     "bun": "*"
   },
   "devDependencies": {
     "@types/node": "26.6.6",
-    "@vitest/coverage-v8": "5.1.0",
-    "eslint": "10.14.0",
-    "eslint-config-silverwind": "157.0.0",
+    "@vitest/coverage-v8": "5.1.1",
+    "eslint": "10.15.0",
+    "eslint-config-silverwind": "158.0.1",
     "timerel": "6.0.0",
     "tsdown": "0.23.7",
     "tsdown-config-silverwind": "5.0.0",
@@ -55,7 +55,7 @@
     "typescript-config-silverwind": "21.0.2",
     "updates-config-silverwind": "4.1.0",
     "versions": "15.5.2",
-    "vitest": "5.1.0",
+    "vitest": "5.1.1",
     "vitest-config-silverwind": "13.0.0"
   }
 }
